@@ -1,0 +1,48 @@
+[package]
+name = "telegram-connector"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "telegram_connector"
+path = "src/lib.rs"
+
+[[bin]]
+name = "telegram-mcp"
+path = "src/main.rs"
+
+[dependencies]
+# MCP
+rmcp = { version = "0.11.0", features = ["server"] }
+
+# Telegram
+grammers-client = { git = "https://github.com/Lonami/grammers", branch = "master" }
+grammers-session = { git = "https://github.com/Lonami/grammers", branch = "master" }
+
+# Async
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+
+# Config & Serialization
+toml = "0.9.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+directories = "6.0.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-appender = "0.2"
+
+# Errors
+anyhow = "1.0"
+thiserror = "2.0.17"
+
+# Utilities
+chrono = { version = "0.4", features = ["serde"] }
+dashmap = "6.1.0"
+
+[dev-dependencies]
+tokio-test = "0.4"
+proptest = "1.4"
+mockall = "0.14.0"
