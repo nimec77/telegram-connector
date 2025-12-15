@@ -8,8 +8,8 @@
 
 | Phase | Description | Status | Tests | Notes |
 |-------|-------------|--------|-------|-------|
-| 1 | Project Setup | ⬜ Pending | - | Cargo, CI, structure |
-| 2 | Error Types | ⬜ Pending | 0/0 | thiserror definitions |
+| 1 | Project Setup | ✅ Complete | - | Cargo, CI, structure |
+| 2 | Error Types | ✅ Complete | 8/8 | thiserror definitions |
 | 3 | Configuration | ⬜ Pending | 0/0 | TOML loading |
 | 4 | Logging | ⬜ Pending | 0/0 | tracing setup |
 | 5 | Domain Types | ⬜ Pending | 0/0 | Message, Channel, IDs |
@@ -23,42 +23,42 @@
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
-**Overall Progress:** 0/12 phases complete
+**Overall Progress:** 2/12 phases complete
 
 ---
 
-## Phase 1: Project Setup
+## Phase 1: Project Setup ✅
 
 **Goal:** Compilable project with CI pipeline
 
-- [ ] Initialize project: `cargo init --lib`
-- [ ] Configure `Cargo.toml` with all dependencies (see vision.md §1.4)
-- [ ] Create directory structure:
+- [x] Initialize project: `cargo init --lib`
+- [x] Configure `Cargo.toml` with all dependencies (see vision.md §1.4)
+- [x] Create directory structure:
   ```
   src/lib.rs, src/main.rs
   src/mcp.rs, src/mcp/
   src/telegram.rs, src/telegram/
   ```
-- [ ] Create empty module files with `todo!()` placeholders
-- [ ] Setup `.github/workflows/ci.yml`
-- [ ] Verify: `cargo build` succeeds
+- [x] Create empty module files with `todo!()` placeholders
+- [x] Setup `.github/workflows/ci.yml`
+- [x] Verify: `cargo build` succeeds
 
-**Test:** `cargo build && cargo clippy`
+**Test:** `cargo build && cargo clippy` ✅ PASSED
 
 ---
 
-## Phase 2: Error Types
+## Phase 2: Error Types ✅
 
 **Goal:** Type-safe error handling foundation
 
-- [ ] Write tests for error Display implementations
-- [ ] Implement `src/error.rs`:
-  - [ ] `Error` enum with thiserror
-  - [ ] Variants: Auth, Telegram API, RateLimit, Config, Network, MCP
-- [ ] Export from `lib.rs`
-- [ ] Verify: all tests pass
+- [x] Write tests for error Display implementations
+- [x] Implement `src/error.rs`:
+  - [x] `Error` enum with thiserror
+  - [x] Variants: Auth, Telegram API, RateLimit, Config, Network, MCP
+- [x] Export from `lib.rs`
+- [x] Verify: all tests pass
 
-**Test:** `cargo test error`
+**Test:** `cargo test error` ✅ PASSED (8/8 tests)
 
 ---
 
