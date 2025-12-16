@@ -1,3 +1,4 @@
+use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -71,10 +72,21 @@ pub struct Config {
 #[derive(Debug, Clone, Deserialize)]
 pub struct TelegramConfig {
     pub api_id: i32,
-    pub api_hash: String,
-    pub phone_number: String,
+    #[serde(deserialize_with = "deserialize_secret_string")]
+    pub api_hash: SecretString,
+    #[serde(deserialize_with = "deserialize_secret_string")]
+    pub phone_number: SecretString,
     #[serde(default = "default_session_file")]
     pub session_file: PathBuf,
+}
+
+// Helper function for deserializing SecretString
+fn deserialize_secret_string<'de, D>(deserializer: D) -> Result<SecretString, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    Ok(SecretString::new(s.into_boxed_str()))
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -114,8 +126,8 @@ impl Config {
         let mut config: Config = toml::from_str(&content).context("Failed to parse config.toml")?;
 
         // Expand environment variables in sensitive fields
-        config.telegram.api_hash = expand_env_vars(&config.telegram.api_hash)?;
-        config.telegram.phone_number = expand_env_vars(&config.telegram.phone_number)?;
+        config.telegram.api_hash = expand_env_vars_secret(&config.telegram.api_hash)?;
+        config.telegram.phone_number = expand_env_vars_secret(&config.telegram.phone_number)?;
 
         // Apply defaults (currently no-op, but kept for future use)
         config.apply_defaults();
@@ -148,14 +160,20 @@ impl Config {
         if self.telegram.api_id == 0 {
             anyhow::bail!("telegram.api_id is required");
         }
-        if self.telegram.api_hash.is_empty() {
+        if self.telegram.api_hash.expose_secret().is_empty() {
             anyhow::bail!("telegram.api_hash is required");
         }
-        if self.telegram.phone_number.is_empty() {
+        if self.telegram.phone_number.expose_secret().is_empty() {
             anyhow::bail!("telegram.phone_number is required");
         }
         Ok(())
     }
+}
+
+fn expand_env_vars_secret(secret: &SecretString) -> anyhow::Result<SecretString> {
+    let value = secret.expose_secret();
+    let expanded = expand_env_vars(value)?;
+    Ok(SecretString::new(expanded.into_boxed_str()))
 }
 
 fn expand_env_vars(value: &str) -> anyhow::Result<String> {
@@ -230,8 +248,8 @@ mod tests {
         let config = Config {
             telegram: TelegramConfig {
                 api_id: 0,
-                api_hash: "hash".to_string(),
-                phone_number: "+1234567890".to_string(),
+                api_hash: SecretString::new("hash".to_string().into_boxed_str()),
+                phone_number: SecretString::new("+1234567890".to_string().into_boxed_str()),
                 session_file: PathBuf::from("session.bin"),
             },
             search: SearchConfig {
@@ -258,8 +276,8 @@ mod tests {
         let config = Config {
             telegram: TelegramConfig {
                 api_id: 12345,
-                api_hash: "".to_string(),
-                phone_number: "+1234567890".to_string(),
+                api_hash: SecretString::new("".to_string().into_boxed_str()),
+                phone_number: SecretString::new("+1234567890".to_string().into_boxed_str()),
                 session_file: PathBuf::from("session.bin"),
             },
             search: SearchConfig {
@@ -286,8 +304,8 @@ mod tests {
         let config = Config {
             telegram: TelegramConfig {
                 api_id: 12345,
-                api_hash: "hash".to_string(),
-                phone_number: "".to_string(),
+                api_hash: SecretString::new("hash".to_string().into_boxed_str()),
+                phone_number: SecretString::new("".to_string().into_boxed_str()),
                 session_file: PathBuf::from("session.bin"),
             },
             search: SearchConfig {
@@ -314,8 +332,8 @@ mod tests {
         let config = Config {
             telegram: TelegramConfig {
                 api_id: 12345,
-                api_hash: "valid_hash".to_string(),
-                phone_number: "+1234567890".to_string(),
+                api_hash: SecretString::new("valid_hash".to_string().into_boxed_str()),
+                phone_number: SecretString::new("+1234567890".to_string().into_boxed_str()),
                 session_file: PathBuf::from("session.bin"),
             },
             search: SearchConfig {
@@ -374,7 +392,7 @@ format = "compact"
         assert!(result.is_ok());
         let config = result.unwrap();
         assert_eq!(config.telegram.api_id, 12345);
-        assert_eq!(config.telegram.api_hash, "test_hash");
+        assert_eq!(config.telegram.api_hash.expose_secret(), "test_hash");
     }
 
     #[test]
@@ -420,8 +438,8 @@ format = "compact"
 
         assert!(result.is_ok());
         let config = result.unwrap();
-        assert_eq!(config.telegram.api_hash, "expanded_hash");
-        assert_eq!(config.telegram.phone_number, "+9876543210");
+        assert_eq!(config.telegram.api_hash.expose_secret(), "expanded_hash");
+        assert_eq!(config.telegram.phone_number.expose_secret(), "+9876543210");
     }
 
     #[test]
@@ -478,5 +496,48 @@ format = "compact"
         let path = result.unwrap();
         assert!(path.to_string_lossy().contains("telegram-connector"));
         assert!(path.to_string_lossy().ends_with("config.toml"));
+    }
+
+    #[test]
+    fn test_secret_does_not_expose_in_debug() {
+        let config = Config {
+            telegram: TelegramConfig {
+                api_id: 12345,
+                api_hash: SecretString::new("sensitive_hash_value".to_string().into_boxed_str()),
+                phone_number: SecretString::new("+1234567890".to_string().into_boxed_str()),
+                session_file: PathBuf::from("/tmp/session.bin"),
+            },
+            search: SearchConfig {
+                default_hours_back: 48,
+                max_results_default: 20,
+                max_results_limit: 100,
+            },
+            rate_limiting: RateLimitConfig {
+                max_tokens: 50,
+                refill_rate: 2.0,
+            },
+            logging: LoggingConfig {
+                level: "info".to_string(),
+                format: "compact".to_string(),
+            },
+        };
+
+        let debug_output = format!("{:?}", config);
+
+        // Secret values should not appear in debug output
+        assert!(!debug_output.contains("sensitive_hash_value"));
+        assert!(!debug_output.contains("+1234567890"));
+
+        // But should contain "Secret" indicator
+        assert!(debug_output.contains("Secret"));
+    }
+
+    #[test]
+    fn test_secret_expose_returns_actual_value() {
+        let secret_hash = SecretString::new("my_api_hash".to_string().into_boxed_str());
+        let secret_phone = SecretString::new("+1234567890".to_string().into_boxed_str());
+
+        assert_eq!(secret_hash.expose_secret(), "my_api_hash");
+        assert_eq!(secret_phone.expose_secret(), "+1234567890");
     }
 }

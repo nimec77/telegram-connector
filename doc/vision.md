@@ -57,6 +57,7 @@ telegram-connector/
 | **Date/Time** | `chrono` | 0.4, `serde` | Time-window search filtering |
 | **Concurrency** | `dashmap` | 5.5 | Thread-safe rate limiter state |
 | **Config Paths** | `directories` | 5.0 | XDG-compliant paths |
+| **Security** | `secrecy` | 0.10, `serde` | Sensitive credential protection |
 
 ---
 
@@ -97,14 +98,16 @@ grammers-session = { git = "https://github.com/Lonami/grammers", branch = "main"
 # Async
 tokio = { version = "1", features = ["full"] }
 
-# Config
+# Config & Serialization
 toml = "0.8"
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 directories = "5.0"
 
 # Logging
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
+tracing-appender = "0.2"
 
 # Errors
 anyhow = "1.0"
@@ -112,8 +115,10 @@ thiserror = "1.0"
 
 # Utilities
 chrono = { version = "0.4", features = ["serde"] }
-serde_json = "1.0"
 dashmap = "5.5"
+
+# Security
+secrecy = { version = "0.10", features = ["serde"] }
 
 [dev-dependencies]
 tokio-test = "0.4"
@@ -758,6 +763,7 @@ impl MessageLink {
 
 ```rust
 // config.rs
+use secrecy::{ExposeSecret, SecretString};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
@@ -770,9 +776,20 @@ pub struct Config {
 #[derive(Debug, Clone, Deserialize)]
 pub struct TelegramConfig {
     pub api_id: i32,
-    pub api_hash: String,
-    pub phone_number: String,
-    pub session_file: PathBuf,
+    #[serde(deserialize_with = "deserialize_secret_string")]
+    pub api_hash: SecretString,
+    #[serde(deserialize_with = "deserialize_secret_string")]
+    pub phone_number: SecretString,
+    #[serde(default = "default_session_file")]
+    pub session_file: PathBuf,  // Path itself is not sensitive
+}
+
+// Custom deserializer for SecretString
+fn deserialize_secret_string<'de, D>(deserializer: D) -> Result<SecretString, D::Error>
+where D: serde::Deserializer<'de>
+{
+    let s = String::deserialize(deserializer)?;
+    Ok(SecretString::new(s.into_boxed_str()))
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1103,13 +1120,17 @@ search_messages(query, channel_id?, hours_back, limit)
 # Telegram MCP Connector Configuration
 # Location: ~/.config/telegram-connector/config.toml
 
+# SECURITY: Sensitive credentials (api_hash, phone_number) are protected
+# using the `secrecy` crate and will not be exposed in debug logs or error messages.
+
 [telegram]
 # Required: Telegram API credentials from https://my.telegram.org
 api_id = 12345678
-api_hash = "${TELEGRAM_API_HASH}"       # Environment variable reference
-phone_number = "+1234567890"
+api_hash = "${TELEGRAM_API_HASH}"       # Environment variable reference (SENSITIVE)
+phone_number = "+1234567890"            # (SENSITIVE)
 
 # Optional: Session file location
+# Note: The session file path itself is not sensitive, but the file contents are.
 session_file = "~/.config/telegram-connector/session.bin"
 
 [search]
@@ -1142,22 +1163,34 @@ api_hash = "${TELEGRAM_API_HASH}"
 phone_number = "${TELEGRAM_PHONE}"
 ```
 
-**Implementation:**
+**Implementation (simple string operations, no regex):**
 ```rust
-fn expand_env_vars(value: &str) -> Result<String> {
-    // Pattern: ${VAR_NAME}
-    let re = Regex::new(r"\$\{([^}]+)\}")?;
-    let result = re.replace_all(value, |caps: &Captures| {
-        std::env::var(&caps[1]).unwrap_or_default()
-    });
-    Ok(result.to_string())
+fn expand_env_vars(value: &str) -> anyhow::Result<String> {
+    let mut result = value.to_string();
+    while let Some(start) = result.find("${") {
+        if let Some(end_offset) = result[start..].find('}') {
+            let end = start + end_offset;
+            let var_name = &result[start + 2..end];
+            let var_value = std::env::var(var_name).unwrap_or_default();
+            result.replace_range(start..=end, &var_value);
+        } else {
+            break;
+        }
+    }
+    Ok(result)
+}
+
+fn expand_env_vars_secret(secret: &SecretString) -> anyhow::Result<SecretString> {
+    let value = secret.expose_secret();
+    let expanded = expand_env_vars(value)?;
+    Ok(SecretString::new(expanded.into_boxed_str()))
 }
 ```
 
 **Supported fields:**
 - `telegram.api_id`
-- `telegram.api_hash`
-- `telegram.phone_number`
+- `telegram.api_hash` (expanded as SecretString)
+- `telegram.phone_number` (expanded as SecretString)
 - `telegram.session_file`
 
 ---
@@ -1233,9 +1266,9 @@ impl Config {
         let mut config: Config = toml::from_str(&content)
             .context("Failed to parse config.toml")?;
 
-        // Expand environment variables in sensitive fields
-        config.telegram.api_hash = expand_env_vars(&config.telegram.api_hash)?;
-        config.telegram.phone_number = expand_env_vars(&config.telegram.phone_number)?;
+        // Expand environment variables in sensitive fields (SecretString)
+        config.telegram.api_hash = expand_env_vars_secret(&config.telegram.api_hash)?;
+        config.telegram.phone_number = expand_env_vars_secret(&config.telegram.phone_number)?;
 
         // Apply defaults for optional sections
         config.apply_defaults();
@@ -1263,10 +1296,11 @@ impl Config {
         if self.telegram.api_id == 0 {
             anyhow::bail!("telegram.api_id is required");
         }
-        if self.telegram.api_hash.is_empty() {
+        // Use .expose_secret() to access SecretString values for validation
+        if self.telegram.api_hash.expose_secret().is_empty() {
             anyhow::bail!("telegram.api_hash is required");
         }
-        if self.telegram.phone_number.is_empty() {
+        if self.telegram.phone_number.expose_secret().is_empty() {
             anyhow::bail!("telegram.phone_number is required");
         }
         Ok(())
@@ -1417,9 +1451,9 @@ pub fn redact_hash(hash: &str) -> String {
     format!("{}***{}", &hash[..4], &hash[hash.len() - 1..])
 }
 
-// Use in structured logging
+// Use in structured logging (phone_number is SecretString)
 tracing::info!(
-    phone = %redact_phone(&config.phone_number),
+    phone = %redact_phone(config.phone_number.expose_secret()),
     "Authenticating user"
 );
 ```

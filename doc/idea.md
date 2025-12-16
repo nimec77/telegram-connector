@@ -190,14 +190,15 @@ grammers-session = { git = "https://github.com/Lonami/grammers", branch = "main"
 # Async
 tokio = { version = "1", features = ["full"] }
 
-# Config
+# Config & Serialization
 toml = "0.8"
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 directories = "5.0"
 
 # Logging
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
 tracing-appender = "0.2"
 
 # Errors
@@ -206,8 +207,10 @@ thiserror = "1.0"
 
 # Utilities
 chrono = { version = "0.4", features = ["serde"] }
-serde_json = "1.0"
 dashmap = "5.5"
+
+# Security
+secrecy = { version = "0.10", features = ["serde"] }
 
 [dev-dependencies]
 tokio-test = "0.4"
@@ -915,15 +918,19 @@ mockall = "0.13"
 # Telegram MCP Service Configuration
 # Version: 1.0.0
 
+# SECURITY: Sensitive credentials (api_hash, phone_number) are protected
+# using the `secrecy` crate and will not be exposed in debug logs or error messages.
+
 [telegram]
 # Telegram API credentials from https://my.telegram.org
 api_id = "YOUR_API_ID"              # Required: numeric ID
-api_hash = "YOUR_API_HASH"          # Required: hex string
+api_hash = "YOUR_API_HASH"          # Required: hex string (SENSITIVE)
 
 # Phone number for user authentication
-phone_number = "+1234567890"        # Required: include country code
+phone_number = "+1234567890"        # Required: include country code (SENSITIVE)
 
 # Session persistence
+# Note: The session file path itself is not sensitive, but the file contents are.
 session_file = "~/.config/telegram-connector/session.bin"  # Will be auto-created
 
 [search]
@@ -964,6 +971,9 @@ mkdir -p ~/.config/telegram-connector
 **Step 2: Create initial config file**
 ```bash
 cat > ~/.config/telegram-connector/config.toml << 'EOF'
+# SECURITY: Sensitive credentials (api_hash, phone_number) are protected
+# using the `secrecy` crate and will not be exposed in debug logs or error messages.
+
 [telegram]
 api_id = "YOUR_API_ID"
 api_hash = "YOUR_API_HASH"
