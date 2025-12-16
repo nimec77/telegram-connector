@@ -1,16 +1,17 @@
 # Development Memory - Telegram MCP Connector
 
-**Last Updated:** Phase 3 Complete (2025-12-16)
+**Last Updated:** Phase 4 Complete (2025-12-16)
 
 ---
 
 ## Current Status
 
-**Progress:** 3/12 phases complete
+**Progress:** 4/12 phases complete
 - ✅ Phase 1: Project Setup
 - ✅ Phase 2: Error Types (8/8 tests)
-- ✅ Phase 3: Configuration (16/16 tests)
-- ⬜ Phase 4: Logging (next)
+- ✅ Phase 3: Configuration (18/18 tests)
+- ✅ Phase 4: Logging (13/13 tests)
+- ⬜ Phase 5: Domain Types (next)
 
 ---
 
@@ -148,14 +149,164 @@ None for Phase 3. Clean implementation with 100% test coverage of public API.
 
 ---
 
-## Next Phase: Phase 4 - Logging
+## Phase 4: Logging (Complete)
 
-**Goal:** Structured async logging with sensitive data redaction
+### What Was Implemented
+
+1. **Sensitive Data Protection with Secrecy Crate**
+   - Added `secrecy = { version = "0.10", features = ["serde"] }` to Cargo.toml
+   - Updated `TelegramConfig` to use `SecretString` for `api_hash` and `phone_number`
+   - **Decision:** Session file path remains `PathBuf` (not sensitive data)
+   - **Reason:** Path itself isn't sensitive; file contents are
+
+2. **Secrecy API Learnings** (src/config.rs:1-90)
+   - Version 0.10 uses `SecretString` (alias for `SecretBox<str>`) and `SecretBox<T>`
+   - Constructor requires `Box<T>`: `SecretString::new(s.into_boxed_str())`
+   - Access via `expose_secret()` method from `ExposeSecret` trait
+   - Debug output shows "Secret" instead of actual values
+   - **Gotcha:** `PathBuf` doesn't implement `Zeroize`, can't use with `SecretBox`
+
+3. **Redaction Functions** (src/logging.rs:10-41)
+   - `redact_phone()`: Shows first 4 + last 3 chars (`+1234567890` → `+123***890`)
+   - `redact_hash()`: Shows first 4 + last 1 char (`abc123def456` → `abc1***6`)
+   - Both return `"[REDACTED]"` for strings ≤6 characters
+   - **Pattern:** Simple string slicing, no regex needed
+
+4. **Tracing Subscriber Initialization** (src/logging.rs:5-35)
+   - Added `"json"` feature to `tracing-subscriber` in Cargo.toml
+   - Supports three formats: compact (default), pretty, json
+   - Uses `try_init()` instead of `init()` to handle already-initialized subscriber
+   - **Pattern:** `result.or(Ok(()))` to ignore "already initialized" errors in tests
+   - Outputs to stderr only (file logging deferred to Phase 12)
+
+5. **Config Updates for Secrecy**
+   - Custom deserializer: `deserialize_secret_string()` converts `String` → `SecretString`
+   - Env var expansion: `expand_env_vars_secret()` wraps expanded string in `SecretString`
+   - Validation: Uses `.expose_secret()` to check emptiness
+   - **Test Count:** Increased from 16 to 18 (added 2 Secret behavior tests)
+
+### Tests: 13/13 Passing
+
+**Run command:** `cargo test logging`
+
+Test coverage:
+- 5 phone redaction tests (normal, longer, minimum length, too short, empty)
+- 5 hash redaction tests (normal, long, minimum length, too short, empty)
+- 3 initialization tests (valid config, different levels, different formats)
+
+### Key Decisions & Rationale
+
+1. **Secrecy for credentials only**
+   - **Applied to:** `api_hash`, `phone_number`
+   - **Not applied to:** `session_file` (path)
+   - **Reason:** Paths aren't credentials; file contents are encrypted separately
+
+2. **Deferred file logging to Phase 12**
+   - **Scope reduction:** Phase 4 focuses on core logging + redaction
+   - **Reason:** KISS principle - implement basic functionality first
+   - **Note:** vision.md §8 describes full file logging with rotation
+
+3. **Try-init pattern for tests**
+   - **Problem:** Global subscriber can only be set once
+   - **Solution:** Use `try_init()` + `.or(Ok(()))` to ignore re-init errors
+   - **Benefit:** Tests can run in any order without failures
+
+### Gotchas & Edge Cases
+
+1. **Secrecy 0.10 API Differences**
+   - **Expected:** `Secret<T>` generic type
+   - **Actual:** `SecretBox<T>` generic, `SecretString` type alias
+   - **Constructor:** Takes `Box<T>`, not `T`
+   - **Example:** `SecretString::new("value".to_string().into_boxed_str())`
+
+2. **PathBuf Cannot Be Secret**
+   - **Problem:** `SecretBox<T>` requires `T: Zeroize`
+   - **Issue:** `PathBuf` doesn't implement `Zeroize`
+   - **Solution:** Don't wrap paths in `SecretBox`; they're not sensitive
+
+3. **Tracing Subscriber Features**
+   - **Required:** Must enable `"json"` feature for JSON format support
+   - **Cargo.toml:** `tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }`
+
+4. **Global Subscriber in Tests**
+   - **Issue:** `init()` panics if subscriber already set
+   - **Workaround:** Use `try_init()` which returns `Result`
+   - **Pattern:** `.or(Ok(()))` converts "already set" error to success
+
+### Patterns to Reuse
+
+```rust
+// Pattern 1: SecretString deserialization
+fn deserialize_secret_string<'de, D>(deserializer: D) -> Result<SecretString, D::Error>
+where D: serde::Deserializer<'de>
+{
+    let s = String::deserialize(deserializer)?;
+    Ok(SecretString::new(s.into_boxed_str()))
+}
+
+// Pattern 2: Redaction helper
+pub fn redact_phone(phone: &str) -> String {
+    if phone.len() <= 6 {
+        return "[REDACTED]".to_string();
+    }
+    format!("{}***{}", &phone[..4], &phone[phone.len()-3..])
+}
+
+// Pattern 3: Tracing initialization with format switching
+let result = match config.format.as_str() {
+    "json" => tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .json()
+        .with_env_filter(filter)
+        .try_init(),
+    "pretty" => /* ... */,
+    _ => /* compact ... */,
+};
+result.or(Ok(())) // Ignore "already initialized" error
+
+// Pattern 4: SecretString env var expansion
+fn expand_env_vars_secret(secret: &SecretString) -> anyhow::Result<SecretString> {
+    let value = secret.expose_secret();
+    let expanded = expand_env_vars(value)?;
+    Ok(SecretString::new(expanded.into_boxed_str()))
+}
+```
+
+### Documentation Updates
+
+1. **config.example.toml** - Added security notice about SecretString protection
+2. **Config tests** - Updated to use SecretString constructors
+3. **Test count** - Phase 3 tests increased from 16 to 18 (Secret behavior tests)
+
+---
+
+## Workflow Adherence
+
+Following doc/workflow.md cycle:
+1. ✅ **PROPOSE** - Proposed logging + secrecy implementation approach
+2. ✅ **AGREE** - User confirmed use of secrecy crate for sensitive data
+3. ✅ **IMPLEMENT** - TDD: wrote tests first, then implementation
+4. ✅ **VERIFY** - All tests pass (38 total: 18 config + 8 error + 13 logging - 1 overlap)
+5. ✅ **UPDATE PROGRESS** - Updated tasklist.md
+6. ✅ **UPDATE MEMORY** - This section created
+
+---
+
+## Technical Debt / TODOs
+
+- File logging with rotation - deferred to Phase 12 (Polish)
+- Log file size limits and cleanup - deferred to Phase 12
+
+---
+
+## Next Phase: Phase 5 - Domain Types
+
+**Goal:** Type-safe domain model following DDD principles
 
 **Key Components:**
-- `tracing` subscriber setup
-- stderr + file output with rotation
-- `redact_phone()`, `redact_hash()` helpers
-- Log levels and formats from config
+- Type-safe ID wrappers (`ChannelId`, `MessageId`, `UserId`)
+- `Message`, `Channel` structs with serde
+- `MediaType` enum
+- `SearchParams`, `SearchResult`, `QueryMetadata`
 
-**Estimated Complexity:** Medium (existing patterns in vision.md §8)
+**Estimated Complexity:** Low-Medium (data structures + serde)

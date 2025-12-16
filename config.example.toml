@@ -1,13 +1,24 @@
 # Telegram MCP Connector Configuration
 # Location: ~/.config/telegram-connector/config.toml
+#
+# SECURITY: Sensitive credentials (api_hash, phone_number) are protected
+# using the `secrecy` crate and will not be exposed in debug logs or error messages.
 
 [telegram]
 # Required: Telegram API credentials from https://my.telegram.org
 api_id = 12345678
-api_hash = "${TELEGRAM_API_HASH}"       # Environment variable reference
+
+# Required: API hash (SENSITIVE - protected by secrecy crate)
+# Supports environment variable expansion with ${VAR_NAME} syntax
+api_hash = "${TELEGRAM_API_HASH}"
+
+# Required: Your Telegram phone number (SENSITIVE - protected by secrecy crate)
+# Can be plain text or environment variable
 phone_number = "+1234567890"
 
-# Optional: Session file location (default: ~/.config/telegram-connector/session.bin)
+# Optional: Session file location
+# Default: ~/.config/telegram-connector/session.bin
+# Note: The session file path itself is not sensitive, but the file contents are.
 # session_file = "~/.config/telegram-connector/session.bin"
 
 [search]

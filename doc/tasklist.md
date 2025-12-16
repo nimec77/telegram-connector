@@ -10,8 +10,8 @@
 |-------|-------------|--------|-------|-------|
 | 1 | Project Setup | ✅ Complete | - | Cargo, CI, structure |
 | 2 | Error Types | ✅ Complete | 8/8 | thiserror definitions |
-| 3 | Configuration | ✅ Complete | 16/16 | TOML loading, env vars |
-| 4 | Logging | ⬜ Pending | 0/0 | tracing setup |
+| 3 | Configuration | ✅ Complete | 18/18 | TOML, env vars, secrecy |
+| 4 | Logging | ✅ Complete | 13/13 | tracing, redaction |
 | 5 | Domain Types | ⬜ Pending | 0/0 | Message, Channel, IDs |
 | 6 | Link Generation | ⬜ Pending | 0/0 | tg://, https://t.me |
 | 7 | Rate Limiter | ⬜ Pending | 0/0 | Token bucket |
@@ -23,7 +23,7 @@
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
-**Overall Progress:** 3/12 phases complete
+**Overall Progress:** 4/12 phases complete
 
 ---
 
@@ -83,19 +83,23 @@
 
 ---
 
-## Phase 4: Logging
+## Phase 4: Logging ✅
 
-**Goal:** Structured async-aware logging
+**Goal:** Structured async-aware logging with sensitive data redaction
 
-- [ ] Write tests for log level parsing
-- [ ] Write tests for redaction functions
-- [ ] Implement `src/logging.rs`:
-  - [ ] `init(config: &LoggingConfig)` function
-  - [ ] stderr + file appender setup
-  - [ ] `redact_phone()`, `redact_hash()` helpers
-- [ ] Verify: logs appear on stderr
+- [x] Write tests for redaction functions (10 tests)
+- [x] Write tests for init with different formats and levels (3 tests)
+- [x] Implement `src/logging.rs`:
+  - [x] `init(config: &LoggingConfig)` function
+  - [x] stderr output with compact/pretty/json formats
+  - [x] `redact_phone()`, `redact_hash()` helpers
+- [x] Add `secrecy` crate for sensitive config fields
+- [x] Update config to use `SecretString` for api_hash and phone_number
+- [x] Verify: all tests pass
 
-**Test:** `cargo test logging` + manual stderr check
+**Test:** `cargo test logging` ✅ PASSED (13/13 tests)
+
+**Note:** File logging with rotation deferred to Phase 12 (Polish). Currently outputs to stderr only.
 
 ---
 

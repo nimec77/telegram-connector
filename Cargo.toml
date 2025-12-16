@@ -31,7 +31,7 @@ directories = "6.0.0"
 
 # Logging
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
 tracing-appender = "0.2"
 
 # Errors
@@ -41,6 +41,9 @@ thiserror = "2.0.17"
 # Utilities
 chrono = { version = "0.4", features = ["serde"] }
 dashmap = "6.1.0"
+
+# Security
+secrecy = { version = "0.10", features = ["serde"] }
 
 [dev-dependencies]
 tokio-test = "0.4"
