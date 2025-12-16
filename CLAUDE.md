@@ -18,7 +18,7 @@ cargo test
 
 # Run tests for specific module
 cargo test error
-cargo test config
+cargo test config -- --test-threads=1  # Serial execution for env var tests
 cargo test types
 cargo test link
 cargo test rate_limiter
@@ -139,9 +139,14 @@ See `doc/workflow.md` for the iteration cycle:
 3. IMPLEMENT - tests first, then code
 4. VERIFY - wait for confirmation
 5. UPDATE PROGRESS - update `doc/tasklist.md`
-6. UPDATE MEMORY - after completing each phase/iteration, update Claude memory to record:
+6. UPDATE MEMORY - after completing each phase/iteration, update `doc/memory.md` (LOCAL file) to record:
    - Progress made (what was completed)
    - Patterns applied (design decisions, architectural choices)
    - Lessons learned (gotchas, edge cases discovered)
+   - Code patterns to reuse in future phases
 
-Current progress tracked in `doc/tasklist.md`.
+**IMPORTANT:** Always use LOCAL memory file `doc/memory.md`, NOT global Claude memory.
+
+Current progress tracked in:
+- `doc/tasklist.md` - checklist of phases and tasks
+- `doc/memory.md` - detailed notes, patterns, and lessons learned

@@ -1,18 +1,19 @@
 # Development Workflow
 
-**Reference:** [tasklist.md](tasklist.md) | [vision.md](vision.md) | [conventions.md](conventions.md)
+**Reference:** [tasklist.md](tasklist.md) | [vision.md](vision.md) | [conventions.md](conventions.md) | [memory.md](memory.md)
 
 ---
 
 ## Iteration Cycle
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  1. PROPOSE  →  2. AGREE  →  3. IMPLEMENT  →  4. VERIFY │
-│       ↑                                            │    │
-│       └────────────────────────────────────────────┘    │
-│                    Next Iteration                       │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│  1. PROPOSE  →  2. AGREE  →  3. IMPLEMENT  →  4. VERIFY              │
+│       ↑                                            │                 │
+│       │                 5. UPDATE PROGRESS  →  6. UPDATE MEMORY      │
+│       └────────────────────────────────────────────────────────────┘ │
+│                         Next Iteration / Phase                       │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -130,6 +131,47 @@ Updated tasklist.md:
 Phase 5 progress: 2/4 tasks complete
 
 Proceed to next task?
+```
+
+---
+
+## Step 6: UPDATE MEMORY
+
+After completing a phase (not every task):
+
+1. Update `doc/memory.md` with:
+   - **Progress made** - what was completed
+   - **Patterns applied** - design decisions, architectural choices
+   - **Lessons learned** - gotchas, edge cases discovered
+   - **Code patterns to reuse** - snippets for future phases
+2. Commit changes to memory.md
+3. Ready for next phase
+
+**IMPORTANT:** Use LOCAL file `doc/memory.md`, NOT global Claude memory.
+
+**When to update:**
+- ✅ After completing each phase
+- ✅ When discovering important patterns or gotchas
+- ❌ Not after every single task (too granular)
+
+**Memory update format:**
+```markdown
+## Phase N: [Name] (Complete)
+
+### What Was Implemented
+- Component 1 with key details
+- Component 2 with key details
+
+### Key Decisions & Rationale
+1. Decision: Why we chose this approach
+
+### Gotchas & Edge Cases
+1. Issue: How we solved it
+
+### Patterns to Reuse
+```rust
+// Code pattern with explanation
+```
 ```
 
 ---
