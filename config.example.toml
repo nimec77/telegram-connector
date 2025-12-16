@@ -1,27 +1,27 @@
-# Telegram MCP Connector Configuration Example
-# Copy this file to ~/.config/telegram-connector/config.toml and fill in your credentials
+# Telegram MCP Connector Configuration
+# Location: ~/.config/telegram-connector/config.toml
 
 [telegram]
-# Required: Get from https://my.telegram.org
+# Required: Telegram API credentials from https://my.telegram.org
 api_id = 12345678
-api_hash = "${TELEGRAM_API_HASH}"      # Or set directly: "your_api_hash_here"
+api_hash = "${TELEGRAM_API_HASH}"       # Environment variable reference
 phone_number = "+1234567890"
 
-# Optional: Session file location (default shown)
+# Optional: Session file location (default: ~/.config/telegram-connector/session.bin)
 # session_file = "~/.config/telegram-connector/session.bin"
 
 [search]
 # Optional: Search defaults
-default_hours_back = 48                # Default: 48
-max_results_default = 20               # Default: 20
-max_results_limit = 100                # Default: 100
+# default_hours_back = 48                  # Default: 48
+# max_results_default = 20                 # Default: 20
+# max_results_limit = 100                  # Default: 100
 
 [rate_limiting]
 # Optional: Token bucket configuration
-max_tokens = 50                        # Default: 50 (burst capacity)
-refill_rate = 2.0                      # Default: 2.0 tokens/second
+# max_tokens = 50                          # Default: 50 (burst capacity)
+# refill_rate = 2.0                        # Default: 2.0 tokens/second
 
 [logging]
 # Optional: Logging configuration
-level = "info"                         # Default: "info" (trace, debug, info, warn, error)
-format = "compact"                     # Default: "compact" (compact, pretty, json)
+# level = "info"                           # Default: "info" (trace, debug, info, warn, error)
+# format = "compact"                       # Default: "compact" (compact, pretty, json)

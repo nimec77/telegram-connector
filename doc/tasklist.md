@@ -10,7 +10,7 @@
 |-------|-------------|--------|-------|-------|
 | 1 | Project Setup | ✅ Complete | - | Cargo, CI, structure |
 | 2 | Error Types | ✅ Complete | 8/8 | thiserror definitions |
-| 3 | Configuration | ⬜ Pending | 0/0 | TOML loading |
+| 3 | Configuration | ✅ Complete | 16/16 | TOML loading, env vars |
 | 4 | Logging | ⬜ Pending | 0/0 | tracing setup |
 | 5 | Domain Types | ⬜ Pending | 0/0 | Message, Channel, IDs |
 | 6 | Link Generation | ⬜ Pending | 0/0 | tg://, https://t.me |
@@ -23,7 +23,7 @@
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
-**Overall Progress:** 2/12 phases complete
+**Overall Progress:** 3/12 phases complete
 
 ---
 
@@ -62,22 +62,24 @@
 
 ---
 
-## Phase 3: Configuration
+## Phase 3: Configuration ✅
 
 **Goal:** Load and validate TOML config
 
-- [ ] Write tests for config loading (valid, missing, invalid)
-- [ ] Write tests for env var expansion (`${VAR}`)
-- [ ] Write tests for default values
-- [ ] Implement `src/config.rs`:
-  - [ ] `Config`, `TelegramConfig`, `SearchConfig`, `RateLimitConfig`, `LoggingConfig`
-  - [ ] `Config::load()` with path resolution
-  - [ ] `Config::validate()`
-  - [ ] Environment variable expansion
-- [ ] Create example `config.example.toml`
-- [ ] Verify: all tests pass
+- [x] Write tests for config loading (valid, missing, invalid)
+- [x] Write tests for env var expansion (`${VAR}`)
+- [x] Write tests for default values
+- [x] Implement `src/config.rs`:
+  - [x] `Config`, `TelegramConfig`, `SearchConfig`, `RateLimitConfig`, `LoggingConfig`
+  - [x] `Config::load()` with path resolution
+  - [x] `Config::validate()`
+  - [x] Environment variable expansion (no regex dependency)
+- [x] Create example `config.example.toml`
+- [x] Verify: all tests pass
 
-**Test:** `cargo test config`
+**Test:** `cargo test config -- --test-threads=1` ✅ PASSED (16/16 tests)
+
+**Note:** Use `--test-threads=1` for tests that modify environment variables to avoid race conditions.
 
 ---
 
