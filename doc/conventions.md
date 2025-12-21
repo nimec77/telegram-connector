@@ -59,6 +59,13 @@ pub mod tools;
 | Library | `thiserror` | Typed error definitions |
 | Application | `anyhow` | Error context & propagation |
 
+### Production Code Rules
+
+- **NEVER use `unwrap()`** in production code (library or application)
+- **Use `?` operator** for propagating errors
+- **Use `expect()` with clear messages** only in tests or truly impossible situations
+- **Add context** with `.context()` for better error messages
+
 ```rust
 // Library errors
 #[derive(thiserror::Error, Debug)]
@@ -416,6 +423,16 @@ fn search() {
 ### Violates Error Handling Conventions
 
 ```rust
+// WRONG: Using unwrap() - can panic at runtime
+fn load_config() -> Config {
+    std::fs::read_to_string("config.toml")
+        .unwrap()  // ❌ Panic if file missing!
+}
+
+fn get_user_id(user: &Option<User>) -> UserId {
+    user.as_ref().unwrap().id  // ❌ Panic if None!
+}
+
 // WRONG: Swallowing errors
 fn load_config() -> Config {
     std::fs::read_to_string("config.toml")
@@ -429,12 +446,19 @@ fn connect() -> Result<(), String> {
     Err("connection failed".to_string())
 }
 
-// RIGHT: Typed errors with context
+// RIGHT: Proper error propagation with context
 fn load_config() -> Result<Config> {
     let content = std::fs::read_to_string("config.toml")
         .context("Failed to read config file")?;
     toml::from_str(&content)
         .context("Failed to parse config")
+}
+
+// RIGHT: Handle Option properly
+fn get_user_id(user: &Option<User>) -> Result<UserId> {
+    user.as_ref()
+        .map(|u| u.id)
+        .context("User not found")
 }
 ```
 
