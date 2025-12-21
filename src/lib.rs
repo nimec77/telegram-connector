@@ -8,3 +8,4 @@ pub mod telegram;
 
 pub use config::Config;
 pub use error::Error;
+pub use link::MessageLink;
