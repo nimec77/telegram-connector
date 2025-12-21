@@ -19,6 +19,9 @@ pub enum Error {
 
     #[error("MCP protocol error: {0}")]
     Mcp(String),
+
+    #[error("invalid input: {0}")]
+    InvalidInput(String),
 }
 
 #[cfg(test)]
@@ -76,5 +79,14 @@ mod tests {
     fn test_error_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<Error>();
+    }
+
+    #[test]
+    fn test_invalid_input_error_display() {
+        let error = Error::InvalidInput("Channel ID must be positive".to_string());
+        assert_eq!(
+            error.to_string(),
+            "invalid input: Channel ID must be positive"
+        );
     }
 }

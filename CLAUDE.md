@@ -98,6 +98,7 @@ cargo run --bin telegram-mcp
 
 - **Library layer:** `thiserror` for typed error definitions
 - **Application layer:** `anyhow` for error context and propagation
+- **NEVER use `unwrap()` in production code** - use `?` or `expect()` with clear messages
 
 ```rust
 // Library errors
@@ -109,6 +110,10 @@ pub enum Error {
 
 // Application errors - use .context()
 let config = Config::load().context("Failed to load config")?;
+
+// NEVER use unwrap() in production code
+// let value = option.unwrap();  // ❌ WRONG - can panic
+let value = option.context("Expected value to be present")?;  // ✅ RIGHT
 ```
 
 ## Domain Types (DDD)
