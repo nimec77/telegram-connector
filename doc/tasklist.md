@@ -12,8 +12,8 @@
 | 2 | Error Types | ✅ Complete | 8/8 | thiserror definitions |
 | 3 | Configuration | ✅ Complete | 18/18 | TOML, env vars, secrecy |
 | 4 | Logging | ✅ Complete | 13/13 | tracing, redaction |
-| 5 | Domain Types | ⬜ Pending | 0/0 | Message, Channel, IDs |
-| 6 | Link Generation | ⬜ Pending | 0/0 | tg://, https://t.me |
+| 5 | Domain Types | ✅ Complete | 38/38 | Message, Channel, IDs |
+| 6 | Link Generation | ✅ Complete | 5/5 | tg://, https://t.me |
 | 7 | Rate Limiter | ⬜ Pending | 0/0 | Token bucket |
 | 8 | Telegram Auth | ⬜ Pending | 0/0 | Session, 2FA |
 | 9 | Telegram Client | ⬜ Pending | 0/0 | Channels, search |
@@ -23,7 +23,7 @@
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
-**Overall Progress:** 4/12 phases complete
+**Overall Progress:** 6/12 phases complete
 
 ---
 
@@ -103,40 +103,41 @@
 
 ---
 
-## Phase 5: Domain Types
+## Phase 5: Domain Types ✅
 
 **Goal:** Type-safe domain model (DDD)
 
-- [ ] Write tests for ID types (ChannelId, MessageId, UserId)
-- [ ] Write tests for serde serialization/deserialization
-- [ ] Write tests for Display implementations
-- [ ] Implement `src/telegram/types.rs`:
-  - [ ] `ChannelId`, `MessageId`, `UserId` wrappers
-  - [ ] `Message` struct with all fields
-  - [ ] `Channel` struct with all fields
-  - [ ] `MediaType` enum
-  - [ ] `SearchParams`, `SearchResult`, `QueryMetadata`
-- [ ] Export from `src/telegram.rs`
-- [ ] Verify: all tests pass
+- [x] Write tests for ID types (ChannelId, MessageId, UserId)
+- [x] Write tests for serde serialization/deserialization
+- [x] Write tests for Display implementations
+- [x] Implement `src/telegram/types.rs`:
+  - [x] `ChannelId`, `MessageId`, `UserId` wrappers (with validation!)
+  - [x] `Message` struct with all fields
+  - [x] `Channel` struct with all fields
+  - [x] `MediaType` enum (comprehensive - 14 variants)
+  - [x] `SearchParams`, `SearchResult`, `QueryMetadata`
+  - [x] Bonus: `Username` and `ChannelName` validated types
+- [x] Export from `src/telegram.rs`
+- [x] Verify: all tests pass
 
-**Test:** `cargo test types`
+**Test:** `cargo test types` ✅ PASSED (38/38 tests)
 
 ---
 
-## Phase 6: Link Generation
+## Phase 6: Link Generation ✅
 
 **Goal:** Generate Telegram deep links
 
-- [ ] Write tests for HTTPS link format
-- [ ] Write tests for tg:// protocol link format
-- [ ] Write tests for MessageLink construction
-- [ ] Implement `src/link.rs`:
-  - [ ] `MessageLink` struct
-  - [ ] `MessageLink::new(channel_id, message_id)`
-  - [ ] Generate both link formats
-- [ ] Verify: all tests pass
+- [x] Write tests for HTTPS link format
+- [x] Write tests for tg:// protocol link format
+- [x] Write tests for MessageLink construction
+- [x] Implement `src/link.rs`:
+  - [x] `MessageLink` struct
+  - [x] `MessageLink::new(channel_id, message_id)`
+  - [x] Generate both link formats
+- [x] Verify: all tests pass
 
-**Test:** `cargo test link`
+**Test:** `cargo test link` ✅ PASSED (5/5 tests)
 
 ---
 
