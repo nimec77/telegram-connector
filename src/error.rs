@@ -8,8 +8,8 @@ pub enum Error {
     #[error("telegram API error: {0}")]
     TelegramApi(String),
 
-    #[error("rate limit exceeded")]
-    RateLimit,
+    #[error("rate limit exceeded, retry after {retry_after_seconds} seconds")]
+    RateLimit { retry_after_seconds: u64 },
 
     #[error("configuration error: {0}")]
     Config(String),
@@ -45,8 +45,13 @@ mod tests {
 
     #[test]
     fn test_rate_limit_error_display() {
-        let error = Error::RateLimit;
-        assert_eq!(error.to_string(), "rate limit exceeded");
+        let error = Error::RateLimit {
+            retry_after_seconds: 5,
+        };
+        assert_eq!(
+            error.to_string(),
+            "rate limit exceeded, retry after 5 seconds"
+        );
     }
 
     #[test]
