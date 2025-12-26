@@ -184,10 +184,7 @@ mod tests {
 
         let result = load_session(&session_path);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("does not exist"));
+        assert!(result.unwrap_err().to_string().contains("does not exist"));
     }
 
     #[test]
@@ -209,10 +206,12 @@ mod tests {
         // Load should fail
         let result = load_session(&session_path);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("insecure permissions"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("insecure permissions")
+        );
     }
 
     #[test]
