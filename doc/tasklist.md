@@ -16,7 +16,7 @@
 | 6 | Link Generation | ✅ Complete | 5/5 | tg://, https://t.me |
 | 7 | Rate Limiter | ✅ Complete | 19/19 | Token bucket, proptest |
 | 8 | Telegram Auth | ✅ Complete | 8/8 | Session, 2FA, dialoguer |
-| 9 | Telegram Client | ⬜ Pending | 0/0 | Channels, search |
+| 9 | Telegram Client | ✅ Complete | 12/12 | Trait, mocks, validation |
 | 10 | MCP Server | ⬜ Pending | 0/0 | rmcp setup |
 | 11 | MCP Tools | ⬜ Pending | 0/0 | All 6 tools |
 | 12 | Integration | ⬜ Pending | 0/0 | E2E, polish |
