@@ -88,11 +88,11 @@ pub trait RateLimiterTrait: Send + Sync {
 impl RateLimiterTrait for RateLimiter {
     async fn acquire(&self, tokens: u32) -> Result<(), Error> {
         let mut bucket = self.bucket.lock().unwrap();
-        bucket.try_acquire(tokens).map_err(|retry_after_seconds| {
-            Error::RateLimit {
+        bucket
+            .try_acquire(tokens)
+            .map_err(|retry_after_seconds| Error::RateLimit {
                 retry_after_seconds,
-            }
-        })
+            })
     }
 
     fn available_tokens(&self) -> f64 {
@@ -105,7 +105,7 @@ impl RateLimiterTrait for RateLimiter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::time::{sleep, Duration};
+    use tokio::time::{Duration, sleep};
 
     fn test_config(max_tokens: u32, refill_rate: f64) -> RateLimitConfig {
         RateLimitConfig {
@@ -144,7 +144,7 @@ mod tests {
         let result = limiter.acquire(10).await;
         assert!(result.is_ok());
         let available = limiter.available_tokens();
-        assert!(available >= 39.9 && available <= 40.1); // Allow for timing variance
+        assert!((39.9..=40.1).contains(&available)); // Allow for timing variance
     }
 
     #[tokio::test]
@@ -155,7 +155,7 @@ mod tests {
         let result = limiter.acquire(50).await;
         assert!(result.is_ok());
         let available = limiter.available_tokens();
-        assert!(available >= 0.0 && available <= 0.1); // Allow for timing variance
+        assert!((0.0..=0.1).contains(&available)); // Allow for timing variance
     }
 
     #[tokio::test]
@@ -178,7 +178,7 @@ mod tests {
         limiter.acquire(5).await.unwrap();
 
         let available = limiter.available_tokens();
-        assert!(available >= 19.9 && available <= 20.1); // Allow for timing variance
+        assert!((19.9..=20.1).contains(&available)); // Allow for timing variance
     }
 
     // ========================================
@@ -251,12 +251,12 @@ mod tests {
         // Deplete tokens
         limiter.acquire(50).await.unwrap();
         let available = limiter.available_tokens();
-        assert!(available >= 0.0 && available <= 0.1); // Near zero with timing variance
+        assert!((0.0..=0.1).contains(&available)); // Near zero with timing variance
 
         // Wait 1 second - should refill 10 tokens
         sleep(Duration::from_secs(1)).await;
         let available = limiter.available_tokens();
-        assert!(available >= 9.0 && available <= 11.0); // Allow for timing variance
+        assert!((9.0..=11.0).contains(&available)); // Allow for timing variance
     }
 
     #[tokio::test]
@@ -280,12 +280,12 @@ mod tests {
         // Use 50 tokens
         limiter.acquire(50).await.unwrap();
         let available = limiter.available_tokens();
-        assert!(available >= 49.9 && available <= 50.1); // Allow for timing variance
+        assert!((49.9..=50.1).contains(&available)); // Allow for timing variance
 
         // Wait 0.5 seconds - should refill 10 tokens
         sleep(Duration::from_millis(500)).await;
         let available = limiter.available_tokens();
-        assert!(available >= 59.0 && available <= 61.0); // 50 + 10 ± variance
+        assert!((59.0..=61.0).contains(&available)); // 50 + 10 ± variance
     }
 
     #[tokio::test]
@@ -337,9 +337,7 @@ mod tests {
         let mut handles = vec![];
         for _ in 0..10 {
             let limiter_clone = Arc::clone(&limiter);
-            let handle = tokio::spawn(async move {
-                limiter_clone.acquire(10).await
-            });
+            let handle = tokio::spawn(async move { limiter_clone.acquire(10).await });
             handles.push(handle);
         }
 
