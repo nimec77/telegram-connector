@@ -23,3 +23,6 @@ session.bin
 # Logs
 *.log
 logs/
+
+# Proptest
+proptest-regressions/
