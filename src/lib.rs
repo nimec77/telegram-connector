@@ -10,3 +10,4 @@ pub use config::Config;
 pub use error::Error;
 pub use link::MessageLink;
 pub use rate_limiter::{RateLimiter, RateLimiterTrait};
+pub use telegram::client::{TelegramClient, TelegramClientTrait};
