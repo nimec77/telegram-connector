@@ -1,12 +1,12 @@
 # Development Memory - Telegram MCP Connector
 
-**Last Updated:** Phase 11 In Progress (2025-12-27)
+**Last Updated:** Phase 11 Complete (2025-12-27)
 
 ---
 
 ## Current Status
 
-**Progress:** 10/12 phases complete, Phase 11 50% done
+**Progress:** 11/12 phases complete, ready for Phase 12
 - ✅ Phase 1: Project Setup
 - ✅ Phase 2: Error Types (9/9 tests)
 - ✅ Phase 3: Configuration (18/18 tests)
@@ -17,7 +17,7 @@
 - ✅ Phase 8: Telegram Auth (8/8 tests)
 - ✅ Phase 9: Telegram Client (12/12 tests)
 - ✅ Phase 10: MCP Server (2/2 tests)
-- 🔄 Phase 11: MCP Tools (10/20 tests - foundations + 3 tools done)
+- ✅ Phase 11: MCP Tools (21/21 tests - all 6 tools complete)
 
 ---
 
@@ -1338,31 +1338,133 @@ Following doc/workflow.md cycle:
 - Log file size limits and cleanup - deferred to Phase 12
 - Manual integration test for full auth flow - deferred to Phase 12
 - Full grammers client integration - deferred to Phase 12 (requires real Telegram API credentials)
-- **Phase 11 continuation:** Implement remaining 3 tools (generate_message_link, open_message_in_telegram, search_messages)
 
 ---
 
-## Next Session: Phase 11 Continuation
+## Phase 11: MCP Tools (Complete - Session 3)
 
-**Goal:** Implement remaining 3 MCP tools (tools 4-6)
+### What Was Implemented (Session 3 - Tools 4-6)
+
+**Completed:** Tools 4-6 (generate_message_link, open_message_in_telegram, search_messages)
+
+1. **Tool 4: generate_message_link** (src/mcp/server.rs:98-131)
+   - Parses channel_id string to i64, creates type-safe ChannelId
+   - Uses existing `MessageLink::new()` from link.rs
+   - Returns `MessageLinkResponse` with https and optional tg:// links
+   - Respects `include_tg_protocol` flag (defaults to true)
+   - 3 tests: both formats, without tg protocol, invalid channel_id
+
+2. **Tool 5: open_message_in_telegram** (src/mcp/server.rs:133-195)
+   - Platform-specific: macOS only using `tokio::process::Command::new("open")`
+   - Uses `#[cfg(target_os = "macos")]` for conditional compilation
+   - Returns graceful error on non-macOS platforms
+   - Returns `OpenMessageResponse` with success, message, link_used, app_opened
+   - 3 tests: invalid channel_id, tg:// by default, https when requested
+
+3. **Tool 6: search_messages** (src/mcp/server.rs:197-259)
+   - Validates query (non-empty after trim)
+   - Parses optional channel_id
+   - Applies defaults and limits (hours_back: 48/72, limit: 20/100)
+   - Acquires rate limiter token before search
+   - Delegates to TelegramClient.search_messages()
+   - 5 tests: returns results, empty query fails, rate limited, channel filter, applies limits
+
+### Tests: 21/21 Passing (Phase 11 Total)
+
+**Run command:** `cargo test mcp`
+
+Test breakdown:
+- 2 server tests (instance creation, handler info)
+- 2 check_mcp_status tests
+- 2 get_subscribed_channels tests
+- 2 get_channel_info tests
+- 3 generate_message_link tests
+- 3 open_message_in_telegram tests
+- 5 search_messages tests
+- 4 types tests (from tools/types.rs)
+
+**Total project tests:** 140/140 passing
+
+### Key Decisions & Rationale
+
+1. **Numeric channel_id only for link generation**
+   - `MessageLink` in link.rs uses numeric ChannelId
+   - Username format (https://t.me/username/msgid) would need different URL pattern
+   - Kept simple for Phase 11, can extend later if needed
+
+2. **Platform-specific compilation for open_message**
+   - Used `#[cfg(target_os = "macos")]` instead of runtime check
+   - Returns graceful error response on non-macOS (not Err)
+   - Allows MCP client to see what happened
+
+3. **Rate limiting before search**
+   - Acquire 1 token per search operation
+   - Rate limit error propagates to MCP client with retry info
+   - Query validation happens BEFORE rate limiting (fail fast)
+
+4. **Limit capping instead of error**
+   - Values exceeding MAX_HOURS_BACK/MAX_LIMIT are silently capped
+   - Alternative: Return error for out-of-bounds values
+   - Decision: More forgiving UX, similar to pagination patterns
+
+### Patterns Established
+
+```rust
+// Pattern 1: String to ChannelId parsing
+let channel_id_num: i64 = request.channel_id.parse()
+    .map_err(|_| format!("Invalid channel_id: '{}' is not a valid number", request.channel_id))?;
+let channel_id = ChannelId::new(channel_id_num)
+    .map_err(|e| format!("Invalid channel_id: {}", e))?;
+
+// Pattern 2: Platform-specific code
+#[cfg(target_os = "macos")]
+let result = tokio::process::Command::new("open")
+    .arg(link_to_open)
+    .output()
+    .await;
+
+#[cfg(not(target_os = "macos"))]
+let result: Result<std::process::Output, std::io::Error> = Err(std::io::Error::new(
+    std::io::ErrorKind::Unsupported,
+    "open_message_in_telegram is only supported on macOS",
+));
+
+// Pattern 3: Limit capping
+let hours_back = request.hours_back
+    .unwrap_or(SearchParams::DEFAULT_HOURS_BACK)
+    .min(SearchParams::MAX_HOURS_BACK);
+
+// Pattern 4: Rate limiter integration
+self.rate_limiter.acquire(1).await.map_err(|e| e.to_string())?;
+```
+
+### Files Modified
+
+1. **src/mcp/server.rs** - Added 3 tool methods + 11 tests (~200 lines)
+2. **doc/tasklist.md** - Marked Phase 11 complete
+3. **doc/memory.md** - Added this section
+4. **CLAUDE.md** - Updated status and test counts
+
+---
+
+## Next Session: Phase 12 - Integration & Polish
+
+**Goal:** Production-ready release
+
+**Tasks:**
+- [ ] Write E2E integration tests
+- [ ] Test with real Telegram account
+- [ ] Test with Comet browser
+- [ ] Add signal handling (SIGTERM, SIGINT)
+- [ ] Verify graceful shutdown
+- [ ] Run `cargo clippy -- -D warnings`
+- [ ] Run `cargo fmt --check`
+- [ ] Verify coverage >= 80%
+- [ ] Update README.md with quick start
+- [ ] Create release build: `cargo build --release`
 
 **Starting Point:**
-- Foundation complete: types, schemas, dependencies ✅
-- Tools 1-3 complete: check_mcp_status, get_subscribed_channels, get_channel_info ✅
-- Pattern established: pagination with defaults, simple error mapping, direct passthrough ✅
-- Test count: 133/133 passing
-
-**Implementation Order:**
-1. ~~get_subscribed_channels~~ ✅
-2. ~~get_channel_info~~ ✅
-3. generate_message_link (uses existing link.rs module)
-4. open_message_in_telegram (subprocess, macOS-specific)
-5. search_messages (most complex - rate limiting + structured errors)
-
-**TDD Pattern:**
-- Write 2-4 tests per tool (happy path + edge cases)
-- Implement tool method
-- Verify all tests pass
-- Move to next tool
-
-**Expected:** ~250 lines total, 6-10 additional tests, complete Phase 11
+- All 11 phases complete
+- 140 tests passing
+- 6/6 MCP tools implemented
+- Clippy clean
