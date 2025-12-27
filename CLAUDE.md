@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Telegram MCP Connector - a Model Context Protocol (MCP) service that enables Claude to search Russian-language Telegram channels and messages in real-time. Built in Rust using the `rmcp` SDK and `grammers` Telegram client.
 
+**Current Status:** Phase 11 in progress (3/6 MCP tools implemented), 129 tests passing.
+
 ## Build & Test Commands
 
 ```bash
@@ -13,15 +15,19 @@ Telegram MCP Connector - a Model Context Protocol (MCP) service that enables Cla
 cargo build
 cargo build --release
 
-# Run all tests
+# Run all tests (129 tests)
 cargo test
 
 # Run tests for specific module
-cargo test error
-cargo test config -- --test-threads=1  # Serial execution for env var tests
-cargo test types
-cargo test link
-cargo test rate_limiter
+cargo test error           # 9 tests
+cargo test config -- --test-threads=1  # 18 tests (serial for env var tests)
+cargo test logging         # 13 tests
+cargo test types           # 38 tests
+cargo test link            # 5 tests
+cargo test rate_limiter    # 19 tests
+cargo test auth            # 8 tests
+cargo test client          # 12 tests
+cargo test mcp             # 10 tests (server + tools)
 
 # Linting and formatting
 cargo fmt --check
@@ -43,7 +49,7 @@ cargo run --bin telegram-mcp
                           │ JSON-RPC over stdio
 ┌─────────────────────────▼───────────────────────────┐
 │              MCP Server Layer (rmcp)                │
-│              src/mcp/server.rs, tools.rs            │
+│         src/mcp/server.rs, tools/, tools/types.rs   │
 └─────────────────────────┬───────────────────────────┘
                           │
 ┌─────────────────────────▼───────────────────────────┐
@@ -63,23 +69,36 @@ cargo run --bin telegram-mcp
 **Key design patterns:**
 - Library + Binary separation (`lib.rs` for core logic, `main.rs` for CLI)
 - Shared state via `Arc<T>` for Telegram client and rate limiter
-- Traits with `mockall` for testability (e.g., `TelegramClientTrait`)
+- Traits with `mockall` for testability (e.g., `TelegramClientTrait`, `RateLimiterTrait`)
 - No `mod.rs` files - use file-as-module pattern (e.g., `src/mcp.rs` declares submodules)
+- JSON schemas via `schemars` for MCP tool parameters
 
 ## Module Structure
 
 | Module | Purpose |
 |--------|---------|
-| `error.rs` | Error types with thiserror |
-| `config.rs` | TOML config loading, env var expansion |
+| `error.rs` | Error types with thiserror (RateLimit includes retry_after) |
+| `config.rs` | TOML config loading, env var expansion, SecretString for sensitive data |
 | `logging.rs` | tracing subscriber setup, sensitive data redaction |
-| `rate_limiter.rs` | Token bucket rate limiting |
+| `rate_limiter.rs` | Token bucket rate limiting with retry_after calculation |
 | `link.rs` | Telegram deep link generation (tg://, https://t.me) |
-| `mcp/server.rs` | rmcp server setup |
-| `mcp/tools.rs` | MCP tool implementations |
-| `telegram/client.rs` | Grammers client wrapper |
-| `telegram/auth.rs` | Session management, 2FA flow |
-| `telegram/types.rs` | Domain types (Message, Channel, IDs) |
+| `mcp/server.rs` | rmcp ServerHandler + MCP tool methods |
+| `mcp/tools.rs` | Re-exports tools module |
+| `mcp/tools/types.rs` | MCP tool request/response types with JsonSchema |
+| `telegram/client.rs` | TelegramClientTrait + mock-based implementation |
+| `telegram/auth.rs` | Session persistence (atomic writes, 0600 perms), 2FA flow |
+| `telegram/types.rs` | Domain types (Message, Channel, IDs) with JsonSchema |
+
+## MCP Tools (Phase 11)
+
+| Tool | Status | Description |
+|------|--------|-------------|
+| `check_mcp_status` | ✅ | Connection status, rate limiter tokens |
+| `get_subscribed_channels` | ✅ | List user's Telegram channels with pagination |
+| `get_channel_info` | ✅ | Get channel metadata by username or ID |
+| `generate_message_link` | ⬜ | Generate tg:// and https://t.me links |
+| `open_message_in_telegram` | ⬜ | Open message in Telegram Desktop (macOS) |
+| `search_messages` | ⬜ | Search messages with rate limiting |
 
 ## Development Methodology
 
@@ -155,3 +174,22 @@ See `doc/workflow.md` for the iteration cycle:
 Current progress tracked in:
 - `doc/tasklist.md` - checklist of phases and tasks
 - `doc/memory.md` - detailed notes, patterns, and lessons learned
+
+## Development Progress
+
+| Phase | Description | Status | Tests |
+|-------|-------------|--------|-------|
+| 1 | Project Setup | ✅ | - |
+| 2 | Error Types | ✅ | 9/9 |
+| 3 | Configuration | ✅ | 18/18 |
+| 4 | Logging | ✅ | 13/13 |
+| 5 | Domain Types | ✅ | 38/38 |
+| 6 | Link Generation | ✅ | 5/5 |
+| 7 | Rate Limiter | ✅ | 19/19 |
+| 8 | Telegram Auth | ✅ | 8/8 |
+| 9 | Telegram Client | ✅ | 12/12 |
+| 10 | MCP Server | ✅ | 2/2 |
+| 11 | MCP Tools | 🔄 | 10/20 |
+| 12 | Integration | ⬜ | - |
+
+**Overall:** 10/12 phases complete, Phase 11 at 50%
