@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Telegram MCP Connector - a Model Context Protocol (MCP) service that enables Claude to search Russian-language Telegram channels and messages in real-time. Built in Rust using the `rmcp` SDK and `grammers` Telegram client.
 
-**Current Status:** Phase 11 in progress (3/6 MCP tools implemented), 129 tests passing.
+**Current Status:** Phase 11 complete (6/6 MCP tools implemented), 140 tests passing.
 
 ## Build & Test Commands
 
@@ -15,7 +15,7 @@ Telegram MCP Connector - a Model Context Protocol (MCP) service that enables Cla
 cargo build
 cargo build --release
 
-# Run all tests (129 tests)
+# Run all tests (140 tests)
 cargo test
 
 # Run tests for specific module
@@ -27,7 +27,7 @@ cargo test link            # 5 tests
 cargo test rate_limiter    # 19 tests
 cargo test auth            # 8 tests
 cargo test client          # 12 tests
-cargo test mcp             # 10 tests (server + tools)
+cargo test mcp             # 21 tests (server + all 6 tools)
 
 # Linting and formatting
 cargo fmt --check
@@ -89,16 +89,16 @@ cargo run --bin telegram-mcp
 | `telegram/auth.rs` | Session persistence (atomic writes, 0600 perms), 2FA flow |
 | `telegram/types.rs` | Domain types (Message, Channel, IDs) with JsonSchema |
 
-## MCP Tools (Phase 11)
+## MCP Tools (Phase 11 Complete)
 
 | Tool | Status | Description |
 |------|--------|-------------|
 | `check_mcp_status` | ✅ | Connection status, rate limiter tokens |
 | `get_subscribed_channels` | ✅ | List user's Telegram channels with pagination |
 | `get_channel_info` | ✅ | Get channel metadata by username or ID |
-| `generate_message_link` | ⬜ | Generate tg:// and https://t.me links |
-| `open_message_in_telegram` | ⬜ | Open message in Telegram Desktop (macOS) |
-| `search_messages` | ⬜ | Search messages with rate limiting |
+| `generate_message_link` | ✅ | Generate tg:// and https://t.me links |
+| `open_message_in_telegram` | ✅ | Open message in Telegram Desktop (macOS) |
+| `search_messages` | ✅ | Search messages with rate limiting |
 
 ## Development Methodology
 
@@ -189,7 +189,7 @@ Current progress tracked in:
 | 8 | Telegram Auth | ✅ | 8/8 |
 | 9 | Telegram Client | ✅ | 12/12 |
 | 10 | MCP Server | ✅ | 2/2 |
-| 11 | MCP Tools | 🔄 | 10/20 |
+| 11 | MCP Tools | ✅ | 21/21 |
 | 12 | Integration | ⬜ | - |
 
-**Overall:** 10/12 phases complete, Phase 11 at 50%
+**Overall:** 11/12 phases complete, ready for Phase 12 (Integration & Polish)
