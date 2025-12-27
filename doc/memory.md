@@ -1,12 +1,12 @@
 # Development Memory - Telegram MCP Connector
 
-**Last Updated:** Phase 9 Complete (2025-12-26)
+**Last Updated:** Phase 10 Complete (2025-12-27)
 
 ---
 
 ## Current Status
 
-**Progress:** 9/12 phases complete
+**Progress:** 10/12 phases complete
 - ✅ Phase 1: Project Setup
 - ✅ Phase 2: Error Types (9/9 tests)
 - ✅ Phase 3: Configuration (18/18 tests)
@@ -16,7 +16,8 @@
 - ✅ Phase 7: Rate Limiter (19/19 tests)
 - ✅ Phase 8: Telegram Auth (8/8 tests)
 - ✅ Phase 9: Telegram Client (12/12 tests)
-- ⬜ Phase 10: MCP Server (next)
+- ✅ Phase 10: MCP Server (2/2 tests)
+- ⬜ Phase 11: MCP Tools (next)
 
 ---
 
@@ -838,18 +839,206 @@ Following doc/workflow.md cycle:
 - File logging with rotation - deferred to Phase 12 (Polish)
 - Log file size limits and cleanup - deferred to Phase 12
 - Manual integration test for full auth flow - deferred to Phase 12
-- **NEW:** Full grammers client integration - deferred to Phase 12 (requires real Telegram API credentials)
+- Full grammers client integration - deferred to Phase 12 (requires real Telegram API credentials)
+- **NEW:** Tool registration/implementation - Phase 11 (rmcp SDK tool patterns)
 
 ---
 
-## Next Phase: Phase 10 - MCP Server
+## Phase 10: MCP Server (Complete)
 
-**Goal:** rmcp server setup with stdio transport
+### What Was Implemented
+
+1. **McpServer Generic Struct** (src/mcp/server.rs:7-13)
+   - Generic over `TelegramClientTrait + 'static` and `RateLimiterTrait + 'static`
+   - Fields: `Arc<TelegramClient>` and `Arc<RateLimiter>` for shared state
+   - Fields marked `#[allow(dead_code)]` (used in Phase 11)
+
+2. **Constructor** (src/mcp/server.rs:16-21)
+   - Simple `new(telegram_client, rate_limiter)` pattern
+   - Takes ownership of `Arc<T>` clones
+
+3. **ServerHandler Trait Implementation** (src/mcp/server.rs:40-59)
+   - Implements `rmcp::ServerHandler` trait
+   - `get_info()` returns `InitializeResult` with:
+     - Protocol version: `ProtocolVersion::default()` (MCP 2024-11-05)
+     - Server info: `Implementation { name, version, title, icons, website_url }`
+     - Instructions: Description for Claude
+
+4. **stdio Transport** (src/mcp/server.rs:23-36)
+   - `run_stdio()` async method
+   - Uses `tokio::io::{stdin, stdout}` as transport
+   - Calls `.serve()` via `ServiceExt` trait
+   - Blocks on `.waiting()` until shutdown
+
+### Tests: 2/2 Passing
+
+**Run command:** `cargo test mcp::server --lib`
+
+Test coverage:
+- `server_new_creates_instance_with_valid_dependencies` - Arc refcounting verification
+- `server_handler_provides_server_info` - Metadata validation
+
+**Total project tests:** 122 (all passing)
+
+### Key Decisions & Rationale
+
+1. **Generic over Traits, not Concrete Types**
+   - **Choice:** `McpServer<T: TelegramClientTrait, R: RateLimiterTrait>`
+   - **Why:** Allows testing with mocks, maintains testability from previous phases
+   - **Benefit:** Same pattern as Phases 7-9, consistent architecture
+
+2. **'static Lifetime Bounds Required**
+   - **Choice:** Added `'static` to all generic bounds
+   - **Why:** rmcp's `.serve()` requires owned types that live for program lifetime
+   - **Error encountered:** "parameter type `T` may not live long enough"
+   - **Solution:** `impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static>`
+
+3. **No tool_box Macro (Yet)**
+   - **Initial attempt:** Used `#[tool(tool_box)]` macro based on documentation
+   - **Error:** "Unknown field: `tool_box`. Available values: ..."
+   - **Reason:** rmcp 0.12.0 API differs from examples found online
+   - **Decision:** Plain trait impl for Phase 10, defer tool registration to Phase 11
+   - **Benefit:** KISS - implement one thing at a time
+
+4. **anyhow::Result for run_stdio()**
+   - **Choice:** Application-level error handling with `anyhow`
+   - **Why:** Consistent with vision.md pattern for main.rs integration
+   - **Alternative:** Could add `Error::McpServer` variant, but unnecessary
+
+### Gotchas & Edge Cases
+
+1. **rmcp 0.12.0 API Structure Complexity**
+   - **Problem:** Expected `ServerInfo` as return type
+   - **Reality:** `get_info()` returns `InitializeResult` with nested structure:
+     ```rust
+     InitializeResult {
+         protocol_version: ProtocolVersion,
+         capabilities: ServerCapabilities,
+         server_info: Implementation,  // <-- nested!
+         instructions: Option<String>,
+     }
+     ```
+   - **Implementation { ... }** requires: `title`, `icons`, `website_url` (all `Option<T>`)
+   - **Lesson:** Always check actual API structure in docs, not examples
+
+2. **ServiceExt Trait Not Auto-Imported**
+   - **Error:** "no method named `serve` found ... method is available but not in scope"
+   - **Cause:** `.serve()` is in `ServiceExt` trait, not `ServerHandler`
+   - **Fix:** `use rmcp::{ServerHandler, ServiceExt};`
+   - **Lesson:** Trait methods require trait to be in scope
+
+3. **tool_box Macro Not Available in 0.12.0**
+   - **Documentation showed:** `#[tool(tool_box)]` for tool registration
+   - **Actual error:** "Unknown field: `tool_box`"
+   - **Root cause:** rmcp 0.12.0 has different macro API than examples
+   - **Workaround:** Plain trait impl, defer tooling to Phase 11
+   - **Future:** Will research correct tool registration pattern in Phase 11
+
+4. **Dead Code Warnings on Fields**
+   - **Warning:** "fields `telegram_client` and `rate_limiter` are never read"
+   - **Reason:** Phase 10 only sets up server, tools use fields in Phase 11
+   - **Solution:** `#[allow(dead_code)]` with explanatory comment
+   - **Clean approach:** Better than suppressing with `_prefix` which hides intent
+
+### Patterns to Reuse
+
+```rust
+// Pattern 1: Generic server with trait bounds and 'static lifetime
+pub struct McpServer<T: TelegramClientTrait, R: RateLimiterTrait> {
+    telegram_client: Arc<T>,
+    rate_limiter: Arc<R>,
+}
+
+impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static>
+    McpServer<T, R>
+{
+    pub fn new(telegram_client: Arc<T>, rate_limiter: Arc<R>) -> Self {
+        Self { telegram_client, rate_limiter }
+    }
+}
+
+// Pattern 2: ServerHandler implementation with InitializeResult
+impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static>
+    ServerHandler for McpServer<T, R>
+{
+    fn get_info(&self) -> InitializeResult {
+        InitializeResult {
+            protocol_version: ProtocolVersion::default(),
+            capabilities: Default::default(),
+            server_info: Implementation {
+                name: "server-name".to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+                title: None,
+                icons: None,
+                website_url: None,
+            },
+            instructions: Some("Description here".to_string()),
+        }
+    }
+}
+
+// Pattern 3: stdio transport setup
+pub async fn run_stdio(self) -> anyhow::Result<()> {
+    use tokio::io::{stdin, stdout};
+
+    let transport = (stdin(), stdout());
+    let server = self.serve(transport).await?;
+    server.waiting().await?;
+
+    Ok(())
+}
+
+// Pattern 4: Allow dead code with explanatory comment
+pub struct Server {
+    #[allow(dead_code)]  // Used in next phase
+    field: Type,
+}
+```
+
+### Documentation Updates
+
+1. **src/mcp/server.rs** - Complete implementation (111 lines total):
+   - McpServer struct with generics
+   - ServerHandler trait impl
+   - run_stdio() method with stdio transport
+   - 2 comprehensive tests
+
+2. **doc/tasklist.md** - Updated Phase 10:
+   - Status: "✅ Complete | 2/2 | rmcp setup, stdio"
+   - Overall progress: 10/12 phases complete
+   - Noted tool registration deferred to Phase 11
+
+3. **Test count** - Phase 10: 2 new tests, total: 122 tests passing
+
+---
+
+## Workflow Adherence
+
+Following doc/workflow.md cycle:
+1. ✅ **PROPOSE** - Proposed server structure, traits, stdio transport
+2. ✅ **AGREE** - User confirmed all 4 questions (macro usage, error handling, metadata, scope)
+3. ✅ **IMPLEMENT** - TDD: wrote tests first, then implementation, fixed compilation errors iteratively
+4. ✅ **VERIFY** - All tests pass (2/2 new, 122/122 total), clippy clean, full build succeeds
+5. ✅ **UPDATE PROGRESS** - Updated tasklist.md with Phase 10 completion
+6. ✅ **UPDATE MEMORY** - This section created
+
+---
+
+## Next Phase: Phase 11 - MCP Tools
+
+**Goal:** Implement all 6 MCP tools with rmcp SDK
 
 **Key Components:**
-- `McpServer` struct
-- Tool registration (6 tools)
-- stdio transport setup
-- Integration with TelegramClient and RateLimiter
+1. check_mcp_status - Status endpoint
+2. get_subscribed_channels - List user's channels
+3. get_channel_info - Channel metadata
+4. generate_message_link - Create tg:// and https links
+5. open_message_in_telegram - macOS `open` command
+6. search_messages - Main search functionality
 
-**Estimated Complexity:** Medium (new framework, JSON-RPC protocol)
+**Research Needed:**
+- rmcp 0.12.0 tool registration pattern (not `#[tool(tool_box)]`)
+- Tool handler signatures and return types
+- JSON schema generation for parameters
+
+**Estimated Complexity:** High (6 tools, new rmcp tool API, integration with Phase 9 client)
