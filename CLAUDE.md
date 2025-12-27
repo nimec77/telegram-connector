@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Telegram MCP Connector - a Model Context Protocol (MCP) service that enables Claude to search Russian-language Telegram channels and messages in real-time. Built in Rust using the `rmcp` SDK and `grammers` Telegram client.
 
-**Current Status:** Phase 11 complete (6/6 MCP tools implemented), 140 tests passing.
+**Current Status:** Phase 11 complete (6/6 MCP tools implemented), 144 tests (140 passing, 4 ignored).
 
 ## Build & Test Commands
 
@@ -15,19 +15,19 @@ Telegram MCP Connector - a Model Context Protocol (MCP) service that enables Cla
 cargo build
 cargo build --release
 
-# Run all tests (140 tests)
+# Run all tests (144 tests, 4 ignored)
 cargo test
 
 # Run tests for specific module
-cargo test error           # 9 tests
-cargo test config -- --test-threads=1  # 18 tests (serial for env var tests)
+cargo test error           # 11 tests
+cargo test config -- --test-threads=1  # 15 tests + 4 ignored (serial for env var tests)
 cargo test logging         # 13 tests
-cargo test types           # 38 tests
-cargo test link            # 5 tests
+cargo test types           # 42 tests
+cargo test link            # 8 tests
 cargo test rate_limiter    # 19 tests
-cargo test auth            # 8 tests
+cargo test auth            # 9 tests
 cargo test client          # 12 tests
-cargo test mcp             # 21 tests (server + all 6 tools)
+cargo test mcp             # 24 tests (server + all 6 tools)
 
 # Linting and formatting
 cargo fmt --check
@@ -180,16 +180,16 @@ Current progress tracked in:
 | Phase | Description | Status | Tests |
 |-------|-------------|--------|-------|
 | 1 | Project Setup | ✅ | - |
-| 2 | Error Types | ✅ | 9/9 |
-| 3 | Configuration | ✅ | 18/18 |
+| 2 | Error Types | ✅ | 11/11 |
+| 3 | Configuration | ✅ | 15/15 (+4 ignored) |
 | 4 | Logging | ✅ | 13/13 |
-| 5 | Domain Types | ✅ | 38/38 |
-| 6 | Link Generation | ✅ | 5/5 |
+| 5 | Domain Types | ✅ | 42/42 |
+| 6 | Link Generation | ✅ | 8/8 |
 | 7 | Rate Limiter | ✅ | 19/19 |
-| 8 | Telegram Auth | ✅ | 8/8 |
+| 8 | Telegram Auth | ✅ | 9/9 |
 | 9 | Telegram Client | ✅ | 12/12 |
-| 10 | MCP Server | ✅ | 2/2 |
-| 11 | MCP Tools | ✅ | 21/21 |
+| 10 | MCP Server | ✅ | 19/19 |
+| 11 | MCP Tools | ✅ | 4/4 |
 | 12 | Integration | ⬜ | - |
 
-**Overall:** 11/12 phases complete, ready for Phase 12 (Integration & Polish)
+**Overall:** 11/12 phases complete, 144 tests (140 passing, 4 ignored), ready for Phase 12 (Integration & Polish)
