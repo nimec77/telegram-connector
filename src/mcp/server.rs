@@ -1,5 +1,8 @@
-use crate::mcp::tools::{ChannelsResponse, GetChannelsRequest, StatusResponse};
+use crate::mcp::tools::{
+    ChannelsResponse, GetChannelInfoRequest, GetChannelsRequest, StatusResponse,
+};
 use crate::rate_limiter::RateLimiterTrait;
+use crate::telegram::Channel;
 use crate::telegram::client::TelegramClientTrait;
 use rmcp::model::{Implementation, InitializeResult, ProtocolVersion};
 use rmcp::{Json, ServerHandler, ServiceExt};
@@ -73,6 +76,20 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         };
 
         Ok(Json(response))
+    }
+
+    /// Tool 3: get_channel_info - Get detailed information about a Telegram channel
+    pub async fn get_channel_info(
+        &self,
+        request: GetChannelInfoRequest,
+    ) -> Result<Json<Channel>, String> {
+        let channel = self
+            .telegram_client
+            .get_channel_info(&request.channel_identifier)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        Ok(Json(channel))
     }
 }
 
@@ -306,5 +323,77 @@ mod tests {
         assert_eq!(response.channels.len(), 1);
         assert_eq!(response.total, 1);
         assert!(!response.has_more); // 1 channel < 10 limit
+    }
+
+    #[tokio::test]
+    async fn get_channel_info_returns_channel_details() {
+        use crate::telegram::types::Username;
+        use crate::telegram::{Channel, ChannelId, ChannelName};
+
+        // Given: Mock client returning channel details
+        let mut mock_client = MockTelegramClientTrait::new();
+        let test_channel = Channel {
+            id: ChannelId::new(12345).unwrap(),
+            name: ChannelName::new("Test Channel").unwrap(),
+            username: Username::new("testchannel").unwrap(),
+            description: Some("A test channel".to_string()),
+            member_count: 5000,
+            is_verified: true,
+            is_public: true,
+            is_subscribed: false,
+            last_message_date: None,
+        };
+        let expected = test_channel.clone();
+
+        mock_client
+            .expect_get_channel_info()
+            .with(mockall::predicate::eq("testchannel"))
+            .return_once(move |_| Ok(expected));
+
+        let mock_limiter = MockRateLimiterTrait::new();
+        let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+        // When: Call get_channel_info
+        let request = GetChannelInfoRequest {
+            channel_identifier: "testchannel".to_string(),
+        };
+
+        let result = server.get_channel_info(request).await;
+
+        // Then: Returns channel details
+        assert!(result.is_ok());
+        let channel = result.unwrap().0;
+        assert_eq!(channel.id, ChannelId::new(12345).unwrap());
+        assert_eq!(channel.name.as_str(), "Test Channel");
+        assert!(channel.is_verified);
+        assert_eq!(channel.member_count, 5000);
+    }
+
+    #[tokio::test]
+    async fn get_channel_info_handles_error() {
+        use crate::error::Error;
+
+        // Given: Mock client returning error
+        let mut mock_client = MockTelegramClientTrait::new();
+        mock_client
+            .expect_get_channel_info()
+            .with(mockall::predicate::eq("nonexistent"))
+            .return_once(move |_| Err(Error::TelegramApi("Channel not found".to_string())));
+
+        let mock_limiter = MockRateLimiterTrait::new();
+        let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+        // When: Call get_channel_info with nonexistent channel
+        let request = GetChannelInfoRequest {
+            channel_identifier: "nonexistent".to_string(),
+        };
+
+        let result = server.get_channel_info(request).await;
+
+        // Then: Returns error
+        assert!(result.is_err());
+        if let Err(error_msg) = result {
+            assert!(error_msg.contains("Channel not found"));
+        }
     }
 }
