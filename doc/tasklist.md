@@ -18,12 +18,12 @@
 | 8 | Telegram Auth | ✅ Complete | 8/8 | Session, 2FA, dialoguer |
 | 9 | Telegram Client | ✅ Complete | 12/12 | Trait, mocks, validation |
 | 10 | MCP Server | ✅ Complete | 2/2 | rmcp setup, stdio |
-| 11 | MCP Tools | ⬜ Pending | 0/0 | All 6 tools |
+| 11 | MCP Tools | 🔄 In Progress | 6/20 | 1/6 tools, types done |
 | 12 | Integration | ⬜ Pending | 0/0 | E2E, polish |
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
-**Overall Progress:** 10/12 phases complete
+**Overall Progress:** 10/12 phases complete (Phase 11: 30% done)
 
 ---
 
@@ -221,14 +221,23 @@
 
 ---
 
-## Phase 11: MCP Tools
+## Phase 11: MCP Tools 🔄
 
 **Goal:** All 6 MCP tools implemented
 
-### 11.1 check_mcp_status
-- [ ] Write tests for status response format
-- [ ] Implement tool handler
-- [ ] Verify: returns connection status, rate limit info
+**Progress:** Foundations complete (dependencies, types, schemas, 1 tool implemented)
+
+### 11.0 Foundations ✅
+- [x] Add schemars dependency to Cargo.toml
+- [x] Create `src/mcp/tools/` module structure
+- [x] Implement `types.rs` with all request/response types
+- [x] Add JsonSchema derive to all telegram domain types
+- [x] Verify: types compile and tests pass (4/4 tests)
+
+### 11.1 check_mcp_status ✅
+- [x] Write tests for status response format (2 tests)
+- [x] Implement tool handler (server.rs:41-50)
+- [x] Verify: returns connection status, rate limit info
 
 ### 11.2 get_subscribed_channels
 - [ ] Write tests for channel list response
@@ -244,12 +253,12 @@
 
 ### 11.4 generate_message_link
 - [ ] Write tests for link generation response
-- [ ] Implement tool handler
+- [ ] Implement tool handler (uses link.rs from Phase 6)
 - [ ] Verify: returns both link formats
 
 ### 11.5 open_message_in_telegram
 - [ ] Write tests for macOS open command
-- [ ] Implement tool handler (subprocess)
+- [ ] Implement tool handler (subprocess with tokio::process::Command)
 - [ ] Verify: opens Telegram Desktop
 
 ### 11.6 search_messages
@@ -260,7 +269,9 @@
 - [ ] Implement tool handler
 - [ ] Verify: returns search results
 
-**Test:** `cargo test tools`
+**Test:** `cargo test tools` (currently 6/6 tests passing: 4 types + 2 check_status)
+
+**Next Session:** Implement tools 2-6 following same TDD pattern as check_mcp_status
 
 ---
 

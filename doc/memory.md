@@ -1,12 +1,12 @@
 # Development Memory - Telegram MCP Connector
 
-**Last Updated:** Phase 10 Complete (2025-12-27)
+**Last Updated:** Phase 11 In Progress (2025-12-27)
 
 ---
 
 ## Current Status
 
-**Progress:** 10/12 phases complete
+**Progress:** 10/12 phases complete, Phase 11 30% done
 - ✅ Phase 1: Project Setup
 - ✅ Phase 2: Error Types (9/9 tests)
 - ✅ Phase 3: Configuration (18/18 tests)
@@ -17,7 +17,7 @@
 - ✅ Phase 8: Telegram Auth (8/8 tests)
 - ✅ Phase 9: Telegram Client (12/12 tests)
 - ✅ Phase 10: MCP Server (2/2 tests)
-- ⬜ Phase 11: MCP Tools (next)
+- 🔄 Phase 11: MCP Tools (6/20 tests - foundations + 1 tool done)
 
 ---
 
@@ -1024,21 +1024,260 @@ Following doc/workflow.md cycle:
 
 ---
 
-## Next Phase: Phase 11 - MCP Tools
+## Phase 11: MCP Tools (In Progress - 30% Complete)
 
-**Goal:** Implement all 6 MCP tools with rmcp SDK
+### What Was Implemented (Session 1)
 
-**Key Components:**
-1. check_mcp_status - Status endpoint
-2. get_subscribed_channels - List user's channels
-3. get_channel_info - Channel metadata
-4. generate_message_link - Create tg:// and https links
-5. open_message_in_telegram - macOS `open` command
-6. search_messages - Main search functionality
+**Completed:** Foundations + Tool 1 (check_mcp_status)
 
-**Research Needed:**
-- rmcp 0.12.0 tool registration pattern (not `#[tool(tool_box)]`)
-- Tool handler signatures and return types
-- JSON schema generation for parameters
+1. **Dependencies Added** (Cargo.toml:33)
+   - `schemars = { version = "0.8", features = ["derive", "chrono"] }`
+   - Enables JSON schema generation for MCP tool parameters
+   - `chrono` feature needed for `DateTime<Utc>` support
 
-**Estimated Complexity:** High (6 tools, new rmcp tool API, integration with Phase 9 client)
+2. **Module Structure** (src/mcp/tools/)
+   - Created subdirectory organization per user preference (Option B)
+   - `types.rs` - All 6 tool request/response types (172 lines)
+   - Re-exports via `src/mcp/tools.rs`
+
+3. **Tool Request/Response Types** (src/mcp/tools/types.rs)
+   - `StatusResponse` - check_mcp_status response
+   - `GetChannelsRequest` / `ChannelsResponse` - get_subscribed_channels
+   - `GetChannelInfoRequest` - get_channel_info (returns Channel)
+   - `GenerateLinkRequest` / `MessageLinkResponse` - generate_message_link
+   - `OpenMessageRequest` / `OpenMessageResponse` - open_message_in_telegram
+   - `SearchRequest` - search_messages (returns SearchResult)
+   - All types derive: `Debug, Clone, Serialize/Deserialize, JsonSchema`
+   - Field-level `#[schemars(description = "...")]` for documentation
+
+4. **Domain Type Updates** (src/telegram/types.rs)
+   - Added `JsonSchema` derive to ALL types:
+     - ChannelId, MessageId, UserId
+     - Username, ChannelName
+     - MediaType, Message, Channel
+     - SearchResult, QueryMetadata
+   - Required for tool response schemas
+
+5. **Tool 1: check_mcp_status** ✅ (src/mcp/server.rs:41-50)
+   - Signature: `async fn check_mcp_status(&self) -> Result<Json<StatusResponse>, String>`
+   - Returns connection status, rate limiter tokens, server version
+   - 2/2 tests passing:
+     - `check_status_returns_connection_info`
+     - `check_status_reports_disconnected`
+   - Pattern: Uses mocks (`MockTelegramClientTrait`, `MockRateLimiterTrait`)
+
+### Tests: 6/6 Passing (4 type tests + 2 tool tests)
+
+**Run command:** `cargo test mcp` or `cargo test tools`
+
+Test coverage:
+- Type serialization/deserialization (4 tests)
+- Tool 1 functionality (2 tests)
+
+**Total project tests:** 129 (was 122, +7 new)
+
+### Key Decisions & Rationale
+
+1. **schemars for JSON Schemas**
+   - **Choice:** Use schemars crate with derive macros
+   - **Why:** Standard approach for MCP tools, automatic schema generation
+   - **Alternative:** Manual schema definition - rejected (too verbose)
+   - **Benefit:** Type-safe, self-documenting, less code
+
+2. **Tool Module Organization**
+   - **Question:** Single file vs subdirectory?
+   - **User preference:** Subdirectory structure (Option B)
+   - **Structure:**
+     ```
+     src/mcp/
+     ├── server.rs (ServerHandler + tool methods)
+     ├── tools.rs (re-exports)
+     └── tools/
+         └── types.rs (all request/response types)
+     ```
+   - **Benefit:** Cleaner organization, easier to navigate
+
+3. **Error Handling: Result<Json<T>, String>**
+   - **Choice:** Use String for error messages in tools
+   - **Why:** rmcp tools support this pattern, simple conversion from `Error`
+   - **Pattern:** `.map_err(|e| e.to_string())` converts our Error to String
+   - **Benefit:** Leverages thiserror Display implementations
+
+4. **Tool Implementation Order**
+   - **Order:** check_mcp_status → get_subscribed_channels → get_channel_info → generate_message_link → open_message_in_telegram → search_messages
+   - **Rationale:** Simple to complex, build confidence with easy wins
+   - **Status:** 1/6 complete (check_mcp_status ✅)
+
+5. **macOS-Specific Tool**
+   - **Question:** open_message_in_telegram platform support?
+   - **Decision:** macOS-only for Phase 11 (Option A)
+   - **Implementation:** Will return error on non-macOS platforms
+   - **Future:** Linux support (xdg-open) in Phase 12+
+
+### Gotchas & Edge Cases
+
+1. **schemars chrono Feature Required**
+   - **Problem:** Compilation error - `DateTime<Utc>` doesn't implement JsonSchema
+   - **Error:** "the trait `JsonSchema` is not implemented for `DateTime<Utc>`"
+   - **Cause:** Message/Channel types use `DateTime<Utc>` from chrono
+   - **Solution:** Add `features = ["chrono"]` to schemars dependency
+   - **Lesson:** Check feature flags when using external types with derives
+
+2. **Mock Expectations for Async Methods**
+   - **Initial attempt:** `.returning(|| Box::pin(async { true }))`
+   - **Error:** "expected `bool`, found `Pin<Box<...>>`"
+   - **Cause:** mockall handles async automatically with `#[async_trait]`
+   - **Solution:** Use `.return_once(|| value)` for simple returns
+   - **Pattern:**
+     ```rust
+     mock_client.expect_is_connected().return_once(|| true);
+     mock_limiter.expect_available_tokens().return_once(|| 45.5);
+     ```
+
+3. **Unused Import Warning**
+   - **Warning:** `unused import: Message` in tools/types.rs
+   - **Cause:** Message not directly used in type definitions
+   - **Fix:** Remove unused import (SearchResult already in scope)
+   - **Note:** May be re-added when implementing tool handlers
+
+4. **Dead Code Warnings Removed**
+   - **Before:** `telegram_client` and `rate_limiter` marked `#[allow(dead_code)]`
+   - **After:** Warnings gone - fields now used by check_mcp_status
+   - **Lesson:** TDD approach validates design decisions
+
+### Patterns to Reuse
+
+```rust
+// Pattern 1: Tool request type with schemars
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct GetChannelsRequest {
+    #[schemars(description = "Maximum number of channels to return")]
+    pub limit: Option<u32>,
+}
+
+// Pattern 2: Tool response type
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct StatusResponse {
+    #[schemars(description = "Whether Telegram client is connected")]
+    pub telegram_connected: bool,
+    pub rate_limiter_tokens: f64,
+}
+
+// Pattern 3: Tool method signature
+pub async fn check_mcp_status(&self) -> Result<Json<StatusResponse>, String> {
+    let connected = self.telegram_client.is_connected().await;
+    Ok(Json(StatusResponse { ... }))
+}
+
+// Pattern 4: Tool test with mocks
+#[tokio::test]
+async fn check_status_returns_connection_info() {
+    let mut mock_client = MockTelegramClientTrait::new();
+    mock_client.expect_is_connected().return_once(|| true);
+
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_available_tokens().return_once(|| 45.5);
+
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+    let result = server.check_mcp_status().await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.telegram_connected, true);
+}
+```
+
+### Files Modified/Created
+
+1. **Created:**
+   - `src/mcp/tools/types.rs` (172 lines) - All tool request/response types
+
+2. **Modified:**
+   - `Cargo.toml` - Added schemars dependency
+   - `src/mcp/tools.rs` - Updated to re-export types module
+   - `src/mcp/server.rs` - Added check_mcp_status method + 2 tests
+   - `src/telegram/types.rs` - Added JsonSchema derive to all types
+
+3. **Test Count:**
+   - Phase 11: 6 tests (4 types + 2 tools)
+   - Total: 129 tests
+
+### Remaining Work for Phase 11
+
+**5 Tools to Implement:** (Estimated ~400 lines code + ~300 lines tests)
+
+1. **get_subscribed_channels** (~30 lines + 2 tests)
+   - Delegates to `self.telegram_client.get_subscribed_channels(limit, offset)`
+   - Wraps in `ChannelsResponse` with pagination info
+
+2. **get_channel_info** (~25 lines + 2 tests)
+   - Validates identifier non-empty
+   - Delegates to `self.telegram_client.get_channel_info(identifier)`
+   - Returns `Json<Channel>`
+
+3. **generate_message_link** (~20 lines + 2 tests)
+   - Uses `link::MessageLink` from Phase 6
+   - Parses channel_id to i64
+   - Returns both https and tg:// links
+
+4. **open_message_in_telegram** (~40 lines + 2 tests)
+   - Platform-specific: macOS only
+   - Uses `tokio::process::Command::new("open").arg(link)`
+   - Returns success/failure in `OpenMessageResponse`
+
+5. **search_messages** (~60 lines + 4 tests)
+   - Most complex: validation + rate limiting + client call
+   - Validates query non-empty, limit bounds
+   - Calls `self.rate_limiter.acquire(tokens)`
+   - Delegates to `self.telegram_client.search_messages(params)`
+   - Handles rate limit errors specially
+
+**Estimated completion:** 1-2 more sessions for quality TDD implementation
+
+---
+
+## Workflow Adherence
+
+Following doc/workflow.md cycle:
+1. ✅ **PROPOSE** - Proposed tool structure, types, dependencies
+2. ✅ **AGREE** - User confirmed all 5 questions (schemars, error mapping, order, macOS-only, module organization)
+3. ✅ **IMPLEMENT** - TDD: types → tests → implementation for Tool 1
+4. ✅ **VERIFY** - All tests pass (6/6 new, 129/129 total), clippy clean
+5. ✅ **UPDATE PROGRESS** - Updated tasklist.md with Phase 11 progress
+6. ✅ **UPDATE MEMORY** - This section created
+
+---
+
+## Technical Debt / TODOs
+
+- File logging with rotation - deferred to Phase 12 (Polish)
+- Log file size limits and cleanup - deferred to Phase 12
+- Manual integration test for full auth flow - deferred to Phase 12
+- Full grammers client integration - deferred to Phase 12 (requires real Telegram API credentials)
+- **Phase 11 continuation:** Implement remaining 5 tools (get_subscribed_channels, get_channel_info, generate_message_link, open_message_in_telegram, search_messages)
+
+---
+
+## Next Session: Phase 11 Continuation
+
+**Goal:** Implement remaining 5 MCP tools (tools 2-6)
+
+**Starting Point:**
+- Foundation complete: types, schemas, dependencies ✅
+- Pattern established: check_mcp_status as reference ✅
+- Test count: 129/129 passing
+
+**Implementation Order:**
+1. get_subscribed_channels (easiest - similar to check_mcp_status)
+2. get_channel_info (simple validation + client call)
+3. generate_message_link (uses existing link.rs module)
+4. open_message_in_telegram (subprocess, macOS-specific)
+5. search_messages (most complex - rate limiting + validation)
+
+**TDD Pattern:**
+- Write 2-4 tests per tool (happy path + edge cases)
+- Implement tool method
+- Verify all tests pass
+- Move to next tool
+
+**Expected:** ~500 lines total, 10-15 additional tests, complete Phase 11
