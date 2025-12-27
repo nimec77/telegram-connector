@@ -80,9 +80,12 @@ After agreement:
 
 1. Write tests first (TDD)
 2. Implement minimal code to pass tests
-3. Run `cargo test` to verify
-4. Run `cargo clippy` to check quality
-5. Show implementation result
+3. **Run `cargo fmt --all`** to format code
+4. Run `cargo test` to verify
+5. Run `cargo clippy -- -D warnings` to check quality
+6. Show implementation result
+
+**IMPORTANT:** Always run `cargo fmt --all` after writing any code to ensure consistent formatting.
 
 **Output format:**
 ```
@@ -93,6 +96,7 @@ Files changed:
 
 Tests: ✅ All pass (3 new tests)
 Clippy: ✅ No warnings
+Fmt: ✅ Formatted
 
 Ready for verification.
 ```
@@ -115,18 +119,26 @@ Wait for user to confirm:
 
 After verification:
 
-1. Update `tasklist.md`:
+1. Update `doc/tasklist.md`:
    - Mark completed tasks with `[x]`
    - Update phase status in Progress Report table
    - Update test counts
-2. Show updated progress
-3. Ask: **"Proceed to next task?"**
+2. Update `CLAUDE.md`:
+   - Update current status line
+   - Update test counts if changed significantly
+   - Update MCP tools table (if applicable)
+   - Update Development Progress table
+3. Show updated progress
+4. Ask: **"Proceed to next task?"**
 
 **Progress update format:**
 ```
 Updated tasklist.md:
 - [x] Write tests for ID types
 - [x] Implement ChannelId
+
+Updated CLAUDE.md:
+- Test count: 129 → 132
 
 Phase 5 progress: 2/4 tasks complete
 
@@ -137,22 +149,27 @@ Proceed to next task?
 
 ## Step 6: UPDATE MEMORY
 
-After completing a phase (not every task):
+After completing a phase or significant iteration:
 
 1. Update `doc/memory.md` with:
    - **Progress made** - what was completed
    - **Patterns applied** - design decisions, architectural choices
    - **Lessons learned** - gotchas, edge cases discovered
    - **Code patterns to reuse** - snippets for future phases
-2. Commit changes to memory.md
+2. Verify all three documentation files are updated:
+   - `doc/tasklist.md` - task checkboxes and progress table
+   - `doc/memory.md` - detailed notes and patterns
+   - `CLAUDE.md` - current status and test counts
 3. Ready for next phase
 
 **IMPORTANT:** Use LOCAL file `doc/memory.md`, NOT global Claude memory.
 
-**When to update:**
+**When to update documentation:**
 - ✅ After completing each phase
+- ✅ After completing significant iterations (multiple tasks)
 - ✅ When discovering important patterns or gotchas
-- ❌ Not after every single task (too granular)
+- ✅ When test counts change significantly
+- ❌ Not after every single trivial task
 
 **Memory update format:**
 ```markdown

@@ -9,16 +9,16 @@
 | Phase | Description | Status | Tests | Notes |
 |-------|-------------|--------|-------|-------|
 | 1 | Project Setup | ✅ Complete | - | Cargo, CI, structure |
-| 2 | Error Types | ✅ Complete | 8/8 | thiserror definitions |
-| 3 | Configuration | ✅ Complete | 18/18 | TOML, env vars, secrecy |
+| 2 | Error Types | ✅ Complete | 11/11 | thiserror definitions |
+| 3 | Configuration | ✅ Complete | 15/15 (+4 ignored) | TOML, env vars, secrecy |
 | 4 | Logging | ✅ Complete | 13/13 | tracing, redaction |
-| 5 | Domain Types | ✅ Complete | 38/38 | Message, Channel, IDs |
-| 6 | Link Generation | ✅ Complete | 5/5 | tg://, https://t.me |
+| 5 | Domain Types | ✅ Complete | 42/42 | Message, Channel, IDs |
+| 6 | Link Generation | ✅ Complete | 8/8 | tg://, https://t.me |
 | 7 | Rate Limiter | ✅ Complete | 19/19 | Token bucket, proptest |
-| 8 | Telegram Auth | ✅ Complete | 8/8 | Session, 2FA, dialoguer |
+| 8 | Telegram Auth | ✅ Complete | 9/9 | Session, 2FA, dialoguer |
 | 9 | Telegram Client | ✅ Complete | 12/12 | Trait, mocks, validation |
-| 10 | MCP Server | ✅ Complete | 2/2 | rmcp setup, stdio |
-| 11 | MCP Tools | ✅ Complete | 21/21 | 6/6 tools implemented |
+| 10 | MCP Server | ✅ Complete | 19/19 | rmcp setup, stdio, tools |
+| 11 | MCP Tools | ✅ Complete | 4/4 | types.rs schemas |
 | 12 | Integration | ⬜ Pending | 0/0 | E2E, polish |
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
