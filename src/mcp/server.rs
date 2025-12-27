@@ -1,9 +1,12 @@
+use crate::link::MessageLink;
 use crate::mcp::tools::{
-    ChannelsResponse, GetChannelInfoRequest, GetChannelsRequest, StatusResponse,
+    ChannelsResponse, GenerateLinkRequest, GetChannelInfoRequest, GetChannelsRequest,
+    MessageLinkResponse, StatusResponse,
 };
 use crate::rate_limiter::RateLimiterTrait;
-use crate::telegram::Channel;
 use crate::telegram::client::TelegramClientTrait;
+use crate::telegram::types::{ChannelId, MessageId};
+use crate::telegram::Channel;
 use rmcp::model::{Implementation, InitializeResult, ProtocolVersion};
 use rmcp::{Json, ServerHandler, ServiceExt};
 use std::sync::Arc;
