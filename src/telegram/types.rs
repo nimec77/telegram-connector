@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -8,7 +9,7 @@ use crate::error::Error;
 // ID Value Objects (with validation)
 // =============================================================================
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(transparent)]
 pub struct ChannelId(i64);
 
@@ -34,7 +35,7 @@ impl fmt::Display for ChannelId {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(transparent)]
 pub struct MessageId(i64);
 
@@ -60,7 +61,7 @@ impl fmt::Display for MessageId {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(transparent)]
 pub struct UserId(i64);
 
@@ -91,7 +92,7 @@ impl fmt::Display for UserId {
 // =============================================================================
 
 /// Telegram username (alphanumeric + underscore, 5-32 chars)
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(transparent)]
 pub struct Username(String);
 
@@ -127,7 +128,7 @@ impl fmt::Display for Username {
 }
 
 /// Non-empty channel/chat name
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(transparent)]
 pub struct ChannelName(String);
 
@@ -159,7 +160,7 @@ impl fmt::Display for ChannelName {
 // =============================================================================
 
 /// All Telegram media types
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum MediaType {
     #[default]
@@ -183,7 +184,7 @@ pub enum MediaType {
 // Domain Entities
 // =============================================================================
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Message {
     pub id: MessageId,
     pub channel_id: ChannelId,
@@ -210,7 +211,7 @@ impl Message {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Channel {
     pub id: ChannelId,
     pub name: ChannelName,
@@ -257,7 +258,7 @@ impl Default for SearchParams {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SearchResult {
     pub messages: Vec<Message>,
     pub total_found: u64,
@@ -265,7 +266,7 @@ pub struct SearchResult {
     pub query_metadata: QueryMetadata,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct QueryMetadata {
     pub query: String,
     pub hours_back: u32,

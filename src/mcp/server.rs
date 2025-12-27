@@ -1,14 +1,12 @@
+use crate::mcp::tools::StatusResponse;
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::client::TelegramClientTrait;
 use rmcp::model::{Implementation, InitializeResult, ProtocolVersion};
-use rmcp::{ServerHandler, ServiceExt};
+use rmcp::{Json, ServerHandler, ServiceExt};
 use std::sync::Arc;
 
 pub struct McpServer<T: TelegramClientTrait, R: RateLimiterTrait> {
-    // These fields will be used in Phase 11 when implementing MCP tools
-    #[allow(dead_code)]
     telegram_client: Arc<T>,
-    #[allow(dead_code)]
     rate_limiter: Arc<R>,
 }
 
@@ -33,6 +31,22 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         server.waiting().await?;
 
         Ok(())
+    }
+
+    // ========================================================================
+    // MCP Tools
+    // ========================================================================
+
+    /// Tool 1: check_mcp_status - Health check and diagnostics
+    pub async fn check_mcp_status(&self) -> Result<Json<StatusResponse>, String> {
+        let connected = self.telegram_client.is_connected().await;
+        let tokens = self.rate_limiter.available_tokens();
+
+        Ok(Json(StatusResponse {
+            telegram_connected: connected,
+            rate_limiter_tokens: tokens,
+            server_version: env!("CARGO_PKG_VERSION").to_string(),
+        }))
     }
 }
 
@@ -113,4 +127,51 @@ mod tests {
     }
 
     // Manual smoke test for run_stdio() will be done in Phase 12 integration testing
+
+    // ========================================================================
+    // Tool Tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn check_status_returns_connection_info() {
+        // Given: Server with mock client (connected) and rate limiter (tokens available)
+        let mut mock_client = MockTelegramClientTrait::new();
+        mock_client.expect_is_connected().return_once(|| true);
+
+        let mut mock_limiter = MockRateLimiterTrait::new();
+        mock_limiter.expect_available_tokens().return_once(|| 45.5);
+
+        let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+        // When: Call check_mcp_status
+        let result = server.check_mcp_status().await;
+
+        // Then: Returns success with connection info
+        assert!(result.is_ok());
+        let response = result.unwrap().0;
+        assert!(response.telegram_connected);
+        assert_eq!(response.rate_limiter_tokens, 45.5);
+        assert_eq!(response.server_version, env!("CARGO_PKG_VERSION"));
+    }
+
+    #[tokio::test]
+    async fn check_status_reports_disconnected() {
+        // Given: Server with disconnected client
+        let mut mock_client = MockTelegramClientTrait::new();
+        mock_client.expect_is_connected().return_once(|| false);
+
+        let mut mock_limiter = MockRateLimiterTrait::new();
+        mock_limiter.expect_available_tokens().return_once(|| 0.0);
+
+        let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+        // When: Call check_mcp_status
+        let result = server.check_mcp_status().await;
+
+        // Then: Returns disconnected status
+        assert!(result.is_ok());
+        let response = result.unwrap().0;
+        assert!(!response.telegram_connected);
+        assert_eq!(response.rate_limiter_tokens, 0.0);
+    }
 }

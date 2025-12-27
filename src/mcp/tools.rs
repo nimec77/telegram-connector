@@ -1,2 +1,9 @@
-// MCP tool implementations
-// Phase 11: All 6 MCP tools will be implemented here
+//! MCP tool implementations
+//!
+//! This module contains all 6 MCP tools implemented in Phase 11.
+//! Tools are organized in subdirectory for better maintainability.
+
+pub mod types;
+
+// Re-export types for convenience
+pub use types::*;
