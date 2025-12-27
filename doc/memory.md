@@ -6,7 +6,7 @@
 
 ## Current Status
 
-**Progress:** 10/12 phases complete, Phase 11 30% done
+**Progress:** 10/12 phases complete, Phase 11 50% done
 - ✅ Phase 1: Project Setup
 - ✅ Phase 2: Error Types (9/9 tests)
 - ✅ Phase 3: Configuration (18/18 tests)
@@ -17,7 +17,7 @@
 - ✅ Phase 8: Telegram Auth (8/8 tests)
 - ✅ Phase 9: Telegram Client (12/12 tests)
 - ✅ Phase 10: MCP Server (2/2 tests)
-- 🔄 Phase 11: MCP Tools (6/20 tests - foundations + 1 tool done)
+- 🔄 Phase 11: MCP Tools (10/20 tests - foundations + 3 tools done)
 
 ---
 
@@ -1199,21 +1199,105 @@ async fn check_status_returns_connection_info() {
    - `src/telegram/types.rs` - Added JsonSchema derive to all types
 
 3. **Test Count:**
-   - Phase 11: 6 tests (4 types + 2 tools)
+   - Phase 11 Session 1: 6 tests (4 types + 2 tools)
    - Total: 129 tests
+
+### Tool 2: get_subscribed_channels ✅ (Session 2)
+
+**What Was Implemented** (src/mcp/server.rs:52-76)
+
+1. **Tool Method**
+   - Signature: `async fn get_subscribed_channels(&self, request: GetChannelsRequest) -> Result<Json<ChannelsResponse>, String>`
+   - Extracts `limit` (default 20) and `offset` (default 0) from request
+   - Delegates to `self.telegram_client.get_subscribed_channels(limit, offset)`
+   - Calculates `has_more` based on result count vs limit: `total >= limit as usize`
+   - Returns `ChannelsResponse { channels, total, has_more }`
+
+2. **Error Handling**
+   - Simple `.map_err(|e| e.to_string())` conversion (Option B pattern agreed)
+   - RateLimit errors will get structured JSON treatment in search_messages (Tool 6)
+
+3. **Tests** (2/2 passing)
+   - `get_subscribed_channels_returns_list` - Default pagination (20, 0), verifies response structure
+   - `get_subscribed_channels_respects_pagination` - Custom limit/offset (10, 5), verifies passthrough
+
+**Test Count:**
+- Phase 11 Session 2: +2 tests (total 8/20 Phase 11 tests)
+- Total: 131 tests
+
+**Key Decision:**
+- **has_more calculation:** Simple heuristic `total >= limit` - if we got as many as we asked for, there might be more
+- **Response structure:** Uses `total` (count returned) and `has_more` (boolean), not `limit`/`offset` in response
+
+**Pattern Established:**
+```rust
+// Tool with defaults
+let limit = request.limit.unwrap_or(20);
+let offset = request.offset.unwrap_or(0);
+
+// Delegate to client
+let channels = self.telegram_client
+    .get_subscribed_channels(limit, offset)
+    .await
+    .map_err(|e| e.to_string())?;
+
+// Calculate pagination metadata
+let total = channels.len();
+let has_more = total >= limit as usize;
+
+// Wrap in response
+Ok(Json(ChannelsResponse { channels, total, has_more }))
+```
+
+### Tool 3: get_channel_info ✅ (Session 2)
+
+**What Was Implemented** (src/mcp/server.rs:79-90)
+
+1. **Tool Method**
+   - Signature: `async fn get_channel_info(&self, request: GetChannelInfoRequest) -> Result<Json<Channel>, String>`
+   - Extracts `channel_identifier` from request
+   - Delegates to `self.telegram_client.get_channel_info(&request.channel_identifier)`
+   - Returns `Channel` directly wrapped in `Json` (no wrapper struct needed)
+   - Simple passthrough with error mapping
+
+2. **Error Handling**
+   - Simple `.map_err(|e| e.to_string())` conversion
+   - Consistent with Option B pattern
+
+3. **Tests** (2/2 passing)
+   - `get_channel_info_returns_channel_details` - Happy path, verifies all channel fields
+   - `get_channel_info_handles_error` - Error case when channel not found
+
+**Test Count:**
+- Phase 11 Session 2: +2 tests (total 10/20 Phase 11 tests)
+- Total: 133 tests
+
+**Key Learnings:**
+- **Field naming:** Use `channel_identifier` not `identifier` (check type definitions first)
+- **ChannelId comparison:** Compare structs directly, field is private
+- **Error assertion pattern:** Use `if let Err(error_msg) = result` to avoid Debug trait requirement on success type
+- **Simplest tool yet:** Direct passthrough with minimal logic
+
+**Pattern:**
+```rust
+// Direct passthrough tool
+pub async fn get_channel_info(
+    &self,
+    request: GetChannelInfoRequest,
+) -> Result<Json<Channel>, String> {
+    let channel = self
+        .telegram_client
+        .get_channel_info(&request.channel_identifier)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(Json(channel))
+}
+```
 
 ### Remaining Work for Phase 11
 
-**5 Tools to Implement:** (Estimated ~400 lines code + ~300 lines tests)
-
-1. **get_subscribed_channels** (~30 lines + 2 tests)
-   - Delegates to `self.telegram_client.get_subscribed_channels(limit, offset)`
-   - Wraps in `ChannelsResponse` with pagination info
-
-2. **get_channel_info** (~25 lines + 2 tests)
-   - Validates identifier non-empty
-   - Delegates to `self.telegram_client.get_channel_info(identifier)`
-   - Returns `Json<Channel>`
+**3 Tools to Implement:** (Estimated ~250 lines code + ~200 lines tests)
 
 3. **generate_message_link** (~20 lines + 2 tests)
    - Uses `link::MessageLink` from Phase 6
@@ -1254,25 +1338,26 @@ Following doc/workflow.md cycle:
 - Log file size limits and cleanup - deferred to Phase 12
 - Manual integration test for full auth flow - deferred to Phase 12
 - Full grammers client integration - deferred to Phase 12 (requires real Telegram API credentials)
-- **Phase 11 continuation:** Implement remaining 5 tools (get_subscribed_channels, get_channel_info, generate_message_link, open_message_in_telegram, search_messages)
+- **Phase 11 continuation:** Implement remaining 3 tools (generate_message_link, open_message_in_telegram, search_messages)
 
 ---
 
 ## Next Session: Phase 11 Continuation
 
-**Goal:** Implement remaining 5 MCP tools (tools 2-6)
+**Goal:** Implement remaining 3 MCP tools (tools 4-6)
 
 **Starting Point:**
 - Foundation complete: types, schemas, dependencies ✅
-- Pattern established: check_mcp_status as reference ✅
-- Test count: 129/129 passing
+- Tools 1-3 complete: check_mcp_status, get_subscribed_channels, get_channel_info ✅
+- Pattern established: pagination with defaults, simple error mapping, direct passthrough ✅
+- Test count: 133/133 passing
 
 **Implementation Order:**
-1. get_subscribed_channels (easiest - similar to check_mcp_status)
-2. get_channel_info (simple validation + client call)
+1. ~~get_subscribed_channels~~ ✅
+2. ~~get_channel_info~~ ✅
 3. generate_message_link (uses existing link.rs module)
 4. open_message_in_telegram (subprocess, macOS-specific)
-5. search_messages (most complex - rate limiting + validation)
+5. search_messages (most complex - rate limiting + structured errors)
 
 **TDD Pattern:**
 - Write 2-4 tests per tool (happy path + edge cases)
@@ -1280,4 +1365,4 @@ Following doc/workflow.md cycle:
 - Verify all tests pass
 - Move to next tool
 
-**Expected:** ~500 lines total, 10-15 additional tests, complete Phase 11
+**Expected:** ~250 lines total, 6-10 additional tests, complete Phase 11

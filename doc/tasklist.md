@@ -18,12 +18,12 @@
 | 8 | Telegram Auth | ✅ Complete | 8/8 | Session, 2FA, dialoguer |
 | 9 | Telegram Client | ✅ Complete | 12/12 | Trait, mocks, validation |
 | 10 | MCP Server | ✅ Complete | 2/2 | rmcp setup, stdio |
-| 11 | MCP Tools | 🔄 In Progress | 6/20 | 1/6 tools, types done |
+| 11 | MCP Tools | 🔄 In Progress | 10/20 | 3/6 tools, types done |
 | 12 | Integration | ⬜ Pending | 0/0 | E2E, polish |
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
-**Overall Progress:** 10/12 phases complete (Phase 11: 30% done)
+**Overall Progress:** 10/12 phases complete (Phase 11: 50% done)
 
 ---
 
@@ -239,17 +239,17 @@
 - [x] Implement tool handler (server.rs:41-50)
 - [x] Verify: returns connection status, rate limit info
 
-### 11.2 get_subscribed_channels
-- [ ] Write tests for channel list response
-- [ ] Write tests for pagination (limit, offset)
-- [ ] Implement tool handler
-- [ ] Verify: returns channel array
+### 11.2 get_subscribed_channels ✅
+- [x] Write tests for channel list response
+- [x] Write tests for pagination (limit, offset)
+- [x] Implement tool handler
+- [x] Verify: returns channel array
 
-### 11.3 get_channel_info
-- [ ] Write tests for channel metadata response
-- [ ] Write tests for not found error
-- [ ] Implement tool handler
-- [ ] Verify: returns channel details
+### 11.3 get_channel_info ✅
+- [x] Write tests for channel metadata response
+- [x] Write tests for not found error
+- [x] Implement tool handler
+- [x] Verify: returns channel details
 
 ### 11.4 generate_message_link
 - [ ] Write tests for link generation response
@@ -269,9 +269,9 @@
 - [ ] Implement tool handler
 - [ ] Verify: returns search results
 
-**Test:** `cargo test tools` (currently 6/6 tests passing: 4 types + 2 check_status)
+**Test:** `cargo test tools` (currently 10/10 tests passing: 4 types + 2 check_status + 2 get_subscribed_channels + 2 get_channel_info)
 
-**Next Session:** Implement tools 2-6 following same TDD pattern as check_mcp_status
+**Next Session:** Implement tools 4-6 following same TDD pattern
 
 ---
 
