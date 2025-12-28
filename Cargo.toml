@@ -33,7 +33,7 @@ clap = { version = "4.5", features = ["derive"] }
 # Config & Serialization
 toml = "0.9.8"
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0.147"
+serde_json = "1.0.148"
 schemars = { version = "1.2.0", features = ["derive"] }
 directories = "6.0.0"
 
