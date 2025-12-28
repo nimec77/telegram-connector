@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Telegram MCP Connector - a Model Context Protocol (MCP) service that enables Claude to search Russian-language Telegram channels and messages in real-time. Built in Rust using the `rmcp` SDK and `grammers` Telegram client.
 
-**Current Status:** Phase 12 complete - READY FOR TESTING. Real grammers integration, CLI with --setup, signal handling. 139 tests (all passing, 4 ignored).
+**Current Status:** PROJECT COMPLETE ✅ - All 12 phases done, manual testing passed. Real grammers integration, CLI with --setup, signal handling, rmcp tool attributes. 139 tests (all passing, 4 ignored).
 
 ## Build & Test Commands
 
@@ -92,7 +92,7 @@ cargo run --bin telegram-mcp
 | `telegram/auth.rs` | Interactive authentication with 2FA support |
 | `telegram/types.rs` | Domain types (Message, Channel, IDs) with JsonSchema |
 
-## MCP Tools (Phase 11 Complete)
+## MCP Tools (All 6 with rmcp Integration)
 
 | Tool | Status | Description |
 |------|--------|-------------|
@@ -102,6 +102,8 @@ cargo run --bin telegram-mcp
 | `generate_message_link` | ✅ | Generate tg:// and https://t.me links |
 | `open_message_in_telegram` | ✅ | Open message in Telegram Desktop (macOS) |
 | `search_messages` | ✅ | Search messages with rate limiting |
+
+All tools have `#[tool]` attributes for rmcp protocol compliance.
 
 ## Development Methodology
 
@@ -199,4 +201,4 @@ Current progress tracked in:
 | 11 | MCP Tools | ✅ | 4/4 |
 | 12 | Integration | ✅ | 7/7 (CLI) |
 
-**Overall:** 12/12 phases complete, 139 tests passing (4 ignored). Ready for manual testing with real Telegram account.
+**Overall:** 12/12 phases complete, 139 tests passing (4 ignored). Manual testing passed. Project is production-ready.
