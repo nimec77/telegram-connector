@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Telegram MCP Connector - a Model Context Protocol (MCP) service that enables Claude to search Russian-language Telegram channels and messages in real-time. Built in Rust using the `rmcp` SDK and `grammers` Telegram client.
 
-**Current Status:** Phase 11 complete (6/6 MCP tools implemented), 144 tests (140 passing, 4 ignored).
+**Current Status:** Phase 12 complete - READY FOR TESTING. Real grammers integration, CLI with --setup, signal handling. 139 tests (all passing, 4 ignored).
 
 ## Build & Test Commands
 
@@ -15,7 +15,7 @@ Telegram MCP Connector - a Model Context Protocol (MCP) service that enables Cla
 cargo build
 cargo build --release
 
-# Run all tests (144 tests, 4 ignored)
+# Run all tests (139 tests passing, 4 ignored)
 cargo test
 
 # Run tests for specific module
@@ -25,8 +25,9 @@ cargo test logging         # 13 tests
 cargo test types           # 42 tests
 cargo test link            # 8 tests
 cargo test rate_limiter    # 19 tests
-cargo test auth            # 9 tests
+cargo test auth            # 1 test
 cargo test client          # 12 tests
+cargo test cli             # 7 tests
 cargo test mcp             # 24 tests (server + all 6 tools)
 
 # Linting and formatting
@@ -77,16 +78,18 @@ cargo run --bin telegram-mcp
 
 | Module | Purpose |
 |--------|---------|
+| `cli.rs` | CLI argument parsing with clap (--setup, --session-file, --config) |
 | `error.rs` | Error types with thiserror (RateLimit includes retry_after) |
-| `config.rs` | TOML config loading, env var expansion, SecretString for sensitive data |
+| `config.rs` | TOML config loading, env var expansion, SecretString, ServerConfig |
 | `logging.rs` | tracing subscriber setup, sensitive data redaction |
 | `rate_limiter.rs` | Token bucket rate limiting with retry_after calculation |
 | `link.rs` | Telegram deep link generation (tg://, https://t.me) |
+| `main.rs` | Entry point with signal handling, setup mode, MCP server |
 | `mcp/server.rs` | rmcp ServerHandler + MCP tool methods |
 | `mcp/tools.rs` | Re-exports tools module |
 | `mcp/tools/types.rs` | MCP tool request/response types with JsonSchema |
-| `telegram/client.rs` | TelegramClientTrait + mock-based implementation |
-| `telegram/auth.rs` | Session persistence (atomic writes, 0600 perms), 2FA flow |
+| `telegram/client.rs` | Real grammers client + TelegramClientTrait |
+| `telegram/auth.rs` | Interactive authentication with 2FA support |
 | `telegram/types.rs` | Domain types (Message, Channel, IDs) with JsonSchema |
 
 ## MCP Tools (Phase 11 Complete)
@@ -186,10 +189,10 @@ Current progress tracked in:
 | 5 | Domain Types | ✅ | 42/42 |
 | 6 | Link Generation | ✅ | 8/8 |
 | 7 | Rate Limiter | ✅ | 19/19 |
-| 8 | Telegram Auth | ✅ | 9/9 |
+| 8 | Telegram Auth | ✅ | 1/1 |
 | 9 | Telegram Client | ✅ | 12/12 |
 | 10 | MCP Server | ✅ | 19/19 |
 | 11 | MCP Tools | ✅ | 4/4 |
-| 12 | Integration | ⬜ | - |
+| 12 | Integration | ✅ | 7/7 (CLI) |
 
-**Overall:** 11/12 phases complete, 144 tests (140 passing, 4 ignored), ready for Phase 12 (Integration & Polish)
+**Overall:** 12/12 phases complete, 139 tests passing (4 ignored). Ready for manual testing with real Telegram account.
