@@ -233,12 +233,14 @@ impl TelegramClient {
         let message_id = MessageId::new(msg.id() as i64).ok()?;
 
         // Get sender info
-        let (sender_id, sender_name) = if let Some(sender) = msg.sender() {
-            let id = UserId::new(sender.id().bare_id()).ok();
-            let name = sender.name().map(|s| s.to_string());
-            (id, name)
-        } else {
-            (None, None)
+        // msg.sender() returns Result<&Peer, Option<PeerRef>> in newer grammers versions
+        let (sender_id, sender_name) = match msg.sender() {
+            Ok(sender) => {
+                let id = UserId::new(sender.id().bare_id()).ok();
+                let name = sender.name().map(|s: &str| s.to_string());
+                (id, name)
+            }
+            Err(_) => (None, None),
         };
 
         // Check for media
