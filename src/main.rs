@@ -51,7 +51,8 @@ async fn main() -> Result<()> {
     tracing::info!("Authenticated with Telegram");
 
     // Run MCP server
-    run_mcp_server(telegram_client, config).await
+    run_mcp_server(telegram_client, config).await?;
+    std::process::exit(0);
 }
 
 /// Run interactive setup mode for authentication
