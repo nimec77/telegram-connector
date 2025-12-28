@@ -4,6 +4,14 @@
 
 ---
 
+## Critical Rules
+
+1. **NEVER create git commits** - The user manages all git operations
+2. **Wait for user approval** before implementing any proposed changes
+3. **Use LOCAL memory file** `doc/memory.md`, NOT global Claude memory
+
+---
+
 ## Iteration Cycle
 
 ```

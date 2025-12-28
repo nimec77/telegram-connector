@@ -136,6 +136,9 @@ tracing::info!(
 
 ## Git Commits
 
+**CRITICAL: Claude must NEVER create git commits. The user manages all git operations.**
+
+Commit conventions (for user reference):
 - Small, atomic, one logical change
 - Imperative mood: "Add feature", not "Added feature"
 - Format: `<type>: <description>`
