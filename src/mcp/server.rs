@@ -7,13 +7,18 @@ use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::Channel;
 use crate::telegram::client::TelegramClientTrait;
 use crate::telegram::types::{ChannelId, MessageId, SearchParams, SearchResult};
-use rmcp::model::{Implementation, InitializeResult, ProtocolVersion};
-use rmcp::{Json, ServerHandler, ServiceExt};
+use rmcp::handler::server::tool::ToolRouter;
+use rmcp::handler::server::wrapper::Parameters;
+use rmcp::model::{Implementation, InitializeResult, ProtocolVersion, ServerCapabilities};
+use rmcp::{Json, ServerHandler, ServiceExt, tool, tool_handler, tool_router};
 use std::sync::Arc;
 
+#[derive(Clone)]
 pub struct McpServer<T: TelegramClientTrait, R: RateLimiterTrait> {
     telegram_client: Arc<T>,
     rate_limiter: Arc<R>,
+    #[allow(dead_code)]
+    tool_router: ToolRouter<Self>,
 }
 
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {
@@ -21,6 +26,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         Self {
             telegram_client,
             rate_limiter,
+            tool_router: Self::tool_router(),
         }
     }
 
@@ -38,12 +44,16 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
         Ok(())
     }
+}
 
+#[tool_router]
+impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {
     // ========================================================================
     // MCP Tools
     // ========================================================================
 
     /// Tool 1: check_mcp_status - Health check and diagnostics
+    #[tool(description = "Check MCP connection status and rate limiter state")]
     pub async fn check_mcp_status(&self) -> Result<Json<StatusResponse>, String> {
         let connected = self.telegram_client.is_connected().await;
         let tokens = self.rate_limiter.available_tokens();
@@ -56,9 +66,10 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Tool 2: get_subscribed_channels - List user's Telegram channels with pagination
+    #[tool(description = "List user's subscribed Telegram channels with pagination support")]
     pub async fn get_subscribed_channels(
         &self,
-        request: GetChannelsRequest,
+        Parameters(request): Parameters<GetChannelsRequest>,
     ) -> Result<Json<ChannelsResponse>, String> {
         let limit = request.limit.unwrap_or(20);
         let offset = request.offset.unwrap_or(0);
@@ -82,9 +93,10 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Tool 3: get_channel_info - Get detailed information about a Telegram channel
+    #[tool(description = "Get detailed information about a Telegram channel by username or ID")]
     pub async fn get_channel_info(
         &self,
-        request: GetChannelInfoRequest,
+        Parameters(request): Parameters<GetChannelInfoRequest>,
     ) -> Result<Json<Channel>, String> {
         let channel = self
             .telegram_client
@@ -96,9 +108,10 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Tool 4: generate_message_link - Generate deep links for a Telegram message
+    #[tool(description = "Generate tg:// and https://t.me deep links for a Telegram message")]
     pub async fn generate_message_link(
         &self,
-        request: GenerateLinkRequest,
+        Parameters(request): Parameters<GenerateLinkRequest>,
     ) -> Result<Json<MessageLinkResponse>, String> {
         // Parse channel_id string to i64
         let channel_id_num: i64 = request.channel_id.parse().map_err(|_| {
@@ -133,9 +146,10 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Tool 5: open_message_in_telegram - Open message in Telegram Desktop (macOS)
+    #[tool(description = "Open a specific message in Telegram Desktop application (macOS only)")]
     pub async fn open_message_in_telegram(
         &self,
-        request: OpenMessageRequest,
+        Parameters(request): Parameters<OpenMessageRequest>,
     ) -> Result<Json<OpenMessageResponse>, String> {
         // Parse channel_id string to i64
         let channel_id_num: i64 = request.channel_id.parse().map_err(|_| {
@@ -199,9 +213,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Tool 6: search_messages - Search messages across Telegram channels
+    #[tool(
+        description = "Search messages across subscribed Telegram channels with optional filters"
+    )]
     pub async fn search_messages(
         &self,
-        request: SearchRequest,
+        Parameters(request): Parameters<SearchRequest>,
     ) -> Result<Json<SearchResult>, String> {
         // Validate query is not empty
         if request.query.trim().is_empty() {
@@ -260,14 +277,16 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 }
 
-// Implement ServerHandler trait - tool registration will be added in Phase 11
+// Implement ServerHandler trait with tool capabilities
+// The #[tool_handler] macro automatically implements list_tools and call_tool
+#[tool_handler]
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> ServerHandler
     for McpServer<T, R>
 {
     fn get_info(&self) -> InitializeResult {
         InitializeResult {
             protocol_version: ProtocolVersion::default(),
-            capabilities: Default::default(),
+            capabilities: ServerCapabilities::builder().enable_tools().build(),
             server_info: Implementation {
                 name: "telegram-mcp".to_string(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
@@ -430,7 +449,7 @@ mod tests {
             offset: None,
         };
 
-        let result = server.get_subscribed_channels(request).await;
+        let result = server.get_subscribed_channels(Parameters(request)).await;
 
         // Then: Returns success with channel list
         assert!(result.is_ok());
@@ -482,7 +501,7 @@ mod tests {
             offset: Some(5),
         };
 
-        let result = server.get_subscribed_channels(request).await;
+        let result = server.get_subscribed_channels(Parameters(request)).await;
 
         // Then: Returns success with correct pagination values
         assert!(result.is_ok());
@@ -525,7 +544,7 @@ mod tests {
             channel_identifier: "testchannel".to_string(),
         };
 
-        let result = server.get_channel_info(request).await;
+        let result = server.get_channel_info(Parameters(request)).await;
 
         // Then: Returns channel details
         assert!(result.is_ok());
@@ -555,7 +574,7 @@ mod tests {
             channel_identifier: "nonexistent".to_string(),
         };
 
-        let result = server.get_channel_info(request).await;
+        let result = server.get_channel_info(Parameters(request)).await;
 
         // Then: Returns error
         assert!(result.is_err());
@@ -582,7 +601,7 @@ mod tests {
         };
 
         // When: Generate link
-        let result = server.generate_message_link(request).await;
+        let result = server.generate_message_link(Parameters(request)).await;
 
         // Then: Returns both link formats
         assert!(result.is_ok());
@@ -611,7 +630,7 @@ mod tests {
         };
 
         // When: Generate link
-        let result = server.generate_message_link(request).await;
+        let result = server.generate_message_link(Parameters(request)).await;
 
         // Then: Returns only HTTPS link (tg_protocol_link is None)
         assert!(result.is_ok());
@@ -634,7 +653,7 @@ mod tests {
         };
 
         // When: Generate link
-        let result = server.generate_message_link(request).await;
+        let result = server.generate_message_link(Parameters(request)).await;
 
         // Then: Returns error
         assert!(result.is_err());
@@ -661,7 +680,7 @@ mod tests {
         };
 
         // When: Try to open message
-        let result = server.open_message_in_telegram(request).await;
+        let result = server.open_message_in_telegram(Parameters(request)).await;
 
         // Then: Returns error
         assert!(result.is_err());
@@ -684,7 +703,7 @@ mod tests {
         };
 
         // When: Open message
-        let result = server.open_message_in_telegram(request).await;
+        let result = server.open_message_in_telegram(Parameters(request)).await;
 
         // Then: Returns response with tg:// link
         assert!(result.is_ok());
@@ -706,7 +725,7 @@ mod tests {
         };
 
         // When: Open message
-        let result = server.open_message_in_telegram(request).await;
+        let result = server.open_message_in_telegram(Parameters(request)).await;
 
         // Then: Returns response with https:// link
         assert!(result.is_ok());
@@ -765,7 +784,7 @@ mod tests {
             limit: None,
         };
 
-        let result = server.search_messages(request).await;
+        let result = server.search_messages(Parameters(request)).await;
 
         // Then: Returns search results
         assert!(result.is_ok());
@@ -790,7 +809,7 @@ mod tests {
         };
 
         // When: Search messages
-        let result = server.search_messages(request).await;
+        let result = server.search_messages(Parameters(request)).await;
 
         // Then: Returns error
         assert!(result.is_err());
@@ -823,7 +842,7 @@ mod tests {
         };
 
         // When: Search messages
-        let result = server.search_messages(request).await;
+        let result = server.search_messages(Parameters(request)).await;
 
         // Then: Returns rate limit error
         assert!(result.is_err());
@@ -872,7 +891,7 @@ mod tests {
             limit: Some(50),
         };
 
-        let result = server.search_messages(request).await;
+        let result = server.search_messages(Parameters(request)).await;
 
         // Then: Success
         assert!(result.is_ok());
@@ -918,7 +937,7 @@ mod tests {
             limit: Some(500),       // exceeds MAX_LIMIT (100)
         };
 
-        let result = server.search_messages(request).await;
+        let result = server.search_messages(Parameters(request)).await;
 
         // Then: Success (limits applied internally)
         assert!(result.is_ok());
