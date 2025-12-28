@@ -744,7 +744,7 @@ impl MessageLink {
             channel_id, message_id
         );
         let tg_protocol_link = format!(
-            "tg://resolve?channel={}&post={}&single",
+            "tg://privatepost?channel={}&post={}&single",
             channel_id, message_id
         );
         Self {

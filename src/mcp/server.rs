@@ -612,7 +612,7 @@ mod tests {
         assert!(response.tg_protocol_link.is_some());
         assert_eq!(
             response.tg_protocol_link.unwrap(),
-            "tg://resolve?channel=123456789&post=42&single"
+            "tg://privatepost?channel=123456789&post=42&single"
         );
     }
 
