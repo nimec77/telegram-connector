@@ -15,7 +15,7 @@ impl MessageLink {
     pub fn new(channel_id: ChannelId, message_id: MessageId) -> Self {
         let https_link = format!("https://t.me/c/{}/{}?single", channel_id, message_id);
         let tg_protocol_link = format!(
-            "tg://resolve?channel={}&post={}&single",
+            "tg://privatepost?channel={}&post={}&single",
             channel_id, message_id
         );
 
@@ -53,7 +53,7 @@ mod tests {
 
         assert_eq!(
             link.tg_protocol_link,
-            "tg://resolve?channel=123456789&post=42&single"
+            "tg://privatepost?channel=123456789&post=42&single"
         );
     }
 

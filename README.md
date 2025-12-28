@@ -342,7 +342,7 @@ Generate shareable links for a specific message.
   "channel_id": "1234567890",
   "message_id": 42,
   "https_link": "https://t.me/c/1234567890/42?single",
-  "tg_protocol_link": "tg://resolve?channel=1234567890&post=42&single"
+  "tg_protocol_link": "tg://privatepost?channel=1234567890&post=42&single"
 }
 ```
 
@@ -372,7 +372,7 @@ Open a message directly in Telegram Desktop.
 {
   "success": true,
   "message": "Opened message in Telegram",
-  "link_used": "tg://resolve?channel=1234567890&post=42&single",
+  "link_used": "tg://privatepost?channel=1234567890&post=42&single",
   "app_opened": true
 }
 ```
