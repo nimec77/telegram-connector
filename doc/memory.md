@@ -1679,3 +1679,47 @@ Options:
 4. **Create Release Build**
    - `cargo build --release`
    - Binary at: `target/release/telegram-mcp`
+
+---
+
+## Iteration 13: Documentation & Rules Update (Complete)
+
+### What Was Implemented
+
+1. **Critical Rules Added**
+   - Added "NEVER create git commits" rule to CLAUDE.md, conventions.md, workflow.md
+   - User manages all git operations; Claude only writes code and documentation
+
+2. **Comprehensive README.md Created**
+   - Project overview with features list
+   - Architecture diagram (ASCII art)
+   - Prerequisites and installation guide
+   - Configuration examples with environment variables
+   - Detailed MCP Tools Reference (all 6 tools)
+   - Manual Testing Guide with JSON-RPC examples
+   - Troubleshooting section
+   - Development guide
+
+### Files Modified/Created
+
+1. **Created:**
+   - `README.md` - Comprehensive documentation (~500 lines)
+
+2. **Modified:**
+   - `CLAUDE.md` - Added Critical Rules section
+   - `doc/conventions.md` - Added git commit restriction
+   - `doc/workflow.md` - Added Critical Rules section
+   - `doc/tasklist.md` - Marked README task complete
+   - `doc/memory.md` - This section
+
+### Key Decisions
+
+1. **MCP Client Choice:** Documented Claude Desktop as the primary MCP client
+2. **Manual Testing:** Included JSON-RPC examples for testing via stdin
+3. **Tool Documentation:** Full parameter tables with types, defaults, and descriptions
+
+### Remaining Tasks
+
+- [ ] Test with real Telegram account (manual)
+- [ ] Test with MCP client (manual)
+- [ ] Create release build: `cargo build --release`

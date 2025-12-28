@@ -158,6 +158,12 @@ Supports `${VAR}` syntax for environment variable expansion in sensitive fields.
 - Never log sensitive data (phone numbers, API hashes, passwords, session tokens)
 - Use `redact_phone()` and `redact_hash()` helpers
 
+## Critical Rules
+
+1. **NEVER create git commits** - The user manages all git operations. Only write code and documentation.
+2. **Always use LOCAL memory file** `doc/memory.md`, NOT global Claude memory.
+3. **Wait for user approval** before implementing any proposed changes.
+
 ## Workflow
 
 See `doc/workflow.md` for the iteration cycle:
@@ -171,8 +177,6 @@ See `doc/workflow.md` for the iteration cycle:
    - Patterns applied (design decisions, architectural choices)
    - Lessons learned (gotchas, edge cases discovered)
    - Code patterns to reuse in future phases
-
-**IMPORTANT:** Always use LOCAL memory file `doc/memory.md`, NOT global Claude memory.
 
 Current progress tracked in:
 - `doc/tasklist.md` - checklist of phases and tasks

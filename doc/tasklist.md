@@ -294,7 +294,7 @@
 - [x] All 139 tests passing (4 ignored)
 - [ ] Test with real Telegram account (manual)
 - [ ] Test with MCP client (manual)
-- [ ] Update README.md with quick start
+- [x] Update README.md with comprehensive documentation
 - [ ] Create release build: `cargo build --release`
 
 **Test:** `cargo test` ✅ (139 passing, 4 ignored)
