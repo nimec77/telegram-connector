@@ -20,10 +20,11 @@
 | 10 | MCP Server | ✅ Complete | 19/19 | rmcp setup, stdio, tools |
 | 11 | MCP Tools | ✅ Complete | 4/4 | types.rs schemas |
 | 12 | Integration | ✅ Complete | 7/7 (CLI) | CLI, grammers, shutdown, rmcp tools |
+| 13 | Refactoring | ⬜ Pending | - | Split large files, extract tests |
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
-**Overall Progress:** 12/12 phases complete - PROJECT COMPLETE ✅ (All tests passed, release build ready)
+**Overall Progress:** 12/13 phases complete - Core implementation complete, refactoring phase pending
 
 ---
 
@@ -301,6 +302,67 @@
 - [x] Create release build: `cargo build --release` ✅
 
 **Test:** `cargo test` ✅ (139 passing, 4 ignored)
+
+---
+
+## Phase 13: Code Refactoring ⬜
+
+**Goal:** Split large files for better maintainability
+
+**Context:** server.rs (945 lines) and client.rs (755 lines) exceed recommended 300-line limit.
+
+### 13.1 MCP Server Refactoring ⬜
+- [ ] Create `src/mcp/tools/` directory structure
+- [ ] Extract `status.rs` - check_mcp_status tool
+- [ ] Extract `channels.rs` - get_subscribed_channels, get_channel_info tools
+- [ ] Extract `links.rs` - generate_message_link, open_message_in_telegram tools
+- [ ] Extract `search.rs` - search_messages tool
+- [ ] Update `src/mcp/tools.rs` to re-export from subdirectory
+- [ ] Create `src/mcp/tests/server_tests.rs` - extract server tests
+- [ ] Verify: all tests pass after refactoring
+
+### 13.2 Telegram Client Refactoring ⬜
+- [ ] Extract `src/telegram/trait.rs` - TelegramClientTrait definition
+- [ ] Extract `src/telegram/converters.rs` - convert_peer_to_channel, convert_message helpers
+- [ ] Create `src/telegram/tests/client_tests.rs` - extract client tests
+- [ ] Update `src/telegram.rs` to re-export from new modules
+- [ ] Verify: all tests pass after refactoring
+
+### 13.3 Code Quality Improvements ⬜
+- [ ] Apply DRY: Extract duplicated validation logic
+- [ ] Consider async_trait crate for cleaner trait definitions
+- [ ] Add connection pooling/retry logic if needed
+- [ ] Review and optimize error handling patterns
+- [ ] Run `cargo clippy -- -D warnings` ✅
+- [ ] Run `cargo fmt --check` ✅
+- [ ] All tests passing
+
+**Target Structure:**
+```
+src/mcp/
+├── server.rs           # Core server, tool routing
+├── tools.rs            # Re-exports only
+├── tools/
+│   ├── mod.rs          # Module declarations
+│   ├── types.rs        # Request/response types (existing)
+│   ├── status.rs       # check_mcp_status
+│   ├── channels.rs     # channel-related tools
+│   ├── links.rs        # link generation tools
+│   └── search.rs       # search_messages
+└── tests/
+    └── server_tests.rs # Extracted tests
+
+src/telegram/
+├── client.rs           # Core client implementation
+├── trait.rs            # TelegramClientTrait
+├── converters.rs       # Type conversion helpers
+├── auth.rs             # Authentication (existing)
+├── types.rs            # Domain types (existing)
+└── tests/
+    └── client_tests.rs # Extracted tests
+```
+
+**Test:** `cargo test` (all tests must pass after refactoring)
 
 ---
 
