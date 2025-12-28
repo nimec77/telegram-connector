@@ -44,7 +44,7 @@ async fn main() -> Result<()> {
     if !is_authorized {
         anyhow::bail!(
             "Not authenticated. Run with --setup flag to authenticate first:\n\
-             cargo run --bin telegram-mcp -- --setup"
+            telegram-mcp -- --setup"
         );
     }
 
