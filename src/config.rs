@@ -36,6 +36,16 @@ fn default_log_format() -> String {
     "compact".to_string()
 }
 
+fn default_shutdown_timeout() -> u64 {
+    5
+}
+
+fn default_server_config() -> ServerConfig {
+    ServerConfig {
+        shutdown_timeout_seconds: default_shutdown_timeout(),
+    }
+}
+
 fn default_search_config() -> SearchConfig {
     SearchConfig {
         default_hours_back: default_hours_back(),
@@ -67,6 +77,14 @@ pub struct Config {
     pub rate_limiting: RateLimitConfig,
     #[serde(default = "default_logging_config")]
     pub logging: LoggingConfig,
+    #[serde(default = "default_server_config")]
+    pub server: ServerConfig,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ServerConfig {
+    #[serde(default = "default_shutdown_timeout")]
+    pub shutdown_timeout_seconds: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -116,10 +134,24 @@ pub struct LoggingConfig {
 }
 
 impl Config {
+    /// Load configuration from file
+    ///
+    /// If `config_path` is Some, uses that path. Otherwise, resolves the default path.
     pub fn load() -> anyhow::Result<Self> {
+        Self::load_from(None)
+    }
+
+    /// Load configuration from a specific path or default location
+    ///
+    /// If `config_path` is Some, uses that path. Otherwise, resolves the default path.
+    pub fn load_from(config_path: Option<&std::path::Path>) -> anyhow::Result<Self> {
         use anyhow::Context;
 
-        let path = Self::resolve_config_path()?;
+        let path = match config_path {
+            Some(p) => p.to_path_buf(),
+            None => Self::resolve_config_path()?,
+        };
+
         let content = std::fs::read_to_string(&path)
             .context(format!("Failed to read config: {}", path.display()))?;
 
@@ -136,6 +168,13 @@ impl Config {
         config.validate()?;
 
         Ok(config)
+    }
+
+    /// Apply CLI overrides to the configuration
+    pub fn apply_cli_overrides(&mut self, session_file: Option<std::path::PathBuf>) {
+        if let Some(path) = session_file {
+            self.telegram.session_file = path;
+        }
     }
 
     fn resolve_config_path() -> anyhow::Result<PathBuf> {
@@ -243,13 +282,12 @@ mod tests {
         assert_eq!(result, "${INCOMPLETE");
     }
 
-    #[test]
-    fn test_validate_missing_api_id() {
-        let config = Config {
+    fn create_test_config(api_id: i32, api_hash: &str, phone_number: &str) -> Config {
+        Config {
             telegram: TelegramConfig {
-                api_id: 0,
-                api_hash: SecretString::new("hash".to_string().into_boxed_str()),
-                phone_number: SecretString::new("+1234567890".to_string().into_boxed_str()),
+                api_id,
+                api_hash: SecretString::new(api_hash.to_string().into_boxed_str()),
+                phone_number: SecretString::new(phone_number.to_string().into_boxed_str()),
                 session_file: PathBuf::from("session.bin"),
             },
             search: SearchConfig {
@@ -265,7 +303,15 @@ mod tests {
                 level: "info".to_string(),
                 format: "compact".to_string(),
             },
-        };
+            server: ServerConfig {
+                shutdown_timeout_seconds: 5,
+            },
+        }
+    }
+
+    #[test]
+    fn test_validate_missing_api_id() {
+        let config = create_test_config(0, "hash", "+1234567890");
         let result = config.validate();
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("api_id"));
@@ -273,27 +319,7 @@ mod tests {
 
     #[test]
     fn test_validate_missing_api_hash() {
-        let config = Config {
-            telegram: TelegramConfig {
-                api_id: 12345,
-                api_hash: SecretString::new("".to_string().into_boxed_str()),
-                phone_number: SecretString::new("+1234567890".to_string().into_boxed_str()),
-                session_file: PathBuf::from("session.bin"),
-            },
-            search: SearchConfig {
-                default_hours_back: 48,
-                max_results_default: 20,
-                max_results_limit: 100,
-            },
-            rate_limiting: RateLimitConfig {
-                max_tokens: 50,
-                refill_rate: 2.0,
-            },
-            logging: LoggingConfig {
-                level: "info".to_string(),
-                format: "compact".to_string(),
-            },
-        };
+        let config = create_test_config(12345, "", "+1234567890");
         let result = config.validate();
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("api_hash"));
@@ -301,27 +327,7 @@ mod tests {
 
     #[test]
     fn test_validate_missing_phone_number() {
-        let config = Config {
-            telegram: TelegramConfig {
-                api_id: 12345,
-                api_hash: SecretString::new("hash".to_string().into_boxed_str()),
-                phone_number: SecretString::new("".to_string().into_boxed_str()),
-                session_file: PathBuf::from("session.bin"),
-            },
-            search: SearchConfig {
-                default_hours_back: 48,
-                max_results_default: 20,
-                max_results_limit: 100,
-            },
-            rate_limiting: RateLimitConfig {
-                max_tokens: 50,
-                refill_rate: 2.0,
-            },
-            logging: LoggingConfig {
-                level: "info".to_string(),
-                format: "compact".to_string(),
-            },
-        };
+        let config = create_test_config(12345, "hash", "");
         let result = config.validate();
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("phone_number"));
@@ -329,27 +335,7 @@ mod tests {
 
     #[test]
     fn test_validate_valid_config() {
-        let config = Config {
-            telegram: TelegramConfig {
-                api_id: 12345,
-                api_hash: SecretString::new("valid_hash".to_string().into_boxed_str()),
-                phone_number: SecretString::new("+1234567890".to_string().into_boxed_str()),
-                session_file: PathBuf::from("session.bin"),
-            },
-            search: SearchConfig {
-                default_hours_back: 48,
-                max_results_default: 20,
-                max_results_limit: 100,
-            },
-            rate_limiting: RateLimitConfig {
-                max_tokens: 50,
-                refill_rate: 2.0,
-            },
-            logging: LoggingConfig {
-                level: "info".to_string(),
-                format: "compact".to_string(),
-            },
-        };
+        let config = create_test_config(12345, "valid_hash", "+1234567890");
         let result = config.validate();
         assert!(result.is_ok());
     }
@@ -504,27 +490,8 @@ format = "compact"
 
     #[test]
     fn test_secret_does_not_expose_in_debug() {
-        let config = Config {
-            telegram: TelegramConfig {
-                api_id: 12345,
-                api_hash: SecretString::new("sensitive_hash_value".to_string().into_boxed_str()),
-                phone_number: SecretString::new("+1234567890".to_string().into_boxed_str()),
-                session_file: PathBuf::from("/tmp/session.bin"),
-            },
-            search: SearchConfig {
-                default_hours_back: 48,
-                max_results_default: 20,
-                max_results_limit: 100,
-            },
-            rate_limiting: RateLimitConfig {
-                max_tokens: 50,
-                refill_rate: 2.0,
-            },
-            logging: LoggingConfig {
-                level: "info".to_string(),
-                format: "compact".to_string(),
-            },
-        };
+        let mut config = create_test_config(12345, "sensitive_hash_value", "+1234567890");
+        config.telegram.session_file = PathBuf::from("/tmp/session.bin");
 
         let debug_output = format!("{:?}", config);
 
