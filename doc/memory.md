@@ -1,12 +1,12 @@
 # Development Memory - Telegram MCP Connector
 
-**Last Updated:** Project Complete - Manual Testing Passed (2025-12-28)
+**Last Updated:** Phase 13 Refactoring Complete (2025-12-29)
 
 ---
 
 ## Current Status
 
-**Progress:** 12/12 phases complete - MANUAL TESTING PASSED ✅
+**Progress:** 13/13 phases complete - ALL PHASES COMPLETE ✅
 - ✅ Phase 1: Project Setup
 - ✅ Phase 2: Error Types (11/11 tests)
 - ✅ Phase 3: Configuration (15/15 tests + 4 ignored)
@@ -1745,3 +1745,120 @@ All 6 tools now have proper `#[tool]` attributes:
 - [x] Create release build: `cargo build --release` ✅
 
 **Note:** All tasks complete. Project is production-ready. Binary at `target/release/telegram-mcp`.
+
+---
+
+## Phase 13: Code Refactoring (Complete)
+
+### What Was Implemented
+
+1. **MCP Server Test Extraction** (Phase 13.1)
+   - Created `src/mcp/tests/` directory with organized test files
+   - Extracted tests into: `server_core.rs`, `status.rs`, `channels.rs`, `links.rs`, `search.rs`
+   - Used `#[cfg(test)] #[path = "tests/mod.rs"] mod tests;` for test module path
+   - **Result:** server.rs reduced from 945 → 307 lines
+
+2. **Telegram Client Module Extraction** (Phase 13.2)
+   - Created `src/telegram/trait_def.rs` - TelegramClientTrait definition with mockall
+   - Created `src/telegram/converters.rs` - convert_peer_to_channel, convert_message helpers
+   - Created `src/telegram/tests/` directory with client_tests.rs
+   - Updated `src/telegram.rs` to re-export from new modules
+   - **Result:** client.rs reduced from 755 → 343 lines
+
+### Key Decisions & Rationale
+
+1. **Test Extraction vs Tool Extraction**
+   - **Choice:** Extract tests only, keep tool implementations in server.rs
+   - **Why:** rmcp `#[tool_router]` macro requires all tool methods in single impl block
+   - **Benefit:** Maintains macro compatibility while reducing file size
+
+2. **Path Attribute for Test Modules**
+   - **Pattern:** `#[cfg(test)] #[path = "tests/mod.rs"] mod tests;`
+   - **Why:** Allows tests to live in separate directory while still being part of module
+   - **Alternative:** Inline tests in same file (what we had before)
+
+3. **Re-exports for Backward Compatibility**
+   - **Pattern:** `pub use trait_def::TelegramClientTrait;` in telegram.rs
+   - **Why:** External code can still import from `crate::telegram::TelegramClientTrait`
+   - **Test imports:** Updated to use new paths for MockTelegramClientTrait
+
+### Gotchas & Edge Cases
+
+1. **Import Path Updates Required**
+   - **Problem:** After moving TelegramClientTrait, existing imports broke
+   - **Error:** `use crate::telegram::client::TelegramClientTrait` - trait is private
+   - **Solution:** Re-export from `telegram.rs` and update all import paths
+   - **Files affected:** server.rs, all MCP test files
+
+2. **Mock Trait Methods Require Trait in Scope**
+   - **Problem:** MockTelegramClientTrait methods not found
+   - **Error:** "no method named `is_connected` found for struct `MockTelegramClientTrait`"
+   - **Cause:** Mock implements trait, so trait must be imported to call methods
+   - **Solution:** `use crate::telegram::trait_def::{MockTelegramClientTrait, TelegramClientTrait};`
+
+3. **Unused Import Warning**
+   - **Warning:** `unused import: ChannelId` in client.rs after extraction
+   - **Cause:** ChannelId used in converters.rs, not client.rs anymore
+   - **Solution:** Remove unused import from client.rs
+
+### Patterns to Reuse
+
+```rust
+// Pattern 1: External test directory with path attribute
+#[cfg(test)]
+#[path = "tests/mod.rs"]
+mod tests;
+
+// Pattern 2: Conditional re-export for test mocks
+#[cfg(test)]
+pub use trait_def::MockTelegramClientTrait;
+
+// Pattern 3: Import trait with mock for testing
+use crate::telegram::trait_def::{MockTelegramClientTrait, TelegramClientTrait};
+
+// Pattern 4: Module structure for extracted components
+// src/telegram.rs
+pub mod auth;
+pub mod client;
+pub mod converters;  // NEW
+pub mod trait_def;   // NEW
+pub mod types;
+
+pub use client::TelegramClient;
+pub use trait_def::TelegramClientTrait;
+```
+
+### Files Created/Modified
+
+**Created:**
+- `src/mcp/tests/mod.rs` - Test module declarations
+- `src/mcp/tests/server_core.rs` - Server creation tests
+- `src/mcp/tests/status.rs` - Status tool tests
+- `src/mcp/tests/channels.rs` - Channel tool tests
+- `src/mcp/tests/links.rs` - Link tool tests
+- `src/mcp/tests/search.rs` - Search tool tests
+- `src/telegram/trait_def.rs` - TelegramClientTrait definition
+- `src/telegram/converters.rs` - Type conversion helpers
+- `src/telegram/tests/mod.rs` - Test module declarations
+- `src/telegram/tests/client_tests.rs` - Client mock tests
+
+**Modified:**
+- `src/mcp/server.rs` - Removed inline tests, added path attribute
+- `src/telegram/client.rs` - Removed trait definition, converters, and tests
+- `src/telegram.rs` - Added new module declarations and re-exports
+
+---
+
+## Project Status: ALL PHASES COMPLETE ✅
+
+### Summary
+- ✅ All 13 development phases complete
+- ✅ 139 tests passing (4 ignored for CI/CD compatibility)
+- ✅ Real grammers integration with SqliteSession
+- ✅ CLI with --setup, --session-file, --config options
+- ✅ Signal handling (SIGTERM, SIGINT) for graceful shutdown
+- ✅ rmcp tool attributes for MCP protocol compliance
+- ✅ Code refactoring complete (server.rs: 307 lines, client.rs: 343 lines)
+- ✅ Manual testing with real Telegram account - PASSED
+- ✅ Manual testing with MCP client (Comet Browser) - PASSED
+- ✅ Release build created - `target/release/telegram-mcp`
