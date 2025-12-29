@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Telegram MCP Connector - a Model Context Protocol (MCP) service that enables Claude to search Russian-language Telegram channels and messages in real-time. Built in Rust using the `rmcp` SDK and `grammers` Telegram client.
 
-**Current Status:** PROJECT COMPLETE ✅ - All 12 phases done, manual testing passed. Real grammers integration, CLI with --setup, signal handling, rmcp tool attributes. 139 tests (all passing, 4 ignored).
+**Current Status:** PROJECT COMPLETE ✅ - All 13 phases done, manual testing passed. Real grammers integration, CLI with --setup, signal handling, rmcp tool attributes. 140 tests (all passing, 4 ignored).
 
 ## Build & Test Commands
 
@@ -15,12 +15,12 @@ Telegram MCP Connector - a Model Context Protocol (MCP) service that enables Cla
 cargo build
 cargo build --release
 
-# Run all tests (139 tests passing, 4 ignored)
+# Run all tests (140 tests passing, 4 ignored)
 cargo test
 
 # Run tests for specific module
 cargo test error           # 11 tests
-cargo test config -- --test-threads=1  # 15 tests + 4 ignored (serial for env var tests)
+cargo test config -- --test-threads=1  # 16 tests + 4 ignored (serial for env var tests)
 cargo test logging         # 13 tests
 cargo test types           # 42 tests
 cargo test link            # 8 tests
@@ -152,7 +152,10 @@ pub struct MessageId(pub i64);
 
 Config file: `~/.config/telegram-connector/config.toml`
 
-Supports `${VAR}` syntax for environment variable expansion in sensitive fields.
+Supports `${VAR}` syntax for environment variable expansion in ALL fields:
+- Numeric fields (e.g., `api_id = "${TELEGRAM_API_ID}"`) - automatically unquoted if value is pure digits
+- String fields (e.g., `api_hash = "${TELEGRAM_API_HASH}"`) - kept as strings
+- Phone numbers with `+` prefix stay as strings (not treated as numbers)
 
 ## Logging
 
