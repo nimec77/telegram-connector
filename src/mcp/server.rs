@@ -303,5 +303,5 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> ServerHand
 
 // Tests are in the tests/ subdirectory
 #[cfg(test)]
-#[path = "tests/mod.rs"]
+#[path = "tests.rs"]
 mod tests;
