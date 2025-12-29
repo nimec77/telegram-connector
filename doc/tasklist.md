@@ -21,10 +21,11 @@
 | 11 | MCP Tools | ✅ Complete | 4/4 | types.rs schemas |
 | 12 | Integration | ✅ Complete | 7/7 (CLI) | CLI, grammers, shutdown, rmcp tools |
 | 13 | Refactoring | ✅ Complete | - | Split large files, extract tests |
+| 14 | Conditional Credentials | ⬜ Pending | - | Credentials only required for --setup |
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
-**Overall Progress:** 13/13 phases complete - All implementation and refactoring complete
+**Overall Progress:** 13/14 phases complete - Phase 14 pending (conditional credential requirements)
 
 ---
 
@@ -359,7 +360,92 @@ src/telegram/
     └── client_tests.rs # Client mock tests
 ```
 
-**Test:** `cargo test` ✅ (139 passing, 4 ignored)
+**Test:** `cargo test` ✅ (140 passing, 4 ignored)
+
+---
+
+## Phase 14: Conditional Credential Requirements ⬜
+
+**Goal:** Make credentials (api_id, api_hash, phone_number) required ONLY with `--setup` flag
+
+**Problem:** Currently the program always requires credentials in config, even though they're only needed once during initial session creation. After authentication, the session file should be sufficient.
+
+**Expected Behavior:**
+| Mode | Credentials Required | Session Required | Action |
+|------|---------------------|------------------|--------|
+| `--setup` | ✅ Yes | ❌ No (will create) | Authenticate and create session |
+| Normal (MCP) | ❌ No | ✅ Yes (must exist) | Use existing session, start MCP server |
+
+### 14.1 Config Refactoring ⬜
+- [ ] Make `api_id`, `api_hash`, `phone_number` optional in `TelegramConfig`
+  - Change from required fields to `Option<T>`
+- [ ] Add `TelegramConfig::has_credentials()` method
+  - Returns true if all three credential fields are present
+- [ ] Split validation into two modes:
+  - `validate_for_setup()` - ensures credentials are present
+  - `validate_for_operation()` - only validates non-credential fields
+- [ ] Update tests for new optional fields
+
+### 14.2 Client Initialization Refactoring ⬜
+- [ ] Create `TelegramClient::from_session(session_path)` constructor
+  - Loads existing session without requiring credentials
+  - Returns error if session doesn't exist or is invalid
+- [ ] Update `TelegramClient::new()` to require full config (for setup)
+- [ ] Add `TelegramClient::is_session_valid()` static method
+  - Checks if session file exists and can be loaded
+
+### 14.3 Main Flow Refactoring ⬜
+- [ ] Update `main.rs` startup logic:
+  ```
+  if --setup flag:
+      require credentials in config
+      create client with full config
+      run authentication flow
+      save session
+  else:
+      load session from file (no credentials needed)
+      if session invalid/missing:
+          error: "Session not found. Run with --setup to authenticate."
+      start MCP server
+  ```
+- [ ] Update error messages to guide users to `--setup`
+- [ ] Test both flows manually
+
+### 14.4 Documentation & Tests ⬜
+- [ ] Update README.md with clear setup vs. operation instructions
+- [ ] Update config.example.toml to show credentials are optional for normal use
+- [ ] Add integration tests for:
+  - Setup mode with valid credentials
+  - Normal mode with existing session
+  - Normal mode with missing session (should fail gracefully)
+- [ ] Run `cargo clippy -- -D warnings` ✅
+- [ ] Run `cargo fmt --check` ✅
+- [ ] All tests passing
+
+**Target Config Structure:**
+```toml
+[telegram]
+# Required ONLY for --setup (initial authentication)
+# Can be omitted or empty for normal MCP operation
+api_id = "${TELEGRAM_API_ID}"        # Optional for normal use
+api_hash = "${TELEGRAM_API_HASH}"    # Optional for normal use
+phone_number = "${TELEGRAM_PHONE_NUMBER}"  # Optional for normal use
+
+# Always used - path to session file
+session_file = "~/.config/telegram-connector/session.bin"
+```
+
+**Usage Examples:**
+```bash
+# First time setup (requires credentials in config)
+TELEGRAM_API_ID=12345 TELEGRAM_API_HASH=abc... TELEGRAM_PHONE_NUMBER=+1... \
+  cargo run --bin telegram-mcp -- --setup --config ./config.toml
+
+# Normal operation (uses existing session, no credentials needed)
+cargo run --bin telegram-mcp -- --config ./config.toml
+```
+
+**Test:** `cargo test` (all tests must pass)
 
 ---
 
