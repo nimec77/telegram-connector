@@ -89,22 +89,58 @@ pub struct ServerConfig {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct TelegramConfig {
+    /// API ID from https://my.telegram.org (always required for connection)
     pub api_id: i32,
-    #[serde(deserialize_with = "deserialize_secret_string")]
-    pub api_hash: SecretString,
-    #[serde(deserialize_with = "deserialize_secret_string")]
-    pub phone_number: SecretString,
+    /// API hash from https://my.telegram.org (required only for --setup)
+    #[serde(default, deserialize_with = "deserialize_optional_secret_string")]
+    pub api_hash: Option<SecretString>,
+    /// Phone number for authentication (required only for --setup)
+    #[serde(default, deserialize_with = "deserialize_optional_secret_string")]
+    pub phone_number: Option<SecretString>,
+    /// Session file path (always used)
     #[serde(default = "default_session_file")]
     pub session_file: PathBuf,
 }
 
-// Helper function for deserializing SecretString
-fn deserialize_secret_string<'de, D>(deserializer: D) -> Result<SecretString, D::Error>
+impl TelegramConfig {
+    /// Check if authentication credentials are present (api_hash, phone_number)
+    /// Note: api_id is always required for connection, not just setup
+    pub fn has_auth_credentials(&self) -> bool {
+        self.api_hash
+            .as_ref()
+            .is_some_and(|s| !s.expose_secret().is_empty())
+            && self
+                .phone_number
+                .as_ref()
+                .is_some_and(|s| !s.expose_secret().is_empty())
+    }
+
+    /// Get authentication credentials (panics if not present - call has_auth_credentials first)
+    pub fn auth_credentials(&self) -> (&str, &str) {
+        (
+            self.api_hash
+                .as_ref()
+                .expect("api_hash required")
+                .expose_secret(),
+            self.phone_number
+                .as_ref()
+                .expect("phone_number required")
+                .expose_secret(),
+        )
+    }
+}
+
+// Helper function for deserializing optional SecretString
+fn deserialize_optional_secret_string<'de, D>(
+    deserializer: D,
+) -> Result<Option<SecretString>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    let s = String::deserialize(deserializer)?;
-    Ok(SecretString::new(s.into_boxed_str()))
+    let opt: Option<String> = Option::deserialize(deserializer)?;
+    Ok(opt
+        .filter(|s| !s.is_empty())
+        .map(|s| SecretString::new(s.into_boxed_str())))
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -145,6 +181,9 @@ impl Config {
     ///
     /// If `config_path` is Some, uses that path. Otherwise, resolves the default path.
     /// Environment variables using `${VAR}` syntax are expanded before parsing.
+    ///
+    /// Note: This does NOT validate credentials. Call `validate_for_setup()` if credentials
+    /// are required (e.g., when running with --setup flag).
     pub fn load_from(config_path: Option<&std::path::Path>) -> anyhow::Result<Self> {
         use anyhow::Context;
 
@@ -166,10 +205,22 @@ impl Config {
         // Apply defaults (currently no-op, but kept for future use)
         config.apply_defaults();
 
-        // Validate required fields
-        config.validate()?;
-
         Ok(config)
+    }
+
+    /// Validate that authentication credentials are present (required for --setup mode)
+    /// Note: api_id is always required and validated during config parsing
+    pub fn validate_for_setup(&self) -> anyhow::Result<()> {
+        if !self.telegram.has_auth_credentials() {
+            anyhow::bail!(
+                "Authentication credentials required for setup mode.\n\
+                Please ensure these are set in your config or environment:\n\
+                - telegram.api_hash (or TELEGRAM_API_HASH)\n\
+                - telegram.phone_number (or TELEGRAM_PHONE_NUMBER)\n\n\
+                Get your API credentials from: https://my.telegram.org"
+            );
+        }
+        Ok(())
     }
 
     /// Apply CLI overrides to the configuration
@@ -195,19 +246,6 @@ impl Config {
     fn apply_defaults(&mut self) {
         // Defaults are handled by serde with #[serde(default)] attributes
         // This method is kept for potential future use
-    }
-
-    fn validate(&self) -> anyhow::Result<()> {
-        if self.telegram.api_id == 0 {
-            anyhow::bail!("telegram.api_id is required");
-        }
-        if self.telegram.api_hash.expose_secret().is_empty() {
-            anyhow::bail!("telegram.api_hash is required");
-        }
-        if self.telegram.phone_number.expose_secret().is_empty() {
-            anyhow::bail!("telegram.phone_number is required");
-        }
-        Ok(())
     }
 }
 
@@ -318,12 +356,20 @@ mod tests {
         }
     }
 
-    fn create_test_config(api_id: i32, api_hash: &str, phone_number: &str) -> Config {
+    fn create_test_config(
+        api_id: i32,
+        api_hash: Option<&str>,
+        phone_number: Option<&str>,
+    ) -> Config {
         Config {
             telegram: TelegramConfig {
                 api_id,
-                api_hash: SecretString::new(api_hash.to_string().into_boxed_str()),
-                phone_number: SecretString::new(phone_number.to_string().into_boxed_str()),
+                api_hash: api_hash
+                    .filter(|s| !s.is_empty())
+                    .map(|s| SecretString::new(s.to_string().into_boxed_str())),
+                phone_number: phone_number
+                    .filter(|s| !s.is_empty())
+                    .map(|s| SecretString::new(s.to_string().into_boxed_str())),
                 session_file: PathBuf::from("session.bin"),
             },
             search: SearchConfig {
@@ -346,34 +392,55 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_missing_api_id() {
-        let config = create_test_config(0, "hash", "+1234567890");
-        let result = config.validate();
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("api_id"));
+    fn test_has_auth_credentials_all_present() {
+        let config = create_test_config(12345, Some("hash"), Some("+1234567890"));
+        assert!(config.telegram.has_auth_credentials());
     }
 
     #[test]
-    fn test_validate_missing_api_hash() {
-        let config = create_test_config(12345, "", "+1234567890");
-        let result = config.validate();
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("api_hash"));
+    fn test_has_auth_credentials_missing_api_hash() {
+        let config = create_test_config(12345, None, Some("+1234567890"));
+        assert!(!config.telegram.has_auth_credentials());
     }
 
     #[test]
-    fn test_validate_missing_phone_number() {
-        let config = create_test_config(12345, "hash", "");
-        let result = config.validate();
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("phone_number"));
+    fn test_has_auth_credentials_missing_phone() {
+        let config = create_test_config(12345, Some("hash"), None);
+        assert!(!config.telegram.has_auth_credentials());
     }
 
     #[test]
-    fn test_validate_valid_config() {
-        let config = create_test_config(12345, "valid_hash", "+1234567890");
-        let result = config.validate();
+    fn test_has_auth_credentials_empty_api_hash() {
+        let config = create_test_config(12345, Some(""), Some("+1234567890"));
+        assert!(!config.telegram.has_auth_credentials());
+    }
+
+    #[test]
+    fn test_validate_for_setup_missing_auth_credentials() {
+        let config = create_test_config(12345, None, None);
+        let result = config.validate_for_setup();
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Authentication credentials required")
+        );
+    }
+
+    #[test]
+    fn test_validate_for_setup_valid_credentials() {
+        let config = create_test_config(12345, Some("valid_hash"), Some("+1234567890"));
+        let result = config.validate_for_setup();
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_auth_credentials_getter() {
+        let config = create_test_config(12345, Some("test_hash"), Some("+1234567890"));
+        let (api_hash, phone) = config.telegram.auth_credentials();
+        assert_eq!(api_hash, "test_hash");
+        assert_eq!(phone, "+1234567890");
     }
 
     #[ignore = "for CI/CD passing tests"]
@@ -415,7 +482,10 @@ format = "compact"
         assert!(result.is_ok());
         let config = result.unwrap();
         assert_eq!(config.telegram.api_id, 12345);
-        assert_eq!(config.telegram.api_hash.expose_secret(), "test_hash");
+        assert_eq!(
+            config.telegram.api_hash.as_ref().map(|s| s.expose_secret()),
+            Some("test_hash")
+        );
     }
 
     #[ignore = "for CI/CD passing tests"]
@@ -466,8 +536,18 @@ format = "compact"
         assert!(result.is_ok());
         let config = result.unwrap();
         assert_eq!(config.telegram.api_id, 98765);
-        assert_eq!(config.telegram.api_hash.expose_secret(), "expanded_hash");
-        assert_eq!(config.telegram.phone_number.expose_secret(), "+9876543210");
+        assert_eq!(
+            config.telegram.api_hash.as_ref().map(|s| s.expose_secret()),
+            Some("expanded_hash")
+        );
+        assert_eq!(
+            config
+                .telegram
+                .phone_number
+                .as_ref()
+                .map(|s| s.expose_secret()),
+            Some("+9876543210")
+        );
     }
 
     #[test]
@@ -530,7 +610,8 @@ format = "compact"
 
     #[test]
     fn test_secret_does_not_expose_in_debug() {
-        let mut config = create_test_config(12345, "sensitive_hash_value", "+1234567890");
+        let mut config =
+            create_test_config(12345, Some("sensitive_hash_value"), Some("+1234567890"));
         config.telegram.session_file = PathBuf::from("/tmp/session.bin");
 
         let debug_output = format!("{:?}", config);

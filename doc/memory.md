@@ -1927,3 +1927,61 @@ fn expand_env_vars(value: &str) -> anyhow::Result<String> {
 - `test_expand_env_vars_numeric_unquoting` - verifies pure numbers are unquoted, phone numbers stay quoted
 
 **Test count:** 139 → 140 tests
+
+---
+
+## Phase 14: Conditional Credential Requirements (2025-12-29)
+
+### Problem
+Program required all credentials (api_id, api_hash, phone_number) on every run, but they're only needed during initial setup. After authentication, the session file should be sufficient.
+
+### Solution
+Made `api_hash` and `phone_number` optional, while keeping `api_id` required (needed by grammers SenderPool for MTProto connection).
+
+| Field | Normal Mode | Setup Mode |
+|-------|-------------|------------|
+| `api_id` | ✅ Required | ✅ Required |
+| `api_hash` | ❌ Optional | ✅ Required |
+| `phone_number` | ❌ Optional | ✅ Required |
+
+### Key Changes
+
+1. **config.rs** - TelegramConfig with optional auth fields:
+   ```rust
+   pub struct TelegramConfig {
+       pub api_id: i32,  // Always required
+       pub api_hash: Option<SecretString>,  // Only for --setup
+       pub phone_number: Option<SecretString>,  // Only for --setup
+       pub session_file: PathBuf,
+   }
+   ```
+
+2. **config.rs** - New methods:
+   - `TelegramConfig::has_auth_credentials()` - checks if api_hash and phone_number are present
+   - `TelegramConfig::auth_credentials()` - returns (&str, &str) tuple
+   - `Config::validate_for_setup()` - validates auth credentials are present
+
+3. **main.rs** - Flow branching:
+   - Setup mode: `config.validate_for_setup()` → create client → authenticate
+   - Normal mode: create client → check `is_connected()` → start MCP server
+
+### Custom Deserializer for Optional SecretString
+```rust
+fn deserialize_optional_secret_string<'de, D>(deserializer: D) -> Result<Option<SecretString>, D::Error> {
+    let opt: Option<String> = Option::deserialize(deserializer)?;
+    Ok(opt.filter(|s| !s.is_empty()).map(|s| SecretString::new(s.into_boxed_str())))
+}
+```
+
+### Test Count
+140 → 143 tests (+3 new credential tests)
+
+### Usage
+```bash
+# Setup (requires all credentials)
+TELEGRAM_API_ID=... TELEGRAM_API_HASH=... TELEGRAM_PHONE_NUMBER=... \
+  cargo run -- --setup --config ./config.toml
+
+# Normal operation (only api_id needed)
+TELEGRAM_API_ID=... cargo run -- --config ./config.toml
+```

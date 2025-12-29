@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use secrecy::ExposeSecret;
 use std::sync::Arc;
 use telegram_connector::{
     Cli, Config, RateLimiter, TelegramClientTrait, logging,
@@ -14,7 +13,7 @@ async fn main() -> Result<()> {
     // Parse CLI arguments
     let cli = Cli::parse_args();
 
-    // Load configuration
+    // Load configuration (does not validate auth credentials)
     let mut config =
         Config::load_from(cli.config.as_deref()).context("Failed to load configuration")?;
 
@@ -26,25 +25,33 @@ async fn main() -> Result<()> {
 
     tracing::info!("Telegram MCP Connector starting...");
 
-    // Create Telegram client
-    let telegram_client = TelegramClient::new(&config.telegram)
-        .await
-        .context("Failed to create Telegram client")?;
-
-    // Check if we need to authenticate
-    let is_authorized = telegram_client.is_connected().await;
-
     if cli.setup {
-        // Setup mode: interactive authentication
+        // Setup mode: requires auth credentials
+        config
+            .validate_for_setup()
+            .context("Setup mode requires authentication credentials")?;
+
+        // Create Telegram client for setup
+        let telegram_client = TelegramClient::new(&config.telegram)
+            .await
+            .context("Failed to create Telegram client")?;
+
         run_setup_mode(&telegram_client, &config).await?;
         return Ok(());
     }
 
-    // Normal mode: require existing authentication
-    if !is_authorized {
+    // Normal mode: create client and check session
+    let telegram_client = TelegramClient::new(&config.telegram)
+        .await
+        .context("Failed to create Telegram client")?;
+
+    // Verify we have a valid session
+    if !telegram_client.is_connected().await {
         anyhow::bail!(
-            "Not authenticated. Run with --setup flag to authenticate first:\n\
-            telegram-mcp -- --setup"
+            "Not authenticated. Session file may be missing or invalid.\n\
+            Run with --setup flag to authenticate first:\n\
+            \n  telegram-mcp --setup --config <config-file>\n\
+            \nMake sure TELEGRAM_API_HASH and TELEGRAM_PHONE_NUMBER are set for setup."
         );
     }
 
@@ -68,8 +75,7 @@ async fn run_setup_mode(client: &TelegramClient, config: &Config) -> Result<()> 
     println!("Authenticating with Telegram...\n");
     println!("A login code will be sent to your Telegram app for the phone number in your config.");
 
-    let phone = config.telegram.phone_number.expose_secret();
-    let api_hash = config.telegram.api_hash.expose_secret();
+    let (api_hash, phone) = config.telegram.auth_credentials();
 
     interactive_auth(client, phone, api_hash)
         .await
