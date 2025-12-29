@@ -1801,13 +1801,26 @@ All 6 tools now have proper `#[tool]` attributes:
    - **Cause:** ChannelId used in converters.rs, not client.rs anymore
    - **Solution:** Remove unused import from client.rs
 
+4. **File-as-Module Pattern with #[path] Attribute**
+   - **Problem:** Using `#[path = "tests.rs"]` in server.rs resolves submodules relative to parent
+   - **Error:** `file not found for module` when submodules declared without explicit paths
+   - **Solution:** Use `#[path = "tests/xxx.rs"]` for each submodule in tests.rs
+   - **Key rule:** Never use `mod.rs` files - always use file-as-module pattern
+
 ### Patterns to Reuse
 
 ```rust
-// Pattern 1: External test directory with path attribute
+// Pattern 1: External test directory with file-as-module pattern
+// In server.rs:
 #[cfg(test)]
-#[path = "tests/mod.rs"]
+#[path = "tests.rs"]
 mod tests;
+
+// In tests.rs (NOT mod.rs!):
+#[path = "tests/channels.rs"]
+mod channels;
+#[path = "tests/links.rs"]
+mod links;
 
 // Pattern 2: Conditional re-export for test mocks
 #[cfg(test)]
@@ -1831,7 +1844,7 @@ pub use trait_def::TelegramClientTrait;
 ### Files Created/Modified
 
 **Created:**
-- `src/mcp/tests/mod.rs` - Test module declarations
+- `src/mcp/tests.rs` - Test module declarations (file-as-module pattern)
 - `src/mcp/tests/server_core.rs` - Server creation tests
 - `src/mcp/tests/status.rs` - Status tool tests
 - `src/mcp/tests/channels.rs` - Channel tool tests
@@ -1839,7 +1852,7 @@ pub use trait_def::TelegramClientTrait;
 - `src/mcp/tests/search.rs` - Search tool tests
 - `src/telegram/trait_def.rs` - TelegramClientTrait definition
 - `src/telegram/converters.rs` - Type conversion helpers
-- `src/telegram/tests/mod.rs` - Test module declarations
+- `src/telegram/tests.rs` - Test module declarations (file-as-module pattern)
 - `src/telegram/tests/client_tests.rs` - Client mock tests
 
 **Modified:**

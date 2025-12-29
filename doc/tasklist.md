@@ -340,8 +340,8 @@ src/mcp/
 ├── tools.rs            # Re-exports types module
 ├── tools/
 │   └── types.rs        # Request/response types
+├── tests.rs            # Test module declarations (file-as-module pattern)
 └── tests/
-    ├── mod.rs          # Module declarations
     ├── server_core.rs  # Server creation tests
     ├── status.rs       # check_mcp_status tests
     ├── channels.rs     # channel tool tests
@@ -354,8 +354,8 @@ src/telegram/
 ├── converters.rs       # Type conversion helpers
 ├── auth.rs             # Authentication
 ├── types.rs            # Domain types
+├── tests.rs            # Test module declarations (file-as-module pattern)
 └── tests/
-    ├── mod.rs          # Module declarations
     └── client_tests.rs # Client mock tests
 ```
 
