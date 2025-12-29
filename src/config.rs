@@ -144,6 +144,7 @@ impl Config {
     /// Load configuration from a specific path or default location
     ///
     /// If `config_path` is Some, uses that path. Otherwise, resolves the default path.
+    /// Environment variables using `${VAR}` syntax are expanded before parsing.
     pub fn load_from(config_path: Option<&std::path::Path>) -> anyhow::Result<Self> {
         use anyhow::Context;
 
@@ -155,11 +156,12 @@ impl Config {
         let content = std::fs::read_to_string(&path)
             .context(format!("Failed to read config: {}", path.display()))?;
 
-        let mut config: Config = toml::from_str(&content).context("Failed to parse config.toml")?;
+        // Expand environment variables BEFORE parsing TOML
+        // This allows ${VAR} syntax in any field, including numeric fields like api_id
+        let expanded_content = expand_env_vars(&content)?;
 
-        // Expand environment variables in sensitive fields
-        config.telegram.api_hash = expand_env_vars_secret(&config.telegram.api_hash)?;
-        config.telegram.phone_number = expand_env_vars_secret(&config.telegram.phone_number)?;
+        let mut config: Config =
+            toml::from_str(&expanded_content).context("Failed to parse config.toml")?;
 
         // Apply defaults (currently no-op, but kept for future use)
         config.apply_defaults();
@@ -209,12 +211,6 @@ impl Config {
     }
 }
 
-fn expand_env_vars_secret(secret: &SecretString) -> anyhow::Result<SecretString> {
-    let value = secret.expose_secret();
-    let expanded = expand_env_vars(value)?;
-    Ok(SecretString::new(expanded.into_boxed_str()))
-}
-
 fn expand_env_vars(value: &str) -> anyhow::Result<String> {
     let mut result = value.to_string();
 
@@ -223,7 +219,24 @@ fn expand_env_vars(value: &str) -> anyhow::Result<String> {
             let end = start + end_offset;
             let var_name = &result[start + 2..end];
             let var_value = std::env::var(var_name).unwrap_or_default();
-            result.replace_range(start..=end, &var_value);
+
+            // Check if this is a quoted value that's ONLY an env var: "= \"${VAR}\""
+            // If so and the value is purely numeric (digits only), unquote for TOML parsing
+            let is_quoted_only_env_var = start >= 1
+                && result.as_bytes().get(start - 1) == Some(&b'"')
+                && result.as_bytes().get(end + 1) == Some(&b'"');
+
+            // Only unquote if value is purely digits (no +/- signs, no decimals)
+            // This ensures phone numbers like "+1234567890" stay as strings
+            let is_pure_integer =
+                !var_value.is_empty() && var_value.chars().all(|c| c.is_ascii_digit());
+
+            if is_quoted_only_env_var && is_pure_integer {
+                // Replace including surrounding quotes: "12345" -> 12345
+                result.replace_range((start - 1)..=(end + 1), &var_value);
+            } else {
+                result.replace_range(start..=end, &var_value);
+            }
         } else {
             break;
         }
@@ -280,6 +293,29 @@ mod tests {
     fn test_expand_env_vars_incomplete_syntax() {
         let result = expand_env_vars("${INCOMPLETE").unwrap();
         assert_eq!(result, "${INCOMPLETE");
+    }
+
+    #[test]
+    fn test_expand_env_vars_numeric_unquoting() {
+        // When a quoted TOML value contains only an env var with a pure numeric value,
+        // it should be unquoted to allow parsing as integer
+        unsafe {
+            env::set_var("TEST_NUM", "12345");
+            env::set_var("TEST_PHONE", "+1234567890");
+        }
+
+        // Pure number should be unquoted
+        let result = expand_env_vars(r#"api_id = "${TEST_NUM}""#).unwrap();
+        assert_eq!(result, "api_id = 12345");
+
+        // Phone number (with +) should remain quoted
+        let result = expand_env_vars(r#"phone = "${TEST_PHONE}""#).unwrap();
+        assert_eq!(result, r#"phone = "+1234567890""#);
+
+        unsafe {
+            env::remove_var("TEST_NUM");
+            env::remove_var("TEST_PHONE");
+        }
     }
 
     fn create_test_config(api_id: i32, api_hash: &str, phone_number: &str) -> Config {
@@ -387,9 +423,10 @@ format = "compact"
     fn test_load_config_with_env_vars() {
         let temp_dir = env::temp_dir();
         let config_path = temp_dir.join("test_config_env.toml");
+        // Test that ALL fields can use ${VAR} syntax, including numeric api_id
         let config_content = r#"
 [telegram]
-api_id = 12345
+api_id = "${TEST_API_ID}"
 api_hash = "${TEST_API_HASH}"
 phone_number = "${TEST_PHONE}"
 session_file = "/tmp/session.bin"
@@ -410,6 +447,7 @@ format = "compact"
         fs::write(&config_path, config_content).unwrap();
 
         unsafe {
+            env::set_var("TEST_API_ID", "98765");
             env::set_var("TEST_API_HASH", "expanded_hash");
             env::set_var("TEST_PHONE", "+9876543210");
             env::set_var("TELEGRAM_MCP_CONFIG", &config_path);
@@ -418,6 +456,7 @@ format = "compact"
         let result = Config::load();
 
         unsafe {
+            env::remove_var("TEST_API_ID");
             env::remove_var("TEST_API_HASH");
             env::remove_var("TEST_PHONE");
             env::remove_var("TELEGRAM_MCP_CONFIG");
@@ -426,6 +465,7 @@ format = "compact"
 
         assert!(result.is_ok());
         let config = result.unwrap();
+        assert_eq!(config.telegram.api_id, 98765);
         assert_eq!(config.telegram.api_hash.expose_secret(), "expanded_hash");
         assert_eq!(config.telegram.phone_number.expose_secret(), "+9876543210");
     }

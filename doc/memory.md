@@ -1866,7 +1866,7 @@ pub use trait_def::TelegramClientTrait;
 
 ### Summary
 - ✅ All 13 development phases complete
-- ✅ 139 tests passing (4 ignored for CI/CD compatibility)
+- ✅ 140 tests passing (4 ignored for CI/CD compatibility)
 - ✅ Real grammers integration with SqliteSession
 - ✅ CLI with --setup, --session-file, --config options
 - ✅ Signal handling (SIGTERM, SIGINT) for graceful shutdown
@@ -1875,3 +1875,55 @@ pub use trait_def::TelegramClientTrait;
 - ✅ Manual testing with real Telegram account - PASSED
 - ✅ Manual testing with MCP client (Comet Browser) - PASSED
 - ✅ Release build created - `target/release/telegram-mcp`
+
+---
+
+## Bugfix: Environment Variable Expansion for Numeric Fields (2025-12-29)
+
+### Problem
+Config file with `api_id = "${TELEGRAM_API_ID}"` failed to parse:
+```
+invalid type: string "${TELEGRAM_API_ID}", expected i32
+```
+
+### Root Cause
+Environment variable expansion happened AFTER TOML parsing, but `api_id` is typed as `i32`. The TOML parser saw a string `"${VAR}"` and failed before expansion could occur.
+
+### Solution
+1. **Pre-parse expansion**: Expand env vars in raw TOML content BEFORE parsing
+2. **Smart numeric unquoting**: When a quoted TOML value is ONLY an env var (e.g., `"${VAR}"`) and the expanded value is purely numeric (digits only), remove the quotes so TOML parses it as an integer
+
+### Implementation (src/config.rs:214-244)
+```rust
+fn expand_env_vars(value: &str) -> anyhow::Result<String> {
+    // ...
+    // Check if quoted value is ONLY an env var: "= \"${VAR}\""
+    let is_quoted_only_env_var = start >= 1
+        && result.as_bytes().get(start - 1) == Some(&b'"')
+        && result.as_bytes().get(end + 1) == Some(&b'"');
+
+    // Only unquote if value is purely digits (no +/- signs)
+    // This ensures phone numbers like "+1234567890" stay as strings
+    let is_pure_integer = !var_value.is_empty()
+        && var_value.chars().all(|c| c.is_ascii_digit());
+
+    if is_quoted_only_env_var && is_pure_integer {
+        // Replace including quotes: "12345" -> 12345
+        result.replace_range((start - 1)..=(end + 1), &var_value);
+    } else {
+        result.replace_range(start..=end, &var_value);
+    }
+}
+```
+
+### Key Behavior
+| Config Value | Env Var Value | Result | Reason |
+|-------------|---------------|--------|--------|
+| `"${API_ID}"` | `12345` | `12345` | Pure digits → unquoted integer |
+| `"${PHONE}"` | `+1234567890` | `"+1234567890"` | Has `+` → stays quoted string |
+| `"${HASH}"` | `abc123` | `"abc123"` | Not numeric → stays quoted string |
+
+### Tests Added
+- `test_expand_env_vars_numeric_unquoting` - verifies pure numbers are unquoted, phone numbers stay quoted
+
+**Test count:** 139 → 140 tests
