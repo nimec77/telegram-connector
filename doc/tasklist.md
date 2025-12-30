@@ -22,10 +22,11 @@
 | 12 | Integration | ✅ Complete | 7/7 (CLI) | CLI, grammers, shutdown, rmcp tools |
 | 13 | Refactoring | ✅ Complete | - | Split large files, extract tests |
 | 14 | Conditional Credentials | ✅ Complete | 143 | api_id required, auth creds only for --setup |
+| 15 | File Logging | ⬜ Pending | - | Daily rotation, JSON format, 7-day retention |
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
-**Overall Progress:** 14/14 phases complete - All phases complete!
+**Overall Progress:** 14/15 phases complete
 
 ---
 
@@ -102,7 +103,7 @@
 
 **Test:** `cargo test logging` ✅ PASSED (13/13 tests)
 
-**Note:** File logging with rotation deferred to Phase 12 (Polish). Currently outputs to stderr only.
+**Note:** File logging with rotation deferred to Phase 15. Currently outputs to stderr only.
 
 ---
 
@@ -429,6 +430,76 @@ TELEGRAM_API_ID=12345 cargo run --bin telegram-mcp -- --config ./config.toml
 ```
 
 **Test:** `cargo test` ✅ (143 passing, 4 ignored)
+
+---
+
+## Phase 15: File Logging ⬜
+
+**Goal:** Persistent log files with daily rotation and smart message logging
+
+**Context:** Phase 4 implemented stderr logging only. File logging was deferred and is now needed for production debugging and monitoring.
+
+**Design Decisions:**
+- **Format:** JSON only (for file logs) - easier to parse, query, and aggregate
+- **Rotation:** Daily rotation with 7-day retention (industry standard, well-supported by tracing-appender)
+- **Location:** `~/.config/telegram-connector/logs/`
+- **Message content:** Log only message IDs, NOT full message text (privacy, log size)
+
+### 15.1 Configuration Extension ⬜
+- [ ] Add file logging fields to `LoggingConfig`:
+  ```rust
+  pub file_enabled: bool,        // default: true
+  pub file_path: PathBuf,        // default: ~/.config/telegram-connector/logs/
+  pub max_log_days: u32,         // default: 7
+  ```
+- [ ] Update `config.rs` with new fields and defaults
+- [ ] Update `config.example.toml` with file logging options
+- [ ] Write tests for new config fields
+
+### 15.2 File Appender Setup ⬜
+- [ ] Add `tracing-appender` dependency (already in Cargo.toml)
+- [ ] Update `logging.rs` to create file appender:
+  - [ ] Use `RollingFileAppender` with `Rotation::DAILY`
+  - [ ] Configure `max_log_files(7)` for 7-day retention
+  - [ ] Filename pattern: `telegram-connector.YYYY-MM-DD.log`
+- [ ] Create log directory if it doesn't exist
+- [ ] Write tests for file appender initialization
+
+### 15.3 Dual Output Layer ⬜
+- [ ] Configure tracing subscriber with two layers:
+  - [ ] stderr layer: configurable format (compact/pretty/json)
+  - [ ] file layer: always JSON format
+- [ ] Both layers share the same filter (log level)
+- [ ] Write tests for dual layer setup
+
+### 15.4 Smart Search Result Logging ⬜
+- [ ] Update MCP search_messages tool logging:
+  - [ ] Log: query, results_count, channels_searched, duration_ms
+  - [ ] Log: message_ids as `Vec<i64>` (NOT full message text)
+  - [ ] Do NOT log: message text, sender names, channel content
+- [ ] Example log entry:
+  ```json
+  {
+    "timestamp": "2025-12-14T16:30:00Z",
+    "level": "INFO",
+    "target": "telegram_connector::mcp",
+    "message": "Search completed",
+    "query": "AI news",
+    "results_count": 15,
+    "message_ids": [12345, 12346, 12347],
+    "channels_searched": 8,
+    "duration_ms": 342
+  }
+  ```
+- [ ] Write tests verifying message text is NOT logged
+
+### 15.5 Documentation & Testing ⬜
+- [ ] Update README.md with file logging documentation
+- [ ] Run `cargo clippy -- -D warnings`
+- [ ] Run `cargo fmt --check`
+- [ ] All tests passing
+
+**Test:** `cargo test logging` (expected: additional tests for file logging)
 
 ---
 
