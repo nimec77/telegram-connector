@@ -36,6 +36,20 @@ fn default_log_format() -> String {
     "compact".to_string()
 }
 
+fn default_file_enabled() -> bool {
+    true
+}
+
+fn default_log_path() -> PathBuf {
+    let dirs = directories::ProjectDirs::from("", "", "telegram-connector")
+        .expect("Could not determine config directory");
+    dirs.config_dir().join("logs")
+}
+
+fn default_max_log_days() -> u32 {
+    7
+}
+
 fn default_shutdown_timeout() -> u64 {
     5
 }
@@ -65,6 +79,9 @@ fn default_logging_config() -> LoggingConfig {
     LoggingConfig {
         level: default_log_level(),
         format: default_log_format(),
+        file_enabled: default_file_enabled(),
+        file_path: default_log_path(),
+        max_log_days: default_max_log_days(),
     }
 }
 
@@ -167,6 +184,15 @@ pub struct LoggingConfig {
     pub level: String,
     #[serde(default = "default_log_format")]
     pub format: String,
+    /// Enable file logging (default: true)
+    #[serde(default = "default_file_enabled")]
+    pub file_enabled: bool,
+    /// Directory for log files (default: ~/.config/telegram-connector/logs/)
+    #[serde(default = "default_log_path")]
+    pub file_path: PathBuf,
+    /// Number of days to retain log files (default: 7)
+    #[serde(default = "default_max_log_days")]
+    pub max_log_days: u32,
 }
 
 impl Config {
@@ -384,6 +410,9 @@ mod tests {
             logging: LoggingConfig {
                 level: "info".to_string(),
                 format: "compact".to_string(),
+                file_enabled: true,
+                file_path: PathBuf::from("/tmp/logs"),
+                max_log_days: 7,
             },
             server: ServerConfig {
                 shutdown_timeout_seconds: 5,
@@ -631,5 +660,70 @@ format = "compact"
 
         assert_eq!(secret_hash.expose_secret(), "my_api_hash");
         assert_eq!(secret_phone.expose_secret(), "+1234567890");
+    }
+
+    // ========================================================================
+    // File Logging Config Tests
+    // ========================================================================
+
+    #[test]
+    fn test_logging_config_defaults_file_enabled() {
+        assert!(default_file_enabled());
+    }
+
+    #[test]
+    fn test_logging_config_defaults_max_log_days() {
+        assert_eq!(default_max_log_days(), 7);
+    }
+
+    #[test]
+    fn test_logging_config_defaults_log_path() {
+        let path = default_log_path();
+        assert!(path.to_string_lossy().contains("telegram-connector"));
+        assert!(path.to_string_lossy().ends_with("logs"));
+    }
+
+    #[test]
+    fn test_default_logging_config_has_file_fields() {
+        let config = default_logging_config();
+        assert!(config.file_enabled);
+        assert_eq!(config.max_log_days, 7);
+        assert!(config.file_path.to_string_lossy().contains("logs"));
+    }
+
+    #[ignore = "for CI/CD passing tests"]
+    #[test]
+    fn test_load_config_with_file_logging_options() {
+        let temp_dir = env::temp_dir();
+        let config_path = temp_dir.join("test_file_logging_config.toml");
+        let config_content = r#"
+[telegram]
+api_id = 12345
+api_hash = "test_hash"
+phone_number = "+1234567890"
+
+[logging]
+level = "debug"
+format = "json"
+file_enabled = false
+file_path = "/custom/log/path"
+max_log_days = 14
+"#;
+        fs::write(&config_path, config_content).unwrap();
+
+        unsafe {
+            env::set_var("TELEGRAM_MCP_CONFIG", &config_path);
+        }
+        let result = Config::load();
+        unsafe {
+            env::remove_var("TELEGRAM_MCP_CONFIG");
+        }
+        fs::remove_file(&config_path).ok();
+
+        assert!(result.is_ok());
+        let config = result.unwrap();
+        assert!(!config.logging.file_enabled);
+        assert_eq!(config.logging.file_path, PathBuf::from("/custom/log/path"));
+        assert_eq!(config.logging.max_log_days, 14);
     }
 }

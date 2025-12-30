@@ -36,3 +36,8 @@ phone_number = "+1234567890"
 # Optional: Logging configuration
 # level = "info"                           # Default: "info" (trace, debug, info, warn, error)
 # format = "compact"                       # Default: "compact" (compact, pretty, json)
+#
+# File logging (JSON format, daily rotation)
+# file_enabled = true                      # Default: true
+# file_path = "~/.config/telegram-connector/logs"  # Default: logs directory
+# max_log_days = 7                         # Default: 7 days retention

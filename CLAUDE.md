@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Telegram MCP Connector - a Model Context Protocol (MCP) service that enables Claude to search Russian-language Telegram channels and messages in real-time. Built in Rust using the `rmcp` SDK and `grammers` Telegram client.
 
-**Current Status:** PROJECT COMPLETE ✅ - All 14 phases done. Real grammers integration, CLI with --setup, conditional credentials (api_hash/phone only for --setup), signal handling, rmcp tool attributes. 143 tests (all passing, 4 ignored).
+**Current Status:** PROJECT COMPLETE ✅ - All 15 phases done. Real grammers integration, CLI with --setup, conditional credentials (api_hash/phone only for --setup), signal handling, rmcp tool attributes, file logging with daily rotation. 153 tests (all passing, 5 ignored).
 
 ## Build & Test Commands
 
@@ -15,13 +15,13 @@ Telegram MCP Connector - a Model Context Protocol (MCP) service that enables Cla
 cargo build
 cargo build --release
 
-# Run all tests (143 tests passing, 4 ignored)
+# Run all tests (153 tests passing, 5 ignored)
 cargo test
 
 # Run tests for specific module
 cargo test error           # 11 tests
-cargo test config -- --test-threads=1  # 19 tests + 4 ignored (serial for env var tests)
-cargo test logging         # 13 tests
+cargo test config -- --test-threads=1  # 23 tests + 5 ignored (serial for env var tests)
+cargo test logging         # 19 tests
 cargo test types           # 42 tests
 cargo test link            # 8 tests
 cargo test rate_limiter    # 19 tests
@@ -81,7 +81,7 @@ cargo run --bin telegram-mcp
 | `cli.rs` | CLI argument parsing with clap (--setup, --session-file, --config) |
 | `error.rs` | Error types with thiserror (RateLimit includes retry_after) |
 | `config.rs` | TOML config loading, env var expansion, SecretString, ServerConfig |
-| `logging.rs` | tracing subscriber setup, sensitive data redaction |
+| `logging.rs` | tracing subscriber setup, dual layer (stderr + file), sensitive data redaction |
 | `rate_limiter.rs` | Token bucket rate limiting with retry_after calculation |
 | `link.rs` | Telegram deep link generation (tg://, https://t.me) |
 | `main.rs` | Entry point with signal handling, setup mode, MCP server |
@@ -203,5 +203,8 @@ Current progress tracked in:
 | 10 | MCP Server | ✅ | 19/19 |
 | 11 | MCP Tools | ✅ | 4/4 |
 | 12 | Integration | ✅ | 7/7 (CLI) |
+| 13 | Refactoring | ✅ | - |
+| 14 | Conditional Credentials | ✅ | 3/3 |
+| 15 | File Logging | ✅ | 10/10 |
 
-**Overall:** 12/12 phases complete, 139 tests passing (4 ignored). Manual testing passed. Project is production-ready.
+**Overall:** 15/15 phases complete, 153 tests passing (5 ignored). Manual testing passed. Project is production-ready.

@@ -1985,3 +1985,93 @@ TELEGRAM_API_ID=... TELEGRAM_API_HASH=... TELEGRAM_PHONE_NUMBER=... \
 # Normal operation (only api_id needed)
 TELEGRAM_API_ID=... cargo run -- --config ./config.toml
 ```
+
+---
+
+## Phase 15: File Logging (2025-12-30)
+
+### Problem
+Phase 4 implemented stderr logging only. File logging was deferred and is now needed for production debugging and monitoring. Concerns about logging full message text (size bloat, privacy issues).
+
+### Solution
+Implemented dual-layer logging with daily rotation:
+- **stderr**: Configurable format (compact/pretty/json)
+- **file**: Always JSON format, daily rotation, 7-day retention
+- **Search logging**: Message IDs only (not full message text)
+
+### Key Changes
+
+1. **config.rs** - Extended LoggingConfig:
+   ```rust
+   pub struct LoggingConfig {
+       pub level: String,
+       pub format: String,
+       #[serde(default = "default_file_enabled")]
+       pub file_enabled: bool,  // default: true
+       #[serde(default = "default_log_path")]
+       pub file_path: PathBuf,  // default: ~/.config/telegram-connector/logs/
+       #[serde(default = "default_max_log_days")]
+       pub max_log_days: u32,   // default: 7
+   }
+   ```
+
+2. **logging.rs** - Dual layer subscriber:
+   - `build_stderr_layer()` - configurable format (compact/pretty/json)
+   - `build_file_layer()` - always JSON, daily rotation via `RollingFileAppender`
+   - Auto-creates log directory if it doesn't exist
+
+3. **mcp/server.rs** - Smart search logging (line 276-289):
+   ```rust
+   tracing::info!(
+       query = %params.query,
+       channel_id = ?params.channel_id.map(|c| c.get()),
+       hours_back = params.hours_back,
+       limit = params.limit,
+       total_found = result.total_found,
+       messages_returned = message_ids.len(),
+       message_ids = ?message_ids,  // IDs only, NOT full text
+       search_time_ms = result.search_time_ms,
+       channels_searched = result.query_metadata.channels_searched,
+       "Search completed"
+   );
+   ```
+
+### Design Decisions
+
+1. **Daily rotation vs size-based** - Chose daily rotation (industry standard, well-supported by tracing-appender, easier to correlate logs by date)
+
+2. **Message IDs only** - Log only message IDs, NOT full message text:
+   - Prevents log file bloat (messages can be very long)
+   - Privacy protection (message content not persisted)
+   - Message IDs are sufficient for debugging (can look up if needed)
+
+3. **JSON format for files** - Always JSON for file logs (easier to parse, query, aggregate)
+
+4. **File logging enabled by default** - Sensible defaults for production use
+
+### Files Modified
+
+1. **src/config.rs** - Added file logging fields + 4 new tests
+2. **src/logging.rs** - Dual layer implementation + 6 new tests
+3. **src/mcp/server.rs** - Search result logging (IDs only)
+4. **config.example.toml** - Added file logging options
+5. **doc/vision.md** - Updated §8.3-8.4 for daily rotation
+6. **doc/tasklist.md** - Marked Phase 15 complete
+
+### Test Count
+143 → 153 tests (+10 new logging tests)
+
+### Example Log Entry
+```json
+{
+  "timestamp": "2025-12-30T16:30:00Z",
+  "level": "INFO",
+  "target": "telegram_connector::mcp::server",
+  "message": "Search completed",
+  "query": "AI news",
+  "total_found": 15,
+  "message_ids": [12345, 12346, 12347],
+  "channels_searched": 8,
+  "search_time_ms": 342
+}
+```

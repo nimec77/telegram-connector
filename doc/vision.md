@@ -1359,18 +1359,18 @@ tracing-appender = "0.2"
 
 ### 8.3 Log File Rotation
 
-**Strategy:** Size-based rotation with maximum file count
+**Strategy:** Daily rotation with configurable retention
 
 | Parameter | Value |
 |-----------|-------|
-| Max file size | 10 MB |
-| Max files | 5 |
-| Naming | `telegram-connector.log`, `telegram-connector.log.1`, etc. |
+| Rotation | Daily (at midnight) |
+| Retention | 7 days (configurable via `max_log_days`) |
+| Naming | `telegram-connector.log.YYYY-MM-DD` |
 
 **Behavior:**
-- When `telegram-connector.log` reaches 10 MB, rotate to `.log.1`
-- Keep maximum 5 rotated files
-- Oldest file (`.log.5`) is deleted when new rotation occurs
+- New log file created daily with date suffix
+- Files older than `max_log_days` are automatically cleaned up
+- Uses `tracing-appender` with `Rotation::DAILY`
 
 ---
 
@@ -1381,11 +1381,10 @@ tracing-appender = "0.2"
 level = "info"
 format = "compact"
 
-# File logging
+# File logging (JSON format, daily rotation)
 file_enabled = true                                    # Default: true
 file_path = "~/.config/telegram-connector/logs/"       # Default
-max_file_size_mb = 10                                  # Default: 10
-max_files = 5                                          # Default: 5
+max_log_days = 7                                       # Default: 7 days retention
 ```
 
 **Updated LoggingConfig:**
@@ -1394,19 +1393,16 @@ max_files = 5                                          # Default: 5
 pub struct LoggingConfig {
     pub level: String,
     pub format: String,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_file_enabled")]
     pub file_enabled: bool,
     #[serde(default = "default_log_path")]
     pub file_path: PathBuf,
-    #[serde(default = "default_max_size")]
-    pub max_file_size_mb: u64,
-    #[serde(default = "default_max_files")]
-    pub max_files: u32,
+    #[serde(default = "default_max_log_days")]
+    pub max_log_days: u32,
 }
 
-fn default_true() -> bool { true }
-fn default_max_size() -> u64 { 10 }
-fn default_max_files() -> u32 { 5 }
+fn default_file_enabled() -> bool { true }
+fn default_max_log_days() -> u32 { 7 }
 ```
 
 ---
@@ -1504,14 +1500,16 @@ pub fn init(config: &LoggingConfig) -> Result<()> {
         _ => stderr_layer.compact().boxed(),
     };
 
-    // File appender with rotation
+    // File appender with daily rotation
     let file_appender = if config.file_enabled {
-        let appender = RollingFileAppender::builder()
-            .rotation(Rotation::NEVER)  // We handle size-based rotation manually
-            .max_log_files(config.max_files as usize)
-            .filename_prefix("telegram-connector")
-            .filename_suffix("log")
-            .build(&config.file_path)?;
+        // Create log directory if it doesn't exist
+        std::fs::create_dir_all(&config.file_path)?;
+
+        let appender = RollingFileAppender::new(
+            Rotation::DAILY,
+            &config.file_path,
+            "telegram-connector.log",
+        );
 
         Some(
             tracing_subscriber::fmt::layer()

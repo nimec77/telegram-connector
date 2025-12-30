@@ -273,6 +273,21 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             .await
             .map_err(|e| e.to_string())?;
 
+        // Log search results (IDs only, not message text - for privacy and log size)
+        let message_ids: Vec<i64> = result.messages.iter().map(|m| m.id.get()).collect();
+        tracing::info!(
+            query = %params.query,
+            channel_id = ?params.channel_id.map(|c| c.get()),
+            hours_back = params.hours_back,
+            limit = params.limit,
+            total_found = result.total_found,
+            messages_returned = message_ids.len(),
+            message_ids = ?message_ids,
+            search_time_ms = result.search_time_ms,
+            channels_searched = result.query_metadata.channels_searched,
+            "Search completed"
+        );
+
         Ok(Json(result))
     }
 }
