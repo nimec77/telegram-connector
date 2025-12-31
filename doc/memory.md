@@ -2154,9 +2154,35 @@ pub struct SearchParams {
 // ""        | None         | ❌ Error (too broad)
 ```
 
+### 16.2 MCP Tool Update (Complete - 2025-12-31)
+
+**What Was Implemented:**
+
+1. **SearchRequest Update** (src/mcp/tools/types.rs:134-155)
+   - Added `media_filter: Option<MediaFilter>` field
+   - Added `Default` derive for easier test construction
+   - Comprehensive schemars description explaining metadata-based filtering
+
+2. **Validation Logic Update** (src/mcp/server.rs:223-229)
+   - Allow empty query when `media_filter` is set
+   - Reject empty query AND no media_filter (too broad)
+   - Updated error message to explain media_filter option
+
+3. **Wiring** (src/mcp/server.rs:270)
+   - `media_filter` passed from request to `SearchParams`
+   - Added to search completion logging
+
+**Tests Added (5 new tests):**
+- `search_request_with_media_filter_deserializes`
+- `search_request_media_filter_snake_case`
+- `search_request_all_media_filters_deserialize`
+- `search_allows_empty_query_with_media_filter`
+- `search_passes_media_filter_to_params`
+
+**Test Count:** 158 → 163 (+5)
+
 ### Remaining Work
 
-- **16.2 MCP Tool Update** - Add `media_filter` to `SearchMessagesRequest`
 - **16.3 Telegram Client** - Map `MediaFilter` to grammers `InputMessagesFilter`
 - **16.4 Integration Testing** - Test all filter combinations
 - **16.5 Documentation** - Update README with examples
