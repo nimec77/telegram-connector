@@ -1,6 +1,6 @@
 //! MCP tool request and response types with JSON schemas
 
-use crate::telegram::types::Channel;
+use crate::telegram::types::{Channel, MediaFilter};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -132,9 +132,11 @@ pub struct OpenMessageResponse {
 // ============================================================================
 
 /// Request for search_messages tool
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, JsonSchema, Default)]
 pub struct SearchRequest {
-    #[schemars(description = "Search query (required, minimum length: 1)")]
+    #[schemars(
+        description = "Search query. Required unless media_filter is set. Can be empty when filtering by media type only."
+    )]
     pub query: String,
 
     #[schemars(description = "Optional: Filter by specific channel ID")]
@@ -145,6 +147,11 @@ pub struct SearchRequest {
 
     #[schemars(description = "Maximum results to return (default: 20, max: 100)")]
     pub limit: Option<u32>,
+
+    #[schemars(
+        description = "Optional: Filter by media type. This is metadata-based filtering (filters by attachment type), NOT content recognition. No OCR, no speech-to-text. Example: 'photo' returns messages WITH photos attached."
+    )]
+    pub media_filter: Option<MediaFilter>,
 }
 
 // Response: SearchResult (from telegram/types.rs) which contains Vec<Message>
@@ -191,5 +198,51 @@ mod tests {
 
         assert_eq!(request.query, "test");
         assert!(request.channel_id.is_none());
+        assert!(request.media_filter.is_none());
+    }
+
+    #[test]
+    fn search_request_with_media_filter_deserializes() {
+        let json = r#"{"query": "AI news", "media_filter": "photo"}"#;
+        let request: SearchRequest = serde_json::from_str(json).unwrap();
+
+        assert_eq!(request.query, "AI news");
+        assert_eq!(request.media_filter, Some(MediaFilter::Photo));
+    }
+
+    #[test]
+    fn search_request_media_filter_snake_case() {
+        let json = r#"{"query": "", "media_filter": "photo_video"}"#;
+        let request: SearchRequest = serde_json::from_str(json).unwrap();
+
+        assert_eq!(request.query, "");
+        assert_eq!(request.media_filter, Some(MediaFilter::PhotoVideo));
+    }
+
+    #[test]
+    fn search_request_all_media_filters_deserialize() {
+        let filters = vec![
+            ("photo", MediaFilter::Photo),
+            ("video", MediaFilter::Video),
+            ("photo_video", MediaFilter::PhotoVideo),
+            ("document", MediaFilter::Document),
+            ("audio", MediaFilter::Audio),
+            ("voice", MediaFilter::Voice),
+            ("video_note", MediaFilter::VideoNote),
+            ("gif", MediaFilter::Gif),
+            ("url", MediaFilter::Url),
+            ("pinned", MediaFilter::Pinned),
+        ];
+
+        for (json_value, expected) in filters {
+            let json = format!(r#"{{"query": "test", "media_filter": "{}"}}"#, json_value);
+            let request: SearchRequest = serde_json::from_str(&json).unwrap();
+            assert_eq!(
+                request.media_filter,
+                Some(expected),
+                "Failed for filter: {}",
+                json_value
+            );
+        }
     }
 }
