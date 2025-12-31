@@ -23,10 +23,11 @@
 | 13 | Refactoring | ✅ Complete | - | Split large files, extract tests |
 | 14 | Conditional Credentials | ✅ Complete | 143 | api_id required, auth creds only for --setup |
 | 15 | File Logging | ✅ Complete | 153 | Daily rotation, JSON format, 7-day retention |
+| 16 | Media Search | ⬜ Pending | - | Filter by media type (photos, videos, docs) |
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
-**Overall Progress:** 15/15 phases complete
+**Overall Progress:** 15/16 phases complete
 
 ---
 
@@ -498,6 +499,83 @@ TELEGRAM_API_ID=12345 cargo run --bin telegram-mcp -- --config ./config.toml
 - [x] All tests passing ✅
 
 **Test:** `cargo test logging` ✅ (23 tests, 1 ignored)
+
+---
+
+## Phase 16: Media Search Filtering ⬜
+
+**Goal:** Filter search results by media type using Telegram's server-side filtering
+
+**Context:** Currently `search_messages` only supports text queries. This phase adds an optional `media_filter` parameter to filter by attachment type (photos, videos, documents, etc.).
+
+**Important:** This is **metadata-based filtering**, NOT content recognition:
+- `photo` filter returns messages WITH photos attached
+- It does NOT search for objects/text inside photos
+- No OCR, no speech-to-text, no image recognition
+
+### 16.1 Domain Types ⬜
+- [ ] Add `MediaFilter` enum to `src/telegram/types.rs`:
+  ```rust
+  pub enum MediaFilter {
+      Photo,       // inputMessagesFilterPhotos
+      Video,       // inputMessagesFilterVideo
+      PhotoVideo,  // inputMessagesFilterPhotoVideo
+      Document,    // inputMessagesFilterDocument
+      Audio,       // inputMessagesFilterMusic
+      Voice,       // inputMessagesFilterVoice
+      VideoNote,   // inputMessagesFilterRoundVideo
+      Gif,         // inputMessagesFilterGif
+      Url,         // inputMessagesFilterUrl
+      Pinned,      // inputMessagesFilterPinned
+  }
+  ```
+- [ ] Add `media_filter: Option<MediaFilter>` to `SearchParams`
+- [ ] Add JsonSchema derive for MCP tool parameter
+- [ ] Write tests for MediaFilter serialization
+
+### 16.2 MCP Tool Update ⬜
+- [ ] Update `SearchMessagesRequest` in `src/mcp/tools/types.rs`:
+  - [ ] Add optional `media_filter` field
+  - [ ] Update JSON schema description
+- [ ] Update validation in `search_messages` tool:
+  - [ ] Allow empty query when `media_filter` is set
+  - [ ] Reject empty query AND no media_filter
+- [ ] Write tests for new parameter validation
+
+### 16.3 Telegram Client Implementation ⬜
+- [ ] Research grammers API for `InputMessagesFilter`
+- [ ] Option A: Use raw TL API via `client.invoke()`
+- [ ] Option B: Check if grammers search builder supports filters
+- [ ] Update `TelegramClient::search_messages()`:
+  - [ ] Map `MediaFilter` to `grammers_tl_types::enums::MessagesFilter`
+  - [ ] Pass filter to search request
+- [ ] Write tests with mock client
+
+### 16.4 Integration Testing ⬜
+- [ ] Test text + media filter combination
+- [ ] Test media filter only (empty query)
+- [ ] Test global search with media filter
+- [ ] Test channel-specific search with media filter
+- [ ] Manual testing with real Telegram account
+
+### 16.5 Documentation ⬜
+- [ ] Update idea.md ✅ (already done)
+- [ ] Update vision.md ✅ (already done)
+- [ ] Update README.md with media filter examples
+- [ ] Run `cargo clippy -- -D warnings`
+- [ ] Run `cargo fmt --check`
+- [ ] All tests passing
+
+**Filter Behavior Matrix:**
+
+| Query | media_filter | Result |
+|-------|--------------|--------|
+| "AI news" | None | Messages containing "AI news" |
+| "AI news" | `photo` | Messages with "AI news" AND photo attached |
+| "" (empty) | `document` | All documents (no text filtering) |
+| "" (empty) | None | ❌ Error (too broad) |
+
+**Test:** `cargo test media` (pending)
 
 ---
 
