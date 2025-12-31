@@ -507,6 +507,9 @@ For testability, external dependencies are behind traits:
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
 pub trait TelegramClientTrait: Send + Sync {
+    /// Search messages with optional media filter.
+    /// When media_filter is set, uses Telegram's InputMessagesFilter for
+    /// efficient server-side filtering (no need to fetch all and filter locally).
     async fn search_messages(&self, params: &SearchParams) -> Result<SearchResult>;
     async fn get_channel_info(&self, identifier: &str) -> Result<Channel>;
     async fn get_subscribed_channels(&self, limit: u32, offset: u32) -> Result<Vec<Channel>>;
@@ -650,7 +653,7 @@ pub struct Channel {
     pub last_message_date: Option<DateTime<Utc>>,
 }
 
-/// Media type enumeration
+/// Media type enumeration (for message content)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MediaType {
@@ -659,13 +662,40 @@ pub enum MediaType {
     Video,
     Document,
     Audio,
+    Voice,
+    VideoNote,
     Animation,
+    Sticker,
+    Contact,
+    Location,
+    Venue,
+    Poll,
+    Dice,
 }
 
 impl Default for MediaType {
     fn default() -> Self {
         Self::None
     }
+}
+
+/// Media filter for search (maps to Telegram's InputMessagesFilter)
+/// Note: This is metadata-based filtering, NOT content recognition.
+/// Example: "photo" filter returns messages WITH photos attached,
+/// it does NOT search for objects/text inside photos.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MediaFilter {
+    Photo,           // inputMessagesFilterPhotos
+    Video,           // inputMessagesFilterVideo
+    PhotoVideo,      // inputMessagesFilterPhotoVideo (media gallery)
+    Document,        // inputMessagesFilterDocument
+    Audio,           // inputMessagesFilterMusic
+    Voice,           // inputMessagesFilterVoice
+    VideoNote,       // inputMessagesFilterRoundVideo
+    Gif,             // inputMessagesFilterGif
+    Url,             // inputMessagesFilterUrl (messages with links)
+    Pinned,          // inputMessagesFilterPinned
 }
 ```
 
@@ -683,6 +713,11 @@ pub struct SearchParams {
     pub channel_id: Option<ChannelId>,
     pub hours_back: u32,
     pub limit: u32,
+    /// Optional media filter for server-side filtering by attachment type.
+    /// Note: This is metadata-based filtering, NOT content recognition.
+    /// When set, only messages with the specified media type are returned.
+    /// The text query still applies to message text/caption.
+    pub media_filter: Option<MediaFilter>,
 }
 
 impl SearchParams {
@@ -699,6 +734,7 @@ impl Default for SearchParams {
             channel_id: None,
             hours_back: Self::DEFAULT_HOURS_BACK,
             limit: Self::DEFAULT_LIMIT,
+            media_filter: None,
         }
     }
 }
@@ -1006,14 +1042,25 @@ async fn shutdown_signal() {
 ### 6.5 Search Messages Flow
 
 ```
-search_messages(query, channel_id?, hours_back, limit)
+search_messages(query, channel_id?, hours_back, limit, media_filter?)
                       │
                       ▼
          ┌────────────────────────┐
          │ Validate parameters   │
-         │ - query not empty     │
+         │ - query not empty*    │
          │ - hours_back ≤ 72     │
          │ - limit ≤ 100         │
+         │ - media_filter valid  │
+         │                       │
+         │ *query can be empty   │
+         │  if media_filter set  │
+         └────────────────────────┘
+                      │
+                      ▼
+         ┌────────────────────────┐
+         │ Build search request  │
+         │ with InputMessagesFilter│
+         │ (if media_filter set) │
          └────────────────────────┘
                       │
                       ▼
@@ -1030,6 +1077,7 @@ search_messages(query, channel_id?, hours_back, limit)
               │             ▼
               │      For each channel:
               │      ├─► Search with query
+              │      ├─► Apply media filter (server-side)
               │      ├─► Apply time filter
               │      └─► Collect results
               │          (continue on error)
@@ -1056,6 +1104,20 @@ search_messages(query, channel_id?, hours_back, limit)
                      ▼
          Return SearchResult
 ```
+
+**Media Filter Behavior:**
+
+| Scenario | Query | media_filter | Result |
+|----------|-------|--------------|--------|
+| Text search only | "AI news" | None | Messages containing "AI news" |
+| Text + media | "AI news" | `photo` | Messages with "AI news" AND photo attached |
+| Media only | "" (empty) | `document` | All documents (no text filtering) |
+| All messages | "" | None | Not allowed (too broad) |
+
+**Important:** Media filtering is **metadata-based**, not content-based:
+- `photo` filter returns messages with photos, NOT photos containing certain objects
+- `voice` filter returns voice messages, NOT audio transcribed to searchable text
+- `document` filter returns document attachments, NOT text extracted from PDFs
 
 ---
 

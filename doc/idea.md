@@ -67,11 +67,15 @@ A **Model Context Protocol (MCP) service** that enables the Comet browser (power
 
 **Out of Scope (V2+):**
 - Channel discovery/search
-- File/media/image/video filters
 - Multi-account support
 - Session expiration re-authentication
 - Advanced integrations (export, webhooks, caching)
 - Non-macOS platforms (will be added)
+
+**V1.1 Scope (Phase 16: Media Search Filtering):**
+- Filter messages by media type (photos, videos, documents, etc.)
+- Server-side filtering using Telegram's InputMessagesFilter API
+- Combined text + media type search
 
 ### Target Users
 
@@ -361,6 +365,11 @@ mockall = "0.13"
         "minimum": 1,
         "maximum": 100,
         "default": 20
+      },
+      "media_filter": {
+        "type": "string",
+        "description": "Optional: Filter by media type. Server-side filtering for efficiency. Note: This filters by attachment type, NOT content recognition (no OCR, no speech-to-text).",
+        "enum": ["photo", "video", "photo_video", "document", "audio", "voice", "video_note", "gif", "url", "pinned"]
       }
     },
     "required": ["query"]
@@ -402,6 +411,44 @@ mockall = "0.13"
   }
 }
 ```
+
+**Example 3: Search with media filter (photos only)**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 12,
+  "method": "tools/call",
+  "params": {
+    "name": "search_messages",
+    "arguments": {
+      "query": "AI news",
+      "media_filter": "photo",
+      "hours_back": 48,
+      "limit": 20
+    }
+  }
+}
+```
+*Note: Returns messages containing "AI news" in text/caption that also have a photo attached. Does NOT search photo content.*
+
+**Example 4: Get all documents (no text query)**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 13,
+  "method": "tools/call",
+  "params": {
+    "name": "search_messages",
+    "arguments": {
+      "query": "",
+      "channel_id": "habrhabr",
+      "media_filter": "document",
+      "limit": 50
+    }
+  }
+}
+```
+*Note: Returns all documents from the channel (PDFs, DOCs, ZIPs, etc.) regardless of caption text.*
 
 #### Response Schema
 
@@ -1888,6 +1935,48 @@ jobs:
 - [ ] Channel metadata caching (optional)
 - [ ] Detailed logs in ~/.config/telegram-connector/logs/
 
+### V1.1 (Phase 16: Media Search Filtering)
+
+- [ ] **Media Type Filtering**
+  - [ ] Add optional `media_filter` parameter to `search_messages` tool
+  - [ ] Supported filter types (from Telegram API):
+    - `photo` - Photos only
+    - `video` - Videos only
+    - `photo_video` - Photos and videos combined (media gallery)
+    - `document` - Documents/files
+    - `audio` - Music files
+    - `voice` - Voice messages
+    - `video_note` - Round video messages
+    - `gif` - Animated GIFs
+    - `url` - Messages with links
+    - `pinned` - Pinned messages only
+  - [ ] Server-side filtering using `InputMessagesFilter` (efficient, no post-filtering)
+  - [ ] Combined search: text query + media filter (e.g., "AI news" + photos only)
+
+**Important: How Media Search Works**
+
+Media search in Telegram is **metadata-based filtering**, NOT content recognition:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│              Telegram Media Search = Text + Filter          │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ✅ DOES:                                                    │
+│    - Search text/caption containing query                    │
+│    - Filter results to only include specified media type     │
+│    - Example: "Bitcoin" + photo → messages with "Bitcoin"    │
+│              in text AND a photo attached                    │
+│                                                              │
+│  ❌ DOES NOT:                                                │
+│    - Recognize objects/faces in photos                       │
+│    - Transcribe audio/voice to searchable text               │
+│    - OCR text from images                                    │
+│    - Index content inside PDF/DOC files                      │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
 ### V2.0 (Major Features)
 
 - [ ] **Channel Discovery**
@@ -1895,10 +1984,10 @@ jobs:
   - [ ] Channel recommendations based on subscribed channels
   - [ ] Trending channels by topic
 
-- [ ] **Media Filtering**
-  - [ ] Filter search by file type: documents, images, videos, audio
+- [ ] **Advanced Media Features**
   - [ ] Media metadata extraction (size, duration, format)
   - [ ] Link to media downloads
+  - [ ] Content-based search (via external AI services - Whisper, Vision models)
 
 - [ ] **Advanced Search**
   - [ ] Filter by sender/author
@@ -1971,6 +2060,11 @@ This file contains complete MCP schema definitions in OpenAPI-compatible format,
             "minimum": 1,
             "maximum": 100,
             "default": 20
+          },
+          "media_filter": {
+            "type": "string",
+            "description": "Filter by media type (metadata-based, not content recognition)",
+            "enum": ["photo", "video", "photo_video", "document", "audio", "voice", "video_note", "gif", "url", "pinned"]
           }
         },
         "required": ["query"]
