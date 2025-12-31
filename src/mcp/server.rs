@@ -220,9 +220,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         Parameters(request): Parameters<SearchRequest>,
     ) -> Result<Json<SearchResult>, String> {
-        // Validate query is not empty
-        if request.query.trim().is_empty() {
-            return Err("Search query cannot be empty".to_string());
+        // Validate: query required unless media_filter is set
+        if request.query.trim().is_empty() && request.media_filter.is_none() {
+            return Err(
+                "Search query cannot be empty (unless media_filter is set to filter by media type)"
+                    .to_string(),
+            );
         }
 
         // Parse optional channel_id
@@ -264,7 +267,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             channel_id,
             hours_back,
             limit,
-            media_filter: None, // TODO: Phase 16.2 - add media_filter from request
+            media_filter: request.media_filter,
         };
 
         // Execute search
@@ -279,6 +282,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         tracing::info!(
             query = %params.query,
             channel_id = ?params.channel_id.map(|c| c.get()),
+            media_filter = ?params.media_filter,
             hours_back = params.hours_back,
             limit = params.limit,
             total_found = result.total_found,
