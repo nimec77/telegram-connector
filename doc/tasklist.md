@@ -23,11 +23,11 @@
 | 13 | Refactoring | ✅ Complete | - | Split large files, extract tests |
 | 14 | Conditional Credentials | ✅ Complete | 143 | api_id required, auth creds only for --setup |
 | 15 | File Logging | ✅ Complete | 153 | Daily rotation, JSON format, 7-day retention |
-| 16 | Media Search | ⬜ Pending | - | Filter by media type (photos, videos, docs) |
+| 16 | Media Search | 🔄 In Progress | 158 | Filter by media type (photos, videos, docs) |
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
-**Overall Progress:** 15/16 phases complete
+**Overall Progress:** 15/16 phases complete (16.1 done)
 
 ---
 
@@ -513,8 +513,8 @@ TELEGRAM_API_ID=12345 cargo run --bin telegram-mcp -- --config ./config.toml
 - It does NOT search for objects/text inside photos
 - No OCR, no speech-to-text, no image recognition
 
-### 16.1 Domain Types ⬜
-- [ ] Add `MediaFilter` enum to `src/telegram/types.rs`:
+### 16.1 Domain Types ✅
+- [x] Add `MediaFilter` enum to `src/telegram/types.rs`:
   ```rust
   pub enum MediaFilter {
       Photo,       // inputMessagesFilterPhotos
@@ -529,9 +529,12 @@ TELEGRAM_API_ID=12345 cargo run --bin telegram-mcp -- --config ./config.toml
       Pinned,      // inputMessagesFilterPinned
   }
   ```
-- [ ] Add `media_filter: Option<MediaFilter>` to `SearchParams`
-- [ ] Add JsonSchema derive for MCP tool parameter
-- [ ] Write tests for MediaFilter serialization
+- [x] Add `media_filter: Option<MediaFilter>` to `SearchParams`
+- [x] Add JsonSchema derive for MCP tool parameter
+- [x] Write tests for MediaFilter serialization (5 tests added)
+- [x] Export `MediaFilter` from `telegram.rs`
+
+**Tests:** 153 → 158 (+5 new MediaFilter tests)
 
 ### 16.2 MCP Tool Update ⬜
 - [ ] Update `SearchMessagesRequest` in `src/mcp/tools/types.rs`:

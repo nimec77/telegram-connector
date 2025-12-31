@@ -1,12 +1,12 @@
 # Development Memory - Telegram MCP Connector
 
-**Last Updated:** Phase 13 Refactoring Complete (2025-12-29)
+**Last Updated:** Phase 16.1 Domain Types Complete (2025-12-31)
 
 ---
 
 ## Current Status
 
-**Progress:** 13/13 phases complete - ALL PHASES COMPLETE ✅
+**Progress:** 15/16 phases complete - Phase 16 In Progress 🔄
 - ✅ Phase 1: Project Setup
 - ✅ Phase 2: Error Types (11/11 tests)
 - ✅ Phase 3: Configuration (15/15 tests + 4 ignored)
@@ -19,8 +19,12 @@
 - ✅ Phase 10: MCP Server (19/19 tests)
 - ✅ Phase 11: MCP Tools (4/4 tests)
 - ✅ Phase 12: Integration & Polish (real grammers, CLI, signal handling, rmcp tools)
+- ✅ Phase 13: Refactoring
+- ✅ Phase 14: Conditional Credentials
+- ✅ Phase 15: File Logging
+- 🔄 Phase 16: Media Search Filtering (16.1 complete, 16.2-16.5 pending)
 
-**Total:** 139 tests passing (4 ignored for CI/CD)
+**Total:** 158 tests passing (5 ignored for CI/CD)
 
 **rmcp Integration:** All 6 MCP tools have `#[tool]` attributes for proper protocol compliance
 
@@ -2075,3 +2079,84 @@ Implemented dual-layer logging with daily rotation:
   "search_time_ms": 342
 }
 ```
+
+---
+
+## Phase 16: Media Search Filtering (In Progress)
+
+### Goal
+Add optional `media_filter` parameter to `search_messages` tool for server-side filtering by media type.
+
+### Important Context
+**Metadata-based filtering, NOT content recognition:**
+- `photo` filter returns messages WITH photos attached
+- Does NOT search for objects/text inside photos
+- No OCR, no speech-to-text, no image recognition
+
+### 16.1 Domain Types (Complete - 2025-12-31)
+
+**What Was Implemented:**
+
+1. **MediaFilter Enum** (src/telegram/types.rs:183-212)
+   - 10 variants matching Telegram's InputMessagesFilter:
+     - `Photo`, `Video`, `PhotoVideo`, `Document`, `Audio`
+     - `Voice`, `VideoNote`, `Gif`, `Url`, `Pinned`
+   - Derives: `Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema`
+   - Uses `#[serde(rename_all = "snake_case")]` for JSON serialization
+
+2. **SearchParams Update** (src/telegram/types.rs:262-289)
+   - Added `media_filter: Option<MediaFilter>` field
+   - Updated `new()` and `Default` to initialize with `None`
+   - Added documentation comments
+
+3. **Module Exports** (src/telegram.rs)
+   - Added `MediaFilter` to public re-exports
+
+4. **Placeholder in MCP Server** (src/mcp/server.rs:267)
+   - Added `media_filter: None` with TODO comment for Phase 16.2
+
+**Tests Added (5 new tests):**
+- `media_filter_serializes_to_snake_case` - Verifies `PhotoVideo` → `"photo_video"`
+- `media_filter_deserializes_from_snake_case` - Verifies reverse
+- `media_filter_all_variants_serialize` - Tests all 10 variants
+- `media_filter_roundtrip` - Serialization/deserialization cycle
+- `search_params_with_media_filter` - SearchParams with filter
+
+**Test Count:** 153 → 158 (+5)
+
+### Patterns Established
+
+```rust
+// Pattern 1: MediaFilter enum with snake_case serialization
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MediaFilter {
+    Photo,       // "photo"
+    PhotoVideo,  // "photo_video"
+    VideoNote,   // "video_note"
+    // ...
+}
+
+// Pattern 2: Optional filter in SearchParams
+pub struct SearchParams {
+    pub query: String,
+    pub channel_id: Option<ChannelId>,
+    pub hours_back: u32,
+    pub limit: u32,
+    pub media_filter: Option<MediaFilter>,  // NEW
+}
+
+// Pattern 3: Filter behavior matrix
+// Query     | media_filter | Result
+// "AI news" | None         | Messages containing "AI news"
+// "AI news" | Photo        | Messages with "AI news" AND photo attached
+// ""        | Document     | All documents (no text filtering)
+// ""        | None         | ❌ Error (too broad)
+```
+
+### Remaining Work
+
+- **16.2 MCP Tool Update** - Add `media_filter` to `SearchMessagesRequest`
+- **16.3 Telegram Client** - Map `MediaFilter` to grammers `InputMessagesFilter`
+- **16.4 Integration Testing** - Test all filter combinations
+- **16.5 Documentation** - Update README with examples
