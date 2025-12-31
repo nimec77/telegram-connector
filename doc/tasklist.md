@@ -23,11 +23,11 @@
 | 13 | Refactoring | ✅ Complete | - | Split large files, extract tests |
 | 14 | Conditional Credentials | ✅ Complete | 143 | api_id required, auth creds only for --setup |
 | 15 | File Logging | ✅ Complete | 153 | Daily rotation, JSON format, 7-day retention |
-| 16 | Media Search | 🔄 In Progress | 158 | Filter by media type (photos, videos, docs) |
+| 16 | Media Search | 🔄 In Progress | 163 | Filter by media type (photos, videos, docs) |
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
-**Overall Progress:** 15/16 phases complete (16.1 done)
+**Overall Progress:** 15/16 phases complete (16.1-16.2 done)
 
 ---
 
@@ -536,14 +536,18 @@ TELEGRAM_API_ID=12345 cargo run --bin telegram-mcp -- --config ./config.toml
 
 **Tests:** 153 → 158 (+5 new MediaFilter tests)
 
-### 16.2 MCP Tool Update ⬜
-- [ ] Update `SearchMessagesRequest` in `src/mcp/tools/types.rs`:
-  - [ ] Add optional `media_filter` field
-  - [ ] Update JSON schema description
-- [ ] Update validation in `search_messages` tool:
-  - [ ] Allow empty query when `media_filter` is set
-  - [ ] Reject empty query AND no media_filter
-- [ ] Write tests for new parameter validation
+### 16.2 MCP Tool Update ✅
+- [x] Update `SearchMessagesRequest` in `src/mcp/tools/types.rs`:
+  - [x] Add optional `media_filter` field
+  - [x] Update JSON schema description (explains metadata-based filtering)
+- [x] Update validation in `search_messages` tool:
+  - [x] Allow empty query when `media_filter` is set
+  - [x] Reject empty query AND no media_filter
+- [x] Wire up `media_filter` from request to `SearchParams`
+- [x] Add `media_filter` to search logging
+- [x] Write tests for new parameter validation (5 tests added)
+
+**Tests:** 158 → 163 (+5 new MCP tool tests)
 
 ### 16.3 Telegram Client Implementation ⬜
 - [ ] Research grammers API for `InputMessagesFilter`
