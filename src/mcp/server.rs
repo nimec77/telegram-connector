@@ -264,6 +264,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             channel_id,
             hours_back,
             limit,
+            media_filter: None, // TODO: Phase 16.2 - add media_filter from request
         };
 
         // Execute search
