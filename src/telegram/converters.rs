@@ -4,6 +4,7 @@ use crate::telegram::types::{
     Channel, ChannelId, ChannelName, MediaFilter, MediaType, Message, MessageId, UserId, Username,
 };
 use grammers_client::grammers_tl_types as tl;
+use grammers_client::types::media::{Document, Media};
 
 /// Convert our MediaFilter enum to grammers MessagesFilter for server-side filtering
 pub fn convert_media_filter(filter: &MediaFilter) -> tl::enums::MessagesFilter {
@@ -19,6 +20,72 @@ pub fn convert_media_filter(filter: &MediaFilter) -> tl::enums::MessagesFilter {
         MediaFilter::Url => tl::enums::MessagesFilter::InputMessagesFilterUrl,
         MediaFilter::Pinned => tl::enums::MessagesFilter::InputMessagesFilterPinned,
     }
+}
+
+/// Convert grammers Media to our MediaType enum
+///
+/// Inspects the media type and document attributes to determine the correct MediaType.
+pub fn convert_media_to_type(media: &Media) -> MediaType {
+    match media {
+        Media::Photo(_) => MediaType::Photo,
+        Media::Sticker(_) => MediaType::Sticker,
+        Media::Contact(_) => MediaType::Contact,
+        Media::Poll(_) => MediaType::Poll,
+        Media::Geo(_) | Media::GeoLive(_) => MediaType::Location,
+        Media::Venue(_) => MediaType::Venue,
+        Media::Dice(_) => MediaType::Dice,
+        Media::WebPage(_) => MediaType::None, // WebPage previews are not considered media
+        Media::Document(doc) => detect_document_type(doc),
+        _ => MediaType::Document, // Fallback for any new/unknown variants
+    }
+}
+
+/// Detect the specific type of a Document based on its attributes
+fn detect_document_type(doc: &Document) -> MediaType {
+    // Access the raw document to inspect attributes
+    let raw_doc = match &doc.raw.document {
+        Some(tl::enums::Document::Document(d)) => d,
+        _ => return MediaType::Document,
+    };
+
+    // Check attributes to determine document subtype
+    for attr in &raw_doc.attributes {
+        match attr {
+            tl::enums::DocumentAttribute::Video(v) => {
+                // Round video = VideoNote, otherwise Video
+                return if v.round_message {
+                    MediaType::VideoNote
+                } else {
+                    MediaType::Video
+                };
+            }
+            tl::enums::DocumentAttribute::Audio(a) => {
+                // Voice message vs music/audio
+                return if a.voice {
+                    MediaType::Voice
+                } else {
+                    MediaType::Audio
+                };
+            }
+            tl::enums::DocumentAttribute::Animated => {
+                return MediaType::Animation;
+            }
+            tl::enums::DocumentAttribute::Sticker(_) => {
+                // Should be caught by Media::Sticker, but just in case
+                return MediaType::Sticker;
+            }
+            _ => {}
+        }
+    }
+
+    // Check MIME type for GIFs that might not have Animated attribute
+    let mime = raw_doc.mime_type.as_str();
+    if mime == "image/gif" || (mime == "video/mp4" && doc.is_animated()) {
+        return MediaType::Animation;
+    }
+
+    // Default to generic document
+    MediaType::Document
 }
 
 /// Convert grammers Peer to our Channel type
@@ -115,11 +182,10 @@ pub fn convert_message(
         Err(_) => (None, None),
     };
 
-    // Check for media
-    let (has_media, media_type) = if msg.media().is_some() {
-        (true, MediaType::Document) // Default to document
-    } else {
-        (false, MediaType::None)
+    // Check for media and detect its type
+    let (has_media, media_type) = match msg.media() {
+        Some(media) => (true, convert_media_to_type(&media)),
+        None => (false, MediaType::None),
     };
 
     Some(Message {

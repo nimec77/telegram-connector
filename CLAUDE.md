@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Telegram MCP Connector - a Model Context Protocol (MCP) service that enables Claude to search Russian-language Telegram channels and messages in real-time. Built in Rust using the `rmcp` SDK and `grammers` Telegram client.
 
-**Current Status:** Phase 16 In Progress 🔄 - Media search filtering (16.1-16.3, 16.5 done; 16.4 needs manual testing). Real grammers integration, CLI with --setup, conditional credentials, signal handling, rmcp tool attributes, file logging. 165 tests (all passing, 5 ignored).
+**Current Status:** Phase 16 Complete ✅ - Media search filtering with proper type detection. Real grammers integration, CLI with --setup, conditional credentials, signal handling, rmcp tool attributes, file logging. 167 tests (all passing, 5 ignored).
 
 ## Build & Test Commands
 
@@ -15,20 +15,20 @@ Telegram MCP Connector - a Model Context Protocol (MCP) service that enables Cla
 cargo build
 cargo build --release
 
-# Run all tests (165 tests passing, 5 ignored)
+# Run all tests (167 tests passing, 5 ignored)
 cargo test
 
 # Run tests for specific module
 cargo test error           # 11 tests
 cargo test config -- --test-threads=1  # 23 tests + 5 ignored (serial for env var tests)
 cargo test logging         # 19 tests
-cargo test types           # 47 tests (includes MediaFilter)
+cargo test types           # 52 tests (includes MediaFilter)
 cargo test link            # 8 tests
 cargo test rate_limiter    # 19 tests
 cargo test auth            # 1 test
 cargo test client          # 14 tests (12 original + 2 media filter passthrough)
 cargo test cli             # 7 tests
-cargo test mcp             # 29 tests (server + all 6 tools + media filter)
+cargo test mcp             # 31 tests (server + all 6 tools + media filter)
 
 # Linting and formatting
 cargo fmt --check
@@ -206,6 +206,6 @@ Current progress tracked in:
 | 13 | Refactoring | ✅ | - |
 | 14 | Conditional Credentials | ✅ | 3/3 |
 | 15 | File Logging | ✅ | 10/10 |
-| 16 | Media Search Filtering | 🔄 | 12/12 (16.1-16.3) |
+| 16 | Media Search Filtering | ✅ | 14/14 |
 
-**Overall:** 15/16 phases complete (16.1-16.3 done), 165 tests passing (5 ignored).
+**Overall:** 16/16 phases complete, 167 tests passing (5 ignored).
