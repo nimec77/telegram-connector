@@ -6,11 +6,13 @@ A Model Context Protocol (MCP) service that enables Claude to search and interac
 
 - **Real-time Telegram Access** - Connect to Telegram using the MTProto protocol
 - **Message Search** - Search messages across all subscribed channels or specific channels
+- **Media Filtering** - Filter search results by media type (photos, videos, documents, etc.)
 - **Channel Management** - List subscribed channels and get channel metadata
 - **Deep Linking** - Generate `tg://` and `https://t.me` links for messages
 - **Native Integration** - Open messages directly in Telegram Desktop (macOS)
 - **Rate Limiting** - Built-in token bucket rate limiter to prevent API abuse
 - **Secure Credentials** - API keys and phone numbers protected with `secrecy` crate
+- **File Logging** - Daily log rotation with configurable retention
 
 ## Architecture
 
@@ -125,7 +127,7 @@ api_hash = "your_api_hash_here"
 phone_number = "+1234567890"
 
 # Optional: custom session file location
-# session_file = "~/.config/telegram-connector/session.db"
+# session_file = "~/.config/telegram-connector/session.bin"
 
 [search]
 # Optional: search defaults
@@ -140,8 +142,17 @@ phone_number = "+1234567890"
 
 [logging]
 # Optional: logging configuration
-# level = "info"
-# format = "compact"
+# level = "info"                                        # trace, debug, info, warn, error
+# format = "compact"                                    # compact, pretty, json
+
+# File logging (always JSON format, daily rotation)
+# file_enabled = true                                   # Default: true
+# file_path = "~/.config/telegram-connector/logs/"      # Default log directory
+# max_log_days = 7                                      # Days to retain logs
+
+[server]
+# Optional: server configuration
+# shutdown_timeout_seconds = 5                          # Graceful shutdown timeout
 ```
 
 You can also use environment variables for sensitive values:
@@ -209,37 +220,6 @@ Add to your Claude Desktop configuration (`~/.config/claude-desktop/config.json`
 ```
 
 Restart Claude Desktop to load the MCP server.
-
-### Connecting with Comet Browser
-
-[Comet](https://www.comet.wiki/) is an MCP-compatible browser that can connect to MCP servers.
-
-**Step 1:** Open Comet and go to Settings (gear icon)
-
-**Step 2:** Navigate to "MCP Servers" section
-
-**Step 3:** Click "Add Server" and configure:
-
-| Field | Value |
-|-------|-------|
-| Name | `Telegram` |
-| Command | `/path/to/telegram-mcp` |
-| Arguments | (leave empty) |
-
-**Step 4:** Click "Save" and enable the server
-
-**Step 5:** The Telegram tools will now be available in Comet's chat interface
-
-**Verify Connection:**
-- Open a new chat in Comet
-- Ask: "Check the Telegram connection status"
-- Comet will use the `check_mcp_status` tool to verify the connection
-
-**Example Prompts for Comet:**
-- "List my Telegram channels"
-- "Search for messages about AI in my Telegram"
-- "Get info about the @durov channel"
-- "Generate a link for message 42 in channel 1234567890"
 
 ## MCP Tools Reference
 
@@ -390,7 +370,7 @@ Search for messages across channels with optional media type filtering.
 |------|------|----------|---------|-------------|
 | `query` | string | Conditional | - | Search query. Required unless `media_filter` is specified |
 | `channel_id` | string | No | - | Filter by specific channel ID |
-| `hours_back` | integer | No | 48 | How many hours back to search (max: 168) |
+| `hours_back` | integer | No | 48 | How many hours back to search (max: 72) |
 | `limit` | integer | No | 20 | Maximum results to return (max: 100) |
 | `media_filter` | string | No | - | Filter by media type (see below) |
 
@@ -535,32 +515,19 @@ Use a `channel_id` and `message_id` from the search results:
 1. Configure Claude Desktop (see [Usage](#connecting-with-claude-desktop))
 2. Restart Claude Desktop
 3. Ask Claude: "Check the Telegram connection status"
-4. Ask Claude: "List my Telegram channels"
-5. Ask Claude: "Search for messages about AI in my Telegram channels"
-
-### Testing with Comet Browser
-
-1. Configure Comet (see [Usage](#connecting-with-comet-browser))
-2. Open a new chat in Comet
-3. Ask: "Check the Telegram connection status"
    - **Expected:** Shows `telegram_connected: true` and available tokens
-4. Ask: "List my Telegram channels"
+4. Ask Claude: "List my Telegram channels"
    - **Expected:** Returns list of your subscribed channels
-5. Ask: "Search for messages about [topic] in my Telegram"
+5. Ask Claude: "Search for messages about AI in my Telegram channels"
    - **Expected:** Returns matching messages with metadata
-6. Ask: "Find all photos in my Telegram channels from the last 24 hours"
+6. Ask Claude: "Find all photos in my Telegram channels from the last 24 hours"
    - **Expected:** Returns messages with photos attached (uses media_filter=photo)
-7. Ask: "Search for documents containing 'report' in my Telegram"
+7. Ask Claude: "Search for documents containing 'report' in my Telegram"
    - **Expected:** Returns messages with query "report" and document attachments
-8. Ask: "Get info about the @durov channel"
+8. Ask Claude: "Get info about the @durov channel"
    - **Expected:** Returns channel details (if public)
-9. Ask: "Generate a link for message [id] in channel [channel_id]"
+9. Ask Claude: "Generate a link for message [id] in channel [channel_id]"
    - **Expected:** Returns both HTTPS and tg:// links
-
-**Troubleshooting Comet:**
-- If tools don't appear, check that the server is enabled in MCP Servers settings
-- Verify the binary path is correct and the file is executable
-- Check Comet's console for connection errors
 
 ## Troubleshooting
 
@@ -569,7 +536,7 @@ Use a `channel_id` and `message_id` from the search results:
 **"Session expired"**
 - Delete the session file and re-authenticate:
   ```bash
-  rm ~/.config/telegram-connector/session.db
+  rm ~/.config/telegram-connector/session.bin
   ./target/release/telegram-mcp --setup
   ```
 
@@ -663,13 +630,16 @@ src/
 ├── mcp.rs              # MCP module root
 ├── mcp/
 │   ├── server.rs       # MCP server + tools
+│   ├── tools.rs        # Tools module
 │   └── tools/
 │       └── types.rs    # Tool request/response types
 ├── telegram.rs         # Telegram module root
 └── telegram/
-    ├── client.rs       # Telegram client
+    ├── client.rs       # Telegram client implementation
+    ├── trait_def.rs    # TelegramClientTrait definition
+    ├── converters.rs   # Type converters (grammers → domain)
     ├── auth.rs         # Authentication
-    └── types.rs        # Domain types
+    └── types.rs        # Domain types (Message, Channel, MediaFilter)
 ```
 
 ## License
