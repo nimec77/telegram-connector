@@ -2,7 +2,39 @@
 
 use crate::telegram::types::{Channel, MediaFilter};
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+
+use serde::{Deserialize, Deserializer, Serialize};
+
+/// Deserialize Option<MediaFilter> treating empty strings as None.
+/// This handles MCP clients that send `"media_filter": ""` instead of omitting the field.
+fn deserialize_optional_media_filter<'de, D>(
+    deserializer: D,
+) -> Result<Option<MediaFilter>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    // First try to deserialize as an Option<String> to check for empty string
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrMediaFilter {
+        String(String),
+        MediaFilter(MediaFilter),
+        Null,
+    }
+
+    match Option::<StringOrMediaFilter>::deserialize(deserializer)? {
+        None => Ok(None),
+        Some(StringOrMediaFilter::Null) => Ok(None),
+        Some(StringOrMediaFilter::String(s)) if s.is_empty() => Ok(None),
+        Some(StringOrMediaFilter::String(s)) => {
+            // Try to parse non-empty string as MediaFilter
+            serde_json::from_value(serde_json::Value::String(s))
+                .map(Some)
+                .map_err(serde::de::Error::custom)
+        }
+        Some(StringOrMediaFilter::MediaFilter(f)) => Ok(Some(f)),
+    }
+}
 
 // ============================================================================
 // Tool 1: check_mcp_status
@@ -151,6 +183,7 @@ pub struct SearchRequest {
     #[schemars(
         description = "Optional: Filter by media type. This is metadata-based filtering (filters by attachment type), NOT content recognition. No OCR, no speech-to-text. Example: 'photo' returns messages WITH photos attached."
     )]
+    #[serde(default, deserialize_with = "deserialize_optional_media_filter")]
     pub media_filter: Option<MediaFilter>,
 }
 
@@ -244,5 +277,24 @@ mod tests {
                 json_value
             );
         }
+    }
+
+    #[test]
+    fn search_request_empty_string_media_filter_treated_as_none() {
+        // MCP clients may send "" instead of null or omitting the field
+        let json = r#"{"query": "test", "media_filter": ""}"#;
+        let request: SearchRequest = serde_json::from_str(json).unwrap();
+
+        assert_eq!(request.query, "test");
+        assert_eq!(request.media_filter, None);
+    }
+
+    #[test]
+    fn search_request_null_media_filter_treated_as_none() {
+        let json = r#"{"query": "test", "media_filter": null}"#;
+        let request: SearchRequest = serde_json::from_str(json).unwrap();
+
+        assert_eq!(request.query, "test");
+        assert_eq!(request.media_filter, None);
     }
 }
