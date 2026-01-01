@@ -1,8 +1,25 @@
 //! Type conversion helpers for grammers types to our domain types
 
 use crate::telegram::types::{
-    Channel, ChannelId, ChannelName, MediaType, Message, MessageId, UserId, Username,
+    Channel, ChannelId, ChannelName, MediaFilter, MediaType, Message, MessageId, UserId, Username,
 };
+use grammers_client::grammers_tl_types as tl;
+
+/// Convert our MediaFilter enum to grammers MessagesFilter for server-side filtering
+pub fn convert_media_filter(filter: &MediaFilter) -> tl::enums::MessagesFilter {
+    match filter {
+        MediaFilter::Photo => tl::enums::MessagesFilter::InputMessagesFilterPhotos,
+        MediaFilter::Video => tl::enums::MessagesFilter::InputMessagesFilterVideo,
+        MediaFilter::PhotoVideo => tl::enums::MessagesFilter::InputMessagesFilterPhotoVideo,
+        MediaFilter::Document => tl::enums::MessagesFilter::InputMessagesFilterDocument,
+        MediaFilter::Audio => tl::enums::MessagesFilter::InputMessagesFilterMusic,
+        MediaFilter::Voice => tl::enums::MessagesFilter::InputMessagesFilterVoice,
+        MediaFilter::VideoNote => tl::enums::MessagesFilter::InputMessagesFilterRoundVideo,
+        MediaFilter::Gif => tl::enums::MessagesFilter::InputMessagesFilterGif,
+        MediaFilter::Url => tl::enums::MessagesFilter::InputMessagesFilterUrl,
+        MediaFilter::Pinned => tl::enums::MessagesFilter::InputMessagesFilterPinned,
+    }
+}
 
 /// Convert grammers Peer to our Channel type
 pub fn convert_peer_to_channel(peer: &grammers_client::types::Peer) -> Option<Channel> {

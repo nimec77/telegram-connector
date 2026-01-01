@@ -2,7 +2,7 @@
 
 use crate::config::TelegramConfig;
 use crate::error::Error;
-use crate::telegram::converters::{convert_message, convert_peer_to_channel};
+use crate::telegram::converters::{convert_media_filter, convert_message, convert_peer_to_channel};
 use crate::telegram::trait_def::TelegramClientTrait;
 use crate::telegram::types::{QueryMetadata, SearchParams, SearchResult};
 use chrono::{Duration, Utc};
@@ -226,9 +226,10 @@ impl TelegramClientTrait for TelegramClient {
 
     async fn search_messages(&self, params: &SearchParams) -> Result<SearchResult, Error> {
         // Validate parameters
-        if params.query.is_empty() {
+        // Empty query is allowed when media_filter is set (search for media type only)
+        if params.query.is_empty() && params.media_filter.is_none() {
             return Err(Error::InvalidInput(
-                "Search query cannot be empty".to_string(),
+                "Search query cannot be empty (unless media_filter is specified)".to_string(),
             ));
         }
 
@@ -260,6 +261,11 @@ impl TelegramClientTrait for TelegramClient {
                     // Search in this specific channel
                     let mut search_iter = self.client.search_messages(peer).query(&params.query);
 
+                    // Apply media filter if specified
+                    if let Some(ref media_filter) = params.media_filter {
+                        search_iter = search_iter.filter(convert_media_filter(media_filter));
+                    }
+
                     while let Some(msg) = search_iter
                         .next()
                         .await
@@ -285,6 +291,11 @@ impl TelegramClientTrait for TelegramClient {
         } else {
             // Search all channels using global search
             let mut search_iter = self.client.search_all_messages().query(&params.query);
+
+            // Apply media filter if specified
+            if let Some(ref media_filter) = params.media_filter {
+                search_iter = search_iter.filter(convert_media_filter(media_filter));
+            }
 
             while let Some(msg) = search_iter
                 .next()
@@ -323,6 +334,7 @@ impl TelegramClientTrait for TelegramClient {
 
         tracing::info!(
             query = %params.query,
+            media_filter = ?params.media_filter,
             results = total_found,
             channels = channels_searched,
             duration_ms = search_time_ms,
