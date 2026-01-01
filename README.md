@@ -383,15 +383,32 @@ Open a message directly in Telegram Desktop.
 
 ### 6. search_messages
 
-Search for messages across channels.
+Search for messages across channels with optional media type filtering.
 
 **Parameters:**
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| `query` | string | Yes | - | Search query (minimum 1 character) |
+| `query` | string | Conditional | - | Search query. Required unless `media_filter` is specified |
 | `channel_id` | string | No | - | Filter by specific channel ID |
 | `hours_back` | integer | No | 48 | How many hours back to search (max: 168) |
 | `limit` | integer | No | 20 | Maximum results to return (max: 100) |
+| `media_filter` | string | No | - | Filter by media type (see below) |
+
+**Media Filter Options:**
+| Value | Description |
+|-------|-------------|
+| `photo` | Messages with photos attached |
+| `video` | Messages with videos attached |
+| `photo_video` | Messages with photos OR videos |
+| `document` | Messages with documents/files attached |
+| `audio` | Messages with music/audio files |
+| `voice` | Messages with voice messages |
+| `video_note` | Messages with video notes (round videos) |
+| `gif` | Messages with GIF animations |
+| `url` | Messages containing URLs |
+| `pinned` | Pinned messages only |
+
+**Important:** The `media_filter` is metadata-based filtering, NOT content recognition. It filters by attachment type, not by what's inside the media.
 
 **Response:**
 ```json
@@ -422,7 +439,16 @@ Search for messages across channels.
 
 **Media Types:** `none`, `photo`, `video`, `document`, `audio`, `voice`, `videonote`, `animation`, `sticker`, `contact`, `location`, `venue`, `poll`, `dice`
 
-**Usage:** Search for specific topics across your subscribed channels.
+**Usage Examples:**
+
+| Query | media_filter | Result |
+|-------|--------------|--------|
+| `"AI news"` | (none) | Messages containing "AI news" |
+| `"AI news"` | `photo` | Messages with "AI news" AND a photo attached |
+| `""` (empty) | `document` | All documents (no text filtering) |
+| `""` (empty) | (none) | ❌ Error (too broad) |
+
+**Usage:** Search for specific topics across your subscribed channels, optionally filtering by media type.
 
 ## Manual Testing Guide
 
@@ -470,6 +496,22 @@ Then send via stdin:
 
 **Expected:** Recent messages containing "hello"
 
+### Test 4b: Search with Media Filter
+
+Search for photos only:
+```json
+{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"search_messages","arguments":{"media_filter":"photo","limit":5}}}
+```
+
+**Expected:** Recent messages with photos attached (no text query required)
+
+Search for documents with text:
+```json
+{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"search_messages","arguments":{"query":"report","media_filter":"document","limit":5}}}
+```
+
+**Expected:** Messages containing "report" with a document attached
+
 ### Test 5: Generate Link
 
 Use a `channel_id` and `message_id` from the search results:
@@ -506,9 +548,13 @@ Use a `channel_id` and `message_id` from the search results:
    - **Expected:** Returns list of your subscribed channels
 5. Ask: "Search for messages about [topic] in my Telegram"
    - **Expected:** Returns matching messages with metadata
-6. Ask: "Get info about the @durov channel"
+6. Ask: "Find all photos in my Telegram channels from the last 24 hours"
+   - **Expected:** Returns messages with photos attached (uses media_filter=photo)
+7. Ask: "Search for documents containing 'report' in my Telegram"
+   - **Expected:** Returns messages with query "report" and document attachments
+8. Ask: "Get info about the @durov channel"
    - **Expected:** Returns channel details (if public)
-7. Ask: "Generate a link for message [id] in channel [channel_id]"
+9. Ask: "Generate a link for message [id] in channel [channel_id]"
    - **Expected:** Returns both HTTPS and tg:// links
 
 **Troubleshooting Comet:**

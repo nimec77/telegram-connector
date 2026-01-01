@@ -1,6 +1,6 @@
 # Development Memory - Telegram MCP Connector
 
-**Last Updated:** Phase 16.1 Domain Types Complete (2025-12-31)
+**Last Updated:** Phase 16.3 Client Implementation Complete (2026-01-01)
 
 ---
 
@@ -15,16 +15,16 @@
 - ✅ Phase 6: Link Generation (8/8 tests)
 - ✅ Phase 7: Rate Limiter (19/19 tests)
 - ✅ Phase 8: Telegram Auth (1/1 test)
-- ✅ Phase 9: Telegram Client (12/12 tests)
+- ✅ Phase 9: Telegram Client (14/14 tests)
 - ✅ Phase 10: MCP Server (19/19 tests)
 - ✅ Phase 11: MCP Tools (4/4 tests)
 - ✅ Phase 12: Integration & Polish (real grammers, CLI, signal handling, rmcp tools)
 - ✅ Phase 13: Refactoring
 - ✅ Phase 14: Conditional Credentials
 - ✅ Phase 15: File Logging
-- 🔄 Phase 16: Media Search Filtering (16.1 complete, 16.2-16.5 pending)
+- 🔄 Phase 16: Media Search Filtering (16.1-16.3 complete, 16.4-16.5 pending)
 
-**Total:** 158 tests passing (5 ignored for CI/CD)
+**Total:** 165 tests passing (5 ignored for CI/CD)
 
 **rmcp Integration:** All 6 MCP tools have `#[tool]` attributes for proper protocol compliance
 
@@ -2181,8 +2181,65 @@ pub struct SearchParams {
 
 **Test Count:** 158 → 163 (+5)
 
+### 16.3 Telegram Client Implementation (Complete - 2026-01-01)
+
+**What Was Implemented:**
+
+1. **grammers API Research**
+   - grammers exposes `.filter()` method on `SearchIter` and `GlobalSearchIter`
+   - Filter type: `grammers_client::grammers_tl_types::enums::MessagesFilter`
+   - Builder pattern: `.query("text").filter(filter_type)`
+
+2. **Converter Function** (src/telegram/converters.rs:8-22)
+   ```rust
+   pub fn convert_media_filter(filter: &MediaFilter) -> tl::enums::MessagesFilter {
+       match filter {
+           MediaFilter::Photo => tl::enums::MessagesFilter::InputMessagesFilterPhotos,
+           MediaFilter::Video => tl::enums::MessagesFilter::InputMessagesFilterVideo,
+           MediaFilter::PhotoVideo => tl::enums::MessagesFilter::InputMessagesFilterPhotoVideo,
+           MediaFilter::Document => tl::enums::MessagesFilter::InputMessagesFilterDocument,
+           MediaFilter::Audio => tl::enums::MessagesFilter::InputMessagesFilterMusic,
+           MediaFilter::Voice => tl::enums::MessagesFilter::InputMessagesFilterVoice,
+           MediaFilter::VideoNote => tl::enums::MessagesFilter::InputMessagesFilterRoundVideo,
+           MediaFilter::Gif => tl::enums::MessagesFilter::InputMessagesFilterGif,
+           MediaFilter::Url => tl::enums::MessagesFilter::InputMessagesFilterUrl,
+           MediaFilter::Pinned => tl::enums::MessagesFilter::InputMessagesFilterPinned,
+       }
+   }
+   ```
+
+3. **Client Update** (src/telegram/client.rs:227-342)
+   - Updated validation: allow empty query when `media_filter` is set
+   - Applied filter to channel-specific search (line 264-267)
+   - Applied filter to global search (line 295-298)
+   - Added `media_filter` to search logging (line 337)
+
+**Key Pattern - Applying Filter to Search:**
+```rust
+// Channel-specific search
+let mut search_iter = self.client.search_messages(peer).query(&params.query);
+if let Some(ref media_filter) = params.media_filter {
+    search_iter = search_iter.filter(convert_media_filter(media_filter));
+}
+
+// Global search
+let mut search_iter = self.client.search_all_messages().query(&params.query);
+if let Some(ref media_filter) = params.media_filter {
+    search_iter = search_iter.filter(convert_media_filter(media_filter));
+}
+```
+
+**Gotcha - Import Path:**
+- ❌ `use grammers_tl_types as tl;` - Error: no external crate
+- ✅ `use grammers_client::grammers_tl_types as tl;` - Works (re-exported)
+
+**Tests Added (2 new tests):**
+- `mock_search_messages_with_media_filter_photo` - Empty query with photo filter
+- `mock_search_messages_with_media_filter_document` - Query + document filter
+
+**Test Count:** 163 → 165 (+2)
+
 ### Remaining Work
 
-- **16.3 Telegram Client** - Map `MediaFilter` to grammers `InputMessagesFilter`
-- **16.4 Integration Testing** - Test all filter combinations
-- **16.5 Documentation** - Update README with examples
+- **16.4 Integration Testing** - Manual testing with real Telegram account
+- **16.5 Documentation** - Update README with media filter examples

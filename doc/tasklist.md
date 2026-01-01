@@ -23,11 +23,11 @@
 | 13 | Refactoring | ✅ Complete | - | Split large files, extract tests |
 | 14 | Conditional Credentials | ✅ Complete | 143 | api_id required, auth creds only for --setup |
 | 15 | File Logging | ✅ Complete | 153 | Daily rotation, JSON format, 7-day retention |
-| 16 | Media Search | 🔄 In Progress | 163 | Filter by media type (photos, videos, docs) |
+| 16 | Media Search | 🔄 In Progress | 165 | Filter by media type (photos, videos, docs) |
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
-**Overall Progress:** 15/16 phases complete (16.1-16.2 done)
+**Overall Progress:** 15/16 phases complete (16.1-16.3, 16.5 done; 16.4 needs manual testing)
 
 ---
 
@@ -549,14 +549,19 @@ TELEGRAM_API_ID=12345 cargo run --bin telegram-mcp -- --config ./config.toml
 
 **Tests:** 158 → 163 (+5 new MCP tool tests)
 
-### 16.3 Telegram Client Implementation ⬜
-- [ ] Research grammers API for `InputMessagesFilter`
-- [ ] Option A: Use raw TL API via `client.invoke()`
-- [ ] Option B: Check if grammers search builder supports filters
-- [ ] Update `TelegramClient::search_messages()`:
-  - [ ] Map `MediaFilter` to `grammers_tl_types::enums::MessagesFilter`
-  - [ ] Pass filter to search request
-- [ ] Write tests with mock client
+### 16.3 Telegram Client Implementation ✅
+- [x] Research grammers API for `InputMessagesFilter`
+- [x] grammers exposes `.filter()` method on SearchIter and GlobalSearchIter
+- [x] Filter type: `grammers_client::grammers_tl_types::enums::MessagesFilter`
+- [x] Update `TelegramClient::search_messages()`:
+  - [x] Add `convert_media_filter()` to `converters.rs`
+  - [x] Map `MediaFilter` to grammers `MessagesFilter` enum
+  - [x] Apply filter to both channel-specific and global search
+  - [x] Update validation: allow empty query when media_filter is set
+  - [x] Add media_filter to search logging
+- [x] Write tests with mock client (2 new tests)
+
+**Tests:** 163 → 165 (+2 new mock client tests)
 
 ### 16.4 Integration Testing ⬜
 - [ ] Test text + media filter combination
@@ -565,13 +570,15 @@ TELEGRAM_API_ID=12345 cargo run --bin telegram-mcp -- --config ./config.toml
 - [ ] Test channel-specific search with media filter
 - [ ] Manual testing with real Telegram account
 
-### 16.5 Documentation ⬜
-- [ ] Update idea.md ✅ (already done)
-- [ ] Update vision.md ✅ (already done)
-- [ ] Update README.md with media filter examples
-- [ ] Run `cargo clippy -- -D warnings`
-- [ ] Run `cargo fmt --check`
-- [ ] All tests passing
+**Note:** This requires manual testing by the user with a real Telegram account.
+
+### 16.5 Documentation ✅
+- [x] Update idea.md ✅ (already done)
+- [x] Update vision.md ✅ (already done)
+- [x] Update README.md with media filter examples
+- [x] Run `cargo clippy -- -D warnings`
+- [x] Run `cargo fmt --check`
+- [x] All tests passing (165 tests)
 
 **Filter Behavior Matrix:**
 

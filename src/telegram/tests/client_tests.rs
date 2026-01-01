@@ -281,3 +281,88 @@ async fn mock_search_messages_with_channel_filter() {
     let search_result = result.unwrap();
     assert_eq!(search_result.query_metadata.channels_searched, 1);
 }
+
+#[tokio::test]
+async fn mock_search_messages_with_media_filter_photo() {
+    use crate::telegram::types::MediaFilter;
+
+    let mut mock = MockTelegramClientTrait::new();
+
+    let expected_messages = vec![create_test_message(1, "Photo message", 100)];
+
+    let expected_result = SearchResult {
+        messages: expected_messages.clone(),
+        total_found: 1,
+        search_time_ms: 50,
+        query_metadata: QueryMetadata {
+            query: "".to_string(),
+            hours_back: 48,
+            channels_searched: 1,
+        },
+    };
+    let expected_clone = expected_result.clone();
+
+    // Verify that SearchParams with media_filter is passed correctly
+    mock.expect_search_messages()
+        .withf(|params| params.media_filter == Some(MediaFilter::Photo) && params.query.is_empty())
+        .times(1)
+        .returning(move |_| Ok(expected_clone.clone()));
+
+    let params = SearchParams {
+        query: "".to_string(),
+        media_filter: Some(MediaFilter::Photo),
+        ..Default::default()
+    };
+
+    let result = mock.search_messages(&params).await;
+    assert!(result.is_ok());
+    let search_result = result.unwrap();
+    assert_eq!(search_result.messages.len(), 1);
+}
+
+#[tokio::test]
+async fn mock_search_messages_with_media_filter_document() {
+    use crate::telegram::types::MediaFilter;
+
+    let mut mock = MockTelegramClientTrait::new();
+
+    let expected_messages = vec![
+        create_test_message(1, "Document 1", 100),
+        create_test_message(2, "Document 2", 100),
+    ];
+
+    let expected_result = SearchResult {
+        messages: expected_messages.clone(),
+        total_found: 2,
+        search_time_ms: 75,
+        query_metadata: QueryMetadata {
+            query: "report".to_string(),
+            hours_back: 24,
+            channels_searched: 3,
+        },
+    };
+    let expected_clone = expected_result.clone();
+
+    // Verify that SearchParams with media_filter and query is passed correctly
+    mock.expect_search_messages()
+        .withf(|params| {
+            params.media_filter == Some(MediaFilter::Document)
+                && params.query == "report"
+                && params.hours_back == 24
+        })
+        .times(1)
+        .returning(move |_| Ok(expected_clone.clone()));
+
+    let params = SearchParams {
+        query: "report".to_string(),
+        hours_back: 24,
+        media_filter: Some(MediaFilter::Document),
+        ..Default::default()
+    };
+
+    let result = mock.search_messages(&params).await;
+    assert!(result.is_ok());
+    let search_result = result.unwrap();
+    assert_eq!(search_result.messages.len(), 2);
+    assert_eq!(search_result.query_metadata.channels_searched, 3);
+}
