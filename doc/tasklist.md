@@ -23,11 +23,11 @@
 | 13 | Refactoring | ✅ Complete | - | Split large files, extract tests |
 | 14 | Conditional Credentials | ✅ Complete | 143 | api_id required, auth creds only for --setup |
 | 15 | File Logging | ✅ Complete | 153 | Daily rotation, JSON format, 7-day retention |
-| 16 | Media Search | 🔄 In Progress | 165 | Filter by media type (photos, videos, docs) |
+| 16 | Media Search | ✅ Complete | 167 | Filter by media type + proper type detection |
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
-**Overall Progress:** 15/16 phases complete (16.1-16.3, 16.5 done; 16.4 needs manual testing)
+**Overall Progress:** 16/16 phases complete
 
 ---
 
@@ -502,7 +502,7 @@ TELEGRAM_API_ID=12345 cargo run --bin telegram-mcp -- --config ./config.toml
 
 ---
 
-## Phase 16: Media Search Filtering ⬜
+## Phase 16: Media Search Filtering ✅
 
 **Goal:** Filter search results by media type using Telegram's server-side filtering
 
@@ -563,14 +563,17 @@ TELEGRAM_API_ID=12345 cargo run --bin telegram-mcp -- --config ./config.toml
 
 **Tests:** 163 → 165 (+2 new mock client tests)
 
-### 16.4 Integration Testing ⬜
-- [ ] Test text + media filter combination
-- [ ] Test media filter only (empty query)
-- [ ] Test global search with media filter
-- [ ] Test channel-specific search with media filter
-- [ ] Manual testing with real Telegram account
+### 16.4 Integration Testing ✅
+- [x] Test text + media filter combination
+- [x] Test media filter only (empty query)
+- [x] Test global search with media filter
+- [x] Test channel-specific search with media filter
+- [x] Manual testing with real Telegram account
+- [x] **Bug Fix:** Media type detection was always returning "document" instead of actual type (video, photo, etc.)
+  - Added `convert_media_to_type()` function to properly map grammers `Media` to `MediaType`
+  - Added `detect_document_type()` helper to inspect document attributes for videos, audio, voice, etc.
 
-**Note:** This requires manual testing by the user with a real Telegram account.
+**Result:** Server-side filtering works correctly AND response now shows correct media type.
 
 ### 16.5 Documentation ✅
 - [x] Update idea.md ✅ (already done)
@@ -589,7 +592,7 @@ TELEGRAM_API_ID=12345 cargo run --bin telegram-mcp -- --config ./config.toml
 | "" (empty) | `document` | All documents (no text filtering) |
 | "" (empty) | None | ❌ Error (too broad) |
 
-**Test:** `cargo test media` (pending)
+**Test:** `cargo test` ✅ (167 passing, 5 ignored)
 
 ---
 

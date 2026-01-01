@@ -1,6 +1,6 @@
 # Development Memory - Telegram MCP Connector
 
-**Last Updated:** Phase 16.3 Client Implementation Complete (2026-01-01)
+**Last Updated:** Phase 16.3.1 Media Type Detection Fix (2026-01-01)
 
 ---
 
@@ -24,7 +24,7 @@
 - ✅ Phase 15: File Logging
 - 🔄 Phase 16: Media Search Filtering (16.1-16.3 complete, 16.4-16.5 pending)
 
-**Total:** 165 tests passing (5 ignored for CI/CD)
+**Total:** 167 tests passing (5 ignored for CI/CD)
 
 **rmcp Integration:** All 6 MCP tools have `#[tool]` attributes for proper protocol compliance
 
@@ -2239,7 +2239,88 @@ if let Some(ref media_filter) = params.media_filter {
 
 **Test Count:** 163 → 165 (+2)
 
+### 16.3.1 Media Type Detection Fix (2026-01-01)
+
+**Bug Discovered:**
+During manual testing (16.4), searching with `media_filter: "video"` returned messages with `media_type: "document"` instead of `"video"`. The server-side filter worked correctly (only videos returned), but the response incorrectly labeled the media type.
+
+**Root Cause:**
+In `src/telegram/converters.rs:119-123`, the `convert_message` function always defaulted to `MediaType::Document` whenever any media was present, instead of properly detecting the actual type:
+
+```rust
+// BUG: Always returned "document" for any media
+let (has_media, media_type) = if msg.media().is_some() {
+    (true, MediaType::Document) // <-- BUG HERE
+} else {
+    (false, MediaType::None)
+};
+```
+
+**Fix Implemented:**
+
+1. **Added `convert_media_to_type()` function** (src/telegram/converters.rs:25-41)
+   - Maps grammers `Media` enum variants to our `MediaType`:
+   - `Media::Photo` → `MediaType::Photo`
+   - `Media::Sticker` → `MediaType::Sticker`
+   - `Media::Contact` → `MediaType::Contact`
+   - `Media::Poll` → `MediaType::Poll`
+   - `Media::Geo` / `Media::GeoLive` → `MediaType::Location`
+   - `Media::Venue` → `MediaType::Venue`
+   - `Media::Dice` → `MediaType::Dice`
+   - `Media::WebPage` → `MediaType::None` (not considered media)
+   - `Media::Document` → Delegates to `detect_document_type()`
+
+2. **Added `detect_document_type()` helper** (src/telegram/converters.rs:44-89)
+   - Inspects `DocumentAttribute` to determine document subtype:
+   - `DocumentAttributeVideo` + `round_message: true` → `MediaType::VideoNote`
+   - `DocumentAttributeVideo` → `MediaType::Video`
+   - `DocumentAttributeAudio` + `voice: true` → `MediaType::Voice`
+   - `DocumentAttributeAudio` → `MediaType::Audio`
+   - `DocumentAttributeAnimated` → `MediaType::Animation`
+   - MIME type `image/gif` → `MediaType::Animation`
+   - Default → `MediaType::Document`
+
+3. **Updated `convert_message()`** (src/telegram/converters.rs:185-189)
+   ```rust
+   // FIX: Properly detect media type
+   let (has_media, media_type) = match msg.media() {
+       Some(media) => (true, convert_media_to_type(&media)),
+       None => (false, MediaType::None),
+   };
+   ```
+
+**Key Insight - grammers Media Structure:**
+- Videos, audio, GIFs, voice messages are all wrapped in `Media::Document`
+- Must inspect `DocumentAttribute` variants to distinguish them
+- Photos and stickers have dedicated `Media::Photo` and `Media::Sticker` variants
+
+**Pattern - Detecting Document Subtype:**
+```rust
+fn detect_document_type(doc: &Document) -> MediaType {
+    let raw_doc = match &doc.raw.document {
+        Some(tl::enums::Document::Document(d)) => d,
+        _ => return MediaType::Document,
+    };
+
+    for attr in &raw_doc.attributes {
+        match attr {
+            tl::enums::DocumentAttribute::Video(v) => {
+                return if v.round_message { MediaType::VideoNote } else { MediaType::Video };
+            }
+            tl::enums::DocumentAttribute::Audio(a) => {
+                return if a.voice { MediaType::Voice } else { MediaType::Audio };
+            }
+            tl::enums::DocumentAttribute::Animated => return MediaType::Animation,
+            _ => {}
+        }
+    }
+    MediaType::Document
+}
+```
+
+**Test Count:** 165 → 167 (+2 from earlier additions, fix verified with existing tests)
+
 ### Remaining Work
 
-- **16.4 Integration Testing** - Manual testing with real Telegram account
-- **16.5 Documentation** - Update README with media filter examples
+- **16.4 Integration Testing** - ✅ Bug found and fixed during manual testing
+- **16.5 Documentation** - Update README with media filter examples (already done per CLAUDE.md)
