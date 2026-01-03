@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Telegram MCP Connector - a Model Context Protocol (MCP) service that enables Claude to search Russian-language Telegram channels and messages in real-time. Built in Rust using the `rmcp` SDK and `grammers` Telegram client.
 
-**Current Status:** Phase 16 Complete ✅, Phase 17 Pending ⬜ - Media search filtering with proper type detection. Real grammers integration, CLI with --setup, conditional credentials, signal handling, rmcp tool attributes, file logging. 167 tests (all passing, 5 ignored). Next: `get_recent_messages` tool for time-based message retrieval.
+**Current Status:** Phase 17 Complete ✅ - Get recent messages tool for time-based retrieval. Media search filtering with proper type detection. Real grammers integration, CLI with --setup, conditional credentials, signal handling, rmcp tool attributes, file logging. 186 tests (all passing, 5 ignored).
 
 ## Build & Test Commands
 
@@ -92,7 +92,7 @@ cargo run --bin telegram-mcp
 | `telegram/auth.rs` | Interactive authentication with 2FA support |
 | `telegram/types.rs` | Domain types (Message, Channel, IDs) with JsonSchema |
 
-## MCP Tools (6 Complete + 1 Planned)
+## MCP Tools (All 7 with rmcp Integration)
 
 | Tool | Status | Description |
 |------|--------|-------------|
@@ -102,9 +102,9 @@ cargo run --bin telegram-mcp
 | `generate_message_link` | ✅ | Generate tg:// and https://t.me links |
 | `open_message_in_telegram` | ✅ | Open message in Telegram Desktop (macOS) |
 | `search_messages` | ✅ | Search messages with rate limiting |
-| `get_recent_messages` | ⬜ | Get messages from channel by time window (no query needed) |
+| `get_recent_messages` | ✅ | Get messages from channel by time window (no query needed) |
 
-All completed tools have `#[tool]` attributes for rmcp protocol compliance.
+All tools have `#[tool]` attributes for rmcp protocol compliance.
 
 ## Development Methodology
 
@@ -208,6 +208,6 @@ Current progress tracked in:
 | 14 | Conditional Credentials | ✅ | 3/3 |
 | 15 | File Logging | ✅ | 10/10 |
 | 16 | Media Search Filtering | ✅ | 14/14 |
-| 17 | Get Recent Messages | ⬜ | ~12-15 est. |
+| 17 | Get Recent Messages | ✅ | 19/19 |
 
-**Overall:** 16/17 phases complete, 167 tests passing (5 ignored).
+**Overall:** 17/17 phases complete, 186 tests passing (5 ignored).

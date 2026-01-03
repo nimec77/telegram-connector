@@ -88,6 +88,38 @@ fn detect_document_type(doc: &Document) -> MediaType {
     MediaType::Document
 }
 
+/// Check if a message's media matches the given filter (for client-side filtering)
+///
+/// Used by `get_recent_messages` since `iter_messages` doesn't support server-side filtering.
+pub fn matches_media_filter(msg: &grammers_client::types::Message, filter: &MediaFilter) -> bool {
+    let Some(media) = msg.media() else {
+        // No media - only match if filter is Url (check text for URLs) or Pinned
+        return match filter {
+            MediaFilter::Url => msg.text().contains("http://") || msg.text().contains("https://"),
+            MediaFilter::Pinned => msg.pinned(),
+            _ => false,
+        };
+    };
+
+    let media_type = convert_media_to_type(&media);
+
+    match filter {
+        MediaFilter::Photo => media_type == MediaType::Photo,
+        MediaFilter::Video => media_type == MediaType::Video,
+        MediaFilter::PhotoVideo => media_type == MediaType::Photo || media_type == MediaType::Video,
+        MediaFilter::Document => media_type == MediaType::Document,
+        MediaFilter::Audio => media_type == MediaType::Audio,
+        MediaFilter::Voice => media_type == MediaType::Voice,
+        MediaFilter::VideoNote => media_type == MediaType::VideoNote,
+        MediaFilter::Gif => media_type == MediaType::Animation,
+        MediaFilter::Url => {
+            // Message has media AND contains URL
+            msg.text().contains("http://") || msg.text().contains("https://")
+        }
+        MediaFilter::Pinned => msg.pinned(),
+    }
+}
+
 /// Convert grammers Peer to our Channel type
 pub fn convert_peer_to_channel(peer: &grammers_client::types::Peer) -> Option<Channel> {
     use grammers_client::types::Peer;

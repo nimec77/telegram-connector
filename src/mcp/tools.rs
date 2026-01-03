@@ -1,6 +1,6 @@
 //! MCP tool implementations
 //!
-//! This module contains all 6 MCP tools implemented in Phase 11.
+//! This module contains all 7 MCP tools.
 //! Tools are organized in subdirectory for better maintainability.
 
 pub mod types;

@@ -366,3 +366,179 @@ async fn mock_search_messages_with_media_filter_document() {
     assert_eq!(search_result.messages.len(), 2);
     assert_eq!(search_result.query_metadata.channels_searched, 3);
 }
+
+// =============================================================================
+// get_recent_messages tests
+// =============================================================================
+
+#[tokio::test]
+async fn mock_get_recent_messages_returns_results() {
+    use crate::telegram::types::HistoryParams;
+
+    let mut mock = MockTelegramClientTrait::new();
+
+    let expected_messages = vec![
+        create_test_message(1, "Recent message 1", 100),
+        create_test_message(2, "Recent message 2", 100),
+        create_test_message(3, "Recent message 3", 100),
+    ];
+
+    let expected_result = SearchResult {
+        messages: expected_messages.clone(),
+        total_found: 3,
+        search_time_ms: 50,
+        query_metadata: QueryMetadata {
+            query: String::new(),
+            hours_back: 48,
+            channels_searched: 1,
+        },
+    };
+    let expected_clone = expected_result.clone();
+
+    mock.expect_get_recent_messages()
+        .times(1)
+        .returning(move |_| Ok(expected_clone.clone()));
+
+    let channel_id = ChannelId::new(100).unwrap();
+    let params = HistoryParams::new(channel_id);
+
+    let result = mock.get_recent_messages(&params).await;
+    assert!(result.is_ok());
+    let history_result = result.unwrap();
+    assert_eq!(history_result.messages.len(), 3);
+    assert_eq!(history_result.query_metadata.channels_searched, 1);
+    assert!(history_result.query_metadata.query.is_empty());
+}
+
+#[tokio::test]
+async fn mock_get_recent_messages_with_media_filter() {
+    use crate::telegram::types::{HistoryParams, MediaFilter};
+
+    let mut mock = MockTelegramClientTrait::new();
+
+    let expected_messages = vec![create_test_message(1, "Photo message", 100)];
+
+    let expected_result = SearchResult {
+        messages: expected_messages.clone(),
+        total_found: 1,
+        search_time_ms: 30,
+        query_metadata: QueryMetadata {
+            query: String::new(),
+            hours_back: 24,
+            channels_searched: 1,
+        },
+    };
+    let expected_clone = expected_result.clone();
+
+    mock.expect_get_recent_messages()
+        .withf(|params| params.media_filter == Some(MediaFilter::Photo) && params.hours_back == 24)
+        .times(1)
+        .returning(move |_| Ok(expected_clone.clone()));
+
+    let channel_id = ChannelId::new(100).unwrap();
+    let params = HistoryParams::new(channel_id)
+        .hours_back(24)
+        .media_filter(MediaFilter::Photo);
+
+    let result = mock.get_recent_messages(&params).await;
+    assert!(result.is_ok());
+    let history_result = result.unwrap();
+    assert_eq!(history_result.messages.len(), 1);
+}
+
+#[tokio::test]
+async fn mock_get_recent_messages_respects_limit() {
+    use crate::telegram::types::HistoryParams;
+
+    let mut mock = MockTelegramClientTrait::new();
+
+    let expected_messages = vec![
+        create_test_message(1, "Message 1", 100),
+        create_test_message(2, "Message 2", 100),
+        create_test_message(3, "Message 3", 100),
+        create_test_message(4, "Message 4", 100),
+        create_test_message(5, "Message 5", 100),
+    ];
+
+    let expected_result = SearchResult {
+        messages: expected_messages.clone(),
+        total_found: 5,
+        search_time_ms: 40,
+        query_metadata: QueryMetadata {
+            query: String::new(),
+            hours_back: 48,
+            channels_searched: 1,
+        },
+    };
+    let expected_clone = expected_result.clone();
+
+    mock.expect_get_recent_messages()
+        .withf(|params| params.limit == 5)
+        .times(1)
+        .returning(move |_| Ok(expected_clone.clone()));
+
+    let channel_id = ChannelId::new(100).unwrap();
+    let params = HistoryParams::new(channel_id).limit(5);
+
+    let result = mock.get_recent_messages(&params).await;
+    assert!(result.is_ok());
+    let history_result = result.unwrap();
+    assert_eq!(history_result.messages.len(), 5);
+}
+
+#[tokio::test]
+async fn mock_get_recent_messages_channel_not_found() {
+    use crate::telegram::types::HistoryParams;
+
+    let mut mock = MockTelegramClientTrait::new();
+
+    mock.expect_get_recent_messages()
+        .times(1)
+        .returning(|params| {
+            Err(Error::InvalidInput(format!(
+                "Channel not found: {}",
+                params.channel_id
+            )))
+        });
+
+    let channel_id = ChannelId::new(999999).unwrap();
+    let params = HistoryParams::new(channel_id);
+
+    let result = mock.get_recent_messages(&params).await;
+    assert!(result.is_err());
+    let error = result.unwrap_err();
+    assert!(error.to_string().contains("Channel not found"));
+}
+
+#[tokio::test]
+async fn mock_get_recent_messages_empty_result() {
+    use crate::telegram::types::HistoryParams;
+
+    let mut mock = MockTelegramClientTrait::new();
+
+    let expected_result = SearchResult {
+        messages: vec![],
+        total_found: 0,
+        search_time_ms: 10,
+        query_metadata: QueryMetadata {
+            query: String::new(),
+            hours_back: 1, // Very short time window
+            channels_searched: 1,
+        },
+    };
+    let expected_clone = expected_result.clone();
+
+    mock.expect_get_recent_messages()
+        .withf(|params| params.hours_back == 1)
+        .times(1)
+        .returning(move |_| Ok(expected_clone.clone()));
+
+    let channel_id = ChannelId::new(100).unwrap();
+    let params = HistoryParams::new(channel_id).hours_back(1);
+
+    let result = mock.get_recent_messages(&params).await;
+    assert!(result.is_ok());
+    let history_result = result.unwrap();
+    assert!(history_result.messages.is_empty());
+    assert_eq!(history_result.total_found, 0);
+}

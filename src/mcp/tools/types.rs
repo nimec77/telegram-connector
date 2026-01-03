@@ -189,6 +189,31 @@ pub struct SearchRequest {
 
 // Response: SearchResult (from telegram/types.rs) which contains Vec<Message>
 
+// ============================================================================
+// Tool 7: get_recent_messages
+// ============================================================================
+
+/// Request for get_recent_messages tool
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct GetRecentMessagesRequest {
+    #[schemars(description = "Channel ID or username (required)")]
+    pub channel_id: String,
+
+    #[schemars(description = "Hours of history to retrieve (default: 48, max: 168)")]
+    pub hours_back: Option<u32>,
+
+    #[schemars(description = "Maximum messages to return (default: 20, max: 100)")]
+    pub limit: Option<u32>,
+
+    #[schemars(
+        description = "Optional: Filter by media type. Applied client-side. Example: 'photo' returns only messages with photos."
+    )]
+    #[serde(default, deserialize_with = "deserialize_optional_media_filter")]
+    pub media_filter: Option<MediaFilter>,
+}
+
+// Response: SearchResult (from telegram/types.rs) - same as search_messages
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -295,6 +320,46 @@ mod tests {
         let request: SearchRequest = serde_json::from_str(json).unwrap();
 
         assert_eq!(request.query, "test");
+        assert_eq!(request.media_filter, None);
+    }
+
+    // =========================================================================
+    // GetRecentMessagesRequest Tests
+    // =========================================================================
+
+    #[test]
+    fn get_recent_messages_request_deserializes() {
+        let json = r#"{"channel_id": "123456"}"#;
+        let request: GetRecentMessagesRequest = serde_json::from_str(json).unwrap();
+
+        assert_eq!(request.channel_id, "123456");
+        assert!(request.hours_back.is_none());
+        assert!(request.limit.is_none());
+        assert!(request.media_filter.is_none());
+    }
+
+    #[test]
+    fn get_recent_messages_request_with_all_params() {
+        let json = r#"{
+            "channel_id": "tech_news",
+            "hours_back": 72,
+            "limit": 50,
+            "media_filter": "photo"
+        }"#;
+        let request: GetRecentMessagesRequest = serde_json::from_str(json).unwrap();
+
+        assert_eq!(request.channel_id, "tech_news");
+        assert_eq!(request.hours_back, Some(72));
+        assert_eq!(request.limit, Some(50));
+        assert_eq!(request.media_filter, Some(MediaFilter::Photo));
+    }
+
+    #[test]
+    fn get_recent_messages_request_empty_media_filter() {
+        let json = r#"{"channel_id": "123", "media_filter": ""}"#;
+        let request: GetRecentMessagesRequest = serde_json::from_str(json).unwrap();
+
+        assert_eq!(request.channel_id, "123");
         assert_eq!(request.media_filter, None);
     }
 }
