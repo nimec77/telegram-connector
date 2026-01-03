@@ -24,10 +24,11 @@
 | 14 | Conditional Credentials | ✅ Complete | 143 | api_id required, auth creds only for --setup |
 | 15 | File Logging | ✅ Complete | 153 | Daily rotation, JSON format, 7-day retention |
 | 16 | Media Search | ✅ Complete | 167 | Filter by media type + proper type detection |
+| 17 | Get Recent Messages | ⬜ Pending | - | New tool: retrieve messages by time window without search |
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
-**Overall Progress:** 16/16 phases complete
+**Overall Progress:** 16/17 phases complete
 
 ---
 
@@ -593,6 +594,128 @@ TELEGRAM_API_ID=12345 cargo run --bin telegram-mcp -- --config ./config.toml
 | "" (empty) | None | ❌ Error (too broad) |
 
 **Test:** `cargo test` ✅ (167 passing, 5 ignored)
+
+---
+
+## Phase 17: Get Recent Messages ⬜
+
+**Goal:** New MCP tool to retrieve messages from a channel by time window without requiring a search query
+
+**Context:** The current `search_messages` tool requires a query string (or media_filter). Users need a way to simply "get all recent messages from channel X in the last N hours" without searching for specific text. This uses grammers' `iter_messages(peer)` method which iterates message history without search.
+
+**Key Difference from search_messages:**
+| Feature | search_messages | get_recent_messages |
+|---------|-----------------|---------------------|
+| Query required | Yes (or media_filter) | No |
+| Channel required | No (global search) | Yes (single channel) |
+| Underlying API | `search_messages()` / `search_all_messages()` | `iter_messages()` |
+| Use case | Find specific content | Get all recent activity |
+
+### 17.1 Domain Types ⬜
+- [ ] Add `HistoryParams` struct to `src/telegram/types.rs`:
+  ```rust
+  pub struct HistoryParams {
+      pub channel_id: ChannelId,
+      pub hours_back: u32,
+      pub limit: u32,
+      pub media_filter: Option<MediaFilter>,
+  }
+  ```
+- [ ] Constants: `DEFAULT_HOURS_BACK = 48`, `MAX_HOURS_BACK = 168`, `DEFAULT_LIMIT = 20`, `MAX_LIMIT = 100`
+- [ ] Write tests for HistoryParams defaults and validation
+
+### 17.2 TelegramClientTrait Extension ⬜
+- [ ] Add `get_recent_messages(&self, params: &HistoryParams) -> Result<SearchResult, Error>` to trait
+- [ ] Update `MockTelegramClientTrait` with new method
+- [ ] Write mock tests for the new method (5+ tests)
+
+### 17.3 TelegramClient Implementation ⬜
+- [ ] Implement `get_recent_messages` in `src/telegram/client.rs`:
+  - [ ] Use `self.client.iter_messages(peer)` for history iteration
+  - [ ] Apply time filter (cutoff = now - hours_back)
+  - [ ] Apply optional media_filter (client-side filtering since iter_messages doesn't support server-side)
+  - [ ] Respect limit parameter
+  - [ ] Build `SearchResult` response (reuse existing type)
+- [ ] Handle edge cases:
+  - [ ] Channel not found
+  - [ ] Empty history
+  - [ ] Rate limiting considerations
+
+### 17.4 MCP Tool Types ⬜
+- [ ] Add `GetRecentMessagesRequest` to `src/mcp/tools/types.rs`:
+  ```rust
+  pub struct GetRecentMessagesRequest {
+      pub channel_id: String,          // Required: channel ID or username
+      pub hours_back: Option<u32>,     // Default: 48, max: 168
+      pub limit: Option<u32>,          // Default: 20, max: 100
+      pub media_filter: Option<MediaFilter>,
+  }
+  ```
+- [ ] Write deserialization tests
+
+### 17.5 MCP Tool Implementation ⬜
+- [ ] Add `get_recent_messages` tool to `src/mcp/server.rs`:
+  - [ ] Add `#[tool]` attribute for rmcp compliance
+  - [ ] Parameter validation (channel_id required)
+  - [ ] Default value handling
+  - [ ] Rate limiting integration
+  - [ ] Delegate to `TelegramClient::get_recent_messages()`
+- [ ] Write 5+ MCP tool tests:
+  - [ ] Returns messages successfully
+  - [ ] Applies time filter correctly
+  - [ ] Respects limit parameter
+  - [ ] Works with media_filter
+  - [ ] Handles channel not found error
+
+### 17.6 Documentation & Testing ⬜
+- [ ] Update README.md with new tool documentation
+- [ ] Add tool to CLAUDE.md MCP Tools table
+- [ ] Update idea.md with tool schema
+- [ ] Run `cargo clippy -- -D warnings`
+- [ ] Run `cargo fmt --check`
+- [ ] All tests passing
+
+**API Schema:**
+```json
+{
+  "name": "get_recent_messages",
+  "description": "Get recent messages from a channel by time window (no search query needed)",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "channel_id": {
+        "type": "string",
+        "description": "Channel ID or username (required)"
+      },
+      "hours_back": {
+        "type": "integer",
+        "description": "Hours of history to retrieve (default: 48, max: 168)",
+        "default": 48,
+        "maximum": 168
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Maximum messages to return (default: 20, max: 100)",
+        "default": 20,
+        "maximum": 100
+      },
+      "media_filter": {
+        "type": "string",
+        "description": "Optional: Filter by media type",
+        "enum": ["photo", "video", "photo_video", "document", "audio", "voice", "video_note", "gif", "url", "pinned"]
+      }
+    },
+    "required": ["channel_id"]
+  }
+}
+```
+
+**Response:** Reuses `SearchResult` type from `search_messages` for consistency.
+
+**Estimated Tests:** ~12-15 new tests
+- 2-3 HistoryParams tests
+- 5 mock client tests
+- 5+ MCP tool tests
 
 ---
 
