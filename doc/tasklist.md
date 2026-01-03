@@ -25,10 +25,11 @@
 | 15 | File Logging | ✅ Complete | 153 | Daily rotation, JSON format, 7-day retention |
 | 16 | Media Search | ✅ Complete | 167 | Filter by media type + proper type detection |
 | 17 | Get Recent Messages | ✅ Complete | 186 | New tool: retrieve messages by time window without search |
+| 18 | Comprehensive Refactoring | ⬜ Pending | - | Split large files, eliminate duplication |
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
-**Overall Progress:** 17/17 phases complete
+**Overall Progress:** 17/18 phases complete
 
 ---
 
@@ -702,6 +703,147 @@ TELEGRAM_API_ID=12345 cargo run --bin telegram-mcp -- --config ./config.toml
 - 2-3 HistoryParams tests
 - 5 mock client tests
 - 5+ MCP tool tests
+
+---
+
+## Phase 18: Comprehensive Refactoring ⬜
+
+**Goal:** Refactor large files to reduce size and eliminate duplication while maintaining the public API.
+
+**Current State:**
+| File | Lines | Issue |
+|------|-------|-------|
+| `telegram/types.rs` | 865 | Mixed concerns, 45 inline tests |
+| `telegram/client.rs` | 447 | 127-line method, dialog iteration 4x duplicated |
+| `mcp/server.rs` | 408 | 7 tools in one file, ID parsing duplicated |
+| `mcp/tools/types.rs` | 366 | All request/response types together |
+
+**Target:** Largest file < 300 lines, no duplication
+
+### New Module Structure
+
+**telegram module:**
+```
+src/telegram/
+├── types.rs              # Module declaration + re-exports (~25 lines)
+├── types/
+│   ├── ids.rs            # ChannelId, MessageId, UserId (~90 lines)
+│   ├── names.rs          # Username, ChannelName (~70 lines)
+│   ├── media.rs          # MediaType, MediaFilter (~80 lines)
+│   ├── entities.rs       # Message, Channel (~80 lines)
+│   └── params.rs         # SearchParams, HistoryParams, SearchResult, QueryMetadata (~120 lines)
+├── client.rs             # Simplified using helpers (~280 lines)
+├── client/
+│   └── helpers.rs        # Dialog iteration, channel lookup (~120 lines)
+├── tests/
+│   ├── client_tests.rs   # Existing (keep)
+│   └── types_tests.rs    # NEW: 45 tests extracted (~250 lines)
+└── ... (other existing files unchanged)
+```
+
+**mcp module:**
+```
+src/mcp/
+├── server.rs             # Keep all tools together (~400 lines) *
+├── tools.rs              # Re-exports (keep)
+├── tools/
+│   ├── types.rs          # Module declaration + re-exports (~20 lines)
+│   ├── types/
+│   │   ├── requests.rs   # 6 request types (~120 lines)
+│   │   ├── responses.rs  # 4 response types (~80 lines)
+│   │   └── serde.rs      # Custom deserializer (~50 lines)
+│   └── helpers.rs        # ID parsing helpers (~50 lines)
+└── tests/                # Existing (keep)
+```
+
+*Note: MCP tools must stay in server.rs due to rmcp `#[tool_router]` macro constraints
+
+### Phase 18.1: Shared Test Helpers ⬜
+- [ ] Create `src/test_helpers.rs` with test fixture factories
+- [ ] Add `create_test_message(id, text, channel_id)` helper
+- [ ] Add `create_test_channel(id, username)` helper
+- [ ] Update `lib.rs` to include test_helpers module
+- [ ] Verify: all tests pass
+
+### Phase 18.2: Telegram Types Extraction ⬜
+Split `telegram/types.rs` (865 lines) into 5 focused modules:
+
+| New File | Contents | Lines |
+|----------|----------|-------|
+| `types/ids.rs` | ChannelId, MessageId, UserId | ~90 |
+| `types/names.rs` | Username, ChannelName | ~70 |
+| `types/media.rs` | MediaType, MediaFilter | ~80 |
+| `types/entities.rs` | Message, Channel | ~80 |
+| `types/params.rs` | SearchParams, HistoryParams, SearchResult, QueryMetadata | ~120 |
+
+- [ ] Create `src/telegram/types/` directory
+- [ ] Extract ID types to `types/ids.rs`
+- [ ] Extract name types to `types/names.rs`
+- [ ] Extract media types to `types/media.rs`
+- [ ] Extract entity types to `types/entities.rs`
+- [ ] Extract param types to `types/params.rs`
+- [ ] Convert `types.rs` to module with re-exports
+- [ ] Move 45 tests to `tests/types_tests.rs`
+- [ ] Verify: all tests pass, public API unchanged
+
+### Phase 18.3: Telegram Client Helpers ⬜
+Extract duplicated patterns from `client.rs`:
+
+| Helper | Purpose | Removes duplication from |
+|--------|---------|-------------------------|
+| `find_channel_in_dialogs()` | Find channel by ID in dialogs | 4 methods |
+| `resolve_channel_identifier()` | Parse username/ID to peer | `get_channel_info`, MCP tools |
+
+- [ ] Create `src/telegram/client/helpers.rs`
+- [ ] Extract `find_channel_in_dialogs()` helper
+- [ ] Extract `resolve_channel_identifier()` helper
+- [ ] Update `client.rs` to use helpers
+- [ ] Verify: all tests pass
+
+### Phase 18.4: MCP Tools Types Extraction ⬜
+Split `mcp/tools/types.rs` (366 lines) into 3 modules:
+
+| New File | Contents | Lines |
+|----------|----------|-------|
+| `types/requests.rs` | 6 request structs | ~120 |
+| `types/responses.rs` | 4 response structs | ~80 |
+| `types/serde.rs` | `deserialize_optional_media_filter` | ~50 |
+
+- [ ] Create `src/mcp/tools/types/` directory
+- [ ] Extract request types to `types/requests.rs`
+- [ ] Extract response types to `types/responses.rs`
+- [ ] Extract serde helpers to `types/serde.rs`
+- [ ] Convert `types.rs` to module with re-exports
+- [ ] Verify: all tests pass
+
+### Phase 18.5: MCP Helpers ⬜
+- [ ] Create `src/mcp/tools/helpers.rs` for shared ID parsing
+- [ ] Add `parse_channel_id(id_str)` helper
+- [ ] Add `parse_message_id(id)` helper
+- [ ] Update `server.rs` to use helpers
+- [ ] Verify: all tests pass
+
+### Expected Results
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Largest file | 865 lines | ~280 lines |
+| Dialog iteration duplication | 4x | 1x |
+| ID parsing duplication | 4x | 1x |
+| Test fixture duplication | 3x | 1x |
+| Total files | ~25 | ~37 |
+| Total lines | ~2,086 | ~2,000 |
+
+### Verification
+After each sub-phase:
+1. `cargo test` - All 186 tests pass
+2. `cargo clippy -- -D warnings` - No warnings
+3. `cargo fmt --check` - Properly formatted
+
+### Risks
+1. **rmcp macro constraints** - Tool methods must stay in same impl block. Mitigation: Keep server.rs tools together, only extract helpers.
+2. **Re-export breakage** - Changing module structure could break imports. Mitigation: Maintain all public re-exports in `telegram.rs`.
+3. **Test discovery** - Moving tests could cause issues. Mitigation: Follow existing `tests/` pattern from Phase 13.
 
 ---
 

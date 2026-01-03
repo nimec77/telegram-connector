@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Telegram MCP Connector - a Model Context Protocol (MCP) service that enables Claude to search Russian-language Telegram channels and messages in real-time. Built in Rust using the `rmcp` SDK and `grammers` Telegram client.
 
-**Current Status:** Phase 17 Complete ✅ - Get recent messages tool for time-based retrieval. Media search filtering with proper type detection. Real grammers integration, CLI with --setup, conditional credentials, signal handling, rmcp tool attributes, file logging. 186 tests (all passing, 5 ignored).
+**Current Status:** Phase 18 Planned - Comprehensive refactoring to reduce file sizes and eliminate duplication. Phase 17 complete with get recent messages tool. 186 tests (all passing, 5 ignored).
 
 ## Build & Test Commands
 
@@ -209,5 +209,6 @@ Current progress tracked in:
 | 15 | File Logging | ✅ | 10/10 |
 | 16 | Media Search Filtering | ✅ | 14/14 |
 | 17 | Get Recent Messages | ✅ | 19/19 |
+| 18 | Comprehensive Refactoring | ⬜ | - |
 
-**Overall:** 17/17 phases complete, 186 tests passing (5 ignored).
+**Overall:** 17/18 phases complete, 186 tests passing (5 ignored).
