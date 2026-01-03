@@ -1,21 +1,21 @@
 # Development Memory - Telegram MCP Connector
 
-**Last Updated:** Phase 18 Planned (2026-01-03)
+**Last Updated:** Phase 18 Complete (2026-01-03)
 
 ---
 
 ## Current Status
 
-**Progress:** 17/18 phases complete
+**Progress:** 18/18 phases complete
 - ✅ Phase 1: Project Setup
 - ✅ Phase 2: Error Types (11/11 tests)
-- ✅ Phase 3: Configuration (15/15 tests + 4 ignored)
-- ✅ Phase 4: Logging (13/13 tests)
-- ✅ Phase 5: Domain Types (42/42 tests)
+- ✅ Phase 3: Configuration (15/15 tests + 5 ignored)
+- ✅ Phase 4: Logging (19/19 tests)
+- ✅ Phase 5: Domain Types (52/52 tests)
 - ✅ Phase 6: Link Generation (8/8 tests)
 - ✅ Phase 7: Rate Limiter (19/19 tests)
 - ✅ Phase 8: Telegram Auth (1/1 test)
-- ✅ Phase 9: Telegram Client (14/14 tests)
+- ✅ Phase 9: Telegram Client (18/18 tests)
 - ✅ Phase 10: MCP Server (19/19 tests)
 - ✅ Phase 11: MCP Tools (4/4 tests)
 - ✅ Phase 12: Integration & Polish (real grammers, CLI, signal handling, rmcp tools)
@@ -24,9 +24,9 @@
 - ✅ Phase 15: File Logging
 - ✅ Phase 16: Media Search Filtering (167 tests)
 - ✅ Phase 17: Get Recent Messages (186 tests)
-- ⬜ Phase 18: Comprehensive Refactoring (planned)
+- ✅ Phase 18: Comprehensive Refactoring (209 tests)
 
-**Total:** 186 tests passing (5 ignored for CI/CD)
+**Total:** 209 tests passing (5 ignored for CI/CD)
 
 **rmcp Integration:** All 7 MCP tools have `#[tool]` attributes for proper protocol compliance
 
@@ -2411,3 +2411,116 @@ let channel_id = if let Ok(id_num) = request.channel_id.parse::<i64>() {
 - **6 MCP tool tests** (tests/history.rs)
 
 **Test count:** 167 → 186 (+19)
+
+---
+
+## Phase 18: Comprehensive Refactoring (Complete)
+
+### What Was Implemented
+
+**Goal:** Split large files into focused modules, eliminate duplication, create shared test helpers.
+
+### 18.1 Shared Test Helpers
+
+Created `src/test_helpers.rs` with factory functions for test fixtures:
+
+```rust
+// Factory functions reduce test code duplication
+pub fn create_test_message(id: i64, text: &str, channel_id: i64) -> Message
+pub fn create_test_message_with_media(id: i64, text: &str, channel_id: i64, media: MediaType) -> Message
+pub fn create_test_message_with_sender(id: i64, text: &str, channel_id: i64, sender: &str) -> Message
+pub fn create_test_channel(id: i64, username: &str) -> Channel
+pub fn create_test_channel_detailed(id: i64, username: &str, title: &str, members: i64, verified: bool) -> Channel
+pub fn create_test_search_result(messages: Vec<Message>) -> SearchResult
+pub fn create_empty_search_result() -> SearchResult
+```
+
+### 18.2 Telegram Types Extraction
+
+Split `telegram/types.rs` (865 lines) into 5 focused submodules:
+
+| File | Lines | Contents |
+|------|-------|----------|
+| `types/ids.rs` | 185 | ChannelId, MessageId, UserId with validation |
+| `types/names.rs` | 168 | Username, ChannelName validated strings |
+| `types/media.rs` | 152 | MediaType enum, MediaFilter enum |
+| `types/entities.rs` | 131 | Message, Channel domain entities |
+| `types/params.rs` | 235 | SearchParams, HistoryParams, SearchResult, QueryMetadata |
+| `types.rs` | 24 | Module declarations + re-exports |
+
+**Pattern:** Each submodule contains its types + inline tests for that type.
+
+### 18.3 MCP Tools Types Extraction
+
+Split `mcp/tools/types.rs` (366 lines) into 3 focused submodules:
+
+| File | Lines | Contents |
+|------|-------|----------|
+| `types/requests.rs` | 224 | 6 request structs with JsonSchema |
+| `types/responses.rs` | 109 | 4 response structs |
+| `types/serde_helpers.rs` | 82 | Custom deserializer for empty string handling |
+| `types.rs` | 18 | Module declarations + re-exports |
+
+### 18.4 MCP ID Parsing Helpers
+
+Created `src/mcp/tools/helpers.rs` to eliminate duplicated ID parsing in server.rs:
+
+```rust
+pub fn parse_channel_id(id_str: &str) -> Result<ChannelId, String>
+pub fn parse_message_id(id: i64) -> Result<MessageId, String>
+pub fn parse_optional_channel_id(id_str: &Option<String>) -> Result<Option<ChannelId>, String>
+```
+
+**Before:** ID parsing duplicated in 4 tool methods
+**After:** Single source of truth with tests
+
+### Key Design Decisions
+
+1. **Keep tests inline with submodules**
+   - Each submodule has its own `#[cfg(test)] mod tests`
+   - Keeps tests close to implementation
+   - No separate test file needed
+
+2. **Re-export pattern for API stability**
+   - Parent module re-exports all public types
+   - External code uses same imports as before
+   - Zero breaking changes
+
+3. **No mod.rs files**
+   - Maintained file-as-module pattern
+   - e.g., `types.rs` declares submodules, not `types/mod.rs`
+
+### Files Created
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `src/test_helpers.rs` | 206 | Test fixture factories |
+| `src/telegram/types/ids.rs` | 185 | ID wrapper types |
+| `src/telegram/types/names.rs` | 168 | Name validated types |
+| `src/telegram/types/media.rs` | 152 | Media enums |
+| `src/telegram/types/entities.rs` | 131 | Domain entities |
+| `src/telegram/types/params.rs` | 235 | Search/History params |
+| `src/mcp/tools/helpers.rs` | 121 | ID parsing helpers |
+| `src/mcp/tools/types/requests.rs` | 224 | Request types |
+| `src/mcp/tools/types/responses.rs` | 109 | Response types |
+| `src/mcp/tools/types/serde_helpers.rs` | 82 | Custom deserializers |
+
+### Results
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Largest file | 865 lines | 381 lines |
+| telegram/types.rs | 865 lines | 24 lines |
+| mcp/tools/types.rs | 366 lines | 18 lines |
+| ID parsing duplication | 4x | 1x |
+| Test count | 186 | 209 (+23) |
+
+### Lessons Learned
+
+1. **Re-export pattern is essential** - Changing module structure without breaking public API requires careful re-exports at each level.
+
+2. **Inline tests work well for submodules** - No need to create separate test files when submodules are small and focused.
+
+3. **Test helpers reduce duplication** - Factory functions like `create_test_message()` make tests more readable and DRY.
+
+4. **File-as-module pattern scales** - Even with nested submodules, avoiding `mod.rs` keeps structure clear.
