@@ -1,12 +1,12 @@
 # Development Memory - Telegram MCP Connector
 
-**Last Updated:** Phase 16.3.1 Media Type Detection Fix (2026-01-01)
+**Last Updated:** Phase 17 Planning (2026-01-03)
 
 ---
 
 ## Current Status
 
-**Progress:** 15/16 phases complete - Phase 16 In Progress 🔄
+**Progress:** 16/17 phases complete - Phase 17 Pending ⬜
 - ✅ Phase 1: Project Setup
 - ✅ Phase 2: Error Types (11/11 tests)
 - ✅ Phase 3: Configuration (15/15 tests + 4 ignored)
@@ -22,7 +22,8 @@
 - ✅ Phase 13: Refactoring
 - ✅ Phase 14: Conditional Credentials
 - ✅ Phase 15: File Logging
-- 🔄 Phase 16: Media Search Filtering (16.1-16.3 complete, 16.4-16.5 pending)
+- ✅ Phase 16: Media Search Filtering (167 tests)
+- ⬜ Phase 17: Get Recent Messages (new tool for time-based message retrieval)
 
 **Total:** 167 tests passing (5 ignored for CI/CD)
 
@@ -2324,3 +2325,106 @@ fn detect_document_type(doc: &Document) -> MediaType {
 
 - **16.4 Integration Testing** - ✅ Bug found and fixed during manual testing
 - **16.5 Documentation** - Update README with media filter examples (already done per CLAUDE.md)
+
+---
+
+## Phase 17: Get Recent Messages (Planning)
+
+**Date:** 2026-01-03
+
+### Problem Statement
+
+The current `search_messages` tool requires a query string (or `media_filter`) to work. Empty queries are rejected because Telegram's search API doesn't support them. However, users need a way to retrieve "all recent messages from channel X in the last N hours" without searching for specific text.
+
+### Solution Analysis
+
+**grammers API Methods Available:**
+| Method | Description | Query Required? |
+|--------|-------------|-----------------|
+| `search_messages(peer)` | Search with query/filter | Yes (or media_filter) |
+| `search_all_messages()` | Global search | Yes (or media_filter) |
+| `iter_messages(peer)` | Iterate message history | **No** |
+| `get_messages_by_id(peer, ids)` | Get specific messages | No (but need IDs) |
+
+The `iter_messages(peer)` method is the solution - it returns messages from a channel in reverse chronological order without requiring a search query.
+
+### Design Decision
+
+**Option A: New `get_recent_messages` tool** (SELECTED)
+
+Rationale:
+1. `iter_messages` requires a specific peer - no "global message history" API exists
+2. Clear separation: search = query-based, history = time-based
+3. Simpler implementation and testing
+4. Matches the underlying API capabilities
+
+**User Requirements Gathered:**
+- Include optional `media_filter` (reuse existing `MediaFilter` enum)
+- Reuse `SearchResult` response type for consistency
+- Max `hours_back` = 168 hours (7 days)
+
+### API Design
+
+```rust
+// New domain type
+pub struct HistoryParams {
+    pub channel_id: ChannelId,        // Required
+    pub hours_back: u32,              // Default: 48, max: 168
+    pub limit: u32,                   // Default: 20, max: 100
+    pub media_filter: Option<MediaFilter>,
+}
+
+// New trait method
+async fn get_recent_messages(&self, params: &HistoryParams) -> Result<SearchResult, Error>;
+
+// MCP request type
+pub struct GetRecentMessagesRequest {
+    pub channel_id: String,           // Required
+    pub hours_back: Option<u32>,
+    pub limit: Option<u32>,
+    pub media_filter: Option<MediaFilter>,
+}
+```
+
+### Implementation Notes
+
+**Key difference from search_messages:**
+- Uses `iter_messages(peer)` instead of `search_messages(peer)`
+- `media_filter` must be applied client-side (iter_messages doesn't support server-side filtering)
+- Channel is required (no global history iteration in Telegram API)
+
+**Client-side media filtering pattern:**
+```rust
+let mut messages_iter = self.client.iter_messages(peer);
+while let Some(msg) = messages_iter.next().await? {
+    if msg.date() < cutoff_time {
+        break; // Messages are in reverse chronological order
+    }
+
+    // Apply media filter client-side
+    if let Some(ref filter) = params.media_filter {
+        if !matches_media_filter(&msg, filter) {
+            continue;
+        }
+    }
+
+    // Convert and collect
+    if let Some(converted) = convert_message(&msg, peer) {
+        messages.push(converted);
+        if messages.len() >= params.limit as usize {
+            break;
+        }
+    }
+}
+```
+
+### Estimated Work
+
+- **17.1** Domain Types: HistoryParams struct + tests (~2-3 tests)
+- **17.2** Trait Extension: Add method to TelegramClientTrait + mock (~5 tests)
+- **17.3** Client Implementation: iter_messages logic with filtering
+- **17.4** MCP Tool Types: GetRecentMessagesRequest + tests
+- **17.5** MCP Tool Implementation: server.rs tool method (~5 tests)
+- **17.6** Documentation: README, CLAUDE.md, idea.md updates
+
+**Total estimated tests:** 12-15 new tests
