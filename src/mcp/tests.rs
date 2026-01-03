@@ -5,6 +5,8 @@
 
 #[path = "tests/channels.rs"]
 mod channels;
+#[path = "tests/history.rs"]
+mod history;
 #[path = "tests/links.rs"]
 mod links;
 #[path = "tests/search.rs"]

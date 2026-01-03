@@ -2,9 +2,11 @@
 
 use crate::config::TelegramConfig;
 use crate::error::Error;
-use crate::telegram::converters::{convert_media_filter, convert_message, convert_peer_to_channel};
+use crate::telegram::converters::{
+    convert_media_filter, convert_message, convert_peer_to_channel, matches_media_filter,
+};
 use crate::telegram::trait_def::TelegramClientTrait;
-use crate::telegram::types::{QueryMetadata, SearchParams, SearchResult};
+use crate::telegram::types::{HistoryParams, QueryMetadata, SearchParams, SearchResult};
 use chrono::{Duration, Utc};
 use grammers_client::Client;
 use grammers_mtsender::SenderPool;
@@ -349,6 +351,96 @@ impl TelegramClientTrait for TelegramClient {
                 query: params.query.clone(),
                 hours_back: params.hours_back,
                 channels_searched,
+            },
+        })
+    }
+
+    async fn get_recent_messages(&self, params: &HistoryParams) -> Result<SearchResult, Error> {
+        // Validate limit
+        if params.limit == 0 {
+            return Err(Error::InvalidInput(
+                "Limit must be greater than 0".to_string(),
+            ));
+        }
+
+        let start_time = Instant::now();
+        let cutoff_time = Utc::now() - Duration::hours(params.hours_back as i64);
+        let mut messages = Vec::new();
+
+        // Find the channel in our dialogs
+        let mut dialogs = self.client.iter_dialogs();
+        let mut found_channel = false;
+
+        while let Some(dialog) = dialogs
+            .next()
+            .await
+            .map_err(|e| Error::TelegramApi(format!("Failed to iterate dialogs: {}", e)))?
+        {
+            let peer = dialog.peer();
+            if peer.id().bare_id() == params.channel_id.get() {
+                found_channel = true;
+
+                // Use iter_messages to get message history (no search query)
+                let mut messages_iter = self.client.iter_messages(peer);
+
+                while let Some(msg) = messages_iter
+                    .next()
+                    .await
+                    .map_err(|e| Error::TelegramApi(format!("Failed to iterate messages: {}", e)))?
+                {
+                    // Check time filter - messages are in reverse chronological order
+                    if msg.date() < cutoff_time {
+                        break;
+                    }
+
+                    // Apply media filter client-side (iter_messages doesn't support server-side filtering)
+                    if params
+                        .media_filter
+                        .as_ref()
+                        .is_some_and(|filter| !matches_media_filter(&msg, filter))
+                    {
+                        continue;
+                    }
+
+                    // Convert and collect
+                    if let Some(converted) = convert_message(&msg, peer) {
+                        messages.push(converted);
+                        if messages.len() >= params.limit as usize {
+                            break;
+                        }
+                    }
+                }
+                break;
+            }
+        }
+
+        if !found_channel {
+            return Err(Error::InvalidInput(format!(
+                "Channel not found: {}",
+                params.channel_id
+            )));
+        }
+
+        let search_time_ms = start_time.elapsed().as_millis() as u64;
+        let total_found = messages.len() as u64;
+
+        tracing::info!(
+            channel_id = %params.channel_id,
+            media_filter = ?params.media_filter,
+            results = total_found,
+            hours_back = params.hours_back,
+            duration_ms = search_time_ms,
+            "Get recent messages completed"
+        );
+
+        Ok(SearchResult {
+            messages,
+            total_found,
+            search_time_ms,
+            query_metadata: QueryMetadata {
+                query: String::new(), // No query for history retrieval
+                hours_back: params.hours_back,
+                channels_searched: 1,
             },
         })
     }

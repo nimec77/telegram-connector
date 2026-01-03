@@ -1,12 +1,13 @@
 use crate::link::MessageLink;
 use crate::mcp::tools::{
     ChannelsResponse, GenerateLinkRequest, GetChannelInfoRequest, GetChannelsRequest,
-    MessageLinkResponse, OpenMessageRequest, OpenMessageResponse, SearchRequest, StatusResponse,
+    GetRecentMessagesRequest, MessageLinkResponse, OpenMessageRequest, OpenMessageResponse,
+    SearchRequest, StatusResponse,
 };
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::Channel;
 use crate::telegram::TelegramClientTrait;
-use crate::telegram::types::{ChannelId, MessageId, SearchParams, SearchResult};
+use crate::telegram::types::{ChannelId, HistoryParams, MessageId, SearchParams, SearchResult};
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{Implementation, InitializeResult, ProtocolVersion, ServerCapabilities};
@@ -291,6 +292,86 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             search_time_ms = result.search_time_ms,
             channels_searched = result.query_metadata.channels_searched,
             "Search completed"
+        );
+
+        Ok(Json(result))
+    }
+
+    /// Tool 7: get_recent_messages - Get recent messages from a channel by time window
+    #[tool(
+        description = "Get recent messages from a specific channel by time window (no search query needed)"
+    )]
+    pub async fn get_recent_messages(
+        &self,
+        Parameters(request): Parameters<GetRecentMessagesRequest>,
+    ) -> Result<Json<SearchResult>, String> {
+        // Validate channel_id is provided
+        if request.channel_id.trim().is_empty() {
+            return Err("channel_id is required".to_string());
+        }
+
+        // Parse channel_id (can be numeric ID or username)
+        let channel_id = if let Ok(id_num) = request.channel_id.parse::<i64>() {
+            ChannelId::new(id_num).map_err(|e| format!("Invalid channel_id: {}", e))?
+        } else {
+            // Username provided - need to resolve it first via get_channel_info
+            let channel = self
+                .telegram_client
+                .get_channel_info(&request.channel_id)
+                .await
+                .map_err(|e| format!("Channel not found: {}", e))?;
+            channel.id
+        };
+
+        // Apply defaults and limits
+        let hours_back = request
+            .hours_back
+            .unwrap_or(HistoryParams::DEFAULT_HOURS_BACK)
+            .min(HistoryParams::MAX_HOURS_BACK);
+
+        let limit = request
+            .limit
+            .unwrap_or(HistoryParams::DEFAULT_LIMIT)
+            .min(HistoryParams::MAX_LIMIT);
+
+        // Validate limit is greater than 0
+        if limit == 0 {
+            return Err("Limit must be greater than 0".to_string());
+        }
+
+        // Acquire rate limiter tokens (1 token per request)
+        self.rate_limiter
+            .acquire(1)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // Build history params
+        let params = HistoryParams {
+            channel_id,
+            hours_back,
+            limit,
+            media_filter: request.media_filter,
+        };
+
+        // Execute history retrieval
+        let result = self
+            .telegram_client
+            .get_recent_messages(&params)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // Log results (IDs only, not message text - for privacy and log size)
+        let message_ids: Vec<i64> = result.messages.iter().map(|m| m.id.get()).collect();
+        tracing::info!(
+            channel_id = %params.channel_id,
+            media_filter = ?params.media_filter,
+            hours_back = params.hours_back,
+            limit = params.limit,
+            total_found = result.total_found,
+            messages_returned = message_ids.len(),
+            message_ids = ?message_ids,
+            search_time_ms = result.search_time_ms,
+            "Get recent messages completed"
         );
 
         Ok(Json(result))
