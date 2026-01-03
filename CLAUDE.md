@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Telegram MCP Connector - a Model Context Protocol (MCP) service that enables Claude to search Russian-language Telegram channels and messages in real-time. Built in Rust using the `rmcp` SDK and `grammers` Telegram client.
 
-**Current Status:** Phase 18 Planned - Comprehensive refactoring to reduce file sizes and eliminate duplication. Phase 17 complete with get recent messages tool. 186 tests (all passing, 5 ignored).
+**Current Status:** Phase 18 Complete - Comprehensive refactoring split large files into focused modules. 209 tests (all passing, 5 ignored).
 
 ## Build & Test Commands
 
@@ -15,7 +15,7 @@ Telegram MCP Connector - a Model Context Protocol (MCP) service that enables Cla
 cargo build
 cargo build --release
 
-# Run all tests (167 tests passing, 5 ignored)
+# Run all tests (209 tests passing, 5 ignored)
 cargo test
 
 # Run tests for specific module
@@ -26,9 +26,10 @@ cargo test types           # 52 tests (includes MediaFilter)
 cargo test link            # 8 tests
 cargo test rate_limiter    # 19 tests
 cargo test auth            # 1 test
-cargo test client          # 14 tests (12 original + 2 media filter passthrough)
+cargo test client          # 18 tests
 cargo test cli             # 7 tests
-cargo test mcp             # 31 tests (server + all 6 tools + media filter)
+cargo test mcp             # 40 tests (server + all 7 tools + helpers)
+cargo test test_helpers    # 7 tests (fixture factories)
 
 # Linting and formatting
 cargo fmt --check
@@ -85,12 +86,14 @@ cargo run --bin telegram-mcp
 | `rate_limiter.rs` | Token bucket rate limiting with retry_after calculation |
 | `link.rs` | Telegram deep link generation (tg://, https://t.me) |
 | `main.rs` | Entry point with signal handling, setup mode, MCP server |
+| `test_helpers.rs` | Test fixture factories (create_test_message, create_test_channel) |
 | `mcp/server.rs` | rmcp ServerHandler + MCP tool methods |
-| `mcp/tools.rs` | Re-exports tools module |
-| `mcp/tools/types.rs` | MCP tool request/response types with JsonSchema |
+| `mcp/tools.rs` | Re-exports tools + helpers modules |
+| `mcp/tools/helpers.rs` | ID parsing helpers (parse_channel_id, parse_message_id) |
+| `mcp/tools/types/` | Submodules: requests.rs, responses.rs, serde_helpers.rs |
 | `telegram/client.rs` | Real grammers client + TelegramClientTrait |
 | `telegram/auth.rs` | Interactive authentication with 2FA support |
-| `telegram/types.rs` | Domain types (Message, Channel, IDs) with JsonSchema |
+| `telegram/types/` | Submodules: ids.rs, names.rs, media.rs, entities.rs, params.rs |
 
 ## MCP Tools (All 7 with rmcp Integration)
 
@@ -194,13 +197,13 @@ Current progress tracked in:
 |-------|-------------|--------|-------|
 | 1 | Project Setup | ✅ | - |
 | 2 | Error Types | ✅ | 11/11 |
-| 3 | Configuration | ✅ | 15/15 (+4 ignored) |
-| 4 | Logging | ✅ | 13/13 |
-| 5 | Domain Types | ✅ | 42/42 |
+| 3 | Configuration | ✅ | 15/15 (+5 ignored) |
+| 4 | Logging | ✅ | 19/19 |
+| 5 | Domain Types | ✅ | 52/52 |
 | 6 | Link Generation | ✅ | 8/8 |
 | 7 | Rate Limiter | ✅ | 19/19 |
 | 8 | Telegram Auth | ✅ | 1/1 |
-| 9 | Telegram Client | ✅ | 14/14 |
+| 9 | Telegram Client | ✅ | 18/18 |
 | 10 | MCP Server | ✅ | 19/19 |
 | 11 | MCP Tools | ✅ | 4/4 |
 | 12 | Integration | ✅ | 7/7 (CLI) |
@@ -209,6 +212,6 @@ Current progress tracked in:
 | 15 | File Logging | ✅ | 10/10 |
 | 16 | Media Search Filtering | ✅ | 14/14 |
 | 17 | Get Recent Messages | ✅ | 19/19 |
-| 18 | Comprehensive Refactoring | ⬜ | - |
+| 18 | Comprehensive Refactoring | ✅ | 23/23 |
 
-**Overall:** 17/18 phases complete, 186 tests passing (5 ignored).
+**Overall:** 18/18 phases complete, 209 tests passing (5 ignored).

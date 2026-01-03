@@ -2,12 +2,12 @@ use crate::link::MessageLink;
 use crate::mcp::tools::{
     ChannelsResponse, GenerateLinkRequest, GetChannelInfoRequest, GetChannelsRequest,
     GetRecentMessagesRequest, MessageLinkResponse, OpenMessageRequest, OpenMessageResponse,
-    SearchRequest, StatusResponse,
+    SearchRequest, StatusResponse, parse_channel_id, parse_message_id, parse_optional_channel_id,
 };
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::Channel;
 use crate::telegram::TelegramClientTrait;
-use crate::telegram::types::{ChannelId, HistoryParams, MessageId, SearchParams, SearchResult};
+use crate::telegram::types::{HistoryParams, SearchParams, SearchResult};
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{Implementation, InitializeResult, ProtocolVersion, ServerCapabilities};
@@ -114,19 +114,9 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         Parameters(request): Parameters<GenerateLinkRequest>,
     ) -> Result<Json<MessageLinkResponse>, String> {
-        // Parse channel_id string to i64
-        let channel_id_num: i64 = request.channel_id.parse().map_err(|_| {
-            format!(
-                "Invalid channel_id: '{}' is not a valid number",
-                request.channel_id
-            )
-        })?;
-
-        // Create type-safe IDs
-        let channel_id =
-            ChannelId::new(channel_id_num).map_err(|e| format!("Invalid channel_id: {}", e))?;
-        let message_id =
-            MessageId::new(request.message_id).map_err(|e| format!("Invalid message_id: {}", e))?;
+        // Parse and validate IDs using helpers
+        let channel_id = parse_channel_id(&request.channel_id)?;
+        let message_id = parse_message_id(request.message_id)?;
 
         // Generate links using existing MessageLink from link.rs
         let link = MessageLink::new(channel_id, message_id);
@@ -152,19 +142,9 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         Parameters(request): Parameters<OpenMessageRequest>,
     ) -> Result<Json<OpenMessageResponse>, String> {
-        // Parse channel_id string to i64
-        let channel_id_num: i64 = request.channel_id.parse().map_err(|_| {
-            format!(
-                "Invalid channel_id: '{}' is not a valid number",
-                request.channel_id
-            )
-        })?;
-
-        // Create type-safe IDs
-        let channel_id =
-            ChannelId::new(channel_id_num).map_err(|e| format!("Invalid channel_id: {}", e))?;
-        let message_id =
-            MessageId::new(request.message_id).map_err(|e| format!("Invalid message_id: {}", e))?;
+        // Parse and validate IDs using helpers
+        let channel_id = parse_channel_id(&request.channel_id)?;
+        let message_id = parse_message_id(request.message_id)?;
 
         // Generate links
         let link = MessageLink::new(channel_id, message_id);
@@ -229,16 +209,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             );
         }
 
-        // Parse optional channel_id
-        let channel_id = match &request.channel_id {
-            Some(id_str) => {
-                let id_num: i64 = id_str.parse().map_err(|_| {
-                    format!("Invalid channel_id: '{}' is not a valid number", id_str)
-                })?;
-                Some(ChannelId::new(id_num).map_err(|e| format!("Invalid channel_id: {}", e))?)
-            }
-            None => None,
-        };
+        // Parse optional channel_id using helper
+        let channel_id = parse_optional_channel_id(&request.channel_id)?;
 
         // Apply defaults and limits
         let hours_back = request
@@ -311,10 +283,11 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         }
 
         // Parse channel_id (can be numeric ID or username)
-        let channel_id = if let Ok(id_num) = request.channel_id.parse::<i64>() {
-            ChannelId::new(id_num).map_err(|e| format!("Invalid channel_id: {}", e))?
+        let channel_id = if request.channel_id.chars().all(|c| c.is_ascii_digit()) {
+            // Numeric ID - use helper for validation
+            parse_channel_id(&request.channel_id)?
         } else {
-            // Username provided - need to resolve it first via get_channel_info
+            // Username provided - resolve via get_channel_info
             let channel = self
                 .telegram_client
                 .get_channel_info(&request.channel_id)
