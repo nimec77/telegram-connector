@@ -307,7 +307,7 @@ fn cleanup_handles_missing_directory() {
 
 #[test]
 fn cleanup_removes_old_log_files() {
-    use filetime::{set_file_mtime, FileTime};
+    use filetime::{FileTime, set_file_mtime};
     use std::fs::File;
     use std::io::Write;
 
@@ -320,8 +320,7 @@ fn cleanup_removes_old_log_files() {
         .unwrap()
         .write_all(b"old log")
         .unwrap();
-    let ten_days_ago =
-        std::time::SystemTime::now() - std::time::Duration::from_secs(10 * 86400);
+    let ten_days_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(10 * 86400);
     set_file_mtime(&old_log, FileTime::from_system_time(ten_days_ago)).unwrap();
 
     // Create a "recent" log file (now)
@@ -350,7 +349,7 @@ fn cleanup_removes_old_log_files() {
 
 #[test]
 fn cleanup_ignores_non_log_files() {
-    use filetime::{set_file_mtime, FileTime};
+    use filetime::{FileTime, set_file_mtime};
     use std::fs::File;
     use std::io::Write;
 
@@ -360,8 +359,7 @@ fn cleanup_ignores_non_log_files() {
     // Create an old non-log file
     let old_txt = log_dir.join("notes.txt");
     File::create(&old_txt).unwrap().write_all(b"notes").unwrap();
-    let ten_days_ago =
-        std::time::SystemTime::now() - std::time::Duration::from_secs(10 * 86400);
+    let ten_days_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(10 * 86400);
     set_file_mtime(&old_txt, FileTime::from_system_time(ten_days_ago)).unwrap();
 
     let config = LoggingConfig {
