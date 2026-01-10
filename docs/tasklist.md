@@ -26,11 +26,11 @@
 | 16 | Media Search | ✅ Complete | 167 | Filter by media type + proper type detection |
 | 17 | Get Recent Messages | ✅ Complete | 186 | New tool: retrieve messages by time window without search |
 | 18 | Comprehensive Refactoring | ✅ Complete | 209 | Split large files, shared helpers, eliminated duplication |
-| 19 | Log Cleanup | 🔄 In Progress | 6/6 | Startup cleanup, max_log_days enforcement |
+| 19 | Log Cleanup | ✅ Complete | 215 | Startup cleanup, max_log_days enforcement |
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
-**Overall Progress:** 18/19 phases complete
+**Overall Progress:** 19/19 phases complete
 
 ---
 
@@ -848,7 +848,7 @@ Split `mcp/tools/types.rs` (366 lines) into 3 modules:
 
 ---
 
-## Phase 19: Log Cleanup 🔄
+## Phase 19: Log Cleanup ✅
 
 **Goal:** Implement automatic cleanup of old log files based on `max_log_days` configuration
 
@@ -879,9 +879,9 @@ Split `mcp/tools/types.rs` (366 lines) into 3 modules:
 - [x] Test: handles empty directory gracefully
 - [x] Test: handles missing directory gracefully
 
-### 19.4 Documentation ⬜
-- [ ] Update README.md logging section
-- [ ] Update config.example.toml with `max_log_days` documentation
+### 19.4 Documentation ✅
+- [x] Update README.md logging section
+- [x] Update config.example.toml with `max_log_days` documentation
 - [x] Run `cargo clippy -- -D warnings`
 - [x] Run `cargo fmt --check`
 - [x] All tests passing (215 tests, 5 ignored)

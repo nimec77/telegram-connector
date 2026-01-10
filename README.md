@@ -12,7 +12,7 @@ A Model Context Protocol (MCP) service that enables Claude to search and interac
 - **Native Integration** - Open messages directly in Telegram Desktop (macOS)
 - **Rate Limiting** - Built-in token bucket rate limiter to prevent API abuse
 - **Secure Credentials** - API keys and phone numbers protected with `secrecy` crate
-- **File Logging** - Daily log rotation with configurable retention
+- **File Logging** - Daily log rotation with automatic cleanup of old logs
 
 ## Architecture
 
@@ -148,7 +148,7 @@ phone_number = "+1234567890"
 # File logging (always JSON format, daily rotation)
 # file_enabled = true                                   # Default: true
 # file_path = "~/.config/telegram-connector/logs/"      # Default log directory
-# max_log_days = 7                                      # Days to retain logs
+# max_log_days = 7                                      # Days to retain (old logs cleaned on startup)
 
 [server]
 # Optional: server configuration
