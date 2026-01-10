@@ -2527,41 +2527,25 @@ pub fn parse_optional_channel_id(id_str: &Option<String>) -> Result<Option<Chann
 
 ---
 
-## Phase 19: Log Cleanup (Planned - 2026-01-10)
+## Phase 19: Log Cleanup (Complete - 2026-01-10)
 
-### Problem
+### What Was Implemented
 
-Phase 15 added file logging with daily rotation via `tracing_appender::rolling::RollingFileAppender` and a `max_log_days` config field (default: 7). However, the cleanup logic was never implemented - the `max_log_days` field is unused, and log files accumulate indefinitely.
+1. **cleanup_old_logs() Function** (src/logging.rs:122-158)
+   - Removes log files older than `max_log_days` configuration
+   - Called on application startup after logging initialization
+   - Returns count of files removed
 
-### Current State
+2. **Startup Integration** (src/main.rs:26-31)
+   - Called after `logging::init()`
+   - Uses let chains for clean conditional: `if let Ok(removed) = ... && removed > 0`
+   - Only logs when files are actually removed (avoids noise)
 
-```rust
-// LoggingConfig has the field, but it's not used
-pub struct LoggingConfig {
-    pub file_enabled: bool,
-    pub file_path: PathBuf,
-    pub max_log_days: u32,  // <-- NOT IMPLEMENTED
-}
+3. **Documentation Updates**
+   - README.md: Updated feature description to mention automatic cleanup
+   - config.example.toml: Added "(old logs cleaned on startup)" note
 
-// RollingFileAppender only handles rotation, NOT cleanup
-let file_appender = RollingFileAppender::new(
-    Rotation::DAILY,
-    &config.file_path,
-    "telegram-connector.log"
-);
-```
-
-### Best Practices Considered
-
-| Approach | Pros | Cons |
-|----------|------|------|
-| **Startup cleanup** | Simple, catches most cases | Won't clean if app crashes repeatedly |
-| **logrotate (OS-level)** | Robust, runs even if app crashes | External dependency, OS-specific |
-| **Background task** | Continuous cleanup | Complex shutdown handling |
-
-**Decision:** Startup cleanup (KISS principle) - matches project philosophy.
-
-### Proposed Implementation
+### Final Implementation
 
 ```rust
 // src/logging.rs
@@ -2571,31 +2555,30 @@ pub fn cleanup_old_logs(config: &LoggingConfig) -> anyhow::Result<usize> {
     }
 
     let cutoff = std::time::SystemTime::now()
-        - std::time::Duration::from_secs(config.max_log_days as u64 * 86400);
-
-    let mut removed = 0;
+        - std::time::Duration::from_secs(u64::from(config.max_log_days) * 86400);
 
     let entries = match std::fs::read_dir(&config.file_path) {
         Ok(e) => e,
-        Err(_) => return Ok(0), // Directory doesn't exist yet
+        Err(_) => return Ok(0),
     };
+
+    let mut removed = 0;
 
     for entry in entries.flatten() {
         let path = entry.path();
 
-        // Only process .log files
-        if path.extension().and_then(|e| e.to_str()) != Some("log") {
+        // Match files containing ".log" (handles telegram-connector.log.YYYY-MM-DD)
+        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if !file_name.contains(".log") {
             continue;
         }
 
-        if let Ok(metadata) = entry.metadata() {
-            if let Ok(modified) = metadata.modified() {
-                if modified < cutoff {
-                    if std::fs::remove_file(&path).is_ok() {
-                        removed += 1;
-                    }
-                }
-            }
+        if let Ok(metadata) = entry.metadata()
+            && let Ok(modified) = metadata.modified()
+            && modified < cutoff
+            && std::fs::remove_file(&path).is_ok()
+        {
+            removed += 1;
         }
     }
 
@@ -2603,54 +2586,80 @@ pub fn cleanup_old_logs(config: &LoggingConfig) -> anyhow::Result<usize> {
 }
 ```
 
-### Integration Point (main.rs)
+### Key Decisions & Rationale
 
-```rust
-// After logging::init()
-if let Ok(count) = logging::cleanup_old_logs(&config.logging) {
-    if count > 0 {
-        tracing::info!(removed = count, "Cleaned up old log files");
-    }
-}
-```
+1. **Startup cleanup vs background task**
+   - **Choice:** Cleanup on startup only
+   - **Why:** KISS principle - simple, catches most cases, no complex shutdown handling
+   - **Trade-off:** Won't clean if app crashes repeatedly before startup completes
 
-### Edge Cases to Handle
+2. **File matching: contains(".log") vs extension check**
+   - **Initial:** Used `path.extension() == Some("log")`
+   - **Problem:** tracing_appender names files `telegram-connector.log.YYYY-MM-DD` where extension is the date
+   - **Fix:** Changed to `file_name.contains(".log")` to match the pattern
 
-1. **Directory doesn't exist** - Return Ok(0), don't fail
-2. **max_log_days == 0** - Disable cleanup (keep logs forever)
-3. **file_enabled == false** - Skip cleanup entirely
-4. **Permission errors** - Log warning, continue with remaining files
-5. **Non-.log files** - Ignore (other files in log directory)
+3. **Let chains for nested conditions**
+   - **Pattern:** `if let Ok(x) = ... && let Ok(y) = ... && condition`
+   - **Why:** Clippy requires collapsing nested if-let statements in Rust 2024
+   - **Benefit:** Cleaner, more idiomatic code
 
-### Tests Needed (~6 tests)
+### Gotchas & Edge Cases
 
-- `cleanup_skipped_when_file_disabled`
-- `cleanup_skipped_when_max_days_zero`
-- `cleanup_removes_old_files`
-- `cleanup_keeps_recent_files`
-- `cleanup_ignores_non_log_files`
-- `cleanup_handles_missing_directory`
+1. **tracing_appender file naming**
+   - **Problem:** Expected files like `app.log`, got `telegram-connector.log.2025-01-01`
+   - **Issue:** `.extension()` returns `"2025-01-01"`, not `"log"`
+   - **Solution:** Use `file_name.contains(".log")` instead
+
+2. **Clippy collapsible_if warning**
+   - **Error:** Nested `if let` statements must be collapsed
+   - **Solution:** Use let chains with `&&`
+
+### Tests Added (6 tests)
+
+- `cleanup_skipped_when_file_disabled` - Returns 0 when file_enabled=false
+- `cleanup_skipped_when_max_days_zero` - Returns 0 when max_log_days=0
+- `cleanup_handles_missing_directory` - Returns 0, doesn't error
+- `cleanup_removes_old_log_files` - Removes old files, keeps recent
+- `cleanup_ignores_non_log_files` - Only removes .log files
+- `cleanup_handles_empty_directory` - Returns 0 for empty dir
+
+### Dependencies Added
+
+- `filetime = "0.2"` (dev-dependency) - For setting file modification times in tests
 
 ### Patterns to Reuse
 
 ```rust
-// Pattern 1: Graceful directory iteration
-let entries = match std::fs::read_dir(&path) {
-    Ok(e) => e,
-    Err(_) => return Ok(default_value),
-};
-
-// Pattern 2: Safe file extension check
-if path.extension().and_then(|e| e.to_str()) != Some("log") {
-    continue;
+// Pattern 1: Let chains for multiple conditions
+if let Ok(metadata) = entry.metadata()
+    && let Ok(modified) = metadata.modified()
+    && modified < cutoff
+{
+    // action
 }
 
-// Pattern 3: Ignore individual file errors
-if std::fs::remove_file(&path).is_ok() {
-    removed += 1;
+// Pattern 2: Graceful directory iteration
+let entries = match std::fs::read_dir(&path) {
+    Ok(e) => e,
+    Err(_) => return Ok(0),
+};
+
+// Pattern 3: Filename pattern matching
+let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+if !file_name.contains(".log") {
+    continue;
 }
 ```
 
+### Results
+
+| Metric | Value |
+|--------|-------|
+| Tests added | 6 |
+| Total tests | 215 (5 ignored) |
+| Files modified | 6 |
+| Phases complete | 19/19 |
+
 ### Status
 
-⬜ Not started - Task added to tasklist.md
+✅ Complete - All subtasks done, documentation updated
