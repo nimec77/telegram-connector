@@ -26,7 +26,7 @@
 | 16 | Media Search | ✅ Complete | 167 | Filter by media type + proper type detection |
 | 17 | Get Recent Messages | ✅ Complete | 186 | New tool: retrieve messages by time window without search |
 | 18 | Comprehensive Refactoring | ✅ Complete | 209 | Split large files, shared helpers, eliminated duplication |
-| 19 | Log Cleanup | ⬜ Pending | - | Startup cleanup, max_log_days enforcement |
+| 19 | Log Cleanup | 🔄 In Progress | 6/6 | Startup cleanup, max_log_days enforcement |
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
@@ -848,7 +848,7 @@ Split `mcp/tools/types.rs` (366 lines) into 3 modules:
 
 ---
 
-## Phase 19: Log Cleanup ⬜
+## Phase 19: Log Cleanup 🔄
 
 **Goal:** Implement automatic cleanup of old log files based on `max_log_days` configuration
 
@@ -856,35 +856,35 @@ Split `mcp/tools/types.rs` (366 lines) into 3 modules:
 
 **Approach:** Startup cleanup (KISS principle) - clean old logs when the application starts. This catches most cases and is simple to implement.
 
-### 19.1 Cleanup Function ⬜
-- [ ] Add `cleanup_old_logs(config: &LoggingConfig) -> anyhow::Result<usize>` to `src/logging.rs`
-- [ ] Skip cleanup if `file_enabled == false` or `max_log_days == 0`
-- [ ] Calculate cutoff time: `now - (max_log_days * 86400 seconds)`
-- [ ] Iterate files in `config.file_path` directory
-- [ ] Only process `.log` files (match extension)
-- [ ] Delete files with `modified` time older than cutoff
-- [ ] Return count of deleted files
-- [ ] Handle errors gracefully (log warning, don't crash)
+### 19.1 Cleanup Function ✅
+- [x] Add `cleanup_old_logs(config: &LoggingConfig) -> anyhow::Result<usize>` to `src/logging.rs`
+- [x] Skip cleanup if `file_enabled == false` or `max_log_days == 0`
+- [x] Calculate cutoff time: `now - (max_log_days * 86400 seconds)`
+- [x] Iterate files in `config.file_path` directory
+- [x] Only process `.log` files (match files containing ".log" in name)
+- [x] Delete files with `modified` time older than cutoff
+- [x] Return count of deleted files
+- [x] Handle errors gracefully (log warning, don't crash)
 
-### 19.2 Integration ⬜
-- [ ] Call `cleanup_old_logs()` in `main.rs` after logging initialization
-- [ ] Log cleanup result: `tracing::info!(removed = count, "Cleaned up old log files")`
-- [ ] Only log if count > 0 (avoid noise)
+### 19.2 Integration ✅
+- [x] Call `cleanup_old_logs()` in `main.rs` after logging initialization
+- [x] Log cleanup result: `tracing::info!(removed = count, "Cleaned up old log files")`
+- [x] Only log if count > 0 (avoid noise)
 
-### 19.3 Tests ⬜
-- [ ] Test: cleanup skipped when `file_enabled == false`
-- [ ] Test: cleanup skipped when `max_log_days == 0`
-- [ ] Test: old files deleted, recent files kept
-- [ ] Test: non-log files ignored
-- [ ] Test: handles empty directory gracefully
-- [ ] Test: handles missing directory gracefully
+### 19.3 Tests ✅
+- [x] Test: cleanup skipped when `file_enabled == false`
+- [x] Test: cleanup skipped when `max_log_days == 0`
+- [x] Test: old files deleted, recent files kept
+- [x] Test: non-log files ignored
+- [x] Test: handles empty directory gracefully
+- [x] Test: handles missing directory gracefully
 
 ### 19.4 Documentation ⬜
 - [ ] Update README.md logging section
 - [ ] Update config.example.toml with `max_log_days` documentation
-- [ ] Run `cargo clippy -- -D warnings`
-- [ ] Run `cargo fmt --check`
-- [ ] All tests passing
+- [x] Run `cargo clippy -- -D warnings`
+- [x] Run `cargo fmt --check`
+- [x] All tests passing (215 tests, 5 ignored)
 
 **Implementation:**
 ```rust
