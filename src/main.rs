@@ -23,6 +23,13 @@ async fn main() -> Result<()> {
     // Initialize logging
     logging::init(&config.logging).context("Failed to initialize logging")?;
 
+    // Clean up old log files
+    if let Ok(removed) = logging::cleanup_old_logs(&config.logging)
+        && removed > 0
+    {
+        tracing::info!(removed = removed, "Cleaned up old log files");
+    }
+
     tracing::info!("Telegram MCP Connector starting...");
 
     if cli.setup {
