@@ -112,6 +112,51 @@ pub fn redact_hash(hash: &str) -> String {
     )
 }
 
+/// Clean up old log files based on max_log_days configuration.
+/// Returns the number of files removed.
+///
+/// Skips cleanup if:
+/// - file_enabled is false
+/// - max_log_days is 0 (keep logs forever)
+/// - log directory doesn't exist
+pub fn cleanup_old_logs(config: &LoggingConfig) -> anyhow::Result<usize> {
+    // Skip if file logging disabled or max_days is 0 (infinite retention)
+    if !config.file_enabled || config.max_log_days == 0 {
+        return Ok(0);
+    }
+
+    let cutoff = std::time::SystemTime::now()
+        - std::time::Duration::from_secs(u64::from(config.max_log_days) * 86400);
+
+    // Gracefully handle missing directory
+    let entries = match std::fs::read_dir(&config.file_path) {
+        Ok(e) => e,
+        Err(_) => return Ok(0),
+    };
+
+    let mut removed = 0;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+
+        // Only process log files (pattern: telegram-connector.log.YYYY-MM-DD)
+        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if !file_name.contains(".log") {
+            continue;
+        }
+
+        if let Ok(metadata) = entry.metadata()
+            && let Ok(modified) = metadata.modified()
+            && modified < cutoff
+            && std::fs::remove_file(&path).is_ok()
+        {
+            removed += 1;
+        }
+    }
+
+    Ok(removed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -370,5 +415,146 @@ mod tests {
 
         // Should not panic - defaults to compact
         let _layer = build_stderr_layer::<tracing_subscriber::Registry>(&config);
+    }
+
+    // ========================================================================
+    // Log Cleanup Tests
+    // ========================================================================
+
+    #[test]
+    fn cleanup_skipped_when_file_disabled() {
+        let config = LoggingConfig {
+            level: "info".to_string(),
+            format: "compact".to_string(),
+            file_enabled: false, // Disabled
+            file_path: std::path::PathBuf::from("/tmp/nonexistent"),
+            max_log_days: 7,
+        };
+
+        let result = cleanup_old_logs(&config);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[test]
+    fn cleanup_skipped_when_max_days_zero() {
+        let config = LoggingConfig {
+            level: "info".to_string(),
+            format: "compact".to_string(),
+            file_enabled: true,
+            file_path: std::path::PathBuf::from("/tmp/nonexistent"),
+            max_log_days: 0, // Zero = keep forever
+        };
+
+        let result = cleanup_old_logs(&config);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[test]
+    fn cleanup_handles_missing_directory() {
+        let config = LoggingConfig {
+            level: "info".to_string(),
+            format: "compact".to_string(),
+            file_enabled: true,
+            file_path: std::path::PathBuf::from("/tmp/definitely_nonexistent_dir_12345"),
+            max_log_days: 7,
+        };
+
+        let result = cleanup_old_logs(&config);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[test]
+    fn cleanup_removes_old_log_files() {
+        use filetime::{FileTime, set_file_mtime};
+        use std::fs::File;
+        use std::io::Write;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let log_dir = temp_dir.path();
+
+        // Create an "old" log file (modified 10 days ago)
+        let old_log = log_dir.join("telegram-connector.log.2025-01-01");
+        File::create(&old_log)
+            .unwrap()
+            .write_all(b"old log")
+            .unwrap();
+        let ten_days_ago =
+            std::time::SystemTime::now() - std::time::Duration::from_secs(10 * 86400);
+        set_file_mtime(&old_log, FileTime::from_system_time(ten_days_ago)).unwrap();
+
+        // Create a "recent" log file (now)
+        let recent_log = log_dir.join("telegram-connector.log.2025-01-09");
+        File::create(&recent_log)
+            .unwrap()
+            .write_all(b"recent log")
+            .unwrap();
+
+        let config = LoggingConfig {
+            level: "info".to_string(),
+            format: "compact".to_string(),
+            file_enabled: true,
+            file_path: log_dir.to_path_buf(),
+            max_log_days: 7,
+        };
+
+        let result = cleanup_old_logs(&config);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 1); // 1 file removed
+
+        // Old file should be gone, recent should remain
+        assert!(!old_log.exists());
+        assert!(recent_log.exists());
+    }
+
+    #[test]
+    fn cleanup_ignores_non_log_files() {
+        use filetime::{FileTime, set_file_mtime};
+        use std::fs::File;
+        use std::io::Write;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let log_dir = temp_dir.path();
+
+        // Create an old non-log file
+        let old_txt = log_dir.join("notes.txt");
+        File::create(&old_txt).unwrap().write_all(b"notes").unwrap();
+        let ten_days_ago =
+            std::time::SystemTime::now() - std::time::Duration::from_secs(10 * 86400);
+        set_file_mtime(&old_txt, FileTime::from_system_time(ten_days_ago)).unwrap();
+
+        let config = LoggingConfig {
+            level: "info".to_string(),
+            format: "compact".to_string(),
+            file_enabled: true,
+            file_path: log_dir.to_path_buf(),
+            max_log_days: 7,
+        };
+
+        let result = cleanup_old_logs(&config);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0); // No files removed
+
+        // Non-log file should still exist
+        assert!(old_txt.exists());
+    }
+
+    #[test]
+    fn cleanup_handles_empty_directory() {
+        let temp_dir = tempfile::tempdir().unwrap();
+
+        let config = LoggingConfig {
+            level: "info".to_string(),
+            format: "compact".to_string(),
+            file_enabled: true,
+            file_path: temp_dir.path().to_path_buf(),
+            max_log_days: 7,
+        };
+
+        let result = cleanup_old_logs(&config);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
     }
 }
