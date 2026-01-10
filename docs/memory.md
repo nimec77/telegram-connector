@@ -2663,3 +2663,63 @@ if !file_name.contains(".log") {
 ### Status
 
 ✅ Complete - All subtasks done, documentation updated
+
+---
+
+## Logging Test Extraction (2026-01-10)
+
+### Problem
+
+`src/logging.rs` had grown to 561 lines, with ~400 lines being tests. This violated the project's pattern of keeping source files focused and extracting tests to separate files.
+
+### Solution
+
+Following the established pattern from Phase 13 (MCP server and Telegram client refactoring), extracted all tests to a separate file using the `#[path]` attribute.
+
+### What Was Done
+
+1. **Created `src/logging_tests.rs`** (299 lines)
+   - All 25 logging tests organized by category:
+     - Phone Number Redaction Tests (5)
+     - API Hash Redaction Tests (5)
+     - Initialization Tests (3)
+     - File Layer Tests (6)
+     - Log Cleanup Tests (6)
+
+2. **Updated `src/logging.rs`** (162 lines, down from 561)
+   - Replaced inline test module with path attribute:
+   ```rust
+   #[cfg(test)]
+   #[path = "logging_tests.rs"]
+   mod tests;
+   ```
+
+### Results
+
+| File | Before | After |
+|------|--------|-------|
+| `src/logging.rs` | 561 lines | 162 lines |
+| `src/logging_tests.rs` | (new) | 299 lines |
+
+### Pattern Used
+
+```rust
+// In logging.rs - reference external test file
+#[cfg(test)]
+#[path = "logging_tests.rs"]
+mod tests;
+
+// In logging_tests.rs - import from parent module
+use super::*;
+
+#[test]
+fn test_name() {
+    // test code
+}
+```
+
+### Verification
+
+- All 215 tests pass (5 ignored)
+- Clippy clean (no warnings)
+- Consistent with project patterns from Phase 13
