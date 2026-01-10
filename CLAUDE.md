@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Telegram MCP Connector - a Model Context Protocol (MCP) service that enables Claude to search Russian-language Telegram channels and messages in real-time. Built in Rust using the `rmcp` SDK and `grammers` Telegram client.
 
-**Current Status:** Phase 18 Complete - Comprehensive refactoring split large files into focused modules. 209 tests (all passing, 5 ignored).
+**Current Status:** Phase 19 Complete - Log cleanup on startup with configurable retention. 215 tests (all passing, 5 ignored).
 
 ## Build & Test Commands
 
@@ -15,13 +15,13 @@ Telegram MCP Connector - a Model Context Protocol (MCP) service that enables Cla
 cargo build
 cargo build --release
 
-# Run all tests (209 tests passing, 5 ignored)
+# Run all tests (215 tests passing, 5 ignored)
 cargo test
 
 # Run tests for specific module
 cargo test error           # 11 tests
 cargo test config -- --test-threads=1  # 23 tests + 5 ignored (serial for env var tests)
-cargo test logging         # 19 tests
+cargo test logging         # 25 tests (includes cleanup)
 cargo test types           # 52 tests (includes MediaFilter)
 cargo test link            # 8 tests
 cargo test rate_limiter    # 19 tests
@@ -82,7 +82,7 @@ cargo run --bin telegram-mcp
 | `cli.rs` | CLI argument parsing with clap (--setup, --session-file, --config) |
 | `error.rs` | Error types with thiserror (RateLimit includes retry_after) |
 | `config.rs` | TOML config loading, env var expansion, SecretString, ServerConfig |
-| `logging.rs` | tracing subscriber setup, dual layer (stderr + file), sensitive data redaction |
+| `logging.rs` | tracing subscriber setup, dual layer (stderr + file), sensitive data redaction, old log cleanup |
 | `rate_limiter.rs` | Token bucket rate limiting with retry_after calculation |
 | `link.rs` | Telegram deep link generation (tg://, https://t.me) |
 | `main.rs` | Entry point with signal handling, setup mode, MCP server |
