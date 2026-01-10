@@ -170,26 +170,26 @@ Supports `${VAR}` syntax for environment variable expansion in ALL fields:
 ## Critical Rules
 
 1. **NEVER create git commits** - The user manages all git operations. Only write code and documentation.
-2. **Always use LOCAL memory file** `doc/memory.md`, NOT global Claude memory.
+2. **Always use LOCAL memory file** `docs/memory.md`, NOT global Claude memory.
 3. **Wait for user approval** before implementing any proposed changes.
 
 ## Workflow
 
-See `doc/workflow.md` for the iteration cycle:
+See `docs/workflow.md` for the iteration cycle:
 1. PROPOSE - describe solution with tests and API
 2. AGREE - wait for user confirmation
 3. IMPLEMENT - tests first, then code
 4. VERIFY - wait for confirmation
-5. UPDATE PROGRESS - update `doc/tasklist.md`
-6. UPDATE MEMORY - after completing each phase/iteration, update `doc/memory.md` (LOCAL file) to record:
+5. UPDATE PROGRESS - update `docs/tasklist.md`
+6. UPDATE MEMORY - after completing each phase/iteration, update `docs/memory.md` (LOCAL file) to record:
    - Progress made (what was completed)
    - Patterns applied (design decisions, architectural choices)
    - Lessons learned (gotchas, edge cases discovered)
    - Code patterns to reuse in future phases
 
 Current progress tracked in:
-- `doc/tasklist.md` - checklist of phases and tasks
-- `doc/memory.md` - detailed notes, patterns, and lessons learned
+- `docs/tasklist.md` - checklist of phases and tasks
+- `docs/memory.md` - detailed notes, patterns, and lessons learned
 
 ## Development Progress
 

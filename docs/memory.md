@@ -150,7 +150,7 @@ unsafe {
 
 ## Workflow Adherence
 
-Following doc/workflow.md cycle:
+Following docs/workflow.md cycle:
 1. ✅ **PROPOSE** - Proposed config implementation approach
 2. ✅ **AGREE** - User approved (removed regex dependency)
 3. ✅ **IMPLEMENT** - TDD: wrote tests first, then implementation
@@ -299,7 +299,7 @@ fn expand_env_vars_secret(secret: &SecretString) -> anyhow::Result<SecretString>
 
 ## Workflow Adherence
 
-Following doc/workflow.md cycle:
+Following docs/workflow.md cycle:
 1. ✅ **PROPOSE** - Proposed logging + secrecy implementation approach
 2. ✅ **AGREE** - User confirmed use of secrecy crate for sensitive data
 3. ✅ **IMPLEMENT** - TDD: wrote tests first, then implementation
@@ -445,7 +445,7 @@ assert!(available >= 39.9 && available <= 40.1); // ±0.1 tolerance
 
 ## Workflow Adherence
 
-Following doc/workflow.md cycle:
+Following docs/workflow.md cycle:
 1. ✅ **PROPOSE** - Proposed rate limiter with Mutex, non-blocking, retry metadata
 2. ✅ **AGREE** - User confirmed all 4 implementation choices
 3. ✅ **IMPLEMENT** - TDD: wrote tests first, then implementation
@@ -611,7 +611,7 @@ match client.sign_in(&token, &code).await {
 
 ## Workflow Adherence
 
-Following doc/workflow.md cycle:
+Following docs/workflow.md cycle:
 1. ✅ **PROPOSE** - Proposed session persistence + interactive auth
 2. ✅ **AGREE** - User confirmed approach (KISS, Error::Auth, 0600, dialoguer)
 3. ✅ **IMPLEMENT** - TDD for session I/O, manual test for interactive auth
@@ -825,7 +825,7 @@ None - used existing dependencies:
    - Each stub method has pseudocode comments for future implementation
    - 12 comprehensive mock-based tests
 
-3. **doc/tasklist.md** - Updated Phase 9:
+3. **docs/tasklist.md** - Updated Phase 9:
    - Status: "✅ Complete | 12/12 | Trait, mocks, validation"
    - Overall progress: 9/12 phases complete
 
@@ -835,7 +835,7 @@ None - used existing dependencies:
 
 ## Workflow Adherence
 
-Following doc/workflow.md cycle:
+Following docs/workflow.md cycle:
 1. ✅ **PROPOSE** - Proposed client trait, stub implementation, mock testing
 2. ✅ **AGREE** - User corrected session handling approach, confirmed all decisions
 3. ✅ **IMPLEMENT** - TDD: wrote mock tests first, then trait and stub implementation
@@ -1014,7 +1014,7 @@ pub struct Server {
    - run_stdio() method with stdio transport
    - 2 comprehensive tests
 
-2. **doc/tasklist.md** - Updated Phase 10:
+2. **docs/tasklist.md** - Updated Phase 10:
    - Status: "✅ Complete | 2/2 | rmcp setup, stdio"
    - Overall progress: 10/12 phases complete
    - Noted tool registration deferred to Phase 11
@@ -1025,7 +1025,7 @@ pub struct Server {
 
 ## Workflow Adherence
 
-Following doc/workflow.md cycle:
+Following docs/workflow.md cycle:
 1. ✅ **PROPOSE** - Proposed server structure, traits, stdio transport
 2. ✅ **AGREE** - User confirmed all 4 questions (macro usage, error handling, metadata, scope)
 3. ✅ **IMPLEMENT** - TDD: wrote tests first, then implementation, fixed compilation errors iteratively
@@ -1333,7 +1333,7 @@ pub async fn get_channel_info(
 
 ## Workflow Adherence
 
-Following doc/workflow.md cycle:
+Following docs/workflow.md cycle:
 1. ✅ **PROPOSE** - Proposed tool structure, types, dependencies
 2. ✅ **AGREE** - User confirmed all 5 questions (schemars, error mapping, order, macOS-only, module organization)
 3. ✅ **IMPLEMENT** - TDD: types → tests → implementation for Tool 1
@@ -1452,8 +1452,8 @@ self.rate_limiter.acquire(1).await.map_err(|e| e.to_string())?;
 ### Files Modified
 
 1. **src/mcp/server.rs** - Added 3 tool methods + 11 tests (~200 lines)
-2. **doc/tasklist.md** - Marked Phase 11 complete
-3. **doc/memory.md** - Added this section
+2. **docs/tasklist.md** - Marked Phase 11 complete
+3. **docs/memory.md** - Added this section
 4. **CLAUDE.md** - Updated status and test counts
 
 ---
@@ -1733,10 +1733,10 @@ All 6 tools now have proper `#[tool]` attributes:
 
 2. **Modified:**
    - `CLAUDE.md` - Added Critical Rules section
-   - `doc/conventions.md` - Added git commit restriction
-   - `doc/workflow.md` - Added Critical Rules section
-   - `doc/tasklist.md` - Marked README task complete
-   - `doc/memory.md` - This section
+   - `docs/conventions.md` - Added git commit restriction
+   - `docs/workflow.md` - Added Critical Rules section
+   - `docs/tasklist.md` - Marked README task complete
+   - `docs/memory.md` - This section
 
 ### Key Decisions
 
@@ -2061,8 +2061,8 @@ Implemented dual-layer logging with daily rotation:
 2. **src/logging.rs** - Dual layer implementation + 6 new tests
 3. **src/mcp/server.rs** - Search result logging (IDs only)
 4. **config.example.toml** - Added file logging options
-5. **doc/vision.md** - Updated §8.3-8.4 for daily rotation
-6. **doc/tasklist.md** - Marked Phase 15 complete
+5. **docs/vision.md** - Updated §8.3-8.4 for daily rotation
+6. **docs/tasklist.md** - Marked Phase 15 complete
 
 ### Test Count
 143 → 153 tests (+10 new logging tests)

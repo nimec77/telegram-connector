@@ -8,7 +8,7 @@
 
 1. **NEVER create git commits** - The user manages all git operations
 2. **Wait for user approval** before implementing any proposed changes
-3. **Use LOCAL memory file** `doc/memory.md`, NOT global Claude memory
+3. **Use LOCAL memory file** `docs/memory.md`, NOT global Claude memory
 
 ---
 
@@ -127,7 +127,7 @@ Wait for user to confirm:
 
 After verification:
 
-1. Update `doc/tasklist.md`:
+1. Update `docs/tasklist.md`:
    - Mark completed tasks with `[x]`
    - Update phase status in Progress Report table
    - Update test counts
@@ -159,18 +159,18 @@ Proceed to next task?
 
 After completing a phase or significant iteration:
 
-1. Update `doc/memory.md` with:
+1. Update `docs/memory.md` with:
    - **Progress made** - what was completed
    - **Patterns applied** - design decisions, architectural choices
    - **Lessons learned** - gotchas, edge cases discovered
    - **Code patterns to reuse** - snippets for future phases
 2. Verify all three documentation files are updated:
-   - `doc/tasklist.md` - task checkboxes and progress table
-   - `doc/memory.md` - detailed notes and patterns
+   - `docs/tasklist.md` - task checkboxes and progress table
+   - `docs/memory.md` - detailed notes and patterns
    - `CLAUDE.md` - current status and test counts
 3. Ready for next phase
 
-**IMPORTANT:** Use LOCAL file `doc/memory.md`, NOT global Claude memory.
+**IMPORTANT:** Use LOCAL file `docs/memory.md`, NOT global Claude memory.
 
 **When to update documentation:**
 - ✅ After completing each phase
