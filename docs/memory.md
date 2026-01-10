@@ -2524,3 +2524,133 @@ pub fn parse_optional_channel_id(id_str: &Option<String>) -> Result<Option<Chann
 3. **Test helpers reduce duplication** - Factory functions like `create_test_message()` make tests more readable and DRY.
 
 4. **File-as-module pattern scales** - Even with nested submodules, avoiding `mod.rs` keeps structure clear.
+
+---
+
+## Phase 19: Log Cleanup (Planned - 2026-01-10)
+
+### Problem
+
+Phase 15 added file logging with daily rotation via `tracing_appender::rolling::RollingFileAppender` and a `max_log_days` config field (default: 7). However, the cleanup logic was never implemented - the `max_log_days` field is unused, and log files accumulate indefinitely.
+
+### Current State
+
+```rust
+// LoggingConfig has the field, but it's not used
+pub struct LoggingConfig {
+    pub file_enabled: bool,
+    pub file_path: PathBuf,
+    pub max_log_days: u32,  // <-- NOT IMPLEMENTED
+}
+
+// RollingFileAppender only handles rotation, NOT cleanup
+let file_appender = RollingFileAppender::new(
+    Rotation::DAILY,
+    &config.file_path,
+    "telegram-connector.log"
+);
+```
+
+### Best Practices Considered
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| **Startup cleanup** | Simple, catches most cases | Won't clean if app crashes repeatedly |
+| **logrotate (OS-level)** | Robust, runs even if app crashes | External dependency, OS-specific |
+| **Background task** | Continuous cleanup | Complex shutdown handling |
+
+**Decision:** Startup cleanup (KISS principle) - matches project philosophy.
+
+### Proposed Implementation
+
+```rust
+// src/logging.rs
+pub fn cleanup_old_logs(config: &LoggingConfig) -> anyhow::Result<usize> {
+    if !config.file_enabled || config.max_log_days == 0 {
+        return Ok(0);
+    }
+
+    let cutoff = std::time::SystemTime::now()
+        - std::time::Duration::from_secs(config.max_log_days as u64 * 86400);
+
+    let mut removed = 0;
+
+    let entries = match std::fs::read_dir(&config.file_path) {
+        Ok(e) => e,
+        Err(_) => return Ok(0), // Directory doesn't exist yet
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+
+        // Only process .log files
+        if path.extension().and_then(|e| e.to_str()) != Some("log") {
+            continue;
+        }
+
+        if let Ok(metadata) = entry.metadata() {
+            if let Ok(modified) = metadata.modified() {
+                if modified < cutoff {
+                    if std::fs::remove_file(&path).is_ok() {
+                        removed += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(removed)
+}
+```
+
+### Integration Point (main.rs)
+
+```rust
+// After logging::init()
+if let Ok(count) = logging::cleanup_old_logs(&config.logging) {
+    if count > 0 {
+        tracing::info!(removed = count, "Cleaned up old log files");
+    }
+}
+```
+
+### Edge Cases to Handle
+
+1. **Directory doesn't exist** - Return Ok(0), don't fail
+2. **max_log_days == 0** - Disable cleanup (keep logs forever)
+3. **file_enabled == false** - Skip cleanup entirely
+4. **Permission errors** - Log warning, continue with remaining files
+5. **Non-.log files** - Ignore (other files in log directory)
+
+### Tests Needed (~6 tests)
+
+- `cleanup_skipped_when_file_disabled`
+- `cleanup_skipped_when_max_days_zero`
+- `cleanup_removes_old_files`
+- `cleanup_keeps_recent_files`
+- `cleanup_ignores_non_log_files`
+- `cleanup_handles_missing_directory`
+
+### Patterns to Reuse
+
+```rust
+// Pattern 1: Graceful directory iteration
+let entries = match std::fs::read_dir(&path) {
+    Ok(e) => e,
+    Err(_) => return Ok(default_value),
+};
+
+// Pattern 2: Safe file extension check
+if path.extension().and_then(|e| e.to_str()) != Some("log") {
+    continue;
+}
+
+// Pattern 3: Ignore individual file errors
+if std::fs::remove_file(&path).is_ok() {
+    removed += 1;
+}
+```
+
+### Status
+
+⬜ Not started - Task added to tasklist.md
