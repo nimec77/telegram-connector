@@ -66,8 +66,11 @@ where
     std::fs::create_dir_all(&config.file_path)?;
 
     // Create rolling file appender with daily rotation
-    let file_appender =
-        RollingFileAppender::new(Rotation::DAILY, &config.file_path, "telegram-connector.log");
+    let file_appender = RollingFileAppender::builder()
+        .rotation(Rotation::DAILY)
+        .filename_prefix("telegram-connector")
+        .filename_suffix("log")
+        .build(&config.file_path)?;
 
     // File layer always uses JSON format for structured logging
     Ok(tracing_subscriber::fmt::layer()
