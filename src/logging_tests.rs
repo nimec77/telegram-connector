@@ -315,7 +315,7 @@ fn cleanup_removes_old_log_files() {
     let log_dir = temp_dir.path();
 
     // Create an "old" log file (modified 10 days ago)
-    let old_log = log_dir.join("telegram-connector.log.2025-01-01");
+    let old_log = log_dir.join("telegram-connector.2025-01-01.log");
     File::create(&old_log)
         .unwrap()
         .write_all(b"old log")
@@ -324,7 +324,7 @@ fn cleanup_removes_old_log_files() {
     set_file_mtime(&old_log, FileTime::from_system_time(ten_days_ago)).unwrap();
 
     // Create a "recent" log file (now)
-    let recent_log = log_dir.join("telegram-connector.log.2025-01-09");
+    let recent_log = log_dir.join("telegram-connector.2025-01-09.log");
     File::create(&recent_log)
         .unwrap()
         .write_all(b"recent log")

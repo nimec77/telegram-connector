@@ -329,7 +329,7 @@ impl TelegramClientTrait for TelegramClient {
         }
 
         // Sort by timestamp (newest first)
-        messages.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        messages.sort_by_key(|b| std::cmp::Reverse(b.timestamp));
 
         let search_time_ms = start_time.elapsed().as_millis() as u64;
         let total_found = messages.len() as u64;
