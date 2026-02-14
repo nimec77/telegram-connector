@@ -60,7 +60,7 @@ async fn search_messages_returns_results() {
 
     // Then: Returns search results
     assert!(result.is_ok());
-    let response = result.unwrap().0;
+    let response: SearchResult = serde_json::from_str(&result.unwrap()).unwrap();
     assert_eq!(response.total_found, 1);
     assert_eq!(response.messages.len(), 1);
     assert!(response.messages[0].text.contains("AI"));
@@ -264,7 +264,7 @@ async fn search_allows_empty_query_with_media_filter() {
 
     // Then: Success (empty query allowed with media_filter)
     assert!(result.is_ok());
-    let response = result.unwrap().0;
+    let response: SearchResult = serde_json::from_str(&result.unwrap()).unwrap();
     assert_eq!(response.total_found, 1);
 }
 

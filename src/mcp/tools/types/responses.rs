@@ -2,10 +2,10 @@
 
 use crate::telegram::types::Channel;
 use schemars::JsonSchema;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Response for check_mcp_status tool
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct StatusResponse {
     #[schemars(description = "Whether Telegram client is connected")]
     pub telegram_connected: bool,
@@ -18,7 +18,7 @@ pub struct StatusResponse {
 }
 
 /// Response for get_subscribed_channels tool
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ChannelsResponse {
     #[schemars(description = "List of subscribed channels")]
     pub channels: Vec<Channel>,
@@ -31,7 +31,7 @@ pub struct ChannelsResponse {
 }
 
 /// Response for generate_message_link tool
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MessageLinkResponse {
     #[schemars(description = "Channel ID")]
     pub channel_id: String,
@@ -47,7 +47,7 @@ pub struct MessageLinkResponse {
 }
 
 /// Response for open_message_in_telegram tool
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct OpenMessageResponse {
     #[schemars(description = "Whether the operation succeeded")]
     pub success: bool,

@@ -1,6 +1,7 @@
 //! Tests for check_mcp_status tool
 
 use crate::mcp::server::McpServer;
+use crate::mcp::tools::StatusResponse;
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use std::sync::Arc;
@@ -21,7 +22,7 @@ async fn check_status_returns_connection_info() {
 
     // Then: Returns success with connection info
     assert!(result.is_ok());
-    let response = result.unwrap().0;
+    let response: StatusResponse = serde_json::from_str(&result.unwrap()).unwrap();
     assert!(response.telegram_connected);
     assert_eq!(response.rate_limiter_tokens, 45.5);
     assert_eq!(response.server_version, env!("CARGO_PKG_VERSION"));
@@ -43,7 +44,7 @@ async fn check_status_reports_disconnected() {
 
     // Then: Returns disconnected status
     assert!(result.is_ok());
-    let response = result.unwrap().0;
+    let response: StatusResponse = serde_json::from_str(&result.unwrap()).unwrap();
     assert!(!response.telegram_connected);
     assert_eq!(response.rate_limiter_tokens, 0.0);
 }

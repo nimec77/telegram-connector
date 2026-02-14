@@ -80,7 +80,7 @@ async fn get_recent_messages_returns_results() {
 
     // Then: Returns messages
     assert!(result.is_ok());
-    let response = result.unwrap().0;
+    let response: SearchResult = serde_json::from_str(&result.unwrap()).unwrap();
     assert_eq!(response.total_found, 2);
     assert_eq!(response.messages.len(), 2);
 }
@@ -146,7 +146,7 @@ async fn get_recent_messages_with_media_filter() {
 
     // Then: Returns filtered results
     assert!(result.is_ok());
-    let response = result.unwrap().0;
+    let response: SearchResult = serde_json::from_str(&result.unwrap()).unwrap();
     assert_eq!(response.messages.len(), 1);
 }
 
@@ -192,7 +192,7 @@ async fn get_recent_messages_applies_limits() {
 
     // Then: Returns results with correct limits applied
     assert!(result.is_ok());
-    let response = result.unwrap().0;
+    let response: SearchResult = serde_json::from_str(&result.unwrap()).unwrap();
     assert_eq!(response.messages.len(), 3);
 }
 
@@ -242,7 +242,7 @@ async fn get_recent_messages_with_username_resolves_channel() {
 
     // Then: Username is resolved and messages are returned
     assert!(result.is_ok());
-    let response = result.unwrap().0;
+    let response: SearchResult = serde_json::from_str(&result.unwrap()).unwrap();
     assert_eq!(response.messages.len(), 1);
 }
 

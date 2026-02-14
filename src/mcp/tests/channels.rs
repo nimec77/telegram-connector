@@ -1,7 +1,7 @@
 //! Tests for get_subscribed_channels and get_channel_info tools
 
 use crate::mcp::server::McpServer;
-use crate::mcp::tools::{GetChannelInfoRequest, GetChannelsRequest};
+use crate::mcp::tools::{ChannelsResponse, GetChannelInfoRequest, GetChannelsRequest};
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::Username;
@@ -55,7 +55,7 @@ async fn get_subscribed_channels_returns_list() {
 
     // Then: Returns success with channel list
     assert!(result.is_ok());
-    let response = result.unwrap().0;
+    let response: ChannelsResponse = serde_json::from_str(&result.unwrap()).unwrap();
     assert_eq!(response.channels.len(), 2);
     assert_eq!(response.total, 2);
     assert!(!response.has_more); // 2 channels < 20 limit
@@ -89,7 +89,7 @@ async fn get_subscribed_channels_respects_pagination() {
 
     // Then: Returns success with correct pagination values
     assert!(result.is_ok());
-    let response = result.unwrap().0;
+    let response: ChannelsResponse = serde_json::from_str(&result.unwrap()).unwrap();
     assert_eq!(response.channels.len(), 1);
     assert_eq!(response.total, 1);
     assert!(!response.has_more); // 1 channel < 10 limit
@@ -129,7 +129,7 @@ async fn get_channel_info_returns_channel_details() {
 
     // Then: Returns channel details
     assert!(result.is_ok());
-    let channel = result.unwrap().0;
+    let channel: Channel = serde_json::from_str(&result.unwrap()).unwrap();
     assert_eq!(channel.id, ChannelId::new(12345).unwrap());
     assert_eq!(channel.name.as_str(), "Test Channel");
     assert!(channel.is_verified);
