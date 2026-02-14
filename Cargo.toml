@@ -13,7 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 # MCP
-rmcp = { version = "0.12.0", features = ["server"] }
+rmcp = { version = "0.15.0", features = ["server"] }
 
 # Telegram
 grammers-client = { git = "https://github.com/Lonami/grammers", branch = "master" }
@@ -21,20 +21,20 @@ grammers-session = { git = "https://github.com/Lonami/grammers", branch = "maste
 grammers-mtsender = { git = "https://github.com/Lonami/grammers", branch = "master" }
 
 # Async
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1.49.0", features = ["full"] }
 async-trait = "0.1"
 
 # Interactive prompts
 dialoguer = "0.12.0"
 
 # CLI parsing
-clap = { version = "4.5", features = ["derive"] }
+clap = { version = "4.5.58", features = ["derive"] }
 
 # Config & Serialization
 toml = "0.9.8"
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0.148"
-schemars = { version = "1.2.0", features = ["derive"] }
+serde_json = "1.0.149"
+schemars = { version = "1.2.1", features = ["derive"] }
 directories = "6.0.0"
 
 # Logging
@@ -47,19 +47,19 @@ tracing-subscriber = { version = "0.3", features = [
 tracing-appender = "0.2"
 
 # Errors
-anyhow = "1.0"
-thiserror = "2.0.17"
+anyhow = "1.0.101"
+thiserror = "2.0.18"
 
 # Utilities
-chrono = { version = "0.4", features = ["serde"] }
+chrono = { version = "0.4.43", features = ["serde"] }
 dashmap = "6.1.0"
 
 # Security
 secrecy = { version = "0.10", features = ["serde"] }
 
 [dev-dependencies]
-tokio-test = "0.4"
-tempfile = "3.24.0"
-proptest = "1.4"
+tokio-test = "0.4.5"
+tempfile = "3.25.0"
+proptest = "1.10.0"
 mockall = "0.14.0"
-filetime = "0.2"
+filetime = "0.2.27"

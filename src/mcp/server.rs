@@ -283,18 +283,20 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         }
 
         // Parse channel_id (can be numeric ID or username)
-        let channel_id = if request.channel_id.chars().all(|c| c.is_ascii_digit()) {
-            // Numeric ID - use helper for validation
-            parse_channel_id(&request.channel_id)?
-        } else {
-            // Username provided - resolve via get_channel_info
-            let channel = self
-                .telegram_client
-                .get_channel_info(&request.channel_id)
-                .await
-                .map_err(|e| format!("Channel not found: {}", e))?;
-            channel.id
-        };
+        let original_identifier = request.channel_id.clone();
+        let (channel_id, channel_identifier) =
+            if request.channel_id.chars().all(|c| c.is_ascii_digit()) {
+                // Numeric ID - use helper for validation, no identifier needed
+                (parse_channel_id(&request.channel_id)?, None)
+            } else {
+                // Username provided - resolve via get_channel_info and pass identifier
+                let channel = self
+                    .telegram_client
+                    .get_channel_info(&request.channel_id)
+                    .await
+                    .map_err(|e| format!("Channel not found: {}", e))?;
+                (channel.id, Some(original_identifier))
+            };
 
         // Apply defaults and limits
         let hours_back = request
@@ -321,6 +323,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         // Build history params
         let params = HistoryParams {
             channel_id,
+            channel_identifier,
             hours_back,
             limit,
             media_filter: request.media_filter,
@@ -367,6 +370,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> ServerHand
                 title: None,
                 icons: None,
                 website_url: None,
+                description: None,
             },
             instructions: Some(
                 "Telegram MCP Connector - Search Russian Telegram channels".to_string(),

@@ -166,7 +166,13 @@ pub fn convert_peer_to_channel(peer: &grammers_client::types::Peer) -> Option<Ch
                 last_message_date: None,
             })
         }
-        _ => None, // Skip users
+        _ => {
+            tracing::debug!(
+                peer_id = peer.id().bare_id(),
+                "Skipping non-channel/group peer in convert_peer_to_channel (likely a User)"
+            );
+            None
+        }
     }
 }
 
