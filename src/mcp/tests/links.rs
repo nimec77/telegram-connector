@@ -1,7 +1,9 @@
 //! Tests for generate_message_link and open_message_in_telegram tools
 
 use crate::mcp::server::McpServer;
-use crate::mcp::tools::{GenerateLinkRequest, OpenMessageRequest};
+use crate::mcp::tools::{
+    GenerateLinkRequest, MessageLinkResponse, OpenMessageRequest, OpenMessageResponse,
+};
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use rmcp::handler::server::wrapper::Parameters;
@@ -29,7 +31,7 @@ async fn generate_message_link_returns_both_formats() {
 
     // Then: Returns both link formats
     assert!(result.is_ok());
-    let response = result.unwrap().0;
+    let response: MessageLinkResponse = serde_json::from_str(&result.unwrap()).unwrap();
     assert_eq!(response.channel_id, "123456789");
     assert_eq!(response.message_id, 42);
     assert_eq!(response.https_link, "https://t.me/c/123456789/42?single");
@@ -58,7 +60,7 @@ async fn generate_message_link_without_tg_protocol() {
 
     // Then: Returns only HTTPS link (tg_protocol_link is None)
     assert!(result.is_ok());
-    let response = result.unwrap().0;
+    let response: MessageLinkResponse = serde_json::from_str(&result.unwrap()).unwrap();
     assert_eq!(response.https_link, "https://t.me/c/999/111?single");
     assert!(response.tg_protocol_link.is_none());
 }
@@ -131,7 +133,7 @@ async fn open_message_in_telegram_uses_tg_protocol_by_default() {
 
     // Then: Returns response with tg:// link
     assert!(result.is_ok());
-    let response = result.unwrap().0;
+    let response: OpenMessageResponse = serde_json::from_str(&result.unwrap()).unwrap();
     assert!(response.link_used.starts_with("tg://"));
 }
 
@@ -153,6 +155,6 @@ async fn open_message_in_telegram_uses_https_when_requested() {
 
     // Then: Returns response with https:// link
     assert!(result.is_ok());
-    let response = result.unwrap().0;
+    let response: OpenMessageResponse = serde_json::from_str(&result.unwrap()).unwrap();
     assert!(response.link_used.starts_with("https://"));
 }

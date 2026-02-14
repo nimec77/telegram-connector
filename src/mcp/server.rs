@@ -5,13 +5,12 @@ use crate::mcp::tools::{
     SearchRequest, StatusResponse, parse_channel_id, parse_message_id, parse_optional_channel_id,
 };
 use crate::rate_limiter::RateLimiterTrait;
-use crate::telegram::Channel;
 use crate::telegram::TelegramClientTrait;
-use crate::telegram::types::{HistoryParams, SearchParams, SearchResult};
+use crate::telegram::types::{HistoryParams, SearchParams};
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{Implementation, InitializeResult, ProtocolVersion, ServerCapabilities};
-use rmcp::{Json, ServerHandler, ServiceExt, tool, tool_handler, tool_router};
+use rmcp::{ServerHandler, ServiceExt, tool, tool_handler, tool_router};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -55,15 +54,17 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
     /// Tool 1: check_mcp_status - Health check and diagnostics
     #[tool(description = "Check MCP connection status and rate limiter state")]
-    pub async fn check_mcp_status(&self) -> Result<Json<StatusResponse>, String> {
+    pub async fn check_mcp_status(&self) -> Result<String, String> {
         let connected = self.telegram_client.is_connected().await;
         let tokens = self.rate_limiter.available_tokens();
 
-        Ok(Json(StatusResponse {
+        let response = StatusResponse {
             telegram_connected: connected,
             rate_limiter_tokens: tokens,
             server_version: env!("CARGO_PKG_VERSION").to_string(),
-        }))
+        };
+
+        serde_json::to_string(&response).map_err(|e| e.to_string())
     }
 
     /// Tool 2: get_subscribed_channels - List user's Telegram channels with pagination
@@ -71,7 +72,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     pub async fn get_subscribed_channels(
         &self,
         Parameters(request): Parameters<GetChannelsRequest>,
-    ) -> Result<Json<ChannelsResponse>, String> {
+    ) -> Result<String, String> {
         let limit = request.limit.unwrap_or(20);
         let offset = request.offset.unwrap_or(0);
 
@@ -90,7 +91,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             has_more,
         };
 
-        Ok(Json(response))
+        serde_json::to_string(&response).map_err(|e| e.to_string())
     }
 
     /// Tool 3: get_channel_info - Get detailed information about a Telegram channel
@@ -98,14 +99,14 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     pub async fn get_channel_info(
         &self,
         Parameters(request): Parameters<GetChannelInfoRequest>,
-    ) -> Result<Json<Channel>, String> {
+    ) -> Result<String, String> {
         let channel = self
             .telegram_client
             .get_channel_info(&request.channel_identifier)
             .await
             .map_err(|e| e.to_string())?;
 
-        Ok(Json(channel))
+        serde_json::to_string(&channel).map_err(|e| e.to_string())
     }
 
     /// Tool 4: generate_message_link - Generate deep links for a Telegram message
@@ -113,7 +114,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     pub async fn generate_message_link(
         &self,
         Parameters(request): Parameters<GenerateLinkRequest>,
-    ) -> Result<Json<MessageLinkResponse>, String> {
+    ) -> Result<String, String> {
         // Parse and validate IDs using helpers
         let channel_id = parse_channel_id(&request.channel_id)?;
         let message_id = parse_message_id(request.message_id)?;
@@ -124,7 +125,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         // Build response based on include_tg_protocol flag (defaults to true)
         let include_tg = request.include_tg_protocol.unwrap_or(true);
 
-        Ok(Json(MessageLinkResponse {
+        let response = MessageLinkResponse {
             channel_id: request.channel_id,
             message_id: request.message_id,
             https_link: link.https_link,
@@ -133,7 +134,9 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             } else {
                 None
             },
-        }))
+        };
+
+        serde_json::to_string(&response).map_err(|e| e.to_string())
     }
 
     /// Tool 5: open_message_in_telegram - Open message in Telegram Desktop (macOS)
@@ -141,7 +144,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     pub async fn open_message_in_telegram(
         &self,
         Parameters(request): Parameters<OpenMessageRequest>,
-    ) -> Result<Json<OpenMessageResponse>, String> {
+    ) -> Result<String, String> {
         // Parse and validate IDs using helpers
         let channel_id = parse_channel_id(&request.channel_id)?;
         let message_id = parse_message_id(request.message_id)?;
@@ -170,10 +173,10 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "open_message_in_telegram is only supported on macOS",
         ));
 
-        match result {
+        let response = match result {
             Ok(output) => {
                 let success = output.status.success();
-                Ok(Json(OpenMessageResponse {
+                OpenMessageResponse {
                     success,
                     message: if success {
                         "Message opened in Telegram".to_string()
@@ -182,15 +185,17 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                     },
                     link_used: link_to_open.clone(),
                     app_opened: success,
-                }))
+                }
             }
-            Err(e) => Ok(Json(OpenMessageResponse {
+            Err(e) => OpenMessageResponse {
                 success: false,
                 message: format!("Failed to execute open command: {}", e),
                 link_used: link_to_open.clone(),
                 app_opened: false,
-            })),
-        }
+            },
+        };
+
+        serde_json::to_string(&response).map_err(|e| e.to_string())
     }
 
     /// Tool 6: search_messages - Search messages across Telegram channels
@@ -200,7 +205,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     pub async fn search_messages(
         &self,
         Parameters(request): Parameters<SearchRequest>,
-    ) -> Result<Json<SearchResult>, String> {
+    ) -> Result<String, String> {
         // Validate: query required unless media_filter is set
         if request.query.trim().is_empty() && request.media_filter.is_none() {
             return Err(
@@ -266,7 +271,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "Search completed"
         );
 
-        Ok(Json(result))
+        serde_json::to_string(&result).map_err(|e| e.to_string())
     }
 
     /// Tool 7: get_recent_messages - Get recent messages from a channel by time window
@@ -276,7 +281,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     pub async fn get_recent_messages(
         &self,
         Parameters(request): Parameters<GetRecentMessagesRequest>,
-    ) -> Result<Json<SearchResult>, String> {
+    ) -> Result<String, String> {
         // Validate channel_id is provided
         if request.channel_id.trim().is_empty() {
             return Err("channel_id is required".to_string());
@@ -350,7 +355,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "Get recent messages completed"
         );
 
-        Ok(Json(result))
+        serde_json::to_string(&result).map_err(|e| e.to_string())
     }
 }
 
