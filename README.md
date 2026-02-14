@@ -6,6 +6,7 @@ A Model Context Protocol (MCP) service that enables Claude to search and interac
 
 - **Real-time Telegram Access** - Connect to Telegram using the MTProto protocol
 - **Message Search** - Search messages across all subscribed channels or specific channels
+- **Recent Messages** - Get recent messages from a channel by time window (no search query needed)
 - **Media Filtering** - Filter search results by media type (photos, videos, documents, etc.)
 - **Channel Management** - List subscribed channels and get channel metadata
 - **Deep Linking** - Generate `tg://` and `https://t.me` links for messages
@@ -22,8 +23,8 @@ A Model Context Protocol (MCP) service that enables Claude to search and interac
 └──────────────────────────┬──────────────────────────────────┘
                            │ JSON-RPC over stdio
 ┌──────────────────────────▼──────────────────────────────────┐
-│                     MCP Server Layer                        │
-│                    (rmcp + tools.rs)                        │
+│                     MCP Server Layer (7 tools)               │
+│                    (rmcp + server.rs)                        │
 │                                                             │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────┐    │
 │  │check_status │ │get_channels │ │search_messages      │    │
@@ -31,6 +32,9 @@ A Model Context Protocol (MCP) service that enables Claude to search and interac
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────┐    │
 │  │channel_info │ │gen_link     │ │open_in_telegram     │    │
 │  └─────────────┘ └─────────────┘ └─────────────────────┘    │
+│  ┌─────────────────────────────┐                             │
+│  │get_recent_messages          │                             │
+│  └─────────────────────────────┘                             │
 └──────────────────────────┬──────────────────────────────────┘
                            │
 ┌──────────────────────────▼──────────────────────────────────┐
@@ -430,6 +434,59 @@ Search for messages across channels with optional media type filtering.
 
 **Usage:** Search for specific topics across your subscribed channels, optionally filtering by media type.
 
+---
+
+### 7. get_recent_messages
+
+Get recent messages from a channel by time window, without requiring a search query. Uses message history iteration instead of search.
+
+**Parameters:**
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `channel_id` | string | Yes | - | Channel ID or username (e.g., `technews` or `1234567890`) |
+| `hours_back` | integer | No | 48 | Hours of history to retrieve (max: 168) |
+| `limit` | integer | No | 20 | Maximum messages to return (max: 100) |
+| `media_filter` | string | No | - | Filter by media type (same options as `search_messages`) |
+
+**Key Difference from `search_messages`:**
+
+| Feature | search_messages | get_recent_messages |
+|---------|-----------------|---------------------|
+| Query required | Yes (or media_filter) | No |
+| Channel required | No (global search) | Yes (single channel) |
+| Underlying API | `search_messages()` / `search_all_messages()` | `iter_messages()` |
+| Use case | Find specific content | Get all recent activity |
+
+**Response:** Same format as `search_messages` (reuses `SearchResult` type).
+
+```json
+{
+  "messages": [
+    {
+      "id": 99,
+      "channel_id": 1234567890,
+      "channel_name": "Tech News",
+      "channel_username": "technews",
+      "text": "Latest update from the team...",
+      "timestamp": "2025-12-28T10:30:00Z",
+      "sender_id": 0,
+      "sender_name": "Tech News",
+      "has_media": false,
+      "media_type": "none"
+    }
+  ],
+  "total_found": 5,
+  "search_time_ms": 150,
+  "query_metadata": {
+    "query": "",
+    "hours_back": 24,
+    "channels_searched": 1
+  }
+}
+```
+
+**Usage:** Get all recent activity from a channel without needing a search query. Ideal for monitoring or catching up on channel content.
+
 ## Manual Testing Guide
 
 ### Prerequisites for Testing
@@ -510,6 +567,22 @@ Use a `channel_id` and `message_id` from the search results:
 
 **Expected:** Telegram Desktop opens to the specified message
 
+### Test 7: Get Recent Messages
+
+Get recent messages from a channel without a search query:
+```json
+{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"get_recent_messages","arguments":{"channel_id":"durov","hours_back":24,"limit":10}}}
+```
+
+**Expected:** Recent messages from the channel within the last 24 hours
+
+With media filter:
+```json
+{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"get_recent_messages","arguments":{"channel_id":"durov","hours_back":48,"limit":5,"media_filter":"photo"}}}
+```
+
+**Expected:** Recent messages with photos from the channel
+
 ### Testing with Claude Desktop
 
 1. Configure Claude Desktop (see [Usage](#connecting-with-claude-desktop))
@@ -524,9 +597,11 @@ Use a `channel_id` and `message_id` from the search results:
    - **Expected:** Returns messages with photos attached (uses media_filter=photo)
 7. Ask Claude: "Search for documents containing 'report' in my Telegram"
    - **Expected:** Returns messages with query "report" and document attachments
-8. Ask Claude: "Get info about the @durov channel"
+8. Ask Claude: "Get the last 10 messages from the @durov channel in the past 24 hours"
+   - **Expected:** Returns recent messages from the channel (uses `get_recent_messages`)
+9. Ask Claude: "Get info about the @durov channel"
    - **Expected:** Returns channel details (if public)
-9. Ask Claude: "Generate a link for message [id] in channel [channel_id]"
+10. Ask Claude: "Generate a link for message [id] in channel [channel_id]"
    - **Expected:** Returns both HTTPS and tg:// links
 
 ## Troubleshooting
@@ -619,27 +694,37 @@ cargo fmt --check && cargo clippy -- -D warnings && cargo test
 
 ```
 src/
-├── lib.rs              # Library root
-├── main.rs             # CLI entry point
-├── cli.rs              # CLI argument parsing
-├── config.rs           # Configuration loading
-├── error.rs            # Error types
-├── logging.rs          # Logging setup
-├── rate_limiter.rs     # Rate limiting
-├── link.rs             # Link generation
+├── lib.rs              # Library root, public API exports
+├── main.rs             # CLI entry point, signal handling
+├── cli.rs              # CLI argument parsing (clap)
+├── config.rs           # Configuration loading & validation
+├── error.rs            # Error types (thiserror)
+├── logging.rs          # Dual-layer tracing (stderr + file), log cleanup
+├── rate_limiter.rs     # Token bucket rate limiting
+├── link.rs             # Deep link generation (tg://, https://t.me)
+├── test_helpers.rs     # Test fixture factories (cfg(test))
 ├── mcp.rs              # MCP module root
 ├── mcp/
-│   ├── server.rs       # MCP server + tools
-│   ├── tools.rs        # Tools module
+│   ├── server.rs       # MCP server + all 7 tool handlers
+│   ├── tools.rs        # Re-exports tools + helpers
 │   └── tools/
-│       └── types.rs    # Tool request/response types
+│       ├── helpers.rs  # ID parsing helpers
+│       └── types/
+│           ├── requests.rs     # Tool request types
+│           ├── responses.rs    # Tool response types
+│           └── serde_helpers.rs # Custom deserializers
 ├── telegram.rs         # Telegram module root
 └── telegram/
-    ├── client.rs       # Telegram client implementation
-    ├── trait_def.rs    # TelegramClientTrait definition
-    ├── converters.rs   # Type converters (grammers → domain)
-    ├── auth.rs         # Authentication
-    └── types.rs        # Domain types (Message, Channel, MediaFilter)
+    ├── client.rs       # Telegram client (grammers wrapper)
+    ├── trait_def.rs     # TelegramClientTrait + mock generation
+    ├── converters.rs    # Type converters (grammers → domain)
+    ├── auth.rs          # Authentication & 2FA flow
+    └── types/
+        ├── ids.rs       # ChannelId, MessageId, UserId
+        ├── names.rs     # Username, ChannelName
+        ├── media.rs     # MediaType, MediaFilter
+        ├── entities.rs  # Message, Channel
+        └── params.rs    # SearchParams, HistoryParams, SearchResult
 ```
 
 ## License

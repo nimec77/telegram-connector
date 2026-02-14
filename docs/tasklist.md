@@ -931,6 +931,29 @@ pub fn cleanup_old_logs(config: &LoggingConfig) -> anyhow::Result<usize> {
 
 ---
 
+## Debug Log Cleanup (2026-02-14)
+
+**Goal:** Remove verbose `info!` traces from `client.rs` that cluttered log output during normal operation
+
+**Context:** After Phase 19, a review of `client.rs` revealed 11 verbose `info!`-level log statements in the Telegram client that logged routine operations (session opening, sender pool creation, every dialog iteration step, etc.). These made production logs noisy without adding diagnostic value.
+
+**Changes:**
+- **Removed 11 verbose `info!` traces** from `client.rs`:
+  - Session opening, sender pool creation, client creation messages
+  - Per-dialog iteration logs in `get_subscribed_channels`
+  - Per-dialog iteration logs in `get_channel_info`
+  - Per-dialog iteration logs in `search_messages`
+  - Per-dialog iteration logs in `get_recent_messages`
+- **Kept all error/warn logs** — these remain for genuine failure diagnostics
+- **Kept completion logs** — `search_messages` and `get_recent_messages` still log `info!` on completion with result counts
+- **Downgraded 1 log** — `get_subscribed_channels` completion changed from `info!` to `debug!`
+
+**Result:** Cleaner production logs; only meaningful events are logged at `info` level.
+
+**No test changes** — log statements don't affect test behavior. Total remains 215 tests (5 ignored).
+
+---
+
 ## Quick Reference
 
 ### Run All Tests

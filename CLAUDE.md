@@ -4,215 +4,106 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Telegram MCP Connector - a Model Context Protocol (MCP) service that enables Claude to search Russian-language Telegram channels and messages in real-time. Built in Rust using the `rmcp` SDK and `grammers` Telegram client.
+Telegram MCP Connector — a Model Context Protocol (MCP) service that enables Claude to search Russian-language Telegram channels and messages in real-time. Built in Rust using the `rmcp` SDK and `grammers` Telegram client.
 
-**Current Status:** Phase 19 Complete - Log cleanup on startup with configurable retention. 215 tests (all passing, 5 ignored).
+**Status:** 19 phases complete, 215 tests passing (5 ignored), 7 MCP tools.
 
 ## Build & Test Commands
 
 ```bash
-# Build
-cargo build
-cargo build --release
+cargo build                            # Debug build
+cargo build --release                  # Release build
+cargo test                             # All 215 tests (5 ignored)
+cargo test <module>                    # e.g. cargo test mcp, cargo test types
+cargo test config -- --test-threads=1  # Config tests MUST run serial (env var mutation)
+cargo fmt --check                      # Check formatting
+cargo clippy -- -D warnings            # Lint (warnings = errors)
+cargo run --bin telegram-mcp           # Run the binary
 
-# Run all tests (215 tests passing, 5 ignored)
-cargo test
-
-# Run tests for specific module
-cargo test error           # 11 tests
-cargo test config -- --test-threads=1  # 23 tests + 5 ignored (serial for env var tests)
-cargo test logging         # 25 tests (includes cleanup)
-cargo test types           # 52 tests (includes MediaFilter)
-cargo test link            # 8 tests
-cargo test rate_limiter    # 19 tests
-cargo test auth            # 1 test
-cargo test client          # 18 tests
-cargo test cli             # 7 tests
-cargo test mcp             # 40 tests (server + all 7 tools + helpers)
-cargo test test_helpers    # 7 tests (fixture factories)
-
-# Linting and formatting
-cargo fmt --check
-cargo clippy -- -D warnings
-
-# Pre-commit check (all must pass)
+# Pre-commit (all must pass)
 cargo fmt --check && cargo clippy -- -D warnings && cargo test
-
-# Run the binary
-cargo run --bin telegram-mcp
 ```
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                 MCP Client (Comet)                  │
-└─────────────────────────┬───────────────────────────┘
-                          │ JSON-RPC over stdio
-┌─────────────────────────▼───────────────────────────┐
-│              MCP Server Layer (rmcp)                │
-│         src/mcp/server.rs, tools/, tools/types.rs   │
-└─────────────────────────┬───────────────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────────┐
-│              Application Layer                       │
-│     config, logging, rate_limiter, link, error      │
-└─────────────────────────┬───────────────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────────┐
-│              Telegram Layer (grammers)              │
-│        src/telegram/client.rs, auth.rs, types.rs    │
-└─────────────────────────┬───────────────────────────┘
-                          │ MTProto
-                          ▼
-                   Telegram Cloud API
+MCP Client (Comet) ──JSON-RPC/stdio──► MCP Server Layer (rmcp)
+                                        │  src/mcp/server.rs (7 tools)
+                                        │  src/mcp/tools/ (types, helpers)
+                                        ▼
+                                      Application Layer
+                                        │  config, logging, rate_limiter, link, error, cli
+                                        ▼
+                                      Telegram Layer (grammers)
+                                        │  client.rs, trait_def.rs, converters.rs, auth.rs
+                                        │  types/ (ids, names, media, entities, params)
+                                        ▼
+                                      Telegram Cloud API (MTProto)
 ```
 
-**Key design patterns:**
-- Library + Binary separation (`lib.rs` for core logic, `main.rs` for CLI)
-- Shared state via `Arc<T>` for Telegram client and rate limiter
-- Traits with `mockall` for testability (e.g., `TelegramClientTrait`, `RateLimiterTrait`)
-- No `mod.rs` files - use file-as-module pattern (e.g., `src/mcp.rs` declares submodules)
-- JSON schemas via `schemars` for MCP tool parameters
+### Key Patterns
 
-## Module Structure
+**Generic MCP server with trait-based DI:** `McpServer<T: TelegramClientTrait, R: RateLimiterTrait>` takes `Arc<T>` and `Arc<R>`. In production, T=`TelegramClient`, R=`RateLimiter`. In tests, mockall-generated `MockTelegramClientTrait` and `MockRateLimiterTrait`.
 
-| Module | Purpose |
-|--------|---------|
-| `cli.rs` | CLI argument parsing with clap (--setup, --session-file, --config) |
-| `error.rs` | Error types with thiserror (RateLimit includes retry_after) |
-| `config.rs` | TOML config loading, env var expansion, SecretString, ServerConfig |
-| `logging.rs` | tracing subscriber setup, dual layer (stderr + file), sensitive data redaction, old log cleanup |
-| `rate_limiter.rs` | Token bucket rate limiting with retry_after calculation |
-| `link.rs` | Telegram deep link generation (tg://, https://t.me) |
-| `main.rs` | Entry point with signal handling, setup mode, MCP server |
-| `test_helpers.rs` | Test fixture factories (create_test_message, create_test_channel) |
-| `mcp/server.rs` | rmcp ServerHandler + MCP tool methods |
-| `mcp/tools.rs` | Re-exports tools + helpers modules |
-| `mcp/tools/helpers.rs` | ID parsing helpers (parse_channel_id, parse_message_id) |
-| `mcp/tools/types/` | Submodules: requests.rs, responses.rs, serde_helpers.rs |
-| `telegram/client.rs` | Real grammers client + TelegramClientTrait |
-| `telegram/auth.rs` | Interactive authentication with 2FA support |
-| `telegram/types/` | Submodules: ids.rs, names.rs, media.rs, entities.rs, params.rs |
+**rmcp tool macros:** All 7 tools live in `server.rs` inside a `#[tool_router] impl` block. Each tool method has a `#[tool(...)` attribute. Tools cannot be split to separate files due to macro constraints.
 
-## MCP Tools (All 7 with rmcp Integration)
+**Library + Binary split:** `lib.rs` exports all public types/modules. `main.rs` is the CLI entry point with signal handling and setup mode.
 
-| Tool | Status | Description |
-|------|--------|-------------|
-| `check_mcp_status` | ✅ | Connection status, rate limiter tokens |
-| `get_subscribed_channels` | ✅ | List user's Telegram channels with pagination |
-| `get_channel_info` | ✅ | Get channel metadata by username or ID |
-| `generate_message_link` | ✅ | Generate tg:// and https://t.me links |
-| `open_message_in_telegram` | ✅ | Open message in Telegram Desktop (macOS) |
-| `search_messages` | ✅ | Search messages with rate limiting |
-| `get_recent_messages` | ✅ | Get messages from channel by time window (no query needed) |
+**No `mod.rs` files:** File-as-module pattern throughout. `src/mcp.rs` declares submodules, `src/telegram.rs` declares submodules.
 
-All tools have `#[tool]` attributes for rmcp protocol compliance.
+**Type-safe domain model (DDD):** Newtype wrappers `ChannelId(i64)`, `MessageId(i64)`, `UserId(i64)`, `Username(String)`, `ChannelName(String)` prevent accidental misuse. JSON schemas via `schemars` derives.
 
-## Development Methodology
+### Test Organization
 
-**TDD Workflow:** RED → GREEN → REFACTOR
-- Write failing test first
-- Write minimal code to pass
-- Refactor while tests stay green
+- Unit tests: `#[cfg(test)]` blocks inline in each module, or in sibling `tests/` directories
+- MCP tool tests: `src/mcp/tests/{server_core,status,channels,links,search,history}.rs`
+- Telegram client tests: `src/telegram/tests/client_tests.rs` (mock-based)
+- Test fixtures: `src/test_helpers.rs` — `create_test_message()`, `create_test_channel()`, etc.
+- Config tests require `--test-threads=1` due to `env::set_var()` race conditions
 
-**KISS Principles:**
-- Single Responsibility: one module = one purpose
-- No premature abstraction: extract only after Rule of Three
-- Explicit over implicit: clear function signatures
-- Delete over comment: remove dead code
+## MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `check_mcp_status` | Connection status, rate limiter tokens |
+| `get_subscribed_channels` | List channels with pagination |
+| `get_channel_info` | Channel metadata by username or ID |
+| `generate_message_link` | Generate tg:// and https://t.me links |
+| `open_message_in_telegram` | Open in Telegram Desktop (macOS) |
+| `search_messages` | Search with rate limiting, optional media filter |
+| `get_recent_messages` | Channel messages by time window (no query needed) |
 
 ## Error Handling
 
-- **Library layer:** `thiserror` for typed error definitions
-- **Application layer:** `anyhow` for error context and propagation
-- **NEVER use `unwrap()` in production code** - use `?` or `expect()` with clear messages
-
-```rust
-// Library errors
-#[derive(thiserror::Error, Debug)]
-pub enum Error {
-    #[error("session expired")]
-    SessionExpired,
-}
-
-// Application errors - use .context()
-let config = Config::load().context("Failed to load config")?;
-
-// NEVER use unwrap() in production code
-// let value = option.unwrap();  // ❌ WRONG - can panic
-let value = option.context("Expected value to be present")?;  // ✅ RIGHT
-```
-
-## Domain Types (DDD)
-
-Type-safe ID wrappers prevent accidental misuse:
-```rust
-pub struct ChannelId(pub i64);
-pub struct MessageId(pub i64);
-```
+- **Library layer:** `thiserror` for typed error definitions in `error.rs`
+- **Application layer:** `anyhow` with `.context()` for error propagation
+- **NEVER use `unwrap()` in production code** — use `?` or `expect()` with clear messages
 
 ## Configuration
 
 Config file: `~/.config/telegram-connector/config.toml`
 
-Supports `${VAR}` syntax for environment variable expansion in ALL fields:
-- Numeric fields (e.g., `api_id = "${TELEGRAM_API_ID}"`) - automatically unquoted if value is pure digits
-- String fields (e.g., `api_hash = "${TELEGRAM_API_HASH}"`) - kept as strings
-- Phone numbers with `+` prefix stay as strings (not treated as numbers)
+- `${VAR}` syntax for env var expansion in ALL fields
+- `api_id` always required; `api_hash` and `phone_number` only required with `--setup` flag
+- Numeric fields auto-unquoted if value is pure digits
 
 ## Logging
 
-- Use `tracing` for structured async logging
-- Never log sensitive data (phone numbers, API hashes, passwords, session tokens)
-- Use `redact_phone()` and `redact_hash()` helpers
+- `tracing` for structured async logging; dual output (stderr + file)
+- Daily rotation in `~/.config/telegram-connector/logs/`, JSON format for files
+- Old logs cleaned on startup via `cleanup_old_logs()` based on `max_log_days`
+- Never log sensitive data — use `redact_phone()` and `redact_hash()`
 
 ## Critical Rules
 
-1. **NEVER create git commits** - The user manages all git operations. Only write code and documentation.
+1. **NEVER create git commits** — The user manages all git operations. Only write code and documentation.
 2. **Always use LOCAL memory file** `docs/memory.md`, NOT global Claude memory.
 3. **Wait for user approval** before implementing any proposed changes.
 
 ## Workflow
 
-See `docs/workflow.md` for the iteration cycle:
-1. PROPOSE - describe solution with tests and API
-2. AGREE - wait for user confirmation
-3. IMPLEMENT - tests first, then code
-4. VERIFY - wait for confirmation
-5. UPDATE PROGRESS - update `docs/tasklist.md`
-6. UPDATE MEMORY - after completing each phase/iteration, update `docs/memory.md` (LOCAL file) to record:
-   - Progress made (what was completed)
-   - Patterns applied (design decisions, architectural choices)
-   - Lessons learned (gotchas, edge cases discovered)
-   - Code patterns to reuse in future phases
+See `docs/workflow.md` for the iteration cycle: PROPOSE → AGREE → IMPLEMENT → VERIFY → UPDATE PROGRESS → UPDATE MEMORY
 
-Current progress tracked in:
-- `docs/tasklist.md` - checklist of phases and tasks
-- `docs/memory.md` - detailed notes, patterns, and lessons learned
-
-## Development Progress
-
-| Phase | Description | Status | Tests |
-|-------|-------------|--------|-------|
-| 1 | Project Setup | ✅ | - |
-| 2 | Error Types | ✅ | 11/11 |
-| 3 | Configuration | ✅ | 15/15 (+5 ignored) |
-| 4 | Logging | ✅ | 19/19 |
-| 5 | Domain Types | ✅ | 52/52 |
-| 6 | Link Generation | ✅ | 8/8 |
-| 7 | Rate Limiter | ✅ | 19/19 |
-| 8 | Telegram Auth | ✅ | 1/1 |
-| 9 | Telegram Client | ✅ | 18/18 |
-| 10 | MCP Server | ✅ | 19/19 |
-| 11 | MCP Tools | ✅ | 4/4 |
-| 12 | Integration | ✅ | 7/7 (CLI) |
-| 13 | Refactoring | ✅ | - |
-| 14 | Conditional Credentials | ✅ | 3/3 |
-| 15 | File Logging | ✅ | 10/10 |
-| 16 | Media Search Filtering | ✅ | 14/14 |
-| 17 | Get Recent Messages | ✅ | 19/19 |
-| 18 | Comprehensive Refactoring | ✅ | 23/23 |
-| 19 | Log Cleanup | ✅ | 6/6 |
-
-**Overall:** 19/19 phases complete, 215 tests passing (5 ignored).
+Progress tracked in:
+- `docs/tasklist.md` — phase checklist and task details
+- `docs/memory.md` — patterns, decisions, and lessons learned
