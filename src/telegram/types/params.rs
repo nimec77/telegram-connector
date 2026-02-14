@@ -50,6 +50,10 @@ impl Default for SearchParams {
 pub struct HistoryParams {
     /// Channel to retrieve messages from (required)
     pub channel_id: ChannelId,
+    /// Original channel identifier (username or ID string) for direct resolution.
+    /// When set to a username, the client can resolve the channel via `resolve_username`
+    /// instead of iterating dialogs, allowing access to non-subscribed channels.
+    pub channel_identifier: Option<String>,
     /// How many hours back to retrieve messages
     pub hours_back: u32,
     /// Maximum number of messages to return
@@ -67,6 +71,7 @@ impl HistoryParams {
     pub fn new(channel_id: ChannelId) -> Self {
         Self {
             channel_id,
+            channel_identifier: None,
             hours_back: Self::DEFAULT_HOURS_BACK,
             limit: Self::DEFAULT_LIMIT,
             media_filter: None,
@@ -88,6 +93,12 @@ impl HistoryParams {
     /// Builder method to set media filter
     pub fn media_filter(mut self, filter: MediaFilter) -> Self {
         self.media_filter = Some(filter);
+        self
+    }
+
+    /// Builder method to set channel identifier for direct resolution
+    pub fn channel_identifier(mut self, identifier: impl Into<String>) -> Self {
+        self.channel_identifier = Some(identifier.into());
         self
     }
 }
