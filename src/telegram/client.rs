@@ -146,22 +146,14 @@ impl TelegramClientTrait for TelegramClient {
         limit: u32,
         offset: u32,
     ) -> Result<Vec<crate::telegram::Channel>, Error> {
-        tracing::info!(
-            limit,
-            offset,
-            "Starting get_subscribed_channels - iterating dialogs"
-        );
-
         let mut channels = Vec::new();
         let mut dialogs = self.client.iter_dialogs();
         let mut count = 0u32;
-        let mut total_dialogs = 0u32;
 
         while let Some(dialog) = dialogs.next().await.map_err(|e| {
             tracing::error!(error = %e, "Failed to iterate dialogs in get_subscribed_channels");
             Error::TelegramApi(format!("Failed to iterate dialogs: {}", e))
         })? {
-            total_dialogs += 1;
             let peer = dialog.peer();
 
             // Only include channels and groups
@@ -176,9 +168,8 @@ impl TelegramClientTrait for TelegramClient {
             }
         }
 
-        tracing::info!(
+        tracing::debug!(
             channels_found = channels.len(),
-            total_dialogs,
             offset,
             limit,
             "get_subscribed_channels completed"
@@ -195,12 +186,9 @@ impl TelegramClientTrait for TelegramClient {
             ));
         }
 
-        tracing::info!(identifier = %identifier, "Resolving channel info");
-
         // Resolve the channel
         let peer = if let Some(username) = identifier.strip_prefix('@') {
             // Username lookup (@ prefix stripped)
-            tracing::info!(username = %username, "Resolving by username (@ prefix)");
             self.client
                 .resolve_username(username)
                 .await
@@ -214,7 +202,6 @@ impl TelegramClientTrait for TelegramClient {
                 })?
         } else if let Ok(id) = identifier.parse::<i64>() {
             // Numeric ID lookup - need to search through dialogs
-            tracing::info!(id, "Resolving by numeric ID via dialog iteration");
             let mut dialogs = self.client.iter_dialogs();
             let mut found = None;
 
@@ -234,7 +221,6 @@ impl TelegramClientTrait for TelegramClient {
             })?
         } else {
             // Try as username without @ prefix
-            tracing::info!(identifier = %identifier, "Resolving as username (no @ prefix)");
             self.client
                 .resolve_username(identifier)
                 .await
@@ -247,11 +233,6 @@ impl TelegramClientTrait for TelegramClient {
                     Error::InvalidInput(format!("Channel not found: {}", identifier))
                 })?
         };
-
-        tracing::info!(
-            peer_id = peer.id().bare_id(),
-            "Peer resolved, converting to channel"
-        );
 
         convert_peer_to_channel(&peer).ok_or_else(|| {
             tracing::warn!(
@@ -407,18 +388,8 @@ impl TelegramClientTrait for TelegramClient {
         let resolved_peer = if let Some(ref identifier) = params.channel_identifier {
             let username = identifier.strip_prefix('@').unwrap_or(identifier);
             if !username.chars().all(|c| c.is_ascii_digit()) {
-                tracing::info!(
-                    identifier = %identifier,
-                    "Resolving channel by username for history retrieval"
-                );
                 match self.client.resolve_username(username).await {
-                    Ok(Some(peer)) => {
-                        tracing::info!(
-                            peer_id = peer.id().bare_id(),
-                            "Channel resolved by username"
-                        );
-                        Some(peer)
-                    }
+                    Ok(Some(peer)) => Some(peer),
                     Ok(None) => {
                         tracing::warn!(
                             identifier = %identifier,
@@ -446,10 +417,6 @@ impl TelegramClientTrait for TelegramClient {
         let peer = if let Some(peer) = resolved_peer {
             peer
         } else {
-            tracing::info!(
-                channel_id = %params.channel_id,
-                "Searching dialogs for channel"
-            );
             let mut dialogs = self.client.iter_dialogs();
             let mut found = None;
 

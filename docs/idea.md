@@ -4,7 +4,7 @@
 
 **Version:** 1.0.0
 **Status:** Production Ready
-**Last Updated:** December 14, 2025
+**Last Updated:** February 14, 2026
 **Target Platform:** macOS (extensible to Linux/Windows)
 **Methodology:** TDD + KISS + DDD  
 
@@ -107,8 +107,9 @@ A **Model Context Protocol (MCP) service** that enables the Comet browser (power
 │  └────────────────────────────────────────────────────────┘ │
 │                           │                                  │
 │  ┌────────────────────────▼────────────────────────────────┐ │
-│  │  Tool Implementation Layer                              │ │
+│  │  Tool Implementation Layer (7 tools)                     │ │
 │  │  - search_messages()                                    │ │
+│  │  - get_recent_messages()                                │ │
 │  │  - get_channel_info()                                   │ │
 │  │  - generate_message_link()                              │ │
 │  │  - open_message_in_telegram()                           │ │
@@ -317,6 +318,11 @@ mockall = "0.13"
       {
         "name": "get_subscribed_channels",
         "description": "List all subscribed channels",
+        "inputSchema": { /* see below */ }
+      },
+      {
+        "name": "get_recent_messages",
+        "description": "Get recent messages from a channel by time window (no search query needed)",
         "inputSchema": { /* see below */ }
       },
       {
@@ -955,6 +961,79 @@ mockall = "0.13"
 
 ---
 
+### TOOL 7: `get_recent_messages`
+
+**Purpose:** Retrieve recent messages from a channel by time window without requiring a search query
+
+#### Request Schema
+
+```json
+{
+  "name": "get_recent_messages",
+  "description": "Get recent messages from a channel by time window (no search query needed)",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "channel_id": {
+        "type": "string",
+        "description": "Channel ID or username (required)"
+      },
+      "hours_back": {
+        "type": "integer",
+        "description": "Hours of history to retrieve (default: 48, max: 168)",
+        "default": 48,
+        "maximum": 168
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Maximum messages to return (default: 20, max: 100)",
+        "default": 20,
+        "maximum": 100
+      },
+      "media_filter": {
+        "type": "string",
+        "description": "Optional: Filter by media type (client-side filtering)",
+        "enum": ["photo", "video", "photo_video", "document", "audio", "voice", "video_note", "gif", "url", "pinned"]
+      }
+    },
+    "required": ["channel_id"]
+  }
+}
+```
+
+#### Key Difference from `search_messages`
+
+| Feature | search_messages | get_recent_messages |
+|---------|-----------------|---------------------|
+| Query required | Yes (or media_filter) | No |
+| Channel required | No (global search) | Yes (single channel) |
+| Underlying API | `search_messages()` / `search_all_messages()` | `iter_messages()` |
+| Use case | Find specific content | Get all recent activity |
+
+#### Request Example
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 70,
+  "method": "tools/call",
+  "params": {
+    "name": "get_recent_messages",
+    "arguments": {
+      "channel_id": "habrhabr",
+      "hours_back": 24,
+      "limit": 50
+    }
+  }
+}
+```
+
+#### Response
+
+Reuses the same `SearchResult` response format as `search_messages` for consistency.
+
+---
+
 ## Configuration Guide
 
 ### Configuration File Structure
@@ -1278,7 +1357,7 @@ telegram-connector/
 │   ├── mcp.rs                    # MCP module declaration
 │   ├── mcp/
 │   │   ├── server.rs             # rmcp server setup & initialization
-│   │   └── tools.rs              # All 6 MCP tools (split when >300 lines)
+│   │   └── tools.rs              # All 7 MCP tools (split when >300 lines)
 │   │
 │   ├── telegram.rs               # Telegram module declaration
 │   └── telegram/
@@ -1346,7 +1425,7 @@ pub use types::{Channel, Message, SearchResult};
 | `rate_limiter.rs` | Token bucket algorithm | ~100 |
 | `link.rs` | `tg://` and `https://t.me` link generation | ~60 |
 | `mcp/server.rs` | rmcp server setup, tool registration | ~80 |
-| `mcp/tools.rs` | 6 MCP tool implementations | ~250 |
+| `mcp/tools.rs` | 7 MCP tool implementations | ~250 |
 | `telegram/client.rs` | Grammers wrapper, search, channel ops | ~200 |
 | `telegram/auth.rs` | Phone auth, 2FA, session persistence | ~150 |
 | `telegram/types.rs` | Data structures with serde | ~100 |
@@ -2121,6 +2200,23 @@ This file contains complete MCP schema definitions in OpenAPI-compatible format,
       }
     },
     {
+      "name": "get_recent_messages",
+      "description": "Get recent messages from a channel by time window",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel_id": { "type": "string" },
+          "hours_back": { "type": "integer", "default": 48, "maximum": 168 },
+          "limit": { "type": "integer", "default": 20, "maximum": 100 },
+          "media_filter": {
+            "type": "string",
+            "enum": ["photo", "video", "photo_video", "document", "audio", "voice", "video_note", "gif", "url", "pinned"]
+          }
+        },
+        "required": ["channel_id"]
+      }
+    },
+    {
       "name": "check_mcp_status",
       "description": "Health check and diagnostics",
       "inputSchema": { "type": "object" }
@@ -2155,6 +2251,6 @@ For questions, issues, or contributions:
 
 ---
 
-**Document Version:** 1.0.0  
-**Last Updated:** December 14, 2025  
-**Status:** Ready for Implementation
+**Document Version:** 1.1.0
+**Last Updated:** February 14, 2026
+**Status:** Production Ready

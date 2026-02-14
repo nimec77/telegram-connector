@@ -1,12 +1,12 @@
 # Development Memory - Telegram MCP Connector
 
-**Last Updated:** Phase 18 Complete (2026-01-03)
+**Last Updated:** Debug Log Cleanup Complete (2026-02-14)
 
 ---
 
 ## Current Status
 
-**Progress:** 18/18 phases complete
+**Progress:** 19/19 phases complete
 - ✅ Phase 1: Project Setup
 - ✅ Phase 2: Error Types (11/11 tests)
 - ✅ Phase 3: Configuration (15/15 tests + 5 ignored)
@@ -25,8 +25,9 @@
 - ✅ Phase 16: Media Search Filtering (167 tests)
 - ✅ Phase 17: Get Recent Messages (186 tests)
 - ✅ Phase 18: Comprehensive Refactoring (209 tests)
+- ✅ Phase 19: Log Cleanup (215 tests)
 
-**Total:** 209 tests passing (5 ignored for CI/CD)
+**Total:** 215 tests passing (5 ignored for CI/CD)
 
 **rmcp Integration:** All 7 MCP tools have `#[tool]` attributes for proper protocol compliance
 
@@ -2723,3 +2724,40 @@ fn test_name() {
 - All 215 tests pass (5 ignored)
 - Clippy clean (no warnings)
 - Consistent with project patterns from Phase 13
+
+---
+
+## Debug Log Cleanup in telegram/client.rs (2026-02-14)
+
+### Problem
+
+During the `structuredContent` / Cyrillic debugging session, extensive `tracing::info!` logging was added to `src/telegram/client.rs` to trace every step of channel resolution. The root cause was fixed (`String` vs `Json<T>` serialization), but the diagnostic logs remained — creating noisy output on every normal operation.
+
+### What Was Done
+
+Cleaned up `src/telegram/client.rs` — removed 11 verbose `info!` traces, kept all `error!`/`warn!` logs:
+
+**`get_subscribed_channels`** (3 changes):
+- Removed entry-point `info!` log ("Starting get_subscribed_channels")
+- Removed `total_dialogs` counter (declaration + increment) — only existed for diagnostic logging
+- Downgraded completion log from `info!` to `debug!`, removed `total_dialogs` field
+
+**`get_channel_info`** (5 removals):
+- Removed 5 step-by-step `info!` traces: entry point, `@` prefix resolution, numeric ID resolution, bare username resolution, peer-resolved intermediate step
+- Kept all `error!`/`warn!` logs (fire only on failures)
+
+**`get_recent_messages`** (3 removals):
+- Removed 3 step-by-step `info!` traces: username resolution entry, username resolved success, dialog search entry
+- Kept `warn!` logs for fallback paths, `error!` for dialog iteration failure
+- Kept `identifier` field on the completion `info!` log (useful context, not diagnostic noise)
+
+### Lesson Learned
+
+**Log level discipline:** When adding diagnostic logging to debug an issue, use `debug!` or `trace!` level — not `info!`. This avoids the need for cleanup after the fix. Reserve `info!` for operation completions and significant state changes. Reserve `error!`/`warn!` for failures and fallbacks.
+
+### Verification
+
+- All 215 tests pass (5 ignored)
+- `cargo fmt --check` clean
+- `cargo clippy -- -D warnings` clean
+- No behavioral changes — only log output reduced

@@ -286,28 +286,53 @@ telegram-connector/
 │
 ├── src/
 │   ├── lib.rs                    # Library root, public API exports
-│   ├── main.rs                   # Binary: CLI entry point
+│   ├── main.rs                   # Binary: CLI entry point, signal handling
+│   ├── cli.rs                    # CLI argument parsing (clap)
+│   ├── test_helpers.rs           # Test fixture factories (cfg(test))
 │   │
 │   ├── config.rs                 # Configuration loading & validation
 │   ├── error.rs                  # Custom error types (thiserror)
-│   ├── logging.rs                # Tracing subscriber setup
+│   ├── logging.rs                # Tracing subscriber, dual layer, log cleanup
 │   ├── rate_limiter.rs           # Token bucket implementation
 │   ├── link.rs                   # Deep link generation utility
 │   │
 │   ├── mcp.rs                    # MCP module declaration
 │   ├── mcp/
-│   │   ├── server.rs             # rmcp server setup & initialization
-│   │   └── tools.rs              # All 6 MCP tools (split when >300 lines)
+│   │   ├── server.rs             # rmcp server + all 7 MCP tools
+│   │   ├── tools.rs              # Re-exports tools + helpers modules
+│   │   ├── tools/
+│   │   │   ├── helpers.rs        # ID parsing helpers (parse_channel_id, etc.)
+│   │   │   ├── types.rs          # Module re-exports for types/
+│   │   │   └── types/
+│   │   │       ├── requests.rs   # Request types for all tools
+│   │   │       ├── responses.rs  # Response types for all tools
+│   │   │       └── serde_helpers.rs # Custom deserializers
+│   │   ├── tests.rs              # Test module declarations
+│   │   └── tests/
+│   │       ├── server_core.rs    # Server creation tests
+│   │       ├── status.rs         # check_mcp_status tests
+│   │       ├── channels.rs       # Channel tool tests
+│   │       ├── links.rs          # Link generation tool tests
+│   │       ├── search.rs         # search_messages tests
+│   │       └── history.rs        # get_recent_messages tests
 │   │
 │   ├── telegram.rs               # Telegram module declaration
 │   └── telegram/
 │       ├── client.rs             # Grammers client wrapper
+│       ├── trait_def.rs          # TelegramClientTrait + MockTelegramClientTrait
+│       ├── converters.rs         # Type conversion helpers
 │       ├── auth.rs               # Authentication & 2FA flow
-│       └── types.rs              # Message, Channel, SearchResult
-│
-├── tests/
-│   ├── mcp_integration.rs        # MCP server integration tests
-│   └── telegram_mock.rs          # Telegram client mock tests
+│       ├── types.rs              # Module re-exports for types/
+│       ├── types/
+│       │   ├── ids.rs            # ChannelId, MessageId, UserId
+│       │   ├── names.rs          # Username, ChannelName
+│       │   ├── media.rs          # MediaType, MediaFilter
+│       │   ├── entities.rs       # Message, Channel
+│       │   └── params.rs         # SearchParams, HistoryParams, SearchResult
+│       ├── tests.rs              # Test module declarations
+│       └── tests/
+│           ├── client_tests.rs   # Client mock tests
+│           └── types_tests.rs    # Domain type tests
 │
 └── .github/
     └── workflows/
@@ -339,6 +364,8 @@ pub use error::Error;
 // src/mcp.rs - Module declaration
 pub mod server;
 pub mod tools;
+#[cfg(test)]
+mod tests;
 
 pub use server::McpServer;
 ```
@@ -347,9 +374,14 @@ pub use server::McpServer;
 // src/telegram.rs - Module declaration
 pub mod auth;
 pub mod client;
+pub mod converters;
+pub mod trait_def;
 pub mod types;
+#[cfg(test)]
+mod tests;
 
 pub use client::TelegramClient;
+pub use trait_def::TelegramClientTrait;
 pub use types::{Channel, Message, SearchResult};
 ```
 
@@ -357,22 +389,31 @@ pub use types::{Channel, Message, SearchResult};
 
 ### 3.3 File Responsibilities
 
-| File | Responsibility | Lines (estimate) |
-|------|----------------|------------------|
+| File | Responsibility | Lines (approx) |
+|------|----------------|----------------|
 | `lib.rs` | Public API exports, module declarations | ~30 |
-| `main.rs` | CLI entry, server startup, signal handling | ~50 |
-| `config.rs` | TOML loading, defaults, validation | ~100 |
+| `main.rs` | CLI entry, server startup, signal handling | ~120 |
+| `cli.rs` | CLI argument parsing with clap | ~80 |
+| `config.rs` | TOML loading, env var expansion, validation | ~300 |
 | `error.rs` | Error enum with thiserror | ~80 |
-| `logging.rs` | Tracing subscriber initialization | ~40 |
-| `rate_limiter.rs` | Token bucket algorithm | ~100 |
+| `logging.rs` | Dual-layer tracing (stderr + file), log cleanup | ~200 |
+| `rate_limiter.rs` | Token bucket algorithm | ~150 |
 | `link.rs` | `tg://` and `https://t.me` link generation | ~60 |
-| `mcp/server.rs` | rmcp server setup, tool registration | ~80 |
-| `mcp/tools.rs` | 6 MCP tool implementations | ~250 |
-| `telegram/client.rs` | Grammers wrapper, search, channel ops | ~200 |
-| `telegram/auth.rs` | Phone auth, 2FA, session persistence | ~150 |
-| `telegram/types.rs` | Data structures with serde | ~100 |
-
-**Total estimated:** ~1,200 lines (excluding tests)
+| `test_helpers.rs` | Test fixture factories | ~200 |
+| `mcp/server.rs` | rmcp server + all 7 MCP tool handlers | ~380 |
+| `mcp/tools/helpers.rs` | ID parsing helpers | ~120 |
+| `mcp/tools/types/requests.rs` | Request types for all tools | ~220 |
+| `mcp/tools/types/responses.rs` | Response types for all tools | ~110 |
+| `mcp/tools/types/serde_helpers.rs` | Custom deserializers | ~80 |
+| `telegram/client.rs` | Grammers wrapper, search, channel ops | ~500 |
+| `telegram/trait_def.rs` | TelegramClientTrait + mock generation | ~30 |
+| `telegram/converters.rs` | Peer/message/media type conversion helpers | ~200 |
+| `telegram/auth.rs` | Phone auth, 2FA, session persistence | ~100 |
+| `telegram/types/ids.rs` | ChannelId, MessageId, UserId | ~185 |
+| `telegram/types/names.rs` | Username, ChannelName | ~170 |
+| `telegram/types/media.rs` | MediaType, MediaFilter | ~150 |
+| `telegram/types/entities.rs` | Message, Channel | ~130 |
+| `telegram/types/params.rs` | SearchParams, HistoryParams, SearchResult | ~235 |
 
 ---
 
@@ -503,16 +544,19 @@ async fn main() -> Result<()> {
 For testability, external dependencies are behind traits:
 
 ```rust
-// telegram/client.rs
+// telegram/trait_def.rs
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
 pub trait TelegramClientTrait: Send + Sync {
-    /// Search messages with optional media filter.
-    /// When media_filter is set, uses Telegram's InputMessagesFilter for
-    /// efficient server-side filtering (no need to fetch all and filter locally).
-    async fn search_messages(&self, params: &SearchParams) -> Result<SearchResult>;
-    async fn get_channel_info(&self, identifier: &str) -> Result<Channel>;
-    async fn get_subscribed_channels(&self, limit: u32, offset: u32) -> Result<Vec<Channel>>;
+    /// Search messages with optional media filter (server-side via InputMessagesFilter)
+    async fn search_messages(&self, params: &SearchParams) -> Result<SearchResult, Error>;
+    /// Get recent messages from a channel by time window (no search query needed)
+    async fn get_recent_messages(&self, params: &HistoryParams) -> Result<SearchResult, Error>;
+    /// Get information about a specific channel by username or ID
+    async fn get_channel_info(&self, identifier: &str) -> Result<Channel, Error>;
+    /// Get list of subscribed channels with pagination
+    async fn get_subscribed_channels(&self, limit: u32, offset: u32) -> Result<Vec<Channel>, Error>;
+    /// Check if client is connected and authorized
     async fn is_connected(&self) -> bool;
 }
 
@@ -883,7 +927,7 @@ pub struct LoggingConfig {
 │    └─► Create token bucket with configured parameters       │
 ├─────────────────────────────────────────────────────────────┤
 │ 5. Start MCP Server                                         │
-│    └─► Register all 6 tools                                 │
+│    └─► Register all 7 tools                                 │
 │    └─► Setup signal handlers (SIGTERM, SIGINT)              │
 │    └─► Begin listening on stdio                             │
 └─────────────────────────────────────────────────────────────┘
@@ -1431,8 +1475,10 @@ tracing-appender = "0.2"
 
 **Behavior:**
 - New log file created daily with date suffix
-- Files older than `max_log_days` are automatically cleaned up
+- Files older than `max_log_days` are automatically cleaned up on startup
 - Uses `tracing-appender` with `Rotation::DAILY`
+- Startup cleanup: `cleanup_old_logs()` runs after logging init, deletes `.log` files with modified time older than `max_log_days * 86400` seconds
+- Cleanup is skipped when `file_enabled == false` or `max_log_days == 0`
 
 ---
 
