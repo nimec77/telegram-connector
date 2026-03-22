@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Environment variable expansion is now skipped for TOML comment lines (lines starting with `#`)
+
 ## [0.3.0] - 2026-03-22
 
 ### Changed
