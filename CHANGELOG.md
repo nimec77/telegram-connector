@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-03-22
+
 ### Changed
 - Environment variable expansion now returns an error for missing variables instead of leaving the placeholder unexpanded
 - Recursive environment variable expansion (variables referencing other variables) is now prevented with a clear error
