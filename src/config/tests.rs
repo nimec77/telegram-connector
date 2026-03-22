@@ -92,6 +92,25 @@ fn test_expand_env_vars_numeric_unquoting() {
     }
 }
 
+#[test]
+fn test_expand_env_vars_skips_toml_comment_lines() {
+    // ${VAR_NAME} inside a TOML comment must not be expanded — it's documentation text,
+    // not a variable reference. This was the bug: config.example.toml has the comment
+    // "# Supports environment variable expansion with ${VAR_NAME} syntax" which caused
+    // the binary to fail with "Environment variable 'VAR_NAME' not found".
+    let input = "# Supports environment variable expansion with ${VAR_NAME} syntax\napi_id = 12345";
+    let result = expand_env_vars(input).unwrap();
+    assert_eq!(result, input);
+}
+
+#[test]
+fn test_expand_env_vars_skips_inline_comment_after_hash() {
+    // A line that starts with leading whitespace then # is also a comment
+    let input = "  # another comment with ${SHOULD_BE_IGNORED} inside";
+    let result = expand_env_vars(input).unwrap();
+    assert_eq!(result, input);
+}
+
 fn create_test_config(api_id: i32, api_hash: Option<&str>, phone_number: Option<&str>) -> Config {
     Config {
         telegram: TelegramConfig {

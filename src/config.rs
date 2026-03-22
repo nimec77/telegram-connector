@@ -277,6 +277,20 @@ impl Config {
 }
 
 fn expand_env_vars(value: &str) -> anyhow::Result<String> {
+    let lines: Vec<String> = value
+        .split('\n')
+        .map(|line| {
+            if line.trim_start().starts_with('#') {
+                Ok(line.to_string())
+            } else {
+                expand_env_vars_in_line(line)
+            }
+        })
+        .collect::<anyhow::Result<_>>()?;
+    Ok(lines.join("\n"))
+}
+
+fn expand_env_vars_in_line(value: &str) -> anyhow::Result<String> {
     use anyhow::Context;
 
     let mut result = value.to_string();
