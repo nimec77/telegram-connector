@@ -3,8 +3,8 @@
 use crate::telegram::types::{
     Channel, ChannelId, ChannelName, MediaFilter, MediaType, Message, MessageId, UserId, Username,
 };
-use grammers_client::grammers_tl_types as tl;
-use grammers_client::types::media::{Document, Media};
+use grammers_client::media::{Document, Media};
+use grammers_client::tl;
 
 /// Convert our MediaFilter enum to grammers MessagesFilter for server-side filtering
 pub fn convert_media_filter(filter: &MediaFilter) -> tl::enums::MessagesFilter {
@@ -91,7 +91,7 @@ fn detect_document_type(doc: &Document) -> MediaType {
 /// Check if a message's media matches the given filter (for client-side filtering)
 ///
 /// Used by `get_recent_messages` since `iter_messages` doesn't support server-side filtering.
-pub fn matches_media_filter(msg: &grammers_client::types::Message, filter: &MediaFilter) -> bool {
+pub fn matches_media_filter(msg: &grammers_client::message::Message, filter: &MediaFilter) -> bool {
     let Some(media) = msg.media() else {
         // No media - only match if filter is Url (check text for URLs) or Pinned
         return match filter {
@@ -121,12 +121,12 @@ pub fn matches_media_filter(msg: &grammers_client::types::Message, filter: &Medi
 }
 
 /// Convert grammers Peer to our Channel type
-pub fn convert_peer_to_channel(peer: &grammers_client::types::Peer) -> Option<Channel> {
-    use grammers_client::types::Peer;
+pub fn convert_peer_to_channel(peer: &grammers_client::peer::Peer) -> Option<Channel> {
+    use grammers_client::peer::Peer;
 
     match peer {
         Peer::Channel(ch) => {
-            let id = ChannelId::new(ch.bare_id()).ok()?;
+            let id = ChannelId::new(ch.id().bare_id()).ok()?;
             let name = ChannelName::new(ch.title()).ok()?;
             let username = ch
                 .username()
@@ -178,14 +178,14 @@ pub fn convert_peer_to_channel(peer: &grammers_client::types::Peer) -> Option<Ch
 
 /// Convert grammers Message to our Message type
 pub fn convert_message(
-    msg: &grammers_client::types::Message,
-    peer: &grammers_client::types::Peer,
+    msg: &grammers_client::message::Message,
+    peer: &grammers_client::peer::Peer,
 ) -> Option<Message> {
-    use grammers_client::types::Peer;
+    use grammers_client::peer::Peer;
 
     let (channel_id, channel_name, channel_username) = match peer {
         Peer::Channel(ch) => (
-            ChannelId::new(ch.bare_id()).ok()?,
+            ChannelId::new(ch.id().bare_id()).ok()?,
             ChannelName::new(ch.title()).ok()?,
             ch.username()
                 .and_then(|u| Username::new(u).ok())
@@ -199,7 +199,7 @@ pub fn convert_message(
                 .unwrap_or_else(|| Username::new("group").unwrap()),
         ),
         Peer::User(u) => (
-            ChannelId::new(u.bare_id()).ok()?,
+            ChannelId::new(u.id().bare_id()).ok()?,
             ChannelName::new(u.first_name().unwrap_or("User")).ok()?,
             u.username()
                 .and_then(|un| Username::new(un).ok())
@@ -212,12 +212,12 @@ pub fn convert_message(
     // Get sender info
     // msg.sender() returns Result<&Peer, Option<PeerRef>> in newer grammers versions
     let (sender_id, sender_name) = match msg.sender() {
-        Ok(sender) => {
+        Some(sender) => {
             let id = UserId::new(sender.id().bare_id()).ok();
             let name = sender.name().map(|s: &str| s.to_string());
             (id, name)
         }
-        Err(_) => (None, None),
+        None => (None, None),
     };
 
     // Check for media and detect its type

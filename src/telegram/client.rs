@@ -47,6 +47,7 @@ impl TelegramClient {
         tracing::info!("Opening session from {:?}", config.session_file);
         let session = Arc::new(
             SqliteSession::open(&config.session_file)
+                .await
                 .map_err(|e| Error::Auth(format!("Failed to open session: {}", e)))?,
         );
 
@@ -54,8 +55,8 @@ impl TelegramClient {
         tracing::info!("Creating sender pool...");
         let pool = SenderPool::new(Arc::clone(&session), config.api_id);
 
-        // Create client before spawning runner (Client::new takes &SenderPool)
-        let client = Client::new(&pool);
+        // Create client before spawning runner (Client::new takes SenderPoolFatHandle)
+        let client = Client::new(pool.handle);
 
         // Spawn the runner in the background
         let runner_handle = tokio::spawn(async move {
@@ -92,7 +93,7 @@ impl TelegramClient {
         &self,
         phone: &str,
         api_hash: &str,
-    ) -> Result<grammers_client::types::LoginToken, Error> {
+    ) -> Result<grammers_client::client::LoginToken, Error> {
         self.client
             .request_login_code(phone, api_hash)
             .await
@@ -102,7 +103,7 @@ impl TelegramClient {
     /// Sign in with the received code
     pub async fn sign_in(
         &self,
-        token: &grammers_client::types::LoginToken,
+        token: &grammers_client::client::LoginToken,
         code: &str,
     ) -> Result<(), Error> {
         match self.client.sign_in(token, code).await {
@@ -123,7 +124,7 @@ impl TelegramClient {
     /// Sign in with 2FA password
     pub async fn check_password(
         &self,
-        password_token: grammers_client::types::PasswordToken,
+        password_token: grammers_client::client::PasswordToken,
         password: &str,
     ) -> Result<(), Error> {
         self.client
@@ -278,7 +279,10 @@ impl TelegramClientTrait for TelegramClient {
                     channels_searched += 1;
 
                     // Search in this specific channel
-                    let mut search_iter = self.client.search_messages(peer).query(&params.query);
+                    let peer_ref = peer.to_ref().await.ok_or_else(|| {
+                        Error::TelegramApi("Failed to convert peer to PeerRef".to_string())
+                    })?;
+                    let mut search_iter = self.client.search_messages(peer_ref).query(&params.query);
 
                     // Apply media filter if specified
                     if let Some(ref media_filter) = params.media_filter {
@@ -329,7 +333,7 @@ impl TelegramClientTrait for TelegramClient {
                 }
 
                 // Get peer from message and convert
-                if let Ok(peer) = msg.peer()
+                if let Some(peer) = msg.peer()
                     && let Some(converted) = convert_message(&msg, peer)
                 {
                     messages.push(converted);
@@ -440,7 +444,10 @@ impl TelegramClientTrait for TelegramClient {
         };
 
         // Use iter_messages to get message history (no search query)
-        let mut messages_iter = self.client.iter_messages(&peer);
+        let peer_ref = peer.to_ref().await.ok_or_else(|| {
+            Error::TelegramApi("Failed to convert peer to PeerRef".to_string())
+        })?;
+        let mut messages_iter = self.client.iter_messages(peer_ref);
 
         while let Some(msg) = messages_iter
             .next()
