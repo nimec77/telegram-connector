@@ -240,9 +240,10 @@ impl Config {
         if !self.telegram.has_auth_credentials() {
             anyhow::bail!(
                 "Authentication credentials required for setup mode.\n\
-                Please ensure these are set in your config or environment:\n\
-                - telegram.api_hash (or TELEGRAM_API_HASH)\n\
-                - telegram.phone_number (or TELEGRAM_PHONE_NUMBER)\n\n\
+                Please ensure these are set in your config.toml:\n\
+                - telegram.api_hash\n\
+                - telegram.phone_number\n\n\
+                You can use environment variables: api_hash = \"${{YOUR_ENV_VAR}}\"\n\
                 Get your API credentials from: https://my.telegram.org"
             );
         }
@@ -276,13 +277,24 @@ impl Config {
 }
 
 fn expand_env_vars(value: &str) -> anyhow::Result<String> {
-    let mut result = value.to_string();
+    use anyhow::Context;
 
-    while let Some(start) = result.find("${") {
+    let mut result = value.to_string();
+    let mut search_from = 0;
+
+    while let Some(rel_start) = result[search_from..].find("${") {
+        let start = search_from + rel_start;
         if let Some(end_offset) = result[start..].find('}') {
             let end = start + end_offset;
             let var_name = &result[start + 2..end];
-            let var_value = std::env::var(var_name).unwrap_or_default();
+            let var_value = std::env::var(var_name).with_context(|| {
+                format!(
+                    "Environment variable '{}' not found. \
+                     Referenced in config as '${{{}}}'. \
+                     Ensure it is set in the process environment.",
+                    var_name, var_name
+                )
+            })?;
 
             // Check if this is a quoted value that's ONLY an env var: "= \"${VAR}\""
             // If so and the value is purely numeric (digits only), unquote for TOML parsing
@@ -298,8 +310,10 @@ fn expand_env_vars(value: &str) -> anyhow::Result<String> {
             if is_quoted_only_env_var && is_pure_integer {
                 // Replace including surrounding quotes: "12345" -> 12345
                 result.replace_range((start - 1)..=(end + 1), &var_value);
+                search_from = start - 1 + var_value.len();
             } else {
                 result.replace_range(start..=end, &var_value);
+                search_from = start + var_value.len();
             }
         } else {
             break;

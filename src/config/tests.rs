@@ -35,9 +35,32 @@ fn test_expand_env_vars_multiple_variables() {
 }
 
 #[test]
-fn test_expand_env_vars_missing_variable() {
-    let result = expand_env_vars("${NONEXISTENT_VAR}").unwrap();
-    assert_eq!(result, "");
+fn test_expand_env_vars_missing_variable_returns_error() {
+    let result = expand_env_vars("${NONEXISTENT_VAR_12345}");
+    assert!(result.is_err());
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("NONEXISTENT_VAR_12345"),
+        "Error should mention the missing variable name, got: {err_msg}"
+    );
+}
+
+#[test]
+fn test_expand_env_vars_no_recursive_expansion() {
+    // If a var's value contains ${...}, it should NOT be expanded further
+    unsafe {
+        env::set_var("OUTER_VAR", "${INNER_VAR}");
+        env::set_var("INNER_VAR", "should_not_appear");
+    }
+    let result = expand_env_vars("value_${OUTER_VAR}_end").unwrap();
+    assert_eq!(
+        result, "value_${INNER_VAR}_end",
+        "Variable values containing ${{...}} should not be recursively expanded"
+    );
+    unsafe {
+        env::remove_var("OUTER_VAR");
+        env::remove_var("INNER_VAR");
+    }
 }
 
 #[test]
