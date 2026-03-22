@@ -6,23 +6,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Telegram MCP Connector — a Model Context Protocol (MCP) service that enables Claude to search Russian-language Telegram channels and messages in real-time. Built in Rust using the `rmcp` SDK and `grammers` Telegram client.
 
-**Status:** 19 phases complete, 215 tests passing (5 ignored), 7 MCP tools.
-
 ## Build & Test Commands
 
 ```bash
 cargo build                            # Debug build
 cargo build --release                  # Release build
-cargo test                             # All 215 tests (5 ignored)
+cargo test                             # All tests (some ignored)
 cargo test <module>                    # e.g. cargo test mcp, cargo test types
+cargo test <test_fn_name>              # Run a single test by name
 cargo test config -- --test-threads=1  # Config tests MUST run serial (env var mutation)
+cargo test -- --nocapture              # Show println!/dbg! output during tests
 cargo fmt --check                      # Check formatting
-cargo clippy -- -D warnings            # Lint (warnings = errors)
+cargo clippy -- -D warnings           # Lint (warnings = errors)
 cargo run --bin telegram-mcp           # Run the binary
 
 # Pre-commit (all must pass)
 cargo fmt --check && cargo clippy -- -D warnings && cargo test
 ```
+
+## Toolchain & Dependencies
+
+- **Rust nightly** (2024 edition) — required for `let chains` and other nightly features
+- **`grammers` from git master** (not crates.io) — API can change between builds; check `grammers-client` docs if compilation fails after update
+- **`schemars` v1** (not v0.8) — different derive API; uses `#[derive(JsonSchema)]` from `schemars::JsonSchema`
+- **`rmcp` v0.15** — MCP server SDK; `#[tool_router]` and `#[tool(...)]` proc macros
 
 ## Architecture
 
@@ -61,44 +68,12 @@ MCP Client (Comet) ──JSON-RPC/stdio──► MCP Server Layer (rmcp)
 - Test fixtures: `src/test_helpers.rs` — `create_test_message()`, `create_test_channel()`, etc.
 - Config tests require `--test-threads=1` due to `env::set_var()` race conditions
 
-## MCP Tools
-
-| Tool | Description |
-|------|-------------|
-| `check_mcp_status` | Connection status, rate limiter tokens |
-| `get_subscribed_channels` | List channels with pagination |
-| `get_channel_info` | Channel metadata by username or ID |
-| `generate_message_link` | Generate tg:// and https://t.me links |
-| `open_message_in_telegram` | Open in Telegram Desktop (macOS) |
-| `search_messages` | Search with rate limiting, optional media filter |
-| `get_recent_messages` | Channel messages by time window (no query needed) |
-
-## Error Handling
-
-- **Library layer:** `thiserror` for typed error definitions in `error.rs`
-- **Application layer:** `anyhow` with `.context()` for error propagation
-- **NEVER use `unwrap()` in production code** — use `?` or `expect()` with clear messages
-
-## Configuration
-
-Config file: `~/.config/telegram-connector/config.toml`
-
-- `${VAR}` syntax for env var expansion in ALL fields
-- `api_id` always required; `api_hash` and `phone_number` only required with `--setup` flag
-- Numeric fields auto-unquoted if value is pure digits
-
-## Logging
-
-- `tracing` for structured async logging; dual output (stderr + file)
-- Daily rotation in `~/.config/telegram-connector/logs/`, JSON format for files
-- Old logs cleaned on startup via `cleanup_old_logs()` based on `max_log_days`
-- Never log sensitive data — use `redact_phone()` and `redact_hash()`
-
 ## Critical Rules
 
 1. **NEVER create git commits** — The user manages all git operations. Only write code and documentation.
 2. **Always use LOCAL memory file** `docs/memory.md`, NOT global Claude memory.
 3. **Wait for user approval** before implementing any proposed changes.
+4. **Coding conventions** are in `docs/conventions.md` — TDD, error handling, KISS principles.
 
 ## Workflow
 

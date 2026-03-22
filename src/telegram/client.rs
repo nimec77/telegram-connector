@@ -282,7 +282,8 @@ impl TelegramClientTrait for TelegramClient {
                     let peer_ref = peer.to_ref().await.ok_or_else(|| {
                         Error::TelegramApi("Failed to convert peer to PeerRef".to_string())
                     })?;
-                    let mut search_iter = self.client.search_messages(peer_ref).query(&params.query);
+                    let mut search_iter =
+                        self.client.search_messages(peer_ref).query(&params.query);
 
                     // Apply media filter if specified
                     if let Some(ref media_filter) = params.media_filter {
@@ -444,9 +445,10 @@ impl TelegramClientTrait for TelegramClient {
         };
 
         // Use iter_messages to get message history (no search query)
-        let peer_ref = peer.to_ref().await.ok_or_else(|| {
-            Error::TelegramApi("Failed to convert peer to PeerRef".to_string())
-        })?;
+        let peer_ref = peer
+            .to_ref()
+            .await
+            .ok_or_else(|| Error::TelegramApi("Failed to convert peer to PeerRef".to_string()))?;
         let mut messages_iter = self.client.iter_messages(peer_ref);
 
         while let Some(msg) = messages_iter
