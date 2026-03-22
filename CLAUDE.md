@@ -26,15 +26,16 @@ cargo fmt --check && cargo clippy -- -D warnings && cargo test
 
 ## Toolchain & Dependencies
 
-- **Rust nightly** (2024 edition) — required for `let chains` and other nightly features
+- **Rust nightly** (2024 edition) — required for `let chains` and other nightly features; no `rust-toolchain.toml`, nightly is implied by `edition = "2024"`
 - **`grammers` from git master** (not crates.io) — API can change between builds; check `grammers-client` docs if compilation fails after update
 - **`schemars` v1** (not v0.8) — different derive API; uses `#[derive(JsonSchema)]` from `schemars::JsonSchema`
 - **`rmcp` v0.15** — MCP server SDK; `#[tool_router]` and `#[tool(...)]` proc macros
+- **`secrecy`** — `SecretString` wraps sensitive config fields (`api_hash`, `phone_number`); access via `.expose_secret()`
 
 ## Architecture
 
 ```
-MCP Client (Comet) ──JSON-RPC/stdio──► MCP Server Layer (rmcp)
+MCP Client (Claude) ──JSON-RPC/stdio──► MCP Server Layer (rmcp)
                                         │  src/mcp/server.rs (7 tools)
                                         │  src/mcp/tools/ (types, helpers)
                                         ▼
@@ -52,7 +53,7 @@ MCP Client (Comet) ──JSON-RPC/stdio──► MCP Server Layer (rmcp)
 
 **Generic MCP server with trait-based DI:** `McpServer<T: TelegramClientTrait, R: RateLimiterTrait>` takes `Arc<T>` and `Arc<R>`. In production, T=`TelegramClient`, R=`RateLimiter`. In tests, mockall-generated `MockTelegramClientTrait` and `MockRateLimiterTrait`.
 
-**rmcp tool macros:** All 7 tools live in `server.rs` inside a `#[tool_router] impl` block. Each tool method has a `#[tool(...)` attribute. Tools cannot be split to separate files due to macro constraints.
+**rmcp tool macros:** All 7 tools live in `server.rs` inside a `#[tool_router] impl` block. Each tool method has a `#[tool(...)` attribute. Tools cannot be split to separate files due to macro constraints. All tools return `Result<String, String>` and serialize responses to JSON — this is an rmcp constraint.
 
 **Library + Binary split:** `lib.rs` exports all public types/modules. `main.rs` is the CLI entry point with signal handling and setup mode.
 
@@ -60,9 +61,11 @@ MCP Client (Comet) ──JSON-RPC/stdio──► MCP Server Layer (rmcp)
 
 **Type-safe domain model (DDD):** Newtype wrappers `ChannelId(i64)`, `MessageId(i64)`, `UserId(i64)`, `Username(String)`, `ChannelName(String)` prevent accidental misuse. JSON schemas via `schemars` derives.
 
+**Config resolution:** `TELEGRAM_MCP_CONFIG` env var → `~/.config/telegram-connector/config.toml`. Supports `${VAR}` env var expansion in TOML values (pure-integer values are auto-unquoted for TOML type compatibility).
+
 ### Test Organization
 
-- Unit tests: `#[cfg(test)]` blocks inline in each module, or in sibling `tests/` directories
+- Unit tests: `#[cfg(test)]` blocks inline in each module, or in separate files via `#[path = "..."]` attribute (e.g., `config.rs` → `config/tests.rs`)
 - MCP tool tests: `src/mcp/tests/{server_core,status,channels,links,search,history}.rs`
 - Telegram client tests: `src/telegram/tests/client_tests.rs` (mock-based)
 - Test fixtures: `src/test_helpers.rs` — `create_test_message()`, `create_test_channel()`, etc.
@@ -73,7 +76,7 @@ MCP Client (Comet) ──JSON-RPC/stdio──► MCP Server Layer (rmcp)
 Full detail in `docs/conventions.md`. Key rules:
 
 **Error handling:**
-- Library code uses `thiserror` (typed errors); application code uses `anyhow` (context + propagation)
+- Library code uses `thiserror` (typed errors in `src/error.rs`); application code uses `anyhow` (context + propagation)
 - **Never `unwrap()`** in production code — use `?` or `.context("...")`
 - `expect()` is allowed only in tests or truly impossible situations
 
