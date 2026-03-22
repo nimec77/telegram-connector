@@ -68,16 +68,32 @@ MCP Client (Comet) ──JSON-RPC/stdio──► MCP Server Layer (rmcp)
 - Test fixtures: `src/test_helpers.rs` — `create_test_message()`, `create_test_channel()`, etc.
 - Config tests require `--test-threads=1` due to `env::set_var()` race conditions
 
+## Coding Conventions
+
+Full detail in `docs/conventions.md`. Key rules:
+
+**Error handling:**
+- Library code uses `thiserror` (typed errors); application code uses `anyhow` (context + propagation)
+- **Never `unwrap()`** in production code — use `?` or `.context("...")`
+- `expect()` is allowed only in tests or truly impossible situations
+
+**Logging:** Use `tracing`. Never log phone numbers, API hashes, passwords, or session tokens.
+
+**Style:** Line length 100 chars. Run `cargo fmt --all` after every code change (not just `--check`).
+
+**TDD:** Write the failing test first; no production code without a preceding test.
+
 ## Critical Rules
 
 1. **NEVER create git commits** — The user manages all git operations. Only write code and documentation.
 2. **Always use LOCAL memory file** `docs/memory.md`, NOT global Claude memory.
 3. **Wait for user approval** before implementing any proposed changes.
-4. **Coding conventions** are in `docs/conventions.md` — TDD, error handling, KISS principles.
 
 ## Workflow
 
-See `docs/workflow.md` for the iteration cycle: PROPOSE → AGREE → IMPLEMENT → VERIFY → UPDATE PROGRESS → UPDATE MEMORY
+See `docs/workflow.md` for the full iteration cycle: PROPOSE → AGREE → IMPLEMENT → VERIFY → UPDATE PROGRESS → UPDATE MEMORY
+
+**Session start:** Read `docs/tasklist.md`, report current phase and next task, ask "Continue from [task]?"
 
 Progress tracked in:
 - `docs/tasklist.md` — phase checklist and task details
