@@ -3,7 +3,7 @@
 //! This trait allows mocking the Telegram client in tests.
 
 use crate::error::Error;
-use crate::telegram::types::{Channel, HistoryParams, SearchParams, SearchResult};
+use crate::telegram::types::{Channel, HistoryParams, Message, SearchParams, SearchResult};
 
 /// Trait for Telegram client operations (allows mocking in tests)
 #[cfg_attr(test, mockall::automock)]
@@ -27,4 +27,11 @@ pub trait TelegramClientTrait: Send + Sync {
 
     /// Check if client is connected and authorized
     async fn is_connected(&self) -> bool;
+
+    /// Get a single message by its ID from a specific channel.
+    ///
+    /// The `channel_ref` can be a username (e.g. "swodki") or a numeric ID string (e.g. "1234567").
+    /// Uses grammers' `get_messages_by_id` under the hood.
+    async fn get_message_by_id(&self, channel_ref: &str, message_id: i32)
+    -> Result<Message, Error>;
 }

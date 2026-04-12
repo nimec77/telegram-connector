@@ -1,8 +1,9 @@
-use crate::link::MessageLink;
+use crate::link::{ChannelRef, MessageLink, parse_telegram_link};
 use crate::mcp::tools::{
     ChannelsResponse, GenerateLinkRequest, GetChannelInfoRequest, GetChannelsRequest,
-    GetRecentMessagesRequest, MessageLinkResponse, OpenMessageRequest, OpenMessageResponse,
-    SearchRequest, StatusResponse, parse_channel_id, parse_message_id, parse_optional_channel_id,
+    GetMessageByLinkRequest, GetRecentMessagesRequest, MessageLinkResponse, OpenMessageRequest,
+    OpenMessageResponse, SearchRequest, StatusResponse, parse_channel_id, parse_message_id,
+    parse_optional_channel_id,
 };
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
@@ -356,6 +357,47 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         );
 
         serde_json::to_string(&result).map_err(|e| e.to_string())
+    }
+
+    /// Tool 8: get_message_by_link - Get a specific message by its t.me link
+    #[tool(
+        description = "Get a specific Telegram message by its t.me link (e.g. https://t.me/swodki/575403)"
+    )]
+    pub async fn get_message_by_link(
+        &self,
+        Parameters(request): Parameters<GetMessageByLinkRequest>,
+    ) -> Result<String, String> {
+        // Parse the link
+        let (channel_ref, message_id) =
+            parse_telegram_link(&request.link).map_err(|e| e.to_string())?;
+
+        // Convert ChannelRef to string identifier for the trait method
+        let channel_identifier = match &channel_ref {
+            ChannelRef::Username(username) => username.clone(),
+            ChannelRef::Id(id) => id.get().to_string(),
+        };
+
+        // Acquire rate limiter token
+        self.rate_limiter
+            .acquire(1)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // Fetch the message
+        let message = self
+            .telegram_client
+            .get_message_by_id(&channel_identifier, message_id.get() as i32)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        tracing::info!(
+            link = %request.link,
+            channel = %channel_identifier,
+            message_id = message_id.get(),
+            "Get message by link completed"
+        );
+
+        serde_json::to_string(&message).map_err(|e| e.to_string())
     }
 }
 

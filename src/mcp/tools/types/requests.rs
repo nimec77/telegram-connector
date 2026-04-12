@@ -91,6 +91,15 @@ pub struct GetRecentMessagesRequest {
     pub media_filter: Option<MediaFilter>,
 }
 
+/// Request for get_message_by_link tool
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct GetMessageByLinkRequest {
+    #[schemars(
+        description = "Telegram message link. Supported formats: https://t.me/username/12345, https://t.me/c/channel_id/12345, t.me/username/12345"
+    )]
+    pub link: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -211,6 +220,14 @@ mod tests {
         assert_eq!(request.hours_back, Some(72));
         assert_eq!(request.limit, Some(50));
         assert_eq!(request.media_filter, Some(MediaFilter::Photo));
+    }
+
+    #[test]
+    fn get_message_by_link_request_deserializes() {
+        let json = r#"{"link": "https://t.me/swodki/575403"}"#;
+        let request: GetMessageByLinkRequest = serde_json::from_str(json).unwrap();
+
+        assert_eq!(request.link, "https://t.me/swodki/575403");
     }
 
     #[test]

@@ -9,6 +9,8 @@ mod channels;
 mod history;
 #[path = "tests/links.rs"]
 mod links;
+#[path = "tests/message_by_link.rs"]
+mod message_by_link;
 #[path = "tests/search.rs"]
 mod search;
 #[path = "tests/server_core.rs"]

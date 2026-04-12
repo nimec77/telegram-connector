@@ -503,4 +503,95 @@ impl TelegramClientTrait for TelegramClient {
             },
         })
     }
+
+    async fn get_message_by_id(
+        &self,
+        channel_ref: &str,
+        message_id: i32,
+    ) -> Result<crate::telegram::Message, Error> {
+        if channel_ref.is_empty() {
+            return Err(Error::InvalidInput(
+                "Channel reference cannot be empty".to_string(),
+            ));
+        }
+
+        // Resolve the channel peer (same pattern as get_channel_info)
+        let peer = if let Ok(id) = channel_ref.parse::<i64>() {
+            // Numeric ID — search through dialogs
+            let mut dialogs = self.client.iter_dialogs();
+            let mut found = None;
+
+            while let Some(dialog) = dialogs.next().await.map_err(|e| {
+                tracing::error!(error = %e, "Failed to iterate dialogs in get_message_by_id");
+                Error::TelegramApi(format!("Failed to iterate dialogs: {}", e))
+            })? {
+                if dialog.peer().id().bare_id() == id {
+                    found = Some(dialog.peer().clone());
+                    break;
+                }
+            }
+
+            found.ok_or_else(|| {
+                tracing::warn!(id, "Channel not found in dialogs by ID");
+                Error::InvalidInput(format!("Channel not found: {}", channel_ref))
+            })?
+        } else {
+            // Username — resolve directly
+            let username = channel_ref.strip_prefix('@').unwrap_or(channel_ref);
+            self.client
+                .resolve_username(username)
+                .await
+                .map_err(|e| {
+                    tracing::error!(username = %username, error = %e, "Failed to resolve username");
+                    Error::TelegramApi(format!("Failed to resolve username: {}", e))
+                })?
+                .ok_or_else(|| {
+                    tracing::warn!(username = %username, "Username not found");
+                    Error::InvalidInput(format!("Channel not found: {}", channel_ref))
+                })?
+        };
+
+        // Get message by ID using grammers API
+        let peer_ref = peer
+            .to_ref()
+            .await
+            .ok_or_else(|| Error::TelegramApi("Failed to convert peer to PeerRef".to_string()))?;
+
+        let messages = self
+            .client
+            .get_messages_by_id(peer_ref, &[message_id])
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    channel_ref = %channel_ref,
+                    message_id,
+                    error = %e,
+                    "Failed to get message by ID"
+                );
+                Error::TelegramApi(format!("Failed to get message: {}", e))
+            })?;
+
+        // get_messages_by_id returns Vec<Option<Message>> — extract the single result
+        let grammers_msg = messages.into_iter().next().flatten().ok_or_else(|| {
+            tracing::warn!(
+                channel_ref = %channel_ref,
+                message_id,
+                "Message not found"
+            );
+            Error::InvalidInput(format!(
+                "Message {} not found in channel {}",
+                message_id, channel_ref
+            ))
+        })?;
+
+        // Convert to our domain type
+        convert_message(&grammers_msg, &peer).ok_or_else(|| {
+            tracing::error!(
+                channel_ref = %channel_ref,
+                message_id,
+                "Failed to convert message to domain type"
+            );
+            Error::TelegramApi("Failed to convert message".to_string())
+        })
+    }
 }
