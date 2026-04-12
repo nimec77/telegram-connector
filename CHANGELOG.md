@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `get_message_by_link` MCP tool to retrieve a specific Telegram message by its `t.me` link (public and private channel links supported)
+- `parse_telegram_link` function in `link.rs` for parsing `https://t.me/...` URLs into channel reference and message ID
+- `get_message_by_id` method on `TelegramClientTrait` for fetching a single message by channel and message ID
+
+### Fixed
+- Updated `proptest` dev-dependency from 1.6.0 to 1.11.0
+
 ## [0.3.1] - 2026-03-22
 
 ### Fixed
