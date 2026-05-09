@@ -29,7 +29,7 @@ cargo fmt --check && cargo clippy -- -D warnings && cargo test
 - **Rust nightly** (2024 edition) — required for `let chains` and other nightly features; no `rust-toolchain.toml`, nightly is implied by `edition = "2024"`
 - **`grammers` from git master** (not crates.io) — API can change between builds; check `grammers-client` docs if compilation fails after update
 - **`schemars` v1** (not v0.8) — different derive API; uses `#[derive(JsonSchema)]` from `schemars::JsonSchema`
-- **`rmcp` v0.15** — MCP server SDK; `#[tool_router]` and `#[tool(...)]` proc macros
+- **`rmcp` v1.6** — MCP server SDK; `#[tool_router]` and `#[tool(...)]` proc macros. `InitializeResult` uses a builder API (`InitializeResult::new(capabilities).with_server_info(...).with_instructions(...)`).
 - **`secrecy`** — `SecretString` wraps sensitive config fields (`api_hash`, `phone_number`); access via `.expose_secret()`
 
 ## Architecture
