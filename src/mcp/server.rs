@@ -10,7 +10,7 @@ use crate::telegram::TelegramClientTrait;
 use crate::telegram::types::{HistoryParams, SearchParams};
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::{Implementation, InitializeResult, ProtocolVersion, ServerCapabilities};
+use rmcp::model::{Implementation, InitializeResult, ServerCapabilities};
 use rmcp::{ServerHandler, ServiceExt, tool, tool_handler, tool_router};
 use std::sync::Arc;
 
@@ -408,21 +408,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> ServerHand
     for McpServer<T, R>
 {
     fn get_info(&self) -> InitializeResult {
-        InitializeResult {
-            protocol_version: ProtocolVersion::default(),
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            server_info: Implementation {
-                name: "telegram-mcp".to_string(),
-                version: env!("CARGO_PKG_VERSION").to_string(),
-                title: None,
-                icons: None,
-                website_url: None,
-                description: None,
-            },
-            instructions: Some(
-                "Telegram MCP Connector - Search Russian Telegram channels".to_string(),
-            ),
-        }
+        let server_info = Implementation::new("telegram-mcp", env!("CARGO_PKG_VERSION"));
+        let capabilities = ServerCapabilities::builder().enable_tools().build();
+
+        InitializeResult::new(capabilities)
+            .with_server_info(server_info)
+            .with_instructions("Telegram MCP Connector - Search Russian Telegram channels")
     }
 }
 
