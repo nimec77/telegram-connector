@@ -1,6 +1,6 @@
 //! Telegram client implementation wrapping grammers-client
 
-use crate::config::TelegramConfig;
+use crate::config::{TelegramConfig, TimeoutConfig};
 use crate::error::Error;
 use crate::telegram::converters::{
     convert_media_filter, convert_message, convert_peer_to_channel, matches_media_filter,
@@ -11,16 +11,39 @@ use chrono::{Duration, Utc};
 use grammers_client::Client;
 use grammers_mtsender::SenderPool;
 use grammers_session::storages::SqliteSession;
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration as StdDuration, Instant};
 use tokio::task::JoinHandle;
+
+/// Wrap a fallible async operation in a hard wall-clock timeout.
+///
+/// If `fut` resolves within `secs`, its result is returned unchanged. Otherwise the
+/// in-flight future is dropped and an [`Error::Timeout`] carrying `operation` and
+/// `secs` is returned.
+///
+/// `operation` should be a short stable identifier (`"resolve_username"`,
+/// `"iter_messages"`, etc.) so log searches can pivot on it.
+pub(crate) async fn with_timeout<F, T>(operation: &str, secs: u64, fut: F) -> Result<T, Error>
+where
+    F: Future<Output = Result<T, Error>>,
+{
+    match tokio::time::timeout(StdDuration::from_secs(secs), fut).await {
+        Ok(inner) => inner,
+        Err(_) => Err(Error::Timeout {
+            operation: operation.to_string(),
+            secs,
+        }),
+    }
+}
 
 /// Telegram client wrapping grammers-client
 pub struct TelegramClient {
     client: Client,
     session: Arc<SqliteSession>,
     session_path: PathBuf,
+    timeouts: TimeoutConfig,
     _runner_handle: JoinHandle<()>,
 }
 
@@ -69,6 +92,7 @@ impl TelegramClient {
             client,
             session,
             session_path: config.session_file.clone(),
+            timeouts: config.timeouts.clone(),
             _runner_handle: runner_handle,
         })
     }
@@ -190,31 +214,32 @@ impl TelegramClientTrait for TelegramClient {
         // Resolve the channel
         let peer = if let Some(username) = identifier.strip_prefix('@') {
             // Username lookup (@ prefix stripped)
-            self.client
-                .resolve_username(username)
-                .await
-                .map_err(|e| {
+            with_timeout("resolve_username", self.timeouts.resolve_secs, async {
+                self.client.resolve_username(username).await.map_err(|e| {
                     tracing::error!(username = %username, error = %e, "Failed to resolve username");
                     Error::TelegramApi(format!("Failed to resolve username: {}", e))
-                })?
-                .ok_or_else(|| {
-                    tracing::warn!(username = %username, "Username not found");
-                    Error::InvalidInput(format!("Channel not found: {}", identifier))
-                })?
+                })
+            })
+            .await?
+            .ok_or_else(|| {
+                tracing::warn!(username = %username, "Username not found");
+                Error::InvalidInput(format!("Channel not found: {}", identifier))
+            })?
         } else if let Ok(id) = identifier.parse::<i64>() {
             // Numeric ID lookup - need to search through dialogs
-            let mut dialogs = self.client.iter_dialogs();
-            let mut found = None;
-
-            while let Some(dialog) = dialogs.next().await.map_err(|e| {
-                tracing::error!(error = %e, "Failed to iterate dialogs in get_channel_info");
-                Error::TelegramApi(format!("Failed to iterate dialogs: {}", e))
-            })? {
-                if dialog.peer().id().bare_id() == id {
-                    found = Some(dialog.peer().clone());
-                    break;
+            let found = with_timeout("iter_dialogs", self.timeouts.resolve_secs, async {
+                let mut dialogs = self.client.iter_dialogs();
+                while let Some(dialog) = dialogs.next().await.map_err(|e| {
+                    tracing::error!(error = %e, "Failed to iterate dialogs in get_channel_info");
+                    Error::TelegramApi(format!("Failed to iterate dialogs: {}", e))
+                })? {
+                    if dialog.peer().id().bare_id() == id {
+                        return Ok(Some(dialog.peer().clone()));
+                    }
                 }
-            }
+                Ok(None)
+            })
+            .await?;
 
             found.ok_or_else(|| {
                 tracing::warn!(id, "Channel not found in dialogs by ID");
@@ -222,17 +247,17 @@ impl TelegramClientTrait for TelegramClient {
             })?
         } else {
             // Try as username without @ prefix
-            self.client
-                .resolve_username(identifier)
-                .await
-                .map_err(|e| {
+            with_timeout("resolve_username", self.timeouts.resolve_secs, async {
+                self.client.resolve_username(identifier).await.map_err(|e| {
                     tracing::error!(identifier = %identifier, error = %e, "Failed to resolve username");
                     Error::TelegramApi(format!("Failed to resolve username: {}", e))
-                })?
-                .ok_or_else(|| {
-                    tracing::warn!(identifier = %identifier, "Username not found");
-                    Error::InvalidInput(format!("Channel not found: {}", identifier))
-                })?
+                })
+            })
+            .await?
+            .ok_or_else(|| {
+                tracing::warn!(identifier = %identifier, "Username not found");
+                Error::InvalidInput(format!("Channel not found: {}", identifier))
+            })?
         };
 
         convert_peer_to_channel(&peer).ok_or_else(|| {
@@ -261,94 +286,98 @@ impl TelegramClientTrait for TelegramClient {
 
         let start_time = Instant::now();
         let cutoff_time = Utc::now() - Duration::hours(params.hours_back as i64);
-        let mut messages = Vec::new();
-        let mut channels_searched = 0u32;
 
         // If channel_id is specified, search only that channel
-        if let Some(channel_id) = &params.channel_id {
-            // Find the channel in our dialogs
-            let mut dialogs = self.client.iter_dialogs();
+        let (mut messages, channels_searched) = if let Some(channel_id) = &params.channel_id {
+            with_timeout(
+                "search_messages_channel",
+                self.timeouts.search_secs,
+                async {
+                    let mut messages = Vec::new();
+                    let mut channels_searched = 0u32;
+                    // Find the channel in our dialogs
+                    let mut dialogs = self.client.iter_dialogs();
 
-            while let Some(dialog) = dialogs
-                .next()
-                .await
-                .map_err(|e| Error::TelegramApi(format!("Failed to iterate dialogs: {}", e)))?
-            {
-                let peer = dialog.peer();
-                if peer.id().bare_id() == channel_id.get() {
-                    channels_searched += 1;
+                    while let Some(dialog) = dialogs.next().await.map_err(|e| {
+                        Error::TelegramApi(format!("Failed to iterate dialogs: {}", e))
+                    })? {
+                        let peer = dialog.peer();
+                        if peer.id().bare_id() == channel_id.get() {
+                            channels_searched += 1;
 
-                    // Search in this specific channel
-                    let peer_ref = peer.to_ref().await.ok_or_else(|| {
-                        Error::TelegramApi("Failed to convert peer to PeerRef".to_string())
-                    })?;
-                    let mut search_iter =
-                        self.client.search_messages(peer_ref).query(&params.query);
+                            // Search in this specific channel
+                            let peer_ref = peer.to_ref().await.ok_or_else(|| {
+                                Error::TelegramApi("Failed to convert peer to PeerRef".to_string())
+                            })?;
+                            let mut search_iter =
+                                self.client.search_messages(peer_ref).query(&params.query);
 
-                    // Apply media filter if specified
-                    if let Some(ref media_filter) = params.media_filter {
-                        search_iter = search_iter.filter(convert_media_filter(media_filter));
-                    }
-
-                    while let Some(msg) = search_iter
-                        .next()
-                        .await
-                        .map_err(|e| Error::TelegramApi(format!("Search failed: {}", e)))?
-                    {
-                        // Check time filter
-                        let msg_time = msg.date();
-
-                        if msg_time < cutoff_time {
-                            break; // Messages are in reverse chronological order
-                        }
-
-                        if let Some(converted) = convert_message(&msg, peer) {
-                            messages.push(converted);
-                            if messages.len() >= params.limit as usize {
-                                break;
+                            // Apply media filter if specified
+                            if let Some(ref media_filter) = params.media_filter {
+                                search_iter =
+                                    search_iter.filter(convert_media_filter(media_filter));
                             }
+
+                            while let Some(msg) = search_iter
+                                .next()
+                                .await
+                                .map_err(|e| Error::TelegramApi(format!("Search failed: {}", e)))?
+                            {
+                                let msg_time = msg.date();
+                                if msg_time < cutoff_time {
+                                    break; // reverse chronological order
+                                }
+                                if let Some(converted) = convert_message(&msg, peer) {
+                                    messages.push(converted);
+                                    if messages.len() >= params.limit as usize {
+                                        break;
+                                    }
+                                }
+                            }
+                            break;
                         }
                     }
-                    break;
-                }
-            }
+                    Ok((messages, channels_searched))
+                },
+            )
+            .await?
         } else {
             // Search all channels using global search
-            let mut search_iter = self.client.search_all_messages().query(&params.query);
+            let collected = with_timeout("search_all_messages", self.timeouts.search_secs, async {
+                let mut messages = Vec::new();
+                let mut search_iter = self.client.search_all_messages().query(&params.query);
 
-            // Apply media filter if specified
-            if let Some(ref media_filter) = params.media_filter {
-                search_iter = search_iter.filter(convert_media_filter(media_filter));
-            }
-
-            while let Some(msg) = search_iter
-                .next()
-                .await
-                .map_err(|e| Error::TelegramApi(format!("Search failed: {}", e)))?
-            {
-                // Check time filter
-                let msg_time = msg.date();
-
-                if msg_time < cutoff_time {
-                    continue; // Skip old messages but keep searching
+                if let Some(ref media_filter) = params.media_filter {
+                    search_iter = search_iter.filter(convert_media_filter(media_filter));
                 }
 
-                // Get peer from message and convert
-                if let Some(peer) = msg.peer()
-                    && let Some(converted) = convert_message(&msg, peer)
+                while let Some(msg) = search_iter
+                    .next()
+                    .await
+                    .map_err(|e| Error::TelegramApi(format!("Search failed: {}", e)))?
                 {
-                    messages.push(converted);
-                    if messages.len() >= params.limit as usize {
-                        break;
+                    let msg_time = msg.date();
+                    if msg_time < cutoff_time {
+                        continue; // Skip old messages but keep searching
+                    }
+                    if let Some(peer) = msg.peer()
+                        && let Some(converted) = convert_message(&msg, peer)
+                    {
+                        messages.push(converted);
+                        if messages.len() >= params.limit as usize {
+                            break;
+                        }
                     }
                 }
-            }
+                Ok(messages)
+            })
+            .await?;
 
             // Count unique channels in results
             let unique_channels: std::collections::HashSet<_> =
-                messages.iter().map(|m| m.channel_id.get()).collect();
-            channels_searched = unique_channels.len() as u32;
-        }
+                collected.iter().map(|m| m.channel_id.get()).collect();
+            (collected, unique_channels.len() as u32)
+        };
 
         // Sort by timestamp (newest first)
         messages.sort_by_key(|b| std::cmp::Reverse(b.timestamp));
@@ -387,13 +416,22 @@ impl TelegramClientTrait for TelegramClient {
 
         let start_time = Instant::now();
         let cutoff_time = Utc::now() - Duration::hours(params.hours_back as i64);
-        let mut messages = Vec::new();
 
-        // Try to resolve the channel peer directly by username (doesn't require subscription)
+        // Try to resolve the channel peer directly by username (doesn't require subscription).
+        // resolve_username is bounded by `resolve_secs`; a None result silently falls back
+        // to the dialog walk, preserving existing behaviour.
         let resolved_peer = if let Some(ref identifier) = params.channel_identifier {
             let username = identifier.strip_prefix('@').unwrap_or(identifier);
             if !username.chars().all(|c| c.is_ascii_digit()) {
-                match self.client.resolve_username(username).await {
+                let lookup: Result<Option<_>, Error> =
+                    with_timeout("resolve_username", self.timeouts.resolve_secs, async {
+                        self.client
+                            .resolve_username(username)
+                            .await
+                            .map_err(|e| Error::TelegramApi(format!("{}", e)))
+                    })
+                    .await;
+                match lookup {
                     Ok(Some(peer)) => Some(peer),
                     Ok(None) => {
                         tracing::warn!(
@@ -422,18 +460,19 @@ impl TelegramClientTrait for TelegramClient {
         let peer = if let Some(peer) = resolved_peer {
             peer
         } else {
-            let mut dialogs = self.client.iter_dialogs();
-            let mut found = None;
-
-            while let Some(dialog) = dialogs.next().await.map_err(|e| {
-                tracing::error!(error = %e, "Failed to iterate dialogs in get_recent_messages");
-                Error::TelegramApi(format!("Failed to iterate dialogs: {}", e))
-            })? {
-                if dialog.peer().id().bare_id() == params.channel_id.get() {
-                    found = Some(dialog.peer().clone());
-                    break;
+            let found = with_timeout("iter_dialogs", self.timeouts.resolve_secs, async {
+                let mut dialogs = self.client.iter_dialogs();
+                while let Some(dialog) = dialogs.next().await.map_err(|e| {
+                    tracing::error!(error = %e, "Failed to iterate dialogs in get_recent_messages");
+                    Error::TelegramApi(format!("Failed to iterate dialogs: {}", e))
+                })? {
+                    if dialog.peer().id().bare_id() == params.channel_id.get() {
+                        return Ok(Some(dialog.peer().clone()));
+                    }
                 }
-            }
+                Ok(None)
+            })
+            .await?;
 
             found.ok_or_else(|| {
                 tracing::warn!(
@@ -449,35 +488,40 @@ impl TelegramClientTrait for TelegramClient {
             .to_ref()
             .await
             .ok_or_else(|| Error::TelegramApi("Failed to convert peer to PeerRef".to_string()))?;
-        let mut messages_iter = self.client.iter_messages(peer_ref);
 
-        while let Some(msg) = messages_iter
-            .next()
-            .await
-            .map_err(|e| Error::TelegramApi(format!("Failed to iterate messages: {}", e)))?
-        {
-            // Check time filter - messages are in reverse chronological order
-            if msg.date() < cutoff_time {
-                break;
-            }
+        let messages = with_timeout("iter_messages", self.timeouts.history_secs, async {
+            let mut messages = Vec::new();
+            let mut messages_iter = self.client.iter_messages(peer_ref);
 
-            // Apply media filter client-side (iter_messages doesn't support server-side filtering)
-            if params
-                .media_filter
-                .as_ref()
-                .is_some_and(|filter| !matches_media_filter(&msg, filter))
+            while let Some(msg) = messages_iter
+                .next()
+                .await
+                .map_err(|e| Error::TelegramApi(format!("Failed to iterate messages: {}", e)))?
             {
-                continue;
-            }
-
-            // Convert and collect
-            if let Some(converted) = convert_message(&msg, &peer) {
-                messages.push(converted);
-                if messages.len() >= params.limit as usize {
+                // Check time filter - messages are in reverse chronological order
+                if msg.date() < cutoff_time {
                     break;
                 }
+
+                // Apply media filter client-side (iter_messages doesn't support server-side filtering)
+                if params
+                    .media_filter
+                    .as_ref()
+                    .is_some_and(|filter| !matches_media_filter(&msg, filter))
+                {
+                    continue;
+                }
+
+                if let Some(converted) = convert_message(&msg, &peer) {
+                    messages.push(converted);
+                    if messages.len() >= params.limit as usize {
+                        break;
+                    }
+                }
             }
-        }
+            Ok(messages)
+        })
+        .await?;
 
         let search_time_ms = start_time.elapsed().as_millis() as u64;
         let total_found = messages.len() as u64;
@@ -515,21 +559,25 @@ impl TelegramClientTrait for TelegramClient {
             ));
         }
 
-        // Resolve the channel peer (same pattern as get_channel_info)
+        // Resolve the channel peer (same pattern as get_channel_info). The resolve /
+        // dialog-walk paths share the same hang exposure as the other tools, so they
+        // are bounded by `resolve_secs` even though the plan only flags the message
+        // fetch itself.
         let peer = if let Ok(id) = channel_ref.parse::<i64>() {
             // Numeric ID — search through dialogs
-            let mut dialogs = self.client.iter_dialogs();
-            let mut found = None;
-
-            while let Some(dialog) = dialogs.next().await.map_err(|e| {
-                tracing::error!(error = %e, "Failed to iterate dialogs in get_message_by_id");
-                Error::TelegramApi(format!("Failed to iterate dialogs: {}", e))
-            })? {
-                if dialog.peer().id().bare_id() == id {
-                    found = Some(dialog.peer().clone());
-                    break;
+            let found = with_timeout("iter_dialogs", self.timeouts.resolve_secs, async {
+                let mut dialogs = self.client.iter_dialogs();
+                while let Some(dialog) = dialogs.next().await.map_err(|e| {
+                    tracing::error!(error = %e, "Failed to iterate dialogs in get_message_by_id");
+                    Error::TelegramApi(format!("Failed to iterate dialogs: {}", e))
+                })? {
+                    if dialog.peer().id().bare_id() == id {
+                        return Ok(Some(dialog.peer().clone()));
+                    }
                 }
-            }
+                Ok(None)
+            })
+            .await?;
 
             found.ok_or_else(|| {
                 tracing::warn!(id, "Channel not found in dialogs by ID");
@@ -538,17 +586,17 @@ impl TelegramClientTrait for TelegramClient {
         } else {
             // Username — resolve directly
             let username = channel_ref.strip_prefix('@').unwrap_or(channel_ref);
-            self.client
-                .resolve_username(username)
-                .await
-                .map_err(|e| {
+            with_timeout("resolve_username", self.timeouts.resolve_secs, async {
+                self.client.resolve_username(username).await.map_err(|e| {
                     tracing::error!(username = %username, error = %e, "Failed to resolve username");
                     Error::TelegramApi(format!("Failed to resolve username: {}", e))
-                })?
-                .ok_or_else(|| {
-                    tracing::warn!(username = %username, "Username not found");
-                    Error::InvalidInput(format!("Channel not found: {}", channel_ref))
-                })?
+                })
+            })
+            .await?
+            .ok_or_else(|| {
+                tracing::warn!(username = %username, "Username not found");
+                Error::InvalidInput(format!("Channel not found: {}", channel_ref))
+            })?
         };
 
         // Get message by ID using grammers API
@@ -557,19 +605,21 @@ impl TelegramClientTrait for TelegramClient {
             .await
             .ok_or_else(|| Error::TelegramApi("Failed to convert peer to PeerRef".to_string()))?;
 
-        let messages = self
-            .client
-            .get_messages_by_id(peer_ref, &[message_id])
-            .await
-            .map_err(|e| {
-                tracing::error!(
-                    channel_ref = %channel_ref,
-                    message_id,
-                    error = %e,
-                    "Failed to get message by ID"
-                );
-                Error::TelegramApi(format!("Failed to get message: {}", e))
-            })?;
+        let messages = with_timeout("get_messages_by_id", self.timeouts.history_secs, async {
+            self.client
+                .get_messages_by_id(peer_ref, &[message_id])
+                .await
+                .map_err(|e| {
+                    tracing::error!(
+                        channel_ref = %channel_ref,
+                        message_id,
+                        error = %e,
+                        "Failed to get message by ID"
+                    );
+                    Error::TelegramApi(format!("Failed to get message: {}", e))
+                })
+        })
+        .await?;
 
         // get_messages_by_id returns Vec<Option<Message>> — extract the single result
         let grammers_msg = messages.into_iter().next().flatten().ok_or_else(|| {

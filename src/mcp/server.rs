@@ -56,6 +56,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     /// Tool 1: check_mcp_status - Health check and diagnostics
     #[tool(description = "Check MCP connection status and rate limiter state")]
     pub async fn check_mcp_status(&self) -> Result<String, String> {
+        tracing::info!(tool = "check_mcp_status", "Tool invocation started");
         let connected = self.telegram_client.is_connected().await;
         let tokens = self.rate_limiter.available_tokens();
 
@@ -76,6 +77,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     ) -> Result<String, String> {
         let limit = request.limit.unwrap_or(20);
         let offset = request.offset.unwrap_or(0);
+        tracing::info!(
+            tool = "get_subscribed_channels",
+            limit,
+            offset,
+            "Tool invocation started"
+        );
 
         let channels = self
             .telegram_client
@@ -101,6 +108,11 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         Parameters(request): Parameters<GetChannelInfoRequest>,
     ) -> Result<String, String> {
+        tracing::info!(
+            tool = "get_channel_info",
+            channel_identifier = %request.channel_identifier,
+            "Tool invocation started"
+        );
         let channel = self
             .telegram_client
             .get_channel_info(&request.channel_identifier)
@@ -116,6 +128,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         Parameters(request): Parameters<GenerateLinkRequest>,
     ) -> Result<String, String> {
+        tracing::info!(
+            tool = "generate_message_link",
+            channel_id = %request.channel_id,
+            message_id = request.message_id,
+            include_tg_protocol = ?request.include_tg_protocol,
+            "Tool invocation started"
+        );
         // Parse and validate IDs using helpers
         let channel_id = parse_channel_id(&request.channel_id)?;
         let message_id = parse_message_id(request.message_id)?;
@@ -146,6 +165,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         Parameters(request): Parameters<OpenMessageRequest>,
     ) -> Result<String, String> {
+        tracing::info!(
+            tool = "open_message_in_telegram",
+            channel_id = %request.channel_id,
+            message_id = request.message_id,
+            use_tg_protocol = ?request.use_tg_protocol,
+            "Tool invocation started"
+        );
         // Parse and validate IDs using helpers
         let channel_id = parse_channel_id(&request.channel_id)?;
         let message_id = parse_message_id(request.message_id)?;
@@ -207,6 +233,15 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         Parameters(request): Parameters<SearchRequest>,
     ) -> Result<String, String> {
+        tracing::info!(
+            tool = "search_messages",
+            query = %request.query,
+            channel_id = ?request.channel_id,
+            hours_back = ?request.hours_back,
+            limit = ?request.limit,
+            media_filter = ?request.media_filter,
+            "Tool invocation started"
+        );
         // Validate: query required unless media_filter is set
         if request.query.trim().is_empty() && request.media_filter.is_none() {
             return Err(
@@ -283,6 +318,14 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         Parameters(request): Parameters<GetRecentMessagesRequest>,
     ) -> Result<String, String> {
+        tracing::info!(
+            tool = "get_recent_messages",
+            channel_id = %request.channel_id,
+            hours_back = ?request.hours_back,
+            limit = ?request.limit,
+            media_filter = ?request.media_filter,
+            "Tool invocation started"
+        );
         // Validate channel_id is provided
         if request.channel_id.trim().is_empty() {
             return Err("channel_id is required".to_string());
@@ -367,6 +410,11 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         Parameters(request): Parameters<GetMessageByLinkRequest>,
     ) -> Result<String, String> {
+        tracing::info!(
+            tool = "get_message_by_link",
+            link = %request.link,
+            "Tool invocation started"
+        );
         // Parse the link
         let (channel_ref, message_id) =
             parse_telegram_link(&request.link).map_err(|e| e.to_string())?;

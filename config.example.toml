@@ -21,6 +21,14 @@ phone_number = "+1234567890"
 # Note: The session file path itself is not sensitive, but the file contents are.
 # session_file = "~/.config/telegram-connector/session.bin"
 
+# [telegram.timeouts]
+# Optional: per-call-type wall-clock budgets (seconds) for grammers network calls.
+# Hitting a budget cancels the in-flight call and returns Error::Timeout to the
+# MCP client instead of hanging indefinitely. All fields must be > 0.
+# resolve_secs = 30   # resolve_username + iter_dialogs lookups
+# history_secs = 60   # iter_messages / get_messages_by_id
+# search_secs  = 120  # search_messages (single-channel and global)
+
 [search]
 # Optional: Search defaults
 # default_hours_back = 48                  # Default: 48

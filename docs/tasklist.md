@@ -27,10 +27,11 @@
 | 17 | Get Recent Messages | ✅ Complete | 186 | New tool: retrieve messages by time window without search |
 | 18 | Comprehensive Refactoring | ✅ Complete | 209 | Split large files, shared helpers, eliminated duplication |
 | 19 | Log Cleanup | ✅ Complete | 215 | Startup cleanup, max_log_days enforcement |
+| 20 | Hang Diagnostics & Grammers Timeouts | ✅ Complete | 249 | `with_timeout` wraps all grammers calls; `[telegram.timeouts]` config; tool entry logging |
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
-**Overall Progress:** 19/19 phases complete
+**Overall Progress:** 20/20 phases complete
 
 ---
 

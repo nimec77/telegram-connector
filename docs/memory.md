@@ -1,12 +1,12 @@
 # Development Memory - Telegram MCP Connector
 
-**Last Updated:** Debug Log Cleanup Complete (2026-02-14)
+**Last Updated:** Phase 20 — Hang Diagnostics & Grammers Timeouts (2026-05-22)
 
 ---
 
 ## Current Status
 
-**Progress:** 19/19 phases complete
+**Progress:** 20/20 phases complete
 - ✅ Phase 1: Project Setup
 - ✅ Phase 2: Error Types (11/11 tests)
 - ✅ Phase 3: Configuration (15/15 tests + 5 ignored)
@@ -26,8 +26,9 @@
 - ✅ Phase 17: Get Recent Messages (186 tests)
 - ✅ Phase 18: Comprehensive Refactoring (209 tests)
 - ✅ Phase 19: Log Cleanup (215 tests)
+- ✅ Phase 20: Hang Diagnostics & Grammers Timeouts (249 tests)
 
-**Total:** 215 tests passing (5 ignored for CI/CD)
+**Total:** 249 tests passing (5 ignored for CI/CD)
 
 **rmcp Integration:** All 7 MCP tools have `#[tool]` attributes for proper protocol compliance
 
@@ -2761,3 +2762,75 @@ Cleaned up `src/telegram/client.rs` — removed 11 verbose `info!` traces, kept 
 - `cargo fmt --check` clean
 - `cargo clippy -- -D warnings` clean
 - No behavioral changes — only log output reduced
+
+---
+
+## Phase 20: Hang Diagnostics & Grammers Timeouts (Complete)
+
+### Trigger
+
+Recurring MCP request timeouts since 2026-05-20 — server stops responding for 5–10 min, then resumes. Logs showed a successful `@ai_newz` call at 15:05:11, then no log entries at all until id 15 was cancelled at 15:09:35 (Claude.ai's own 5-min timeout). The MTProto socket was alive — grammers would have logged `marking all N request(s) as failed` if it had died — so a single in-flight grammers call (`resolve_username` / `iter_messages.next()` / `search_iter.next()`) was stalling without being bounded. Tool handlers only logged on completion, so the hung request's tool and arguments were invisible.
+
+### What Was Implemented
+
+1. **`TimeoutConfig`** (`src/config.rs`)
+   - New struct attached to `TelegramConfig` as `timeouts: TimeoutConfig`.
+   - Three fields: `resolve_secs` (30), `history_secs` (60), `search_secs` (120). All optional with serde defaults.
+   - `validate()` rejects zero values; called from `Config::load_from` after parsing.
+   - TOML key: `[telegram.timeouts]`.
+
+2. **`Error::Timeout { operation, secs }`** (`src/error.rs`)
+   - New typed variant. Display: `operation '{op}' timed out after {secs}s`.
+
+3. **`with_timeout` helper** (`src/telegram/client.rs:28`)
+   - `pub(crate) async fn with_timeout<F, T>(operation: &str, secs: u64, fut: F) -> Result<T, Error>` where `F: Future<Output = Result<T, Error>>`.
+   - Wraps `tokio::time::timeout`; on elapsed returns `Error::Timeout` carrying the call-site operation name.
+   - **Test pattern (TDD):** unit tests in `src/telegram/tests/timeout_tests.rs` use `#[tokio::test(start_paused = true)]` + `tokio::time::advance` to drive the timeout deterministically. No real network. Three tests: completes-in-budget, propagates-inner-error, elapsed-returns-typed-error.
+
+4. **All grammers call sites wrapped** — every site identified in `docs/phase-20-plan.md` §3, plus the resolve/dialog-walk paths inside `get_message_by_id` (same hang exposure as the other tools; strict superset of the plan):
+   - `get_channel_info`: `resolve_username` (@ + bare) → `resolve_secs`; numeric-ID `iter_dialogs` → `resolve_secs`.
+   - `search_messages`: single-channel `iter_dialogs` + `search_iter` walk → `search_secs`; global `search_all_messages` → `search_secs`.
+   - `get_recent_messages`: `resolve_username` → `resolve_secs`; `iter_dialogs` fallback → `resolve_secs`; `iter_messages` walk → `history_secs`.
+   - `get_message_by_id`: numeric-ID `iter_dialogs` + `resolve_username` → `resolve_secs`; `get_messages_by_id` fetch → `history_secs`.
+   - For multi-iteration walks the budget is **total elapsed time across all `next().await` iterations**, not per-iteration — the entire `while let Some(...)` block lives inside one `with_timeout`.
+   - `get_subscribed_channels` is **not** wrapped — internal pagination only, not user-driven. (Re-evaluate if it shows up in future hang logs.)
+
+5. **Tool entry logging** (`src/mcp/server.rs`)
+   - `tracing::info!(tool = "...", ...args, "Tool invocation started")` at the top of all 8 `#[tool]` methods. Args mirror the existing completion logs. Deliberately `info!` (not `debug!`) so next time something hangs the entry log is visible without changing config.
+   - Trade-off: log volume roughly doubles (entry + completion per call). Acceptable; 7-day rotation already enforced.
+
+### Patterns & Decisions
+
+- **All grammers calls bounded by `tokio::time::timeout` via `with_timeout`.** Budgets live in `TimeoutConfig` keyed by call type (resolve / history / search), not per-tool. Three global knobs, no tool-specific overrides — keeps the surface small.
+- **No retries.** Timeout → return `Error::Timeout` to MCP client. Claude can decide whether to re-invoke. Retries would mask the underlying problem and burn rate-limiter tokens.
+- **`TelegramClient` owns its `timeouts: TimeoutConfig`** (cloned in `new()`), so call sites can read budgets without passing them through every method signature.
+- **TDD discipline applied:** every change had a failing test first — `default_timeout_config` returning 30/60/120, `[telegram.timeouts]` partial/full override via `toml::from_str::<TelegramConfig>`, zero-value validation (one test per field), `Error::Timeout` Display format, and the three `with_timeout` behaviours.
+- **Did not wrap `get_subscribed_channels`'s internal `iter_dialogs`.** Trade-off: it's only called from one tool with bounded pagination (`limit` + `offset`). If it shows up as a hang source in future logs, wrap with `resolve_secs`.
+- **Connection-reset (`os error 54`) cosmetic log noise is still out of scope.** Grammers auto-reconnects on next request; this phase only addresses request-level hangs, not idle-socket churn.
+
+### Tests: +34 (215 → 249)
+
+- 8 new `config` tests (defaults, partial/full override, validation).
+- 1 new `error::tests::test_timeout_error_display`.
+- 3 new `telegram::tests::timeout_tests` (`with_timeout` behaviour under `tokio::time::pause()`).
+- Existing 215 still pass unchanged — tool entry logging is side-effect-only and no test depended on log absence.
+- Total: **249 passing, 5 ignored.** Run with `cargo test`; config tests serial via `cargo test config -- --test-threads=1`.
+
+### Verification
+
+- `cargo fmt --check` clean
+- `cargo clippy --all-targets -- -D warnings` clean
+- `cargo test` → 249/249
+- `cargo test config -- --test-threads=1` → 36/36
+- Manual hang simulation deferred to first real-world incident (per plan §"Verification Checklist"): a future hang now surfaces as `Error::Timeout { operation, secs }` within the configured budget, with the tool name + args visible in the entry log.
+
+### Files Changed
+
+- `src/config.rs` — `TimeoutConfig`, defaults, `validate()`, `TelegramConfig.timeouts` field, validation wired into `Config::load_from`.
+- `src/config/tests.rs` — 8 new tests + `create_test_config` helper updated to populate `timeouts`.
+- `src/error.rs` — `Error::Timeout` variant + display test.
+- `src/telegram/client.rs` — `with_timeout` helper; `TelegramClient.timeouts` field; all 4 trait methods updated to wrap their grammers calls.
+- `src/telegram/tests.rs` + `src/telegram/tests/timeout_tests.rs` — new test module.
+- `src/mcp/server.rs` — entry log at top of all 8 `#[tool]` methods.
+- `config.example.toml` — documented `[telegram.timeouts]` section.
+- `CHANGELOG.md`, `docs/tasklist.md`, `docs/memory.md` — Phase 20 entries.

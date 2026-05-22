@@ -22,6 +22,9 @@ pub enum Error {
 
     #[error("invalid input: {0}")]
     InvalidInput(String),
+
+    #[error("operation '{operation}' timed out after {secs}s")]
+    Timeout { operation: String, secs: u64 },
 }
 
 #[cfg(test)]
@@ -92,6 +95,18 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "invalid input: Channel ID must be positive"
+        );
+    }
+
+    #[test]
+    fn test_timeout_error_display() {
+        let error = Error::Timeout {
+            operation: "search_messages".to_string(),
+            secs: 120,
+        };
+        assert_eq!(
+            error.to_string(),
+            "operation 'search_messages' timed out after 120s"
         );
     }
 }

@@ -122,6 +122,7 @@ fn create_test_config(api_id: i32, api_hash: Option<&str>, phone_number: Option<
                 .filter(|s| !s.is_empty())
                 .map(|s| SecretString::new(s.to_string().into_boxed_str())),
             session_file: PathBuf::from("session.bin"),
+            timeouts: default_timeout_config(),
         },
         search: SearchConfig {
             default_hours_back: 48,
@@ -413,6 +414,107 @@ fn test_default_logging_config_has_file_fields() {
     assert!(config.file_enabled);
     assert_eq!(config.max_log_days, 7);
     assert!(config.file_path.to_string_lossy().contains("logs"));
+}
+
+// ========================================================================
+// Timeout Config Tests (Phase 20)
+// ========================================================================
+
+#[test]
+fn test_default_timeout_config_values() {
+    let config = default_timeout_config();
+    assert_eq!(config.resolve_secs, 30);
+    assert_eq!(config.history_secs, 60);
+    assert_eq!(config.search_secs, 120);
+}
+
+#[test]
+fn test_telegram_config_default_timeouts_when_section_absent() {
+    let toml_str = r#"
+api_id = 12345
+"#;
+    let cfg: TelegramConfig = toml::from_str(toml_str).expect("parse");
+    assert_eq!(cfg.timeouts.resolve_secs, 30);
+    assert_eq!(cfg.timeouts.history_secs, 60);
+    assert_eq!(cfg.timeouts.search_secs, 120);
+}
+
+#[test]
+fn test_telegram_config_timeout_partial_override() {
+    let toml_str = r#"
+api_id = 12345
+
+[timeouts]
+search_secs = 300
+"#;
+    let cfg: TelegramConfig = toml::from_str(toml_str).expect("parse");
+    assert_eq!(cfg.timeouts.resolve_secs, 30);
+    assert_eq!(cfg.timeouts.history_secs, 60);
+    assert_eq!(cfg.timeouts.search_secs, 300);
+}
+
+#[test]
+fn test_telegram_config_timeout_full_override() {
+    let toml_str = r#"
+api_id = 12345
+
+[timeouts]
+resolve_secs = 5
+history_secs = 15
+search_secs = 45
+"#;
+    let cfg: TelegramConfig = toml::from_str(toml_str).expect("parse");
+    assert_eq!(cfg.timeouts.resolve_secs, 5);
+    assert_eq!(cfg.timeouts.history_secs, 15);
+    assert_eq!(cfg.timeouts.search_secs, 45);
+}
+
+#[test]
+fn test_timeout_config_validate_rejects_zero_resolve() {
+    let cfg = TimeoutConfig {
+        resolve_secs: 0,
+        history_secs: 60,
+        search_secs: 120,
+    };
+    let err = cfg
+        .validate()
+        .expect_err("zero resolve_secs must be rejected");
+    assert!(
+        err.to_string().to_lowercase().contains("resolve_secs"),
+        "error should mention the offending field, got: {err}"
+    );
+}
+
+#[test]
+fn test_timeout_config_validate_rejects_zero_history() {
+    let cfg = TimeoutConfig {
+        resolve_secs: 30,
+        history_secs: 0,
+        search_secs: 120,
+    };
+    let err = cfg
+        .validate()
+        .expect_err("zero history_secs must be rejected");
+    assert!(err.to_string().to_lowercase().contains("history_secs"));
+}
+
+#[test]
+fn test_timeout_config_validate_rejects_zero_search() {
+    let cfg = TimeoutConfig {
+        resolve_secs: 30,
+        history_secs: 60,
+        search_secs: 0,
+    };
+    let err = cfg
+        .validate()
+        .expect_err("zero search_secs must be rejected");
+    assert!(err.to_string().to_lowercase().contains("search_secs"));
+}
+
+#[test]
+fn test_timeout_config_validate_accepts_defaults() {
+    let cfg = default_timeout_config();
+    cfg.validate().expect("defaults must be valid");
 }
 
 #[ignore = "for CI/CD passing tests"]

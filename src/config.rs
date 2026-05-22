@@ -54,6 +54,26 @@ fn default_shutdown_timeout() -> u64 {
     5
 }
 
+fn default_resolve_secs() -> u64 {
+    30
+}
+
+fn default_history_secs() -> u64 {
+    60
+}
+
+fn default_search_secs() -> u64 {
+    120
+}
+
+fn default_timeout_config() -> TimeoutConfig {
+    TimeoutConfig {
+        resolve_secs: default_resolve_secs(),
+        history_secs: default_history_secs(),
+        search_secs: default_search_secs(),
+    }
+}
+
 fn default_server_config() -> ServerConfig {
     ServerConfig {
         shutdown_timeout_seconds: default_shutdown_timeout(),
@@ -117,6 +137,43 @@ pub struct TelegramConfig {
     /// Session file path (always used)
     #[serde(default = "default_session_file")]
     pub session_file: PathBuf,
+    /// Per-call-type timeout budgets for grammers network operations.
+    #[serde(default = "default_timeout_config")]
+    pub timeouts: TimeoutConfig,
+}
+
+/// Timeout budgets (seconds) applied to grammers calls in [`crate::telegram::client`].
+///
+/// Three call categories share global budgets keyed by call type. Multi-iteration walks
+/// (`iter_messages.next()`, `search_iter.next()`) measure *total* elapsed time across all
+/// iterations, not per-iteration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TimeoutConfig {
+    /// Resolve / dialog-lookup operations (`resolve_username`, `iter_dialogs`).
+    #[serde(default = "default_resolve_secs")]
+    pub resolve_secs: u64,
+    /// History walks (`iter_messages`, `get_message_by_id` fetch).
+    #[serde(default = "default_history_secs")]
+    pub history_secs: u64,
+    /// Search walks (single-channel `search_iter`, global `search_all_messages`).
+    #[serde(default = "default_search_secs")]
+    pub search_secs: u64,
+}
+
+impl TimeoutConfig {
+    /// Reject zero values — a zero budget would cancel every call instantly.
+    pub fn validate(&self) -> anyhow::Result<()> {
+        if self.resolve_secs == 0 {
+            anyhow::bail!("telegram.timeouts.resolve_secs must be > 0");
+        }
+        if self.history_secs == 0 {
+            anyhow::bail!("telegram.timeouts.history_secs must be > 0");
+        }
+        if self.search_secs == 0 {
+            anyhow::bail!("telegram.timeouts.search_secs must be > 0");
+        }
+        Ok(())
+    }
 }
 
 impl TelegramConfig {
@@ -230,6 +287,15 @@ impl Config {
 
         // Apply defaults (currently no-op, but kept for future use)
         config.apply_defaults();
+
+        // Validate sub-configs that have non-credential invariants. Credential
+        // validation is deferred to `validate_for_setup()` because the daemon path
+        // does not require api_hash/phone_number at startup.
+        config
+            .telegram
+            .timeouts
+            .validate()
+            .context("invalid telegram.timeouts configuration")?;
 
         Ok(config)
     }
