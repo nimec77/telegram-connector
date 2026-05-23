@@ -52,14 +52,14 @@ thiserror = "2.0.18"
 
 # Utilities
 chrono = { version = "0.4.44", features = ["serde"] }
-dashmap = "6.1.0"
+dashmap = "6.2.1"
 
 # Security
 secrecy = { version = "0.10", features = ["serde"] }
 
 [dev-dependencies]
 tokio-test = "0.4.5"
-tempfile = "3.25.0"
+tempfile = "3.27.0"
 proptest = "1.11.0"
 mockall = "0.14.0"
 filetime = "0.2.29"
