@@ -28,10 +28,11 @@
 | 18 | Comprehensive Refactoring | ✅ Complete | 209 | Split large files, shared helpers, eliminated duplication |
 | 19 | Log Cleanup | ✅ Complete | 215 | Startup cleanup, max_log_days enforcement |
 | 20 | Hang Diagnostics & Grammers Timeouts | ✅ Complete | 249 | `with_timeout` wraps all grammers calls; `[telegram.timeouts]` config; tool entry logging |
+| 21 | Flexible Scalar Coercion | ✅ Complete | 305 | Request params accept number↔string↔bool via 5 `serde` `deserialize_with` helpers; schema unchanged |
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
-**Overall Progress:** 20/20 phases complete
+**Overall Progress:** 21/21 phases complete
 
 ---
 

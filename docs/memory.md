@@ -1,12 +1,12 @@
 # Development Memory - Telegram MCP Connector
 
-**Last Updated:** Phase 20 — Hang Diagnostics & Grammers Timeouts (2026-05-22)
+**Last Updated:** Phase 21 — Flexible Scalar Coercion (2026-05-31)
 
 ---
 
 ## Current Status
 
-**Progress:** 20/20 phases complete
+**Progress:** 21/21 phases complete
 - ✅ Phase 1: Project Setup
 - ✅ Phase 2: Error Types (11/11 tests)
 - ✅ Phase 3: Configuration (15/15 tests + 5 ignored)
@@ -27,8 +27,9 @@
 - ✅ Phase 18: Comprehensive Refactoring (209 tests)
 - ✅ Phase 19: Log Cleanup (215 tests)
 - ✅ Phase 20: Hang Diagnostics & Grammers Timeouts (249 tests)
+- ✅ Phase 21: Flexible Scalar Coercion (305 tests)
 
-**Total:** 249 tests passing (5 ignored for CI/CD)
+**Total:** 305 tests passing (5 ignored for CI/CD)
 
 **rmcp Integration:** All 7 MCP tools have `#[tool]` attributes for proper protocol compliance
 
@@ -2834,3 +2835,50 @@ Recurring MCP request timeouts since 2026-05-20 — server stops responding for 
 - `src/mcp/server.rs` — entry log at top of all 8 `#[tool]` methods.
 - `config.example.toml` — documented `[telegram.timeouts]` section.
 - `CHANGELOG.md`, `docs/tasklist.md`, `docs/memory.md` — Phase 20 entries.
+
+---
+
+## Phase 21: Flexible Scalar Coercion (Complete)
+
+### What Was Implemented
+
+Some MCP clients send scalar arguments in the "wrong" JSON type — a numeric string `"10"` where a `u32` is expected, a JSON number `123` where a string is expected, or `"true"`/`1` where a bool is expected. Strict serde deserialization rejected these payloads *before* any tool code ran, surfacing as an opaque invalid-params error. Phase 21 makes every cross-type scalar field on the request structs tolerant of the alternate JSON form, without changing field types or the advertised JSON schema.
+
+1. **Five reusable `deserialize_with` helpers** (`src/mcp/tools/types/serde_helpers.rs`) — added alongside the pre-existing `deserialize_optional_media_filter`, reusing the same `#[serde(untagged)]` inner-enum technique:
+   - `flexible_opt_u32` → `Option<u32>`: JSON number or trimmed numeric string; empty/whitespace/`null`/missing → `None`; float/negative/out-of-range/garbage → error.
+   - `flexible_i64` → `i64` (required): JSON number or trimmed numeric string; empty/garbage/missing/`null` → error.
+   - `flexible_string` → `String` (required): JSON string as-is (incl. `""`), or integer number stringified (`123` → `"123"`); float → error.
+   - `flexible_opt_string` → `Option<String>`: string or integer-stringified; empty/whitespace/`null`/missing → `None`.
+   - `flexible_opt_bool` → `Option<bool>`: real bool, `1`/`0`, or `"true"`/`"false"`/`"1"`/`"0"` (case-insensitive, trimmed); empty/`null`/missing → `None`; other ints/strings → error.
+
+2. **Wired onto 17 fields across 7 request structs** (`src/mcp/tools/types/requests.rs`) via `#[serde(deserialize_with = "...")]`. Optional fields also get `#[serde(default)]` (missing → `None`); required fields get no `default` (missing → error). `media_filter` fields left on `deserialize_optional_media_filter`.
+
+### Patterns & Decisions
+
+- **Leniency lives at the transport boundary, not the domain.** Chose boundary deserializers (a serde anti-corruption layer) over a DDD newtype wrapper. Rationale: these values (`limit`/`offset`/`hours_back`/`message_id`) are transport params immediately unwrapped and validated downstream in `params.rs`; the real domain types (`ChannelId`, `MessageId`) already exist deeper in and are built in the tool body via `parse_*`. A newtype would have forced a hand-written `JsonSchema` impl per wrapper and edits to every tool body + test.
+- **Field types unchanged ⇒ JSON schema unchanged.** `schemars` derives from the field *type*, ignoring `#[serde(deserialize_with)]`. Numeric fields still advertise `integer`, strings `string`, bools `boolean` — we *tolerate* the alternate form without *inviting* it. This was an explicit goal and is verified by the diff containing no field-type or `#[schemars]` changes.
+- **`#[serde(default)]` required for optional `deserialize_with` fields.** Adding `deserialize_with` makes serde call the helper for present values including `null`; without `default`, a *missing* field would error. Optional fields therefore pair `default` + `deserialize_with` (same as the existing `media_filter`). Required fields deliberately omit `default` so missing → error.
+- **Untagged-enum variant order matters.** `flexible_string`/`flexible_opt_string` declare `Str` before `Int`; `flexible_opt_bool` declares `Bool, Int, Str`. serde_json's typed tokens never cross-match (a JSON string never deserializes as `i64`, etc.), so ordering is safe, but the order is kept "primary type first" for readability.
+- **Pragmatic coercion semantics** (chosen over strict): trim numeric strings; empty string → `None` for optional / error for required; bool accepts `1`/`0` and `"true"/"false"/"1"/"0"`; String fields stringify an integer number; JSON floats for integer fields → error (consistent with the advertised `integer` schema — a known, accepted limitation).
+- **Server tool bodies and the domain layer were not touched.** `server.rs` still reads `request.limit.unwrap_or(20)` etc. at the same types.
+- **TDD discipline:** every helper and every wiring point landed test-first (helper compile-fail → green), reviewed per-task with two-stage (spec + quality) review.
+
+### Tests: +56 (249 → 305)
+
+- ~46 helper unit tests in `serde_helpers.rs` (per helper: native type, numeric/alternate string, whitespace trim, empty→None/error, `null`, missing, float/garbage/negative → error, all bool forms).
+- 13 struct-level wiring tests in `requests.rs` exercising the full deserialization stack for each request type (`"limit":"10"`, `channel_id` as number, `message_id` as string, bool as string, etc.). Pre-existing `requests` tests (plain number/string forms) still pass unchanged.
+- Total: **305 passing, 5 ignored.**
+
+### Verification
+
+- `cargo fmt --check` clean
+- `cargo clippy --all-targets -- -D warnings` clean
+- `cargo test -- --test-threads=1` → 305/305 (5 ignored)
+- Diff audited to confirm no field type or `#[schemars(description=...)]` line changed ⇒ advertised JSON schema preserved.
+
+### Files Changed
+
+- `src/mcp/tools/types/serde_helpers.rs` — 5 new `flexible_*` helpers + their unit tests.
+- `src/mcp/tools/types/requests.rs` — `#[serde(deserialize_with=...)]` on 17 fields across 7 structs; grouped helper import; struct-level wiring tests.
+- `CHANGELOG.md`, `docs/tasklist.md`, `docs/memory.md` — Phase 21 entries.
+- `docs/superpowers/specs/2026-05-31-flexible-scalar-coercion-design.md`, `docs/superpowers/plans/2026-05-31-flexible-scalar-coercion.md` — design spec + implementation plan.
