@@ -136,9 +136,9 @@ tracing::info!(
 
 ## Git Commits
 
-**CRITICAL: Claude must NEVER create git commits. The user manages all git operations.**
+Commits are part of normal in-house development — branch, commit, and open PRs freely (see [workflow.md](workflow.md)).
 
-Commit conventions (for user reference):
+Commit conventions:
 - Small, atomic, one logical change
 - Imperative mood: "Add feature", not "Added feature"
 - Format: `<type>: <description>`

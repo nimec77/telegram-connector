@@ -4,251 +4,133 @@
 
 ---
 
-## Critical Rules
+This repo is set up for **in-house team development** using the **superpowers**
+skill-driven flow. There is no manual PROPOSE → AGREE approval gate, and git
+operations (branch, commit, PR) are expected as part of normal work.
 
-1. **NEVER create git commits** - The user manages all git operations
-2. **Wait for user approval** before implementing any proposed changes
-3. **Use LOCAL memory file** `docs/memory.md`, NOT global Claude memory
+The defaults that follow are the recommended path, not a permission system —
+adapt them to the size of the change.
 
 ---
 
 ## Iteration Cycle
 
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│  1. PROPOSE  →  2. AGREE  →  3. IMPLEMENT  →  4. VERIFY              │
-│       ↑                                            │                 │
-│       │                 5. UPDATE PROGRESS  →  6. UPDATE MEMORY      │
-│       └────────────────────────────────────────────────────────────┘ │
-│                         Next Iteration / Phase                       │
-└──────────────────────────────────────────────────────────────────────┘
+brainstorming → writing-plans → test-driven-development → implement
+      ↑                                                       │
+      │                  requesting-code-review  ←────────────┘
+      │                            │
+      └──── finishing-a-development-branch (merge / PR) ──────┘
+                         Next change / phase
 ```
+
+Each arrow is a superpowers skill — invoke it via the `Skill` tool when you
+reach that step.
 
 ---
 
-## Step 1: PROPOSE
+## Step 1: Brainstorm
 
-Before writing any code:
+Use the **brainstorming** skill before any creative work (new feature,
+behaviour change, non-trivial refactor). Explore intent and requirements before
+touching code. Skip it only for mechanical, well-scoped edits.
 
-1. State current phase and task from `tasklist.md`
-2. Describe the proposed solution briefly
-3. Show code snippets for key parts:
-   - Tests (TDD: tests first)
-   - Public API signatures
-   - Core implementation approach
-4. Ask: **"Agree with this approach?"**
+## Step 2: Write the plan
 
-**Example:**
-```
-Phase 5, Task: Implement ChannelId type
+Use the **writing-plans** skill to turn the agreed direction into a plan.
 
-Proposed solution:
-- Newtype wrapper around i64
-- Derive: Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize
-- Implement Display for formatting
+- Design docs land in `docs/superpowers/specs/` (one dated file per change).
+- Implementation plans land in `docs/superpowers/plans/` (one dated file per change).
+- For multi-phase work, also reflect phases/tasks in `docs/tasklist.md`.
 
-Test:
-​```rust
-#[test]
-fn channel_id_display() {
-    let id = ChannelId(123456);
-    assert_eq!(format!("{}", id), "123456");
-}
-​```
+## Step 3: Implement with TDD
 
-Implementation:
-​```rust
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ChannelId(pub i64);
-​```
+Use the **test-driven-development** skill.
 
-Agree with this approach?
-```
+1. Write the failing test first — no production code without a preceding test.
+2. Implement the minimal code to pass the test.
+3. Run `cargo fmt --all` after every code change (not just `--check`).
+4. Run `cargo test` and `cargo clippy -- -D warnings`.
+
+**IMPORTANT:** Always run `cargo fmt --all` after writing any code to keep
+formatting consistent.
+
+## Step 4: Review before merge
+
+Use the **requesting-code-review** skill before merging a branch. Address
+feedback with the **receiving-code-review** skill (verify, don't rubber-stamp).
+
+## Step 5: Finish the branch
+
+Use the **finishing-a-development-branch** skill to choose how to integrate the
+work (merge, PR, or cleanup). Commits and PRs are fully allowed.
 
 ---
 
-## Step 2: AGREE
+## Pre-merge Gate
 
-Wait for user confirmation before proceeding:
+All must pass before merging:
 
-| Response | Action |
-|----------|--------|
-| "Yes" / "Agree" / "OK" | Proceed to Step 3 |
-| "No" / Feedback | Revise proposal, return to Step 1 |
-| Questions | Answer, then confirm agreement |
+```bash
+cargo fmt --check && cargo clippy -- -D warnings && cargo test
+```
 
-**Do NOT implement without explicit agreement.**
+(Config tests mutate env vars — run them serially: `cargo test config -- --test-threads=1`.)
 
 ---
 
-## Step 3: IMPLEMENT
+## Git Conventions
 
-After agreement:
-
-1. Write tests first (TDD)
-2. Implement minimal code to pass tests
-3. **Run `cargo fmt --all`** to format code
-4. Run `cargo test` to verify
-5. Run `cargo clippy -- -D warnings` to check quality
-6. Show implementation result
-
-**IMPORTANT:** Always run `cargo fmt --all` after writing any code to ensure consistent formatting.
-
-**Output format:**
-```
-Implemented: [brief description]
-
-Files changed:
-- src/telegram/types.rs (added ChannelId)
-
-Tests: ✅ All pass (3 new tests)
-Clippy: ✅ No warnings
-Fmt: ✅ Formatted
-
-Ready for verification.
-```
+- Branch, commit, and open PRs freely. Use feature branches (and worktrees, via
+  the **using-git-worktrees** skill) to isolate work.
+- History follows conventional-commit style: `feat:`, `fix:`, `chore:`,
+  `docs:`, `refactor:`, `test:`.
+- Releases are tagged with `chore: release vX.Y.Z` after the pre-merge gate
+  passes.
 
 ---
 
-## Step 4: VERIFY
+## Keeping Docs in Sync
 
-Wait for user to confirm:
+After completing a phase or a significant change, update:
 
-| Response | Action |
-|----------|--------|
-| "Confirmed" / "Good" | Proceed to Step 5 |
-| "Issue: ..." | Fix issue, re-verify |
-| "Revert" | Undo changes, return to Step 1 |
+1. `docs/tasklist.md` — mark tasks `[x]`, update phase status and test counts.
+2. `docs/memory.md` — progress made, patterns applied, lessons learned, and
+   reusable code patterns. This is the **local** project journal; keep project
+   knowledge here, not in global Claude memory.
+3. `CLAUDE.md` — only when architecture, tooling, dependency versions, or the
+   workflow itself changes.
 
----
+**When to update:**
 
-## Step 5: UPDATE PROGRESS
-
-After verification:
-
-1. Update `docs/tasklist.md`:
-   - Mark completed tasks with `[x]`
-   - Update phase status in Progress Report table
-   - Update test counts
-2. Update `CLAUDE.md`:
-   - Update current status line
-   - Update test counts if changed significantly
-   - Update MCP tools table (if applicable)
-   - Update Development Progress table
-3. Show updated progress
-4. Ask: **"Proceed to next task?"**
-
-**Progress update format:**
-```
-Updated tasklist.md:
-- [x] Write tests for ID types
-- [x] Implement ChannelId
-
-Updated CLAUDE.md:
-- Test count: 129 → 132
-
-Phase 5 progress: 2/4 tasks complete
-
-Proceed to next task?
-```
-
----
-
-## Step 6: UPDATE MEMORY
-
-After completing a phase or significant iteration:
-
-1. Update `docs/memory.md` with:
-   - **Progress made** - what was completed
-   - **Patterns applied** - design decisions, architectural choices
-   - **Lessons learned** - gotchas, edge cases discovered
-   - **Code patterns to reuse** - snippets for future phases
-2. Verify all three documentation files are updated:
-   - `docs/tasklist.md` - task checkboxes and progress table
-   - `docs/memory.md` - detailed notes and patterns
-   - `CLAUDE.md` - current status and test counts
-3. Ready for next phase
-
-**IMPORTANT:** Use LOCAL file `docs/memory.md`, NOT global Claude memory.
-
-**When to update documentation:**
-- ✅ After completing each phase
-- ✅ After completing significant iterations (multiple tasks)
+- ✅ After completing a phase or significant iteration
 - ✅ When discovering important patterns or gotchas
-- ✅ When test counts change significantly
-- ❌ Not after every single trivial task
+- ✅ When dependency versions or architecture change
+- ❌ Not after every trivial task
 
-**Memory update format:**
+**Memory entry format:**
+
 ```markdown
 ## Phase N: [Name] (Complete)
 
 ### What Was Implemented
-- Component 1 with key details
-- Component 2 with key details
+- Component with key details
 
 ### Key Decisions & Rationale
-1. Decision: Why we chose this approach
+1. Decision: why we chose this approach
 
 ### Gotchas & Edge Cases
-1. Issue: How we solved it
+1. Issue: how we solved it
 
 ### Patterns to Reuse
-```rust
+​```rust
 // Code pattern with explanation
+​```
 ```
-```
-
----
-
-## Rules
-
-### Must Follow
-
-1. **Strict order** — Follow `tasklist.md` phases sequentially
-2. **TDD always** — Tests before implementation
-3. **No skipping** — Complete all tasks in phase before next
-4. **Explicit agreement** — Wait for "yes" before implementing
-5. **Explicit verification** — Wait for confirmation before updating progress
-
-### Must Not
-
-1. **No autonomous progression** — Never proceed without user confirmation
-2. **No bulk implementation** — One task at a time
-3. **No assumption** — If unclear, ask first
-4. **No skipping tests** — Every feature needs tests
-
----
-
-## Phase Transition
-
-Before starting a new phase:
-
-1. Verify all tasks in current phase are `[x]`
-2. Verify phase status is ✅ in Progress Report
-3. State: **"Phase N complete. Start Phase N+1?"**
-4. Wait for confirmation
-
----
-
-## Quick Commands
-
-User can say:
-
-| Command | Meaning |
-|---------|---------|
-| "Continue" | Proceed with current plan |
-| "Stop" | Pause work |
-| "Show progress" | Display current tasklist status |
-| "Skip to Phase N" | Jump to phase (requires confirmation) |
-| "Revert" | Undo last implementation |
 
 ---
 
 ## Session Start
 
-At the beginning of each session:
-
-1. Read `tasklist.md` for current state
-2. Report: current phase, completed tasks, next task
-3. Ask: **"Continue from [task]?"**
+At the beginning of each session, skim `docs/tasklist.md` for the current phase
+and open tasks before picking up work.
