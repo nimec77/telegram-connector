@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-05-31
+
 ### Changed
 - MCP tool request parameters now accept both JSON scalar forms, so clients that send numbers as strings (or vice-versa) are no longer rejected. Numeric fields (`limit`, `offset`, `hours_back`, `message_id`) accept either a JSON number or a numeric string (trimmed; `"10"` and `" 10 "` → `10`); string fields (`channel_id`, `channel_identifier`, `query`, `link`) accept an integer number and stringify it (`123` → `"123"`); boolean fields (`include_tg_protocol`, `use_tg_protocol`) accept `true`/`false`, `1`/`0`, and their string forms (case-insensitive). Empty strings on optional fields become `None`; floats and other non-coercible values still return a clear error. Implemented as five reusable `serde` `deserialize_with` helpers in `src/mcp/tools/types/serde_helpers.rs`; field types and the advertised JSON schema are unchanged.
 
