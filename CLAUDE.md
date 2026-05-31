@@ -29,7 +29,7 @@ cargo fmt --check && cargo clippy -- -D warnings && cargo test
 - **Rust nightly** (2024 edition) — required for `let chains` and other nightly features; no `rust-toolchain.toml`, nightly is implied by `edition = "2024"`
 - **`grammers` from git master** (not crates.io) — API can change between builds; check `grammers-client` docs if compilation fails after update
 - **`schemars` v1** (not v0.8) — different derive API; uses `#[derive(JsonSchema)]` from `schemars::JsonSchema`
-- **`rmcp` v1.6** — MCP server SDK; `#[tool_router]` and `#[tool(...)]` proc macros. `InitializeResult` uses a builder API (`InitializeResult::new(capabilities).with_server_info(...).with_instructions(...)`).
+- **`rmcp` v1.7** — MCP server SDK; `#[tool_router]` and `#[tool(...)]` proc macros. `InitializeResult` uses a builder API (`InitializeResult::new(capabilities).with_server_info(...).with_instructions(...)`).
 - **`secrecy`** — `SecretString` wraps sensitive config fields (`api_hash`, `phone_number`); access via `.expose_secret()`
 
 ## Architecture
@@ -37,7 +37,7 @@ cargo fmt --check && cargo clippy -- -D warnings && cargo test
 ```
 MCP Client (Claude) ──JSON-RPC/stdio──► MCP Server Layer (rmcp)
                                         │  src/mcp/server.rs (8 tools)
-                                        │  src/mcp/tools/ (types, helpers)
+                                        │  src/mcp/tools/ (helpers + types/{requests,responses,serde_helpers})
                                         ▼
                                       Application Layer
                                         │  config, logging, rate_limiter, link, error, cli
@@ -63,6 +63,10 @@ MCP Client (Claude) ──JSON-RPC/stdio──► MCP Server Layer (rmcp)
 
 **Config resolution:** `TELEGRAM_MCP_CONFIG` env var → `~/.config/telegram-connector/config.toml`. Supports `${VAR}` env var expansion in TOML values (pure-integer values are auto-unquoted for TOML type compatibility).
 
+**Flexible scalar coercion at the MCP boundary:** Request structs in `src/mcp/tools/types/requests.rs` tolerate cross-type scalars from lenient clients (numeric string `"10"` for an integer, JSON number for a string, `"true"`/`1` for a bool) via `#[serde(deserialize_with = "...")]` helpers in `src/mcp/tools/types/serde_helpers.rs` (`flexible_opt_u32`, `flexible_i64`, `flexible_string`, `flexible_opt_string`, `flexible_opt_bool`). Field *types* and the advertised `JsonSchema` are unchanged — leniency is a deserialization anti-corruption layer at the transport boundary; the domain layer (`params.rs`, newtypes) stays strict. Design: `docs/superpowers/specs/2026-05-31-flexible-scalar-coercion-design.md`.
+
+**Timeout budgets:** `TimeoutConfig` in `src/config.rs` (`[timeouts]` TOML table, plus `shutdown_timeout_seconds`) sets per-call-type timeout budgets applied to `grammers` network operations in `src/telegram/client.rs`, so a hung MTProto call cannot stall the server. All fields have `#[serde(default)]`.
+
 ### Test Organization
 
 - Unit tests: `#[cfg(test)]` blocks inline in each module, or in separate files via `#[path = "..."]` attribute (e.g., `config.rs` → `config/tests.rs`)
@@ -86,18 +90,26 @@ Full detail in `docs/conventions.md`. Key rules:
 
 **TDD:** Write the failing test first; no production code without a preceding test.
 
-## Critical Rules
-
-1. **NEVER create git commits** — The user manages all git operations. Only write code and documentation.
-2. **Always use LOCAL memory file** `docs/memory.md`, NOT global Claude memory.
-3. **Wait for user approval** before implementing any proposed changes.
-
 ## Workflow
 
-See `docs/workflow.md` for the full iteration cycle: PROPOSE → AGREE → IMPLEMENT → VERIFY → UPDATE PROGRESS → UPDATE MEMORY
+This repo is set up for in-house team development using the **superpowers** skill-driven flow — there is no manual approval gate, and git operations (branch, commit, PR) are expected as part of normal work.
 
-**Session start:** Read `docs/tasklist.md`, report current phase and next task, ask "Continue from [task]?"
+- **brainstorming → writing-plans** — explore intent first, then write the plan. Design docs and implementation plans land in `docs/superpowers/specs/` and `docs/superpowers/plans/` (one dated file per change).
+- **test-driven-development** — write the failing test first; no production code without a preceding test.
+- **requesting-code-review** — request review before merging a branch.
+- **git** — branch, commit, and open PRs freely; use feature branches (and worktrees) to isolate work. History follows conventional-commit style (`feat:`, `fix:`, `chore:`, `docs:`).
 
-Progress tracked in:
+**Pre-merge gate (all must pass):**
+
+```bash
+cargo fmt --check && cargo clippy -- -D warnings && cargo test
+```
+
+### Project Tracking
+
 - `docs/tasklist.md` — phase checklist and task details
-- `docs/memory.md` — patterns, decisions, and lessons learned
+- `docs/memory.md` — patterns, decisions, and lessons learned (local project journal; keep project knowledge here, not in global Claude memory)
+- `docs/superpowers/plans/` & `docs/superpowers/specs/` — per-change implementation plans and designs
+- `docs/conventions.md` — full coding conventions
+
+**Session start:** skim `docs/tasklist.md` for current phase and open tasks before picking up work.
