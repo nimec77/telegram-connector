@@ -105,6 +105,18 @@ fn default_logging_config() -> LoggingConfig {
     }
 }
 
+fn default_slow_write_threshold_ms() -> u64 {
+    500
+}
+
+fn default_response_buffer_size() -> usize {
+    10
+}
+
+fn default_observability_config() -> ObservabilityConfig {
+    ObservabilityConfig::default()
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     pub telegram: TelegramConfig,
@@ -116,6 +128,8 @@ pub struct Config {
     pub logging: LoggingConfig,
     #[serde(default = "default_server_config")]
     pub server: ServerConfig,
+    #[serde(default = "default_observability_config")]
+    pub observability: ObservabilityConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -250,6 +264,31 @@ pub struct LoggingConfig {
     /// Number of days to retain log files (default: 7)
     #[serde(default = "default_max_log_days")]
     pub max_log_days: u32,
+}
+
+/// Transport observability settings (`[observability]` table).
+///
+/// Added after the 2026-06-12 lost-response incident (`docs/connetion-issue.md`)
+/// so stdout write behavior is tunable in the field without a rebuild.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ObservabilityConfig {
+    /// WARN when a stdout write+flush exceeds this many milliseconds.
+    /// 0 makes every write WARN (field diagnostic mode).
+    #[serde(default = "default_slow_write_threshold_ms")]
+    pub slow_write_threshold_ms: u64,
+
+    /// Ring buffer capacity for `get_last_responses` (0 disables buffering).
+    #[serde(default = "default_response_buffer_size")]
+    pub response_buffer_size: usize,
+}
+
+impl Default for ObservabilityConfig {
+    fn default() -> Self {
+        Self {
+            slow_write_threshold_ms: default_slow_write_threshold_ms(),
+            response_buffer_size: default_response_buffer_size(),
+        }
+    }
 }
 
 impl Config {

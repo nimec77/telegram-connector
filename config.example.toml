@@ -49,3 +49,10 @@ phone_number = "+1234567890"
 # file_enabled = true                      # Default: true
 # file_path = "~/.config/telegram-connector/logs"  # Default: logs directory
 # max_log_days = 7                         # Default: 7 days (old logs cleaned on startup)
+
+# Transport observability. All fields optional.
+# slow_write_threshold_ms: WARN when a stdout write+flush exceeds this (0 = warn on every write).
+# response_buffer_size: responses kept for the get_last_responses recovery tool (0 = disabled).
+# [observability]
+# slow_write_threshold_ms = 500
+# response_buffer_size = 10

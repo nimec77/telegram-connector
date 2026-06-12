@@ -143,6 +143,7 @@ fn create_test_config(api_id: i32, api_hash: Option<&str>, phone_number: Option<
         server: ServerConfig {
             shutdown_timeout_seconds: 5,
         },
+        observability: default_observability_config(),
     }
 }
 
@@ -551,4 +552,38 @@ max_log_days = 14
     assert!(!config.logging.file_enabled);
     assert_eq!(config.logging.file_path, PathBuf::from("/custom/log/path"));
     assert_eq!(config.logging.max_log_days, 14);
+}
+
+// ========================================================================
+// Observability Config Tests (Phase 30)
+// ========================================================================
+
+#[test]
+fn test_observability_defaults_when_table_absent() {
+    let config: Config = toml::from_str("[telegram]\napi_id = 12345\n").unwrap();
+    assert_eq!(config.observability.slow_write_threshold_ms, 500);
+    assert_eq!(config.observability.response_buffer_size, 10);
+}
+
+#[test]
+fn test_observability_table_parsed() {
+    let toml_str = r#"
+[telegram]
+api_id = 12345
+
+[observability]
+slow_write_threshold_ms = 250
+response_buffer_size = 0
+"#;
+    let config: Config = toml::from_str(toml_str).unwrap();
+    assert_eq!(config.observability.slow_write_threshold_ms, 250);
+    assert_eq!(config.observability.response_buffer_size, 0);
+}
+
+#[test]
+fn test_observability_partial_table_fills_defaults() {
+    let toml_str = "[telegram]\napi_id = 1\n\n[observability]\nresponse_buffer_size = 3\n";
+    let config: Config = toml::from_str(toml_str).unwrap();
+    assert_eq!(config.observability.slow_write_threshold_ms, 500);
+    assert_eq!(config.observability.response_buffer_size, 3);
 }
