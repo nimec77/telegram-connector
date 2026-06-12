@@ -101,7 +101,11 @@ async fn run_mcp_server(telegram_client: TelegramClient, config: Config) -> Resu
     let rate_limiter = RateLimiter::new(&config.rate_limiting);
 
     // Create MCP server
-    let server = McpServer::new(Arc::new(telegram_client), Arc::new(rate_limiter));
+    let server = McpServer::new(Arc::new(telegram_client), Arc::new(rate_limiter))
+        .with_observability(&config.observability);
+
+    // Metrics handle survives the move of `server` into run_stdio
+    let metrics = server.metrics();
 
     tracing::info!("Starting MCP server on stdio...");
 
@@ -123,6 +127,7 @@ async fn run_mcp_server(telegram_client: TelegramClient, config: Config) -> Resu
         }
         _ = shutdown_rx => {
             tracing::info!("Initiating graceful shutdown (timeout: {}s)...", shutdown_timeout);
+            metrics.log_summary("shutdown signal");
         }
     }
 
