@@ -25,6 +25,15 @@ pub enum Error {
 
     #[error("operation '{operation}' timed out after {secs}s")]
     Timeout { operation: String, secs: u64 },
+
+    #[error("media too large: {size_bytes} bytes exceeds limit of {max_bytes} bytes")]
+    MediaTooLarge { size_bytes: u64, max_bytes: u64 },
+
+    #[error("message has no visual media (media type: {media_type})")]
+    NoVisualMedia { media_type: String },
+
+    #[error("media download failed: {0}")]
+    DownloadFailed(String),
 }
 
 #[cfg(test)]
@@ -108,5 +117,34 @@ mod tests {
             error.to_string(),
             "operation 'search_messages' timed out after 120s"
         );
+    }
+
+    #[test]
+    fn test_media_too_large_error_display() {
+        let error = Error::MediaTooLarge {
+            size_bytes: 25_000_000,
+            max_bytes: 20_971_520,
+        };
+        assert_eq!(
+            error.to_string(),
+            "media too large: 25000000 bytes exceeds limit of 20971520 bytes"
+        );
+    }
+
+    #[test]
+    fn test_no_visual_media_error_display() {
+        let error = Error::NoVisualMedia {
+            media_type: "poll".to_string(),
+        };
+        assert_eq!(
+            error.to_string(),
+            "message has no visual media (media type: poll)"
+        );
+    }
+
+    #[test]
+    fn test_download_failed_error_display() {
+        let error = Error::DownloadFailed("connection reset".to_string());
+        assert_eq!(error.to_string(), "media download failed: connection reset");
     }
 }
