@@ -226,7 +226,6 @@ pub fn size_candidates(thumbs: &[PhotoSize]) -> Vec<SizeCandidate> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::telegram::types::SizeCandidate;
 
     fn candidate(width: u32, height: u32, size_bytes: u64, tag: &str) -> SizeCandidate {
         SizeCandidate {
@@ -272,6 +271,25 @@ mod tests {
         ];
         let selected = select_size_candidate(&candidates, 1280).unwrap();
         assert_eq!(selected.photo_type, "x");
+    }
+
+    #[test]
+    fn tie_on_longest_side_picks_first_candidate() {
+        // Both candidates have longest_side == 1280; min_by_key returns the first of equals.
+        let candidates = vec![
+            candidate(1280, 720, 100_000, "x"),
+            candidate(720, 1280, 90_000, "y"),
+        ];
+        let selected = select_size_candidate(&candidates, 1280).unwrap();
+        assert_eq!(selected.photo_type, "x");
+    }
+
+    #[test]
+    fn single_candidate_below_threshold_is_returned_via_fallback() {
+        // No candidate satisfies max_dimension; fallback returns the largest (only) one.
+        let candidates = vec![candidate(320, 180, 10_000, "m")];
+        let selected = select_size_candidate(&candidates, 1280).unwrap();
+        assert_eq!(selected.photo_type, "m");
     }
 }
 
