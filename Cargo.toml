@@ -57,6 +57,10 @@ dashmap = "6.2.1"
 # Security
 secrecy = { version = "0.10", features = ["serde"] }
 
+# Media processing
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
+base64 = "0.22"
+
 [dev-dependencies]
 tokio-test = "0.4.5"
 tempfile = "3.27.0"
