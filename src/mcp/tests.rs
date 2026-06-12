@@ -11,6 +11,8 @@ mod history;
 mod last_responses;
 #[path = "tests/links.rs"]
 mod links;
+#[path = "tests/media.rs"]
+mod media;
 #[path = "tests/message_by_link.rs"]
 mod message_by_link;
 #[path = "tests/search.rs"]

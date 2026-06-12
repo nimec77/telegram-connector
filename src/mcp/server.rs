@@ -1,11 +1,13 @@
 use crate::config::ObservabilityConfig;
 use crate::link::{ChannelRef, MessageLink, parse_telegram_link};
 use crate::mcp::observability::{InstrumentedTransport, ResponseBuffer, SessionMetrics};
+use crate::mcp::tools::image::process_image;
 use crate::mcp::tools::{
     BufferedResponseEntry, ChannelsResponse, GenerateLinkRequest, GetChannelInfoRequest,
-    GetChannelsRequest, GetLastResponsesRequest, GetMessageByLinkRequest, GetRecentMessagesRequest,
-    LastResponsesResponse, MessageLinkResponse, OpenMessageRequest, OpenMessageResponse,
-    SearchRequest, StatusResponse, parse_channel_id, parse_message_id, parse_optional_channel_id,
+    GetChannelsRequest, GetLastResponsesRequest, GetMessageByLinkRequest, GetMessageMediaRequest,
+    GetMessageMediaResponse, GetRecentMessagesRequest, LastResponsesResponse, MessageLinkResponse,
+    OpenMessageRequest, OpenMessageResponse, SearchRequest, StatusResponse, parse_channel_id,
+    parse_message_id, parse_optional_channel_id,
 };
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
@@ -13,7 +15,7 @@ use crate::telegram::types::{HistoryParams, SearchParams};
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::{Implementation, InitializeResult, ServerCapabilities};
+use rmcp::model::{CallToolResult, Content, Implementation, InitializeResult, ServerCapabilities};
 use rmcp::{ServerHandler, ServiceExt, tool, tool_handler, tool_router};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -25,6 +27,7 @@ pub struct McpServer<T: TelegramClientTrait, R: RateLimiterTrait> {
     metrics: Arc<SessionMetrics>,
     response_buffer: Arc<ResponseBuffer>,
     slow_write_threshold: Duration,
+    media_download_cost: u32,
     #[allow(dead_code)]
     tool_router: ToolRouter<Self>,
 }
@@ -38,6 +41,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             metrics: Arc::new(SessionMetrics::new()),
             response_buffer: Arc::new(ResponseBuffer::new(observability.response_buffer_size)),
             slow_write_threshold: Duration::from_millis(observability.slow_write_threshold_ms),
+            media_download_cost: 5,
             tool_router: Self::tool_router(),
         }
     }
@@ -46,6 +50,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     pub fn with_observability(mut self, config: &ObservabilityConfig) -> Self {
         self.response_buffer = Arc::new(ResponseBuffer::new(config.response_buffer_size));
         self.slow_write_threshold = Duration::from_millis(config.slow_write_threshold_ms);
+        self
+    }
+
+    /// Set the rate-limiter cost charged per get_message_media call
+    /// (`[rate_limiting] media_download_cost`, default 5).
+    pub fn with_media_download_cost(mut self, cost: u32) -> Self {
+        self.media_download_cost = cost;
         self
     }
 
@@ -427,6 +438,66 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
         serde_json::to_string(&response).map_err(|e| e.to_string())
     }
+
+    async fn get_message_media_impl(
+        &self,
+        request: GetMessageMediaRequest,
+    ) -> Result<CallToolResult, String> {
+        const DEFAULT_MAX_DIMENSION: u32 = 1280;
+        const MIN_DIMENSION: u32 = 64;
+        const MAX_DIMENSION: u32 = 2048;
+
+        let message_id = parse_message_id(request.message_id)?;
+        let max_dimension = request
+            .max_dimension
+            .unwrap_or(DEFAULT_MAX_DIMENSION)
+            .clamp(MIN_DIMENSION, MAX_DIMENSION);
+
+        // Media downloads are heavier than searches; charge the configured cost.
+        self.rate_limiter
+            .acquire(self.media_download_cost)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let download = self
+            .telegram_client
+            .download_message_media(&request.channel_id, message_id.get() as i32, max_dimension)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let processed = process_image(&download.bytes, max_dimension).map_err(|e| e.to_string())?;
+
+        let metadata = GetMessageMediaResponse {
+            channel_id: request.channel_id.clone(),
+            message_id: message_id.get(),
+            media_type: download.media_type,
+            is_thumbnail: download.is_thumbnail,
+            caption: download.caption,
+            original_width: download.width,
+            original_height: download.height,
+            original_size_bytes: download.source_size_bytes,
+            returned_width: processed.width,
+            returned_height: processed.height,
+            returned_size_bytes: processed.encoded_size_bytes,
+            mime_type: "image/jpeg".to_string(),
+        };
+
+        tracing::info!(
+            channel = %request.channel_id,
+            message_id = message_id.get(),
+            media_type = ?metadata.media_type,
+            is_thumbnail = metadata.is_thumbnail,
+            returned_bytes = metadata.returned_size_bytes,
+            "Message media results"
+        );
+
+        let metadata_json = serde_json::to_string(&metadata).map_err(|e| e.to_string())?;
+
+        Ok(CallToolResult::success(vec![
+            Content::image(processed.base64_jpeg, "image/jpeg"),
+            Content::text(metadata_json),
+        ]))
+    }
 }
 
 #[tool_router]
@@ -629,6 +700,30 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         log_tool_outcome("get_last_responses", &request_id, started, &result);
         result
     }
+
+    /// Tool 10: get_message_media - Return a message's photo (or video thumbnail) as an image
+    #[tool(
+        description = "Get a message's photo (or the thumbnail of its video/animation/video note) as an image the model can see, plus a JSON metadata block. Photos are downscaled (max_dimension, default 1280) and re-encoded as JPEG. Heavier than a search: charged media_download_cost rate-limit tokens."
+    )]
+    pub async fn get_message_media(
+        &self,
+        Parameters(request): Parameters<GetMessageMediaRequest>,
+        id: RequestId,
+    ) -> Result<CallToolResult, String> {
+        let request_id = id.0.to_string();
+        let started = Instant::now();
+        tracing::info!(
+            tool = "get_message_media",
+            request_id = %request_id,
+            channel_id = %request.channel_id,
+            message_id = request.message_id,
+            max_dimension = ?request.max_dimension,
+            "Tool invocation started"
+        );
+        let result = self.get_message_media_impl(request).await;
+        log_tool_outcome("get_message_media", &request_id, started, &result);
+        result
+    }
 }
 
 // Implement ServerHandler trait with tool capabilities
@@ -648,12 +743,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> ServerHand
 }
 
 /// Log the symmetric completion entry for a tool invocation.
-fn log_tool_outcome(
-    tool: &str,
-    request_id: &str,
-    started: Instant,
-    result: &Result<String, String>,
-) {
+fn log_tool_outcome<T>(tool: &str, request_id: &str, started: Instant, result: &Result<T, String>) {
     let duration_ms = started.elapsed().as_millis() as u64;
     match result {
         Ok(_) => {
