@@ -81,6 +81,7 @@ async fn photo_returns_image_and_metadata_blocks() {
     assert_eq!(metadata.mime_type, "image/jpeg");
     assert_eq!(metadata.returned_width, 200);
     assert_eq!(metadata.returned_height, 100);
+    assert_eq!(metadata.returned_size_bytes, jpeg.len());
 }
 
 #[tokio::test]
@@ -193,6 +194,27 @@ async fn max_dimension_is_clamped_to_2048() {
     let result = server
         .get_message_media(
             Parameters(request("news", 10, Some(5000))),
+            RequestId(NumberOrString::Number(1)),
+        )
+        .await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn max_dimension_is_clamped_up_to_64() {
+    let mut mock_client = MockTelegramClientTrait::new();
+    mock_client
+        .expect_download_message_media()
+        .withf(|_, _, max_dim| *max_dim == 64)
+        .return_once(|_, _, _| Ok(photo_download(64, 64)));
+
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
+
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+    let result = server
+        .get_message_media(
+            Parameters(request("news", 14, Some(10))),
             RequestId(NumberOrString::Number(1)),
         )
         .await;
