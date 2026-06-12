@@ -522,12 +522,17 @@ fn log_tool_outcome(
     let duration_ms = started.elapsed().as_millis() as u64;
     match result {
         Ok(_) => {
-            tracing::info!(tool, request_id, duration_ms, "Tool invocation completed");
+            tracing::info!(
+                tool = %tool,
+                request_id = %request_id,
+                duration_ms,
+                "Tool invocation completed"
+            );
         }
         Err(error) => {
             tracing::warn!(
-                tool,
-                request_id,
+                tool = %tool,
+                request_id = %request_id,
                 duration_ms,
                 error = %error,
                 "Tool invocation failed"
