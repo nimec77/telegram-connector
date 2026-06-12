@@ -2882,3 +2882,21 @@ Some MCP clients send scalar arguments in the "wrong" JSON type — a numeric st
 - `src/mcp/tools/types/requests.rs` — `#[serde(deserialize_with=...)]` on 17 fields across 7 structs; grouped helper import; struct-level wiring tests.
 - `CHANGELOG.md`, `docs/tasklist.md`, `docs/memory.md` — Phase 21 entries.
 - `docs/superpowers/specs/2026-05-31-flexible-scalar-coercion-design.md`, `docs/superpowers/plans/2026-05-31-flexible-scalar-coercion.md` — design spec + implementation plan.
+
+## Dependency Audit & Update (2026-06-12)
+
+### Outcome
+
+- Audited every direct dependency against crates.io (`max_stable_version`). All were already at their latest stable versions except **chrono 0.4.44 → 0.4.45** (patch bump applied to `Cargo.toml` + `Cargo.lock`).
+- grammers git pin (`master#fa7692e4`) was already the latest upstream master commit — nothing to update there.
+
+### Lesson: full `cargo update` is currently BROKEN — use targeted `cargo update -p <crate>` instead
+
+- `grammers-crypto` (git master) requires `glass_pumpkin ^1.7.0`. The lockfile holds `glass_pumpkin 1.10.0`, which has since been **yanked**; every non-yanked `glass_pumpkin` ≤1.9.0 depends on `core2 ^0.4`, and **all versions of `core2` are yanked** from crates.io.
+- Consequence: any operation that freshly re-resolves the grammers subgraph (blanket `cargo update`, deleting `Cargo.lock`) fails with `failed to select a version for the requirement core2 = "^0.4"`. The build only works because Cargo honors the already-locked (yanked) `glass_pumpkin 1.10.0`.
+- **Do not delete `Cargo.lock`.** Update individual crates with `cargo update -p <name>` until upstream ships a fix (e.g. a re-published glass_pumpkin without `core2`, or `2.0` stable + a grammers bump).
+- `cargo update -p thiserror` is ambiguous (lockfile has transitive 1.0.69 + our 2.0.18); use `thiserror@2.0.18` if ever needed.
+
+### Verification
+
+- `cargo fmt --check` clean; `cargo clippy -- -D warnings` clean; `cargo test` → 331 passed, 0 failed.
