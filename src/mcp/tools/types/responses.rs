@@ -1,6 +1,6 @@
 //! Response types for MCP tools.
 
-use crate::telegram::types::Channel;
+use crate::telegram::types::{Channel, MediaType};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -108,6 +108,46 @@ pub struct LastResponsesResponse {
     pub buffered: usize,
 }
 
+/// Metadata text block accompanying the get_message_media image block
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GetMessageMediaResponse {
+    #[schemars(description = "Channel the message belongs to (as passed in the request)")]
+    pub channel_id: String,
+
+    #[schemars(description = "Message ID")]
+    pub message_id: i64,
+
+    #[schemars(description = "Media type of the source message (photo, video, ...)")]
+    pub media_type: MediaType,
+
+    #[schemars(description = "True when the image is a video's thumbnail, not the media itself")]
+    pub is_thumbnail: bool,
+
+    #[schemars(description = "Message caption, if any")]
+    pub caption: Option<String>,
+
+    #[schemars(description = "Pixel width of the downloaded source variant")]
+    pub original_width: Option<u32>,
+
+    #[schemars(description = "Pixel height of the downloaded source variant")]
+    pub original_height: Option<u32>,
+
+    #[schemars(description = "Byte size of the downloaded source variant")]
+    pub original_size_bytes: u64,
+
+    #[schemars(description = "Pixel width of the returned image")]
+    pub returned_width: u32,
+
+    #[schemars(description = "Pixel height of the returned image")]
+    pub returned_height: u32,
+
+    #[schemars(description = "Encoded JPEG size in bytes (before base64 expansion)")]
+    pub returned_size_bytes: usize,
+
+    #[schemars(description = "Always image/jpeg")]
+    pub mime_type: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,5 +196,30 @@ mod tests {
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("success"));
         assert!(json.contains("app_opened"));
+    }
+
+    #[test]
+    fn get_message_media_response_serializes() {
+        use crate::telegram::types::MediaType;
+
+        let response = GetMessageMediaResponse {
+            channel_id: "news".to_string(),
+            message_id: 42,
+            media_type: MediaType::Photo,
+            is_thumbnail: false,
+            caption: Some("benchmark table".to_string()),
+            original_width: Some(2560),
+            original_height: Some(1440),
+            original_size_bytes: 400_000,
+            returned_width: 1280,
+            returned_height: 720,
+            returned_size_bytes: 150_000,
+            mime_type: "image/jpeg".to_string(),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"media_type\":\"photo\""));
+        assert!(json.contains("\"is_thumbnail\":false"));
+        assert!(json.contains("benchmark table"));
     }
 }

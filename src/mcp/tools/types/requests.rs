@@ -120,6 +120,24 @@ pub struct GetMessageByLinkRequest {
     pub link: String,
 }
 
+/// Request for get_message_media tool
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct GetMessageMediaRequest {
+    #[schemars(description = "Channel ID or username (required)")]
+    #[serde(deserialize_with = "flexible_string")]
+    pub channel_id: String,
+
+    #[schemars(description = "Message ID within the channel")]
+    #[serde(deserialize_with = "flexible_i64")]
+    pub message_id: i64,
+
+    #[schemars(
+        description = "Longest image side in pixels after downscaling (default: 1280, clamped to 64-2048)"
+    )]
+    #[serde(default, deserialize_with = "flexible_opt_u32")]
+    pub max_dimension: Option<u32>,
+}
+
 /// Request for get_last_responses tool
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct GetLastResponsesRequest {
@@ -353,5 +371,22 @@ mod tests {
         let json = r#"{"channel_identifier": 1234567}"#;
         let request: GetChannelInfoRequest = serde_json::from_str(json).unwrap();
         assert_eq!(request.channel_identifier, "1234567");
+    }
+
+    #[test]
+    fn get_message_media_request_deserializes_with_flexible_scalars() {
+        // message_id arrives as a numeric string; channel_id as a number.
+        let json = r#"{"channel_id": 123456, "message_id": "42", "max_dimension": "640"}"#;
+        let request: GetMessageMediaRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(request.channel_id, "123456");
+        assert_eq!(request.message_id, 42);
+        assert_eq!(request.max_dimension, Some(640));
+    }
+
+    #[test]
+    fn get_message_media_request_max_dimension_defaults_to_none() {
+        let json = r#"{"channel_id": "news", "message_id": 42}"#;
+        let request: GetMessageMediaRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(request.max_dimension, None);
     }
 }
