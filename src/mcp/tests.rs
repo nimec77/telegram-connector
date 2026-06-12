@@ -7,6 +7,8 @@
 mod channels;
 #[path = "tests/history.rs"]
 mod history;
+#[path = "tests/last_responses.rs"]
+mod last_responses;
 #[path = "tests/links.rs"]
 mod links;
 #[path = "tests/message_by_link.rs"]

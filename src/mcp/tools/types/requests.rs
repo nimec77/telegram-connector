@@ -120,6 +120,14 @@ pub struct GetMessageByLinkRequest {
     pub link: String,
 }
 
+/// Request for get_last_responses tool
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct GetLastResponsesRequest {
+    #[schemars(description = "How many recent responses to return (default: all buffered)")]
+    #[serde(default, deserialize_with = "flexible_opt_u32")]
+    pub n: Option<u32>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

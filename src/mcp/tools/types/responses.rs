@@ -79,6 +79,35 @@ pub struct OpenMessageResponse {
     pub app_opened: bool,
 }
 
+/// One recovered response returned by get_last_responses
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct BufferedResponseEntry {
+    #[schemars(description = "JSON-RPC request id of the original call")]
+    pub request_id: String,
+
+    #[schemars(description = "Tool that produced the response")]
+    pub tool_name: String,
+
+    #[schemars(description = "When the response was written to stdout (RFC3339 UTC)")]
+    pub written_at: String,
+
+    #[schemars(description = "Serialized payload size in bytes")]
+    pub size_bytes: usize,
+
+    #[schemars(description = "The JSON-RPC envelope exactly as written to stdout")]
+    pub response: serde_json::Value,
+}
+
+/// Response for get_last_responses tool
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct LastResponsesResponse {
+    #[schemars(description = "Recovered responses, newest first")]
+    pub responses: Vec<BufferedResponseEntry>,
+
+    #[schemars(description = "Total responses currently buffered")]
+    pub buffered: usize,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

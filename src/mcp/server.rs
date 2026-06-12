@@ -2,10 +2,10 @@ use crate::config::ObservabilityConfig;
 use crate::link::{ChannelRef, MessageLink, parse_telegram_link};
 use crate::mcp::observability::{InstrumentedTransport, ResponseBuffer, SessionMetrics};
 use crate::mcp::tools::{
-    ChannelsResponse, GenerateLinkRequest, GetChannelInfoRequest, GetChannelsRequest,
-    GetMessageByLinkRequest, GetRecentMessagesRequest, MessageLinkResponse, OpenMessageRequest,
-    OpenMessageResponse, SearchRequest, StatusResponse, parse_channel_id, parse_message_id,
-    parse_optional_channel_id,
+    BufferedResponseEntry, ChannelsResponse, GenerateLinkRequest, GetChannelInfoRequest,
+    GetChannelsRequest, GetLastResponsesRequest, GetMessageByLinkRequest, GetRecentMessagesRequest,
+    LastResponsesResponse, MessageLinkResponse, OpenMessageRequest, OpenMessageResponse,
+    SearchRequest, StatusResponse, parse_channel_id, parse_message_id, parse_optional_channel_id,
 };
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
@@ -402,6 +402,31 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
         serde_json::to_string(&message).map_err(|e| e.to_string())
     }
+
+    async fn get_last_responses_impl(
+        &self,
+        request: GetLastResponsesRequest,
+    ) -> Result<String, String> {
+        let entries = self.response_buffer.last(request.n.map(|n| n as usize));
+        let responses: Vec<BufferedResponseEntry> = entries
+            .into_iter()
+            .map(|entry| BufferedResponseEntry {
+                request_id: entry.request_id,
+                tool_name: entry.tool_name,
+                written_at: chrono::DateTime::<chrono::Utc>::from(entry.written_at).to_rfc3339(),
+                size_bytes: entry.size_bytes,
+                // Payload was valid JSON when written; Null only on corruption.
+                response: serde_json::from_str(&entry.payload).unwrap_or(serde_json::Value::Null),
+            })
+            .collect();
+
+        let response = LastResponsesResponse {
+            buffered: self.response_buffer.len(),
+            responses,
+        };
+
+        serde_json::to_string(&response).map_err(|e| e.to_string())
+    }
 }
 
 #[tool_router]
@@ -580,6 +605,28 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         );
         let result = self.get_message_by_link_impl(request).await;
         log_tool_outcome("get_message_by_link", &request_id, started, &result);
+        result
+    }
+
+    /// Tool 9: get_last_responses - Recover recently written responses
+    #[tool(
+        description = "Debug/recovery: return the last N tool responses written to stdout, so a response lost in transit can be re-fetched without re-querying Telegram or spending rate-limit budget"
+    )]
+    pub async fn get_last_responses(
+        &self,
+        Parameters(request): Parameters<GetLastResponsesRequest>,
+        id: RequestId,
+    ) -> Result<String, String> {
+        let request_id = id.0.to_string();
+        let started = Instant::now();
+        tracing::info!(
+            tool = "get_last_responses",
+            request_id = %request_id,
+            n = ?request.n,
+            "Tool invocation started"
+        );
+        let result = self.get_last_responses_impl(request).await;
+        log_tool_outcome("get_last_responses", &request_id, started, &result);
         result
     }
 }

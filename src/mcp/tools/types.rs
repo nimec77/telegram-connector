@@ -11,8 +11,11 @@ pub mod serde_helpers;
 
 // Re-export all types for convenience
 pub use requests::{
-    GenerateLinkRequest, GetChannelInfoRequest, GetChannelsRequest, GetMessageByLinkRequest,
-    GetRecentMessagesRequest, OpenMessageRequest, SearchRequest,
+    GenerateLinkRequest, GetChannelInfoRequest, GetChannelsRequest, GetLastResponsesRequest,
+    GetMessageByLinkRequest, GetRecentMessagesRequest, OpenMessageRequest, SearchRequest,
 };
-pub use responses::{ChannelsResponse, MessageLinkResponse, OpenMessageResponse, StatusResponse};
+pub use responses::{
+    BufferedResponseEntry, ChannelsResponse, LastResponsesResponse, MessageLinkResponse,
+    OpenMessageResponse, StatusResponse,
+};
 pub use serde_helpers::deserialize_optional_media_filter;
