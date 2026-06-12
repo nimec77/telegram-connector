@@ -520,15 +520,18 @@ Retrieve the visual media from a Telegram message as an MCP **image content bloc
 **Metadata response (text block):**
 ```json
 {
+  "channel_id": "@technews",
+  "message_id": 42,
   "media_type": "photo",
   "is_thumbnail": false,
   "caption": "Optional caption text",
-  "original_width": 1920,
-  "original_height": 1080,
-  "original_bytes": 245760,
+  "original_width": 2560,
+  "original_height": 1440,
+  "original_size_bytes": 400000,
   "returned_width": 1280,
   "returned_height": 720,
-  "returned_bytes": 98304
+  "returned_size_bytes": 98304,
+  "mime_type": "image/jpeg"
 }
 ```
 
