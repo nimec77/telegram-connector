@@ -66,11 +66,24 @@ fn default_search_secs() -> u64 {
     120
 }
 
+fn default_download_secs() -> u64 {
+    120
+}
+
+fn default_media_download_cost() -> u32 {
+    5
+}
+
+fn default_max_buffered_payload_bytes() -> usize {
+    262_144
+}
+
 fn default_timeout_config() -> TimeoutConfig {
     TimeoutConfig {
         resolve_secs: default_resolve_secs(),
         history_secs: default_history_secs(),
         search_secs: default_search_secs(),
+        download_secs: default_download_secs(),
     }
 }
 
@@ -92,6 +105,7 @@ fn default_rate_limit_config() -> RateLimitConfig {
     RateLimitConfig {
         max_tokens: default_max_tokens(),
         refill_rate: default_refill_rate(),
+        media_download_cost: default_media_download_cost(),
     }
 }
 
@@ -172,6 +186,9 @@ pub struct TimeoutConfig {
     /// Search walks (single-channel `search_iter`, global `search_all_messages`).
     #[serde(default = "default_search_secs")]
     pub search_secs: u64,
+    /// Wall-clock budget for a full in-memory media download.
+    #[serde(default = "default_download_secs")]
+    pub download_secs: u64,
 }
 
 impl TimeoutConfig {
@@ -185,6 +202,9 @@ impl TimeoutConfig {
         }
         if self.search_secs == 0 {
             anyhow::bail!("telegram.timeouts.search_secs must be > 0");
+        }
+        if self.download_secs == 0 {
+            anyhow::bail!("telegram.timeouts.download_secs must be > 0");
         }
         Ok(())
     }
@@ -247,6 +267,9 @@ pub struct RateLimitConfig {
     pub max_tokens: u32,
     #[serde(default = "default_refill_rate")]
     pub refill_rate: f64,
+    /// Tokens charged per get_message_media call (searches cost 1).
+    #[serde(default = "default_media_download_cost")]
+    pub media_download_cost: u32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -280,6 +303,12 @@ pub struct ObservabilityConfig {
     /// Ring buffer capacity for `get_last_responses` (0 disables buffering).
     #[serde(default = "default_response_buffer_size")]
     pub response_buffer_size: usize,
+
+    /// Responses larger than this many bytes are recorded in the ring buffer
+    /// with a stub payload instead of the full body (get_message_media responses
+    /// are ~1.5 MB of base64; replaying them via get_last_responses is useless).
+    #[serde(default = "default_max_buffered_payload_bytes")]
+    pub max_buffered_payload_bytes: usize,
 }
 
 impl Default for ObservabilityConfig {
@@ -287,6 +316,7 @@ impl Default for ObservabilityConfig {
         Self {
             slow_write_threshold_ms: default_slow_write_threshold_ms(),
             response_buffer_size: default_response_buffer_size(),
+            max_buffered_payload_bytes: default_max_buffered_payload_bytes(),
         }
     }
 }

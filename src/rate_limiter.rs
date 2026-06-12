@@ -111,6 +111,7 @@ mod tests {
         RateLimitConfig {
             max_tokens,
             refill_rate,
+            media_download_cost: 5,
         }
     }
 

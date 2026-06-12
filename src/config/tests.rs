@@ -132,6 +132,7 @@ fn create_test_config(api_id: i32, api_hash: Option<&str>, phone_number: Option<
         rate_limiting: RateLimitConfig {
             max_tokens: 50,
             refill_rate: 2.0,
+            media_download_cost: default_media_download_cost(),
         },
         logging: LoggingConfig {
             level: "info".to_string(),
@@ -476,6 +477,7 @@ fn test_timeout_config_validate_rejects_zero_resolve() {
         resolve_secs: 0,
         history_secs: 60,
         search_secs: 120,
+        download_secs: default_download_secs(),
     };
     let err = cfg
         .validate()
@@ -492,6 +494,7 @@ fn test_timeout_config_validate_rejects_zero_history() {
         resolve_secs: 30,
         history_secs: 0,
         search_secs: 120,
+        download_secs: default_download_secs(),
     };
     let err = cfg
         .validate()
@@ -505,6 +508,7 @@ fn test_timeout_config_validate_rejects_zero_search() {
         resolve_secs: 30,
         history_secs: 60,
         search_secs: 0,
+        download_secs: default_download_secs(),
     };
     let err = cfg
         .validate()
@@ -586,4 +590,57 @@ fn test_observability_partial_table_fills_defaults() {
     let config: Config = toml::from_str(toml_str).unwrap();
     assert_eq!(config.observability.slow_write_threshold_ms, 500);
     assert_eq!(config.observability.response_buffer_size, 3);
+}
+
+// ========================================================================
+// Media config field tests (Task 3)
+// ========================================================================
+
+#[test]
+fn test_media_download_cost_default() {
+    let config: Config = toml::from_str("[telegram]\napi_id = 12345\n").unwrap();
+    assert_eq!(config.rate_limiting.media_download_cost, 5);
+}
+
+#[test]
+fn test_media_download_cost_from_toml() {
+    let toml_str = "[telegram]\napi_id = 12345\n[rate_limiting]\nmedia_download_cost = 9\n";
+    let config: Config = toml::from_str(toml_str).unwrap();
+    assert_eq!(config.rate_limiting.media_download_cost, 9);
+}
+
+#[test]
+fn test_download_secs_default() {
+    let config: Config = toml::from_str("[telegram]\napi_id = 12345\n").unwrap();
+    assert_eq!(config.telegram.timeouts.download_secs, 120);
+}
+
+#[test]
+fn test_download_secs_from_toml() {
+    let toml_str = "[telegram]\napi_id = 12345\n[telegram.timeouts]\ndownload_secs = 60\n";
+    let config: Config = toml::from_str(toml_str).unwrap();
+    assert_eq!(config.telegram.timeouts.download_secs, 60);
+}
+
+#[test]
+fn test_download_secs_zero_fails_validation() {
+    let toml_str = "[telegram]\napi_id = 12345\n[telegram.timeouts]\ndownload_secs = 0\n";
+    let config: Config = toml::from_str(toml_str).unwrap();
+    let result = config.telegram.timeouts.validate();
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("download_secs"));
+}
+
+#[test]
+fn test_max_buffered_payload_bytes_default() {
+    let config: Config = toml::from_str("[telegram]\napi_id = 12345\n").unwrap();
+    assert_eq!(config.observability.max_buffered_payload_bytes, 262_144);
+}
+
+#[test]
+fn test_max_buffered_payload_bytes_from_toml() {
+    let toml_str =
+        "[telegram]\napi_id = 12345\n[observability]\nmax_buffered_payload_bytes = 1024\n";
+    let config: Config = toml::from_str(toml_str).unwrap();
+    assert_eq!(config.observability.max_buffered_payload_bytes, 1024);
 }
