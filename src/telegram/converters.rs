@@ -1,9 +1,10 @@
 //! Type conversion helpers for grammers types to our domain types
 
 use crate::telegram::types::{
-    Channel, ChannelId, ChannelName, MediaFilter, MediaType, Message, MessageId, UserId, Username,
+    Channel, ChannelId, ChannelName, MediaFilter, MediaType, Message, MessageId, SizeCandidate,
+    UserId, Username,
 };
-use grammers_client::media::{Document, Media};
+use grammers_client::media::{Document, Media, PhotoSize};
 use grammers_client::tl;
 
 /// Convert our MediaFilter enum to grammers MessagesFilter for server-side filtering
@@ -173,6 +174,104 @@ pub fn convert_peer_to_channel(peer: &grammers_client::peer::Peer) -> Option<Cha
             );
             None
         }
+    }
+}
+
+/// Pick the size variant to download: the smallest whose longest side is at
+/// least `max_dimension` (no point downloading more pixels than will be
+/// returned), or the largest available when none qualifies.
+pub fn select_size_candidate(
+    candidates: &[SizeCandidate],
+    max_dimension: u32,
+) -> Option<SizeCandidate> {
+    candidates
+        .iter()
+        .filter(|c| c.width.max(c.height) >= max_dimension)
+        .min_by_key(|c| c.width.max(c.height))
+        .or_else(|| candidates.iter().max_by_key(|c| c.width.max(c.height)))
+        .cloned()
+}
+
+/// Extract downloadable size candidates from grammers photo/document thumbs.
+///
+/// `Stripped` and `Path` variants are tiny inline previews / vector outlines,
+/// not photo content; `Empty` is unavailable. All three are skipped.
+pub fn size_candidates(thumbs: &[PhotoSize]) -> Vec<SizeCandidate> {
+    thumbs
+        .iter()
+        .filter_map(|thumb| match thumb {
+            PhotoSize::Size(s) => Some(SizeCandidate {
+                width: s.width.max(0) as u32,
+                height: s.height.max(0) as u32,
+                size_bytes: s.size.max(0) as u64,
+                photo_type: thumb.photo_type(),
+            }),
+            PhotoSize::Cached(s) => Some(SizeCandidate {
+                width: s.width.max(0) as u32,
+                height: s.height.max(0) as u32,
+                size_bytes: s.bytes.len() as u64,
+                photo_type: thumb.photo_type(),
+            }),
+            PhotoSize::Progressive(s) => Some(SizeCandidate {
+                width: s.width.max(0) as u32,
+                height: s.height.max(0) as u32,
+                size_bytes: thumb.size() as u64,
+                photo_type: thumb.photo_type(),
+            }),
+            PhotoSize::Empty(_) | PhotoSize::Stripped(_) | PhotoSize::Path(_) => None,
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::telegram::types::SizeCandidate;
+
+    fn candidate(width: u32, height: u32, size_bytes: u64, tag: &str) -> SizeCandidate {
+        SizeCandidate {
+            width,
+            height,
+            size_bytes,
+            photo_type: tag.to_string(),
+        }
+    }
+
+    #[test]
+    fn selects_smallest_candidate_that_satisfies_max_dimension() {
+        let candidates = vec![
+            candidate(320, 180, 10_000, "m"),
+            candidate(1280, 720, 100_000, "x"),
+            candidate(2560, 1440, 400_000, "y"),
+        ];
+        let selected = select_size_candidate(&candidates, 1280).unwrap();
+        assert_eq!(selected.photo_type, "x");
+    }
+
+    #[test]
+    fn falls_back_to_largest_when_none_satisfies() {
+        let candidates = vec![
+            candidate(320, 180, 10_000, "m"),
+            candidate(800, 450, 40_000, "x"),
+        ];
+        let selected = select_size_candidate(&candidates, 1280).unwrap();
+        assert_eq!(selected.photo_type, "x");
+    }
+
+    #[test]
+    fn empty_candidates_returns_none() {
+        assert!(select_size_candidate(&[], 1280).is_none());
+    }
+
+    #[test]
+    fn longest_side_is_what_counts() {
+        // 720x1280 portrait qualifies for max_dimension 1280 via its height.
+        let candidates = vec![
+            candidate(720, 1280, 90_000, "x"),
+            candidate(1440, 2560, 300_000, "y"),
+        ];
+        let selected = select_size_candidate(&candidates, 1280).unwrap();
+        assert_eq!(selected.photo_type, "x");
     }
 }
 
