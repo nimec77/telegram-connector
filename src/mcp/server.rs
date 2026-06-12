@@ -1,4 +1,6 @@
+use crate::config::ObservabilityConfig;
 use crate::link::{ChannelRef, MessageLink, parse_telegram_link};
+use crate::mcp::observability::{InstrumentedTransport, ResponseBuffer, SessionMetrics};
 use crate::mcp::tools::{
     ChannelsResponse, GenerateLinkRequest, GetChannelInfoRequest, GetChannelsRequest,
     GetMessageByLinkRequest, GetRecentMessagesRequest, MessageLinkResponse, OpenMessageRequest,
@@ -13,34 +15,61 @@ use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{Implementation, InitializeResult, ServerCapabilities};
 use rmcp::{ServerHandler, ServiceExt, tool, tool_handler, tool_router};
 use std::sync::Arc;
+use std::time::Duration;
 
 #[derive(Clone)]
 pub struct McpServer<T: TelegramClientTrait, R: RateLimiterTrait> {
     telegram_client: Arc<T>,
     rate_limiter: Arc<R>,
+    metrics: Arc<SessionMetrics>,
+    response_buffer: Arc<ResponseBuffer>,
+    slow_write_threshold: Duration,
     #[allow(dead_code)]
     tool_router: ToolRouter<Self>,
 }
 
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {
     pub fn new(telegram_client: Arc<T>, rate_limiter: Arc<R>) -> Self {
+        let observability = ObservabilityConfig::default();
         Self {
             telegram_client,
             rate_limiter,
+            metrics: Arc::new(SessionMetrics::new()),
+            response_buffer: Arc::new(ResponseBuffer::new(observability.response_buffer_size)),
+            slow_write_threshold: Duration::from_millis(observability.slow_write_threshold_ms),
             tool_router: Self::tool_router(),
         }
     }
 
+    /// Apply `[observability]` settings (ring buffer capacity, slow-write threshold).
+    pub fn with_observability(mut self, config: &ObservabilityConfig) -> Self {
+        self.response_buffer = Arc::new(ResponseBuffer::new(config.response_buffer_size));
+        self.slow_write_threshold = Duration::from_millis(config.slow_write_threshold_ms);
+        self
+    }
+
+    /// Session metrics handle (shared with the transport; used for shutdown logging).
+    pub fn metrics(&self) -> Arc<SessionMetrics> {
+        Arc::clone(&self.metrics)
+    }
+
+    /// Response ring buffer handle (shared with the transport; used in tests).
+    pub fn response_buffer(&self) -> Arc<ResponseBuffer> {
+        Arc::clone(&self.response_buffer)
+    }
+
     pub async fn run_stdio(self) -> anyhow::Result<()> {
+        use rmcp::transport::async_rw::AsyncRwTransport;
         use tokio::io::{stdin, stdout};
 
-        // Create stdio transport
-        let transport = (stdin(), stdout());
+        let transport = InstrumentedTransport::new(
+            AsyncRwTransport::new_server(stdin(), stdout()),
+            Arc::clone(&self.metrics),
+            Arc::clone(&self.response_buffer),
+            self.slow_write_threshold,
+        );
 
-        // Start MCP server with stdio transport
         let server = self.serve(transport).await?;
-
-        // Wait for shutdown signal (blocks until server terminates)
         server.waiting().await?;
 
         Ok(())
