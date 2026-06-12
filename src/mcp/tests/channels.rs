@@ -6,7 +6,9 @@ use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::Username;
 use crate::telegram::{Channel, ChannelId, ChannelName};
+use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
+use rmcp::model::NumberOrString;
 use std::sync::Arc;
 
 /// Helper to create test channel
@@ -51,7 +53,9 @@ async fn get_subscribed_channels_returns_list() {
         offset: None,
     };
 
-    let result = server.get_subscribed_channels(Parameters(request)).await;
+    let result = server
+        .get_subscribed_channels(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Returns success with channel list
     assert!(result.is_ok());
@@ -85,7 +89,9 @@ async fn get_subscribed_channels_respects_pagination() {
         offset: Some(5),
     };
 
-    let result = server.get_subscribed_channels(Parameters(request)).await;
+    let result = server
+        .get_subscribed_channels(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Returns success with correct pagination values
     assert!(result.is_ok());
@@ -125,7 +131,9 @@ async fn get_channel_info_returns_channel_details() {
         channel_identifier: "testchannel".to_string(),
     };
 
-    let result = server.get_channel_info(Parameters(request)).await;
+    let result = server
+        .get_channel_info(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Returns channel details
     assert!(result.is_ok());
@@ -155,7 +163,9 @@ async fn get_channel_info_handles_error() {
         channel_identifier: "nonexistent".to_string(),
     };
 
-    let result = server.get_channel_info(Parameters(request)).await;
+    let result = server
+        .get_channel_info(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Returns error
     assert!(result.is_err());

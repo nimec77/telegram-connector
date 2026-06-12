@@ -8,7 +8,9 @@ use crate::telegram::types::{
     ChannelId, ChannelName, MediaFilter, MediaType, Message, MessageId, QueryMetadata,
     SearchResult, Username,
 };
+use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
+use rmcp::model::NumberOrString;
 use std::sync::Arc;
 
 #[tokio::test]
@@ -56,7 +58,9 @@ async fn search_messages_returns_results() {
         media_filter: None,
     };
 
-    let result = server.search_messages(Parameters(request)).await;
+    let result = server
+        .search_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Returns search results
     assert!(result.is_ok());
@@ -82,7 +86,9 @@ async fn search_messages_empty_query_fails() {
     };
 
     // When: Search messages
-    let result = server.search_messages(Parameters(request)).await;
+    let result = server
+        .search_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Returns error (empty query AND no media_filter)
     assert!(result.is_err());
@@ -116,7 +122,9 @@ async fn search_messages_rate_limited() {
     };
 
     // When: Search messages
-    let result = server.search_messages(Parameters(request)).await;
+    let result = server
+        .search_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Returns rate limit error
     assert!(result.is_err());
@@ -164,7 +172,9 @@ async fn search_messages_with_channel_filter() {
         media_filter: None,
     };
 
-    let result = server.search_messages(Parameters(request)).await;
+    let result = server
+        .search_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Success
     assert!(result.is_ok());
@@ -209,7 +219,9 @@ async fn search_messages_applies_limits() {
         media_filter: None,
     };
 
-    let result = server.search_messages(Parameters(request)).await;
+    let result = server
+        .search_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Success (limits applied internally)
     assert!(result.is_ok());
@@ -260,7 +272,9 @@ async fn search_allows_empty_query_with_media_filter() {
         media_filter: Some(MediaFilter::Document), // filter by documents
     };
 
-    let result = server.search_messages(Parameters(request)).await;
+    let result = server
+        .search_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Success (empty query allowed with media_filter)
     assert!(result.is_ok());
@@ -306,7 +320,9 @@ async fn search_passes_media_filter_to_params() {
         media_filter: Some(MediaFilter::Photo),
     };
 
-    let result = server.search_messages(Parameters(request)).await;
+    let result = server
+        .search_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Success and media_filter was passed to client
     assert!(result.is_ok());

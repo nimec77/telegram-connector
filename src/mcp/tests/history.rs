@@ -8,7 +8,9 @@ use crate::telegram::types::{
     Channel, ChannelId, ChannelName, MediaFilter, MediaType, Message, MessageId, QueryMetadata,
     SearchResult, Username,
 };
+use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
+use rmcp::model::NumberOrString;
 use std::sync::Arc;
 
 fn create_test_message(id: i64, text: &str, channel_id: i64) -> Message {
@@ -76,7 +78,9 @@ async fn get_recent_messages_returns_results() {
         media_filter: None,
     };
 
-    let result = server.get_recent_messages(Parameters(request)).await;
+    let result = server
+        .get_recent_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Returns messages
     assert!(result.is_ok());
@@ -100,7 +104,9 @@ async fn get_recent_messages_empty_channel_id_fails() {
     };
 
     // When: Get recent messages
-    let result = server.get_recent_messages(Parameters(request)).await;
+    let result = server
+        .get_recent_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Fails with error
     assert!(result.is_err());
@@ -142,7 +148,9 @@ async fn get_recent_messages_with_media_filter() {
         media_filter: Some(MediaFilter::Photo),
     };
 
-    let result = server.get_recent_messages(Parameters(request)).await;
+    let result = server
+        .get_recent_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Returns filtered results
     assert!(result.is_ok());
@@ -188,7 +196,9 @@ async fn get_recent_messages_applies_limits() {
         media_filter: None,
     };
 
-    let result = server.get_recent_messages(Parameters(request)).await;
+    let result = server
+        .get_recent_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Returns results with correct limits applied
     assert!(result.is_ok());
@@ -238,7 +248,9 @@ async fn get_recent_messages_with_username_resolves_channel() {
         media_filter: None,
     };
 
-    let result = server.get_recent_messages(Parameters(request)).await;
+    let result = server
+        .get_recent_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Username is resolved and messages are returned
     assert!(result.is_ok());
@@ -267,7 +279,9 @@ async fn get_recent_messages_rate_limited() {
     };
 
     // When: Get recent messages when rate limited
-    let result = server.get_recent_messages(Parameters(request)).await;
+    let result = server
+        .get_recent_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Returns rate limit error
     assert!(result.is_err());

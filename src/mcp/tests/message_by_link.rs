@@ -7,7 +7,9 @@ use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::Message;
 use crate::test_helpers::create_test_message;
+use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
+use rmcp::model::NumberOrString;
 use std::sync::Arc;
 
 #[tokio::test]
@@ -32,7 +34,9 @@ async fn get_message_by_link_public_link_returns_message() {
         link: "https://t.me/swodki/575403".to_string(),
     };
 
-    let result = server.get_message_by_link(Parameters(request)).await;
+    let result = server
+        .get_message_by_link(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Returns the message
     assert!(result.is_ok());
@@ -63,7 +67,9 @@ async fn get_message_by_link_private_link_returns_message() {
         link: "https://t.me/c/1234567/42".to_string(),
     };
 
-    let result = server.get_message_by_link(Parameters(request)).await;
+    let result = server
+        .get_message_by_link(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Returns the message
     assert!(result.is_ok());
@@ -84,7 +90,9 @@ async fn get_message_by_link_invalid_link_returns_error() {
         link: "https://example.com/not/telegram".to_string(),
     };
 
-    let result = server.get_message_by_link(Parameters(request)).await;
+    let result = server
+        .get_message_by_link(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Returns parse error (no API call made)
     assert!(result.is_err());
@@ -111,7 +119,9 @@ async fn get_message_by_link_channel_not_found() {
         link: "https://t.me/nonexistent/123".to_string(),
     };
 
-    let result = server.get_message_by_link(Parameters(request)).await;
+    let result = server
+        .get_message_by_link(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Returns error from client
     assert!(result.is_err());
@@ -138,7 +148,9 @@ async fn get_message_by_link_message_not_found() {
         link: "https://t.me/swodki/999999".to_string(),
     };
 
-    let result = server.get_message_by_link(Parameters(request)).await;
+    let result = server
+        .get_message_by_link(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Returns error
     assert!(result.is_err());
@@ -163,7 +175,9 @@ async fn get_message_by_link_rate_limited() {
     };
 
     // When: Rate limited
-    let result = server.get_message_by_link(Parameters(request)).await;
+    let result = server
+        .get_message_by_link(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Returns rate limit error (no API call made)
     assert!(result.is_err());

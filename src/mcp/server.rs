@@ -93,43 +93,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
         serde_json::to_string(&response).map_err(|e| e.to_string())
     }
-}
 
-#[tool_router]
-impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {
-    // ========================================================================
-    // MCP Tools
-    // ========================================================================
-
-    /// Tool 1: check_mcp_status - Health check and diagnostics
-    #[tool(description = "Check MCP connection status, rate limiter state, and session counters")]
-    pub async fn check_mcp_status(&self, id: RequestId) -> Result<String, String> {
-        let request_id = id.0.to_string();
-        let started = Instant::now();
-        tracing::info!(
-            tool = "check_mcp_status",
-            request_id = %request_id,
-            "Tool invocation started"
-        );
-        let result = self.check_mcp_status_impl().await;
-        log_tool_outcome("check_mcp_status", &request_id, started, &result);
-        result
-    }
-
-    /// Tool 2: get_subscribed_channels - List user's Telegram channels with pagination
-    #[tool(description = "List user's subscribed Telegram channels with pagination support")]
-    pub async fn get_subscribed_channels(
+    async fn get_subscribed_channels_impl(
         &self,
-        Parameters(request): Parameters<GetChannelsRequest>,
+        request: GetChannelsRequest,
     ) -> Result<String, String> {
         let limit = request.limit.unwrap_or(20);
         let offset = request.offset.unwrap_or(0);
-        tracing::info!(
-            tool = "get_subscribed_channels",
-            limit,
-            offset,
-            "Tool invocation started"
-        );
 
         let channels = self
             .telegram_client
@@ -149,17 +119,10 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         serde_json::to_string(&response).map_err(|e| e.to_string())
     }
 
-    /// Tool 3: get_channel_info - Get detailed information about a Telegram channel
-    #[tool(description = "Get detailed information about a Telegram channel by username or ID")]
-    pub async fn get_channel_info(
+    async fn get_channel_info_impl(
         &self,
-        Parameters(request): Parameters<GetChannelInfoRequest>,
+        request: GetChannelInfoRequest,
     ) -> Result<String, String> {
-        tracing::info!(
-            tool = "get_channel_info",
-            channel_identifier = %request.channel_identifier,
-            "Tool invocation started"
-        );
         let channel = self
             .telegram_client
             .get_channel_info(&request.channel_identifier)
@@ -169,19 +132,10 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         serde_json::to_string(&channel).map_err(|e| e.to_string())
     }
 
-    /// Tool 4: generate_message_link - Generate deep links for a Telegram message
-    #[tool(description = "Generate tg:// and https://t.me deep links for a Telegram message")]
-    pub async fn generate_message_link(
+    async fn generate_message_link_impl(
         &self,
-        Parameters(request): Parameters<GenerateLinkRequest>,
+        request: GenerateLinkRequest,
     ) -> Result<String, String> {
-        tracing::info!(
-            tool = "generate_message_link",
-            channel_id = %request.channel_id,
-            message_id = request.message_id,
-            include_tg_protocol = ?request.include_tg_protocol,
-            "Tool invocation started"
-        );
         // Parse and validate IDs using helpers
         let channel_id = parse_channel_id(&request.channel_id)?;
         let message_id = parse_message_id(request.message_id)?;
@@ -206,19 +160,10 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         serde_json::to_string(&response).map_err(|e| e.to_string())
     }
 
-    /// Tool 5: open_message_in_telegram - Open message in Telegram Desktop (macOS)
-    #[tool(description = "Open a specific message in Telegram Desktop application (macOS only)")]
-    pub async fn open_message_in_telegram(
+    async fn open_message_in_telegram_impl(
         &self,
-        Parameters(request): Parameters<OpenMessageRequest>,
+        request: OpenMessageRequest,
     ) -> Result<String, String> {
-        tracing::info!(
-            tool = "open_message_in_telegram",
-            channel_id = %request.channel_id,
-            message_id = request.message_id,
-            use_tg_protocol = ?request.use_tg_protocol,
-            "Tool invocation started"
-        );
         // Parse and validate IDs using helpers
         let channel_id = parse_channel_id(&request.channel_id)?;
         let message_id = parse_message_id(request.message_id)?;
@@ -272,23 +217,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         serde_json::to_string(&response).map_err(|e| e.to_string())
     }
 
-    /// Tool 6: search_messages - Search messages across Telegram channels
-    #[tool(
-        description = "Search messages across subscribed Telegram channels with optional filters"
-    )]
-    pub async fn search_messages(
-        &self,
-        Parameters(request): Parameters<SearchRequest>,
-    ) -> Result<String, String> {
-        tracing::info!(
-            tool = "search_messages",
-            query = %request.query,
-            channel_id = ?request.channel_id,
-            hours_back = ?request.hours_back,
-            limit = ?request.limit,
-            media_filter = ?request.media_filter,
-            "Tool invocation started"
-        );
+    async fn search_messages_impl(&self, request: SearchRequest) -> Result<String, String> {
         // Validate: query required unless media_filter is set
         if request.query.trim().is_empty() && request.media_filter.is_none() {
             return Err(
@@ -351,28 +280,16 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             message_ids = ?message_ids,
             search_time_ms = result.search_time_ms,
             channels_searched = result.query_metadata.channels_searched,
-            "Search completed"
+            "Search results"
         );
 
         serde_json::to_string(&result).map_err(|e| e.to_string())
     }
 
-    /// Tool 7: get_recent_messages - Get recent messages from a channel by time window
-    #[tool(
-        description = "Get recent messages from a specific channel by time window (no search query needed)"
-    )]
-    pub async fn get_recent_messages(
+    async fn get_recent_messages_impl(
         &self,
-        Parameters(request): Parameters<GetRecentMessagesRequest>,
+        request: GetRecentMessagesRequest,
     ) -> Result<String, String> {
-        tracing::info!(
-            tool = "get_recent_messages",
-            channel_id = %request.channel_id,
-            hours_back = ?request.hours_back,
-            limit = ?request.limit,
-            media_filter = ?request.media_filter,
-            "Tool invocation started"
-        );
         // Validate channel_id is provided
         if request.channel_id.trim().is_empty() {
             return Err("channel_id is required".to_string());
@@ -443,25 +360,16 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             messages_returned = message_ids.len(),
             message_ids = ?message_ids,
             search_time_ms = result.search_time_ms,
-            "Get recent messages completed"
+            "Recent messages results"
         );
 
         serde_json::to_string(&result).map_err(|e| e.to_string())
     }
 
-    /// Tool 8: get_message_by_link - Get a specific message by its t.me link
-    #[tool(
-        description = "Get a specific Telegram message by its t.me link (e.g. https://t.me/swodki/575403)"
-    )]
-    pub async fn get_message_by_link(
+    async fn get_message_by_link_impl(
         &self,
-        Parameters(request): Parameters<GetMessageByLinkRequest>,
+        request: GetMessageByLinkRequest,
     ) -> Result<String, String> {
-        tracing::info!(
-            tool = "get_message_by_link",
-            link = %request.link,
-            "Tool invocation started"
-        );
         // Parse the link
         let (channel_ref, message_id) =
             parse_telegram_link(&request.link).map_err(|e| e.to_string())?;
@@ -489,10 +397,190 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             link = %request.link,
             channel = %channel_identifier,
             message_id = message_id.get(),
-            "Get message by link completed"
+            "Message by link results"
         );
 
         serde_json::to_string(&message).map_err(|e| e.to_string())
+    }
+}
+
+#[tool_router]
+impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {
+    // ========================================================================
+    // MCP Tools
+    // ========================================================================
+
+    /// Tool 1: check_mcp_status - Health check and diagnostics
+    #[tool(description = "Check MCP connection status, rate limiter state, and session counters")]
+    pub async fn check_mcp_status(&self, id: RequestId) -> Result<String, String> {
+        let request_id = id.0.to_string();
+        let started = Instant::now();
+        tracing::info!(
+            tool = "check_mcp_status",
+            request_id = %request_id,
+            "Tool invocation started"
+        );
+        let result = self.check_mcp_status_impl().await;
+        log_tool_outcome("check_mcp_status", &request_id, started, &result);
+        result
+    }
+
+    /// Tool 2: get_subscribed_channels - List user's Telegram channels with pagination
+    #[tool(description = "List user's subscribed Telegram channels with pagination support")]
+    pub async fn get_subscribed_channels(
+        &self,
+        Parameters(request): Parameters<GetChannelsRequest>,
+        id: RequestId,
+    ) -> Result<String, String> {
+        let request_id = id.0.to_string();
+        let started = Instant::now();
+        tracing::info!(
+            tool = "get_subscribed_channels",
+            request_id = %request_id,
+            limit = ?request.limit,
+            offset = ?request.offset,
+            "Tool invocation started"
+        );
+        let result = self.get_subscribed_channels_impl(request).await;
+        log_tool_outcome("get_subscribed_channels", &request_id, started, &result);
+        result
+    }
+
+    /// Tool 3: get_channel_info - Get detailed information about a Telegram channel
+    #[tool(description = "Get detailed information about a Telegram channel by username or ID")]
+    pub async fn get_channel_info(
+        &self,
+        Parameters(request): Parameters<GetChannelInfoRequest>,
+        id: RequestId,
+    ) -> Result<String, String> {
+        let request_id = id.0.to_string();
+        let started = Instant::now();
+        tracing::info!(
+            tool = "get_channel_info",
+            request_id = %request_id,
+            channel_identifier = %request.channel_identifier,
+            "Tool invocation started"
+        );
+        let result = self.get_channel_info_impl(request).await;
+        log_tool_outcome("get_channel_info", &request_id, started, &result);
+        result
+    }
+
+    /// Tool 4: generate_message_link - Generate deep links for a Telegram message
+    #[tool(description = "Generate tg:// and https://t.me deep links for a Telegram message")]
+    pub async fn generate_message_link(
+        &self,
+        Parameters(request): Parameters<GenerateLinkRequest>,
+        id: RequestId,
+    ) -> Result<String, String> {
+        let request_id = id.0.to_string();
+        let started = Instant::now();
+        tracing::info!(
+            tool = "generate_message_link",
+            request_id = %request_id,
+            channel_id = %request.channel_id,
+            message_id = request.message_id,
+            include_tg_protocol = ?request.include_tg_protocol,
+            "Tool invocation started"
+        );
+        let result = self.generate_message_link_impl(request).await;
+        log_tool_outcome("generate_message_link", &request_id, started, &result);
+        result
+    }
+
+    /// Tool 5: open_message_in_telegram - Open message in Telegram Desktop (macOS)
+    #[tool(description = "Open a specific message in Telegram Desktop application (macOS only)")]
+    pub async fn open_message_in_telegram(
+        &self,
+        Parameters(request): Parameters<OpenMessageRequest>,
+        id: RequestId,
+    ) -> Result<String, String> {
+        let request_id = id.0.to_string();
+        let started = Instant::now();
+        tracing::info!(
+            tool = "open_message_in_telegram",
+            request_id = %request_id,
+            channel_id = %request.channel_id,
+            message_id = request.message_id,
+            use_tg_protocol = ?request.use_tg_protocol,
+            "Tool invocation started"
+        );
+        let result = self.open_message_in_telegram_impl(request).await;
+        log_tool_outcome("open_message_in_telegram", &request_id, started, &result);
+        result
+    }
+
+    /// Tool 6: search_messages - Search messages across Telegram channels
+    #[tool(
+        description = "Search messages across subscribed Telegram channels with optional filters"
+    )]
+    pub async fn search_messages(
+        &self,
+        Parameters(request): Parameters<SearchRequest>,
+        id: RequestId,
+    ) -> Result<String, String> {
+        let request_id = id.0.to_string();
+        let started = Instant::now();
+        tracing::info!(
+            tool = "search_messages",
+            request_id = %request_id,
+            query = %request.query,
+            channel_id = ?request.channel_id,
+            hours_back = ?request.hours_back,
+            limit = ?request.limit,
+            media_filter = ?request.media_filter,
+            "Tool invocation started"
+        );
+        let result = self.search_messages_impl(request).await;
+        log_tool_outcome("search_messages", &request_id, started, &result);
+        result
+    }
+
+    /// Tool 7: get_recent_messages - Get recent messages from a channel by time window
+    #[tool(
+        description = "Get recent messages from a specific channel by time window (no search query needed)"
+    )]
+    pub async fn get_recent_messages(
+        &self,
+        Parameters(request): Parameters<GetRecentMessagesRequest>,
+        id: RequestId,
+    ) -> Result<String, String> {
+        let request_id = id.0.to_string();
+        let started = Instant::now();
+        tracing::info!(
+            tool = "get_recent_messages",
+            request_id = %request_id,
+            channel_id = %request.channel_id,
+            hours_back = ?request.hours_back,
+            limit = ?request.limit,
+            media_filter = ?request.media_filter,
+            "Tool invocation started"
+        );
+        let result = self.get_recent_messages_impl(request).await;
+        log_tool_outcome("get_recent_messages", &request_id, started, &result);
+        result
+    }
+
+    /// Tool 8: get_message_by_link - Get a specific message by its t.me link
+    #[tool(
+        description = "Get a specific Telegram message by its t.me link (e.g. https://t.me/swodki/575403)"
+    )]
+    pub async fn get_message_by_link(
+        &self,
+        Parameters(request): Parameters<GetMessageByLinkRequest>,
+        id: RequestId,
+    ) -> Result<String, String> {
+        let request_id = id.0.to_string();
+        let started = Instant::now();
+        tracing::info!(
+            tool = "get_message_by_link",
+            request_id = %request_id,
+            link = %request.link,
+            "Tool invocation started"
+        );
+        let result = self.get_message_by_link_impl(request).await;
+        log_tool_outcome("get_message_by_link", &request_id, started, &result);
+        result
     }
 }
 

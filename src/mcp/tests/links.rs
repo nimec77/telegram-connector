@@ -6,7 +6,9 @@ use crate::mcp::tools::{
 };
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
+use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
+use rmcp::model::NumberOrString;
 use std::sync::Arc;
 
 // ============================================================================
@@ -27,7 +29,9 @@ async fn generate_message_link_returns_both_formats() {
     };
 
     // When: Generate link
-    let result = server.generate_message_link(Parameters(request)).await;
+    let result = server
+        .generate_message_link(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Returns both link formats
     assert!(result.is_ok());
@@ -56,7 +60,9 @@ async fn generate_message_link_without_tg_protocol() {
     };
 
     // When: Generate link
-    let result = server.generate_message_link(Parameters(request)).await;
+    let result = server
+        .generate_message_link(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Returns only HTTPS link (tg_protocol_link is None)
     assert!(result.is_ok());
@@ -79,7 +85,9 @@ async fn generate_message_link_invalid_channel_id() {
     };
 
     // When: Generate link
-    let result = server.generate_message_link(Parameters(request)).await;
+    let result = server
+        .generate_message_link(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Returns error
     assert!(result.is_err());
@@ -106,7 +114,9 @@ async fn open_message_in_telegram_invalid_channel_id() {
     };
 
     // When: Try to open message
-    let result = server.open_message_in_telegram(Parameters(request)).await;
+    let result = server
+        .open_message_in_telegram(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Returns error
     assert!(result.is_err());
@@ -129,7 +139,9 @@ async fn open_message_in_telegram_uses_tg_protocol_by_default() {
     };
 
     // When: Open message
-    let result = server.open_message_in_telegram(Parameters(request)).await;
+    let result = server
+        .open_message_in_telegram(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Returns response with tg:// link
     assert!(result.is_ok());
@@ -151,7 +163,9 @@ async fn open_message_in_telegram_uses_https_when_requested() {
     };
 
     // When: Open message
-    let result = server.open_message_in_telegram(Parameters(request)).await;
+    let result = server
+        .open_message_in_telegram(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Returns response with https:// link
     assert!(result.is_ok());
