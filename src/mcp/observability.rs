@@ -137,8 +137,10 @@ pub struct BufferedResponse {
     pub request_id: String,
     pub tool_name: String,
     pub written_at: SystemTime,
+    /// Byte count of the serialized JSON-RPC envelope (excludes the framing newline
+    /// appended by the transport layer).
     pub size_bytes: usize,
-    /// The serialized JSON-RPC envelope exactly as written to stdout.
+    /// The serialized JSON-RPC envelope exactly as written to stdout (no framing newline).
     pub payload: String,
 }
 
@@ -263,6 +265,8 @@ impl<T: Transport<RoleServer>> Transport<RoleServer> for InstrumentedTransport<T
                         .unwrap_or_default();
                     let total_ms =
                         in_flight.map(|request| request.received_at.elapsed().as_millis() as u64);
+                    // Counts the serialized envelope bytes; excludes the framing '\n'
+                    // that rmcp's AsyncRwTransport appends on the wire.
                     let size_bytes = payload.as_ref().map_or(0, String::len);
                     tracing::info!(
                         request_id = %request_id,
@@ -333,7 +337,8 @@ mod tests {
     use super::*;
     use rmcp::RoleServer;
     use rmcp::model::{
-        JsonRpcMessage, JsonRpcResponse, JsonRpcVersion2_0, RequestId, ServerResult,
+        JsonRpcMessage, JsonRpcNotification, JsonRpcResponse, JsonRpcVersion2_0, NumberOrString,
+        ProgressNotificationParam, ProgressToken, RequestId, ServerNotification, ServerResult,
     };
     use rmcp::service::{RxJsonRpcMessage, TxJsonRpcMessage};
     use rmcp::transport::Transport;
@@ -450,6 +455,8 @@ mod tests {
     async fn send_response_updates_metrics_and_buffer() {
         let (mut transport, metrics, buffer) =
             instrumented(vec![call_tool_request(1, "search_messages")]);
+        // Grab a clone of the sent-records handle before any sends happen.
+        let sent_handle = Arc::clone(&transport.inner.sent);
         transport.receive().await;
         transport.send(tool_response(1)).await.expect("send ok");
 
@@ -463,6 +470,11 @@ mod tests {
         assert_eq!(buffered[0].tool_name, "search_messages");
         assert!(buffered[0].payload.contains("jsonrpc"));
         assert_eq!(buffered[0].size_bytes, buffered[0].payload.len());
+
+        // Verify the buffered recovery copy is byte-identical to what the inner transport wrote.
+        let sent_entries = sent_handle.lock().unwrap_or_else(PoisonError::into_inner);
+        assert_eq!(sent_entries.len(), 1);
+        assert_eq!(sent_entries[0], buffered[0].payload);
     }
 
     #[tokio::test]
@@ -487,6 +499,53 @@ mod tests {
         // Failed write leaves the request in-flight (it was never answered).
         assert_eq!(metrics.abandoned_requests().len(), 1);
         assert!(buffer.is_empty());
+    }
+
+    #[tokio::test]
+    async fn send_notification_passes_through_unaccounted() {
+        // The early-return branch in send() (response_id == None) must pass through
+        // without touching metrics or the buffer.
+        let (mut transport, metrics, buffer) = instrumented(vec![]);
+        let notification: TxJsonRpcMessage<RoleServer> =
+            JsonRpcMessage::Notification(JsonRpcNotification {
+                jsonrpc: JsonRpcVersion2_0,
+                notification: ServerNotification::ProgressNotification(
+                    rmcp::model::Notification::new(ProgressNotificationParam::new(
+                        ProgressToken(NumberOrString::Number(1)),
+                        50.0,
+                    )),
+                ),
+            });
+        transport.send(notification).await.expect("send ok");
+        assert_eq!(metrics.responses_written(), 0);
+        assert!(buffer.is_empty());
+        let sent_entries = transport
+            .inner
+            .sent
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        assert_eq!(
+            sent_entries.len(),
+            1,
+            "inner transport should have written the notification"
+        );
+    }
+
+    #[tokio::test]
+    async fn send_slow_write_warns_with_zero_threshold() {
+        // A zero threshold means every nonzero-elapsed write triggers the warn branch.
+        // This test constructs InstrumentedTransport directly to use Duration::ZERO.
+        let metrics = Arc::new(SessionMetrics::new());
+        let buffer = Arc::new(ResponseBuffer::new(10));
+        let mut transport = InstrumentedTransport::new(
+            FakeTransport::new(vec![call_tool_request(1, "search_messages")]),
+            Arc::clone(&metrics),
+            Arc::clone(&buffer),
+            Duration::ZERO,
+        );
+        transport.receive().await;
+        transport.send(tool_response(1)).await.expect("send ok");
+        assert_eq!(metrics.responses_written(), 1);
     }
 
     #[test]
