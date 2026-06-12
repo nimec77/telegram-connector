@@ -55,6 +55,41 @@ pub enum MediaFilter {
     Pinned,
 }
 
+/// Raw media bytes downloaded from Telegram plus source metadata.
+///
+/// Produced by `TelegramClientTrait::download_message_media`; consumed by the
+/// MCP-layer image pipeline. Carries no grammers types so it can flow through
+/// the mockable trait boundary.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MediaDownload {
+    /// Raw downloaded image bytes (JPEG as served by Telegram).
+    pub bytes: Vec<u8>,
+    /// What the source message's media was (Photo, Video, Animation, VideoNote).
+    pub media_type: MediaType,
+    /// True when `bytes` is a video-like media's thumbnail, not the media itself.
+    pub is_thumbnail: bool,
+    /// Message caption (`msg.text()` on media messages), None when empty.
+    pub caption: Option<String>,
+    /// Pixel width of the downloaded size variant, if Telegram reported it.
+    pub width: Option<u32>,
+    /// Pixel height of the downloaded size variant, if Telegram reported it.
+    pub height: Option<u32>,
+    /// Byte size of the downloaded size variant.
+    pub source_size_bytes: u64,
+}
+
+/// A downloadable size variant of a photo or thumbnail, decoupled from
+/// grammers `PhotoSize` so size selection is a pure, testable function.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SizeCandidate {
+    pub width: u32,
+    pub height: u32,
+    pub size_bytes: u64,
+    /// Telegram thumbnail type tag (e.g. "m", "x", "y") used to map the
+    /// selection back to the grammers PhotoSize to download.
+    pub photo_type: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -148,5 +183,31 @@ mod tests {
         let json = serde_json::to_string(&original).unwrap();
         let deserialized: MediaFilter = serde_json::from_str(&json).unwrap();
         assert_eq!(original, deserialized);
+    }
+
+    #[test]
+    fn media_download_construction() {
+        let download = MediaDownload {
+            bytes: vec![0xff, 0xd8],
+            media_type: MediaType::Photo,
+            is_thumbnail: false,
+            caption: Some("a chart".to_string()),
+            width: Some(1280),
+            height: Some(720),
+            source_size_bytes: 2,
+        };
+        assert_eq!(download.media_type, MediaType::Photo);
+        assert!(!download.is_thumbnail);
+    }
+
+    #[test]
+    fn size_candidate_construction() {
+        let candidate = SizeCandidate {
+            width: 800,
+            height: 600,
+            size_bytes: 50_000,
+            photo_type: "x".to_string(),
+        };
+        assert_eq!(candidate.width.max(candidate.height), 800);
     }
 }
