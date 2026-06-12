@@ -24,6 +24,8 @@ cargo run --bin telegram-mcp           # Run the binary
 cargo fmt --check && cargo clippy -- -D warnings && cargo test
 ```
 
+The same commands are available as `just` recipes (see `justfile`): run `just` to list them, `just check` for the full pre-commit gate.
+
 ## Toolchain & Dependencies
 
 - **Rust nightly** (2024 edition) — required for `let chains` and other nightly features; no `rust-toolchain.toml`, nightly is implied by `edition = "2024"`
