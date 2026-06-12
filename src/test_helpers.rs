@@ -144,6 +144,25 @@ pub fn create_empty_search_result(query: &str) -> SearchResult {
     create_test_search_result(vec![], query, 0)
 }
 
+/// Generate an in-memory JPEG with a noisy gradient (compresses poorly, so
+/// payload-cap tests can trigger the shrink loop with a small cap).
+pub fn create_test_jpeg(width: u32, height: u32) -> Vec<u8> {
+    let img = image::RgbImage::from_fn(width, height, |x, y| {
+        image::Rgb([
+            (x % 256) as u8,
+            (y % 256) as u8,
+            ((x * 7 + y * 13) % 256) as u8,
+        ])
+    });
+    let mut buf = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgb8(img)
+        .write_with_encoder(image::codecs::jpeg::JpegEncoder::new_with_quality(
+            &mut buf, 90,
+        ))
+        .expect("test JPEG encoding cannot fail");
+    buf.into_inner()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

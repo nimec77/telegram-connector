@@ -4,6 +4,7 @@
 //! Tools are organized in subdirectory for better maintainability.
 
 pub mod helpers;
+pub mod image;
 pub mod types;
 
 // Re-export types for convenience
