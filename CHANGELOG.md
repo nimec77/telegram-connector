@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Updated `chrono` from 0.4.44 to 0.4.45; audited all other direct dependencies against crates.io and confirmed they are already at their latest stable versions. A full `cargo update` remains blocked upstream (`grammers-crypto` requires `glass_pumpkin` ^1.7, whose non-yanked releases depend on the fully-yanked `core2` crate) — use targeted `cargo update -p <crate>` until that is fixed.
+
 ## [0.6.0] - 2026-06-12
 
 ### Added
