@@ -2913,34 +2913,35 @@ The project convention "all tools return `Result<String, String>`" is a project-
 
 ### Server-side size selection algorithm
 
-For photos: download the smallest `PhotoSize` variant whose longest side >= `max_dimension`. If all variants are smaller than `max_dimension`, download the largest available. This minimizes download bytes while guaranteeing the request resolution is met.
+Telegram stores each photo in several pre-generated sizes (grammers `PhotoSize`). `size_candidates()` (converters.rs) extracts downloadable variants (`Size`/`Cached`/`Progressive`; `Empty`/`Stripped`/`Path` are skipped) into the grammers-free `SizeCandidate` struct, and the pure `select_size_candidate()` picks the smallest variant whose longest side >= `max_dimension`, falling back to the largest available. This minimizes download bytes while guaranteeing the requested resolution is met. Ties on longest side pick the first candidate (pinned by test).
 
-For video/animation/video notes: apply the same rule to the `VideoSize` thumbnail variants. If no thumbnail variants exist, return a structured error.
+For video/animation/video notes: the same rule runs over `document.thumbs()` (also `PhotoSize` values — there is no separate thumbnail type). No usable variant → `Error::DownloadFailed("no downloadable size variant available")`.
 
-The selected variant is refused if its reported byte size exceeds 20 MB.
+The selected variant is refused if its reported byte size exceeds 20 MB (`Error::MediaTooLarge`), and the streaming loop re-checks accumulated bytes against the same cap because reported sizes are untrusted input. `PhotoSize::Cached` needs no network call — grammers `iter_download` short-circuits via `to_data()`.
 
 ### ResponseBuffer stub for large payloads
 
-Responses larger than `[observability] max_buffered_payload_bytes` (default 262144 = 256 KiB) are stored in the `get_last_responses` ring buffer as a stub string (`"[image payload ~N bytes — too large to buffer]"`) instead of the full base64 payload. This prevents megabyte-sized image responses from pinning memory in the ring buffer and from being replayed as text blocks by `get_last_responses`.
+Responses larger than `[observability] max_buffered_payload_bytes` (default 262144 = 256 KiB) are stored in the `get_last_responses` ring buffer with their payload replaced by `OVERSIZED_PAYLOAD_STUB` (`{"omitted":"payload exceeded max_buffered_payload_bytes"}` — valid JSON so the tool can embed it); `size_bytes` keeps the real wire size. This prevents megabyte-sized image responses from pinning memory in the ring buffer and from being replayed as text by `get_last_responses`.
 
-### Tests: +65 (305 → 370)
+### Tests: +39 (331 → 370)
 
-- Unit tests for `PhotoSizeSelector` size-selection logic, `VideoSizeSelector`, 20 MB refusal, stub thresholding.
-- Unit tests for the image pipeline (`scale_jpeg_image`, `encode_jpeg`, dimension clamping, downscale guard).
-- MCP tool tests in `src/mcp/tests/message_by_link.rs` and `src/mcp/tests/last_responses.rs` extended; new `src/mcp/tests/media.rs` for `get_message_media` cases.
+- Selector tests in `converters.rs` (smallest-sufficient, fallback-largest, empty, portrait, tie-break, single candidate).
+- Image pipeline tests in `src/mcp/tools/image.rs` (`process_image`: downscale dimensions, no-upscale guard, base64/JPEG round-trip, payload-cap shrink loop, decode error) using the `create_test_jpeg` fixture in `test_helpers.rs`.
+- New `src/mcp/tests/media.rs` (10 mock-based tool tests: photo blocks, video thumbnail, no-media error, oversize, both clamp bounds, cost charging, rate-limit short-circuit, decode error, metadata/size consistency); mock conformance test in `src/telegram/tests/client_tests.rs`; stub integration test in `src/mcp/tests/last_responses.rs`; config defaults/parse/validation tests.
 - Total: **370 lib tests passing, 5 ignored.**
 
 ### Files Changed
 
-- `Cargo.toml` — added `image` crate for JPEG encode/decode/resize.
-- `src/error.rs` — new `Error::MediaTooLarge`, `Error::NoVisualMedia`, `Error::DownloadTimeout` variants.
-- `src/config.rs` — `[rate_limiting] media_download_cost` (default 5); `[telegram.timeouts] download_secs` (default 120); `[observability] max_buffered_payload_bytes` (default 262144).
-- `src/telegram/types/media.rs` — `PhotoSizeInfo`, `VideoSizeInfo`, size-selection helpers.
-- `src/telegram/trait_def.rs` — `download_media` method on `TelegramClientTrait`.
-- `src/telegram/client.rs` — `download_media` implementation; `download_secs` timeout applied.
-- `src/mcp/tools/image.rs` — JPEG pipeline: scale, encode, base64; downscale guard; 1.5 MB payload cap.
-- `src/mcp/tools/types/requests.rs` — `GetMessageMediaRequest`.
-- `src/mcp/tools/types/responses.rs` — `MediaMetadata`.
-- `src/mcp/server.rs` — `get_message_media` tool (tool 10); `with_media_download_cost` builder method.
-- `src/mcp/observability.rs` — `ResponseBuffer::push` stubs payloads above `max_buffered_payload_bytes`.
+- `Cargo.toml` — added `image` (0.25, jpeg-only features) and `base64` (0.22).
+- `src/error.rs` — new `Error::MediaTooLarge`, `Error::NoVisualMedia`, `Error::DownloadFailed` variants.
+- `src/config.rs` — `[rate_limiting] media_download_cost` (default 5); `[telegram.timeouts] download_secs` (default 120, validated > 0); `[observability] max_buffered_payload_bytes` (default 262144).
+- `src/telegram/types/media.rs` — `MediaDownload`, `SizeCandidate` domain types.
+- `src/telegram/converters.rs` — `size_candidates()`, `select_size_candidate()`.
+- `src/telegram/trait_def.rs` — `download_message_media` method on `TelegramClientTrait`.
+- `src/telegram/client.rs` — `download_message_media` implementation; `resolve_peer` extracted from `get_message_by_id` and shared; `download_secs` timeout applied.
+- `src/mcp/tools/image.rs` — `process_image`/`ProcessedImage`: decode, Lanczos3 downscale, JPEG q80 re-encode, base64, iterative shrink under `MAX_BASE64_LEN` (1.5 MB).
+- `src/mcp/tools/types/requests.rs` — `GetMessageMediaRequest` (flexible scalar coercion).
+- `src/mcp/tools/types/responses.rs` — `GetMessageMediaResponse` (12-field metadata block).
+- `src/mcp/server.rs` — `get_message_media` tool (tool 10); `media_download_cost` field + `with_media_download_cost` builder; `log_tool_outcome` generalized to `<T>`.
+- `src/mcp/observability.rs` — `ResponseBuffer::push` stubs payloads above `max_buffered_payload_bytes` (two-arg constructor).
 - `src/main.rs` — `.with_media_download_cost(config.rate_limiting.media_download_cost)` wired in.
