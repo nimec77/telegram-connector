@@ -15,6 +15,23 @@ pub struct StatusResponse {
 
     #[schemars(description = "Server version")]
     pub server_version: String,
+
+    #[schemars(description = "Inbound JSON-RPC requests received this session")]
+    pub requests_received: u64,
+
+    #[schemars(description = "Responses successfully written to stdout this session")]
+    pub responses_written: u64,
+
+    #[schemars(
+        description = "Seconds since the last successful response write (null before the first)"
+    )]
+    pub last_response_write_age_secs: Option<u64>,
+
+    #[schemars(description = "Session start time (RFC3339 UTC)")]
+    pub session_started_at: String,
+
+    #[schemars(description = "Session uptime in seconds")]
+    pub session_uptime_secs: u64,
 }
 
 /// Response for get_subscribed_channels tool
@@ -72,6 +89,11 @@ mod tests {
             telegram_connected: true,
             rate_limiter_tokens: 45.5,
             server_version: "0.1.0".to_string(),
+            requests_received: 1,
+            responses_written: 1,
+            last_response_write_age_secs: Some(0),
+            session_started_at: "2026-06-12T00:00:00+00:00".to_string(),
+            session_uptime_secs: 60,
         };
 
         let json = serde_json::to_string(&response).unwrap();

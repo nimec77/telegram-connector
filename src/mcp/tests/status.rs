@@ -4,6 +4,8 @@ use crate::mcp::server::McpServer;
 use crate::mcp::tools::StatusResponse;
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
+use rmcp::handler::server::common::RequestId;
+use rmcp::model::NumberOrString;
 use std::sync::Arc;
 
 #[tokio::test]
@@ -18,7 +20,9 @@ async fn check_status_returns_connection_info() {
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     // When: Call check_mcp_status
-    let result = server.check_mcp_status().await;
+    let result = server
+        .check_mcp_status(RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Returns success with connection info
     assert!(result.is_ok());
@@ -40,11 +44,56 @@ async fn check_status_reports_disconnected() {
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     // When: Call check_mcp_status
-    let result = server.check_mcp_status().await;
+    let result = server
+        .check_mcp_status(RequestId(NumberOrString::Number(1)))
+        .await;
 
     // Then: Returns disconnected status
     assert!(result.is_ok());
     let response: StatusResponse = serde_json::from_str(&result.unwrap()).unwrap();
     assert!(!response.telegram_connected);
     assert_eq!(response.rate_limiter_tokens, 0.0);
+}
+
+#[tokio::test]
+async fn check_status_includes_session_counters() {
+    let mut mock_client = MockTelegramClientTrait::new();
+    mock_client.expect_is_connected().return_once(|| true);
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_available_tokens().return_once(|| 10.0);
+
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+    let metrics = server.metrics();
+    metrics.record_request("42", "search_messages");
+    metrics.record_response_written("42");
+
+    let result = server
+        .check_mcp_status(RequestId(NumberOrString::Number(1)))
+        .await
+        .expect("status ok");
+    let response: StatusResponse = serde_json::from_str(&result).expect("valid JSON");
+
+    assert_eq!(response.requests_received, 1);
+    assert_eq!(response.responses_written, 1);
+    assert_eq!(response.last_response_write_age_secs, Some(0));
+    assert!(chrono::DateTime::parse_from_rfc3339(&response.session_started_at).is_ok());
+}
+
+#[tokio::test]
+async fn check_status_age_is_none_before_first_write() {
+    let mut mock_client = MockTelegramClientTrait::new();
+    mock_client.expect_is_connected().return_once(|| true);
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_available_tokens().return_once(|| 10.0);
+
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+    let result = server
+        .check_mcp_status(RequestId(NumberOrString::Number(1)))
+        .await
+        .expect("status ok");
+    let response: StatusResponse = serde_json::from_str(&result).expect("valid JSON");
+
+    assert_eq!(response.requests_received, 0);
+    assert_eq!(response.responses_written, 0);
+    assert_eq!(response.last_response_write_age_secs, None);
 }

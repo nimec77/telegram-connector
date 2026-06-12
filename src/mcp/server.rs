@@ -10,12 +10,13 @@ use crate::mcp::tools::{
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
 use crate::telegram::types::{HistoryParams, SearchParams};
+use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{Implementation, InitializeResult, ServerCapabilities};
 use rmcp::{ServerHandler, ServiceExt, tool, tool_handler, tool_router};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[derive(Clone)]
 pub struct McpServer<T: TelegramClientTrait, R: RateLimiterTrait> {
@@ -74,6 +75,24 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
         Ok(())
     }
+
+    async fn check_mcp_status_impl(&self) -> Result<String, String> {
+        let connected = self.telegram_client.is_connected().await;
+        let tokens = self.rate_limiter.available_tokens();
+
+        let response = StatusResponse {
+            telegram_connected: connected,
+            rate_limiter_tokens: tokens,
+            server_version: env!("CARGO_PKG_VERSION").to_string(),
+            requests_received: self.metrics.requests_received(),
+            responses_written: self.metrics.responses_written(),
+            last_response_write_age_secs: self.metrics.last_write_age_secs(),
+            session_started_at: self.metrics.session_started_at_rfc3339(),
+            session_uptime_secs: self.metrics.uptime_secs(),
+        };
+
+        serde_json::to_string(&response).map_err(|e| e.to_string())
+    }
 }
 
 #[tool_router]
@@ -83,19 +102,18 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     // ========================================================================
 
     /// Tool 1: check_mcp_status - Health check and diagnostics
-    #[tool(description = "Check MCP connection status and rate limiter state")]
-    pub async fn check_mcp_status(&self) -> Result<String, String> {
-        tracing::info!(tool = "check_mcp_status", "Tool invocation started");
-        let connected = self.telegram_client.is_connected().await;
-        let tokens = self.rate_limiter.available_tokens();
-
-        let response = StatusResponse {
-            telegram_connected: connected,
-            rate_limiter_tokens: tokens,
-            server_version: env!("CARGO_PKG_VERSION").to_string(),
-        };
-
-        serde_json::to_string(&response).map_err(|e| e.to_string())
+    #[tool(description = "Check MCP connection status, rate limiter state, and session counters")]
+    pub async fn check_mcp_status(&self, id: RequestId) -> Result<String, String> {
+        let request_id = id.0.to_string();
+        let started = Instant::now();
+        tracing::info!(
+            tool = "check_mcp_status",
+            request_id = %request_id,
+            "Tool invocation started"
+        );
+        let result = self.check_mcp_status_impl().await;
+        log_tool_outcome("check_mcp_status", &request_id, started, &result);
+        result
     }
 
     /// Tool 2: get_subscribed_channels - List user's Telegram channels with pagination
@@ -491,6 +509,30 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> ServerHand
         InitializeResult::new(capabilities)
             .with_server_info(server_info)
             .with_instructions("Telegram MCP Connector - Search Russian Telegram channels")
+    }
+}
+
+/// Log the symmetric completion entry for a tool invocation.
+fn log_tool_outcome(
+    tool: &str,
+    request_id: &str,
+    started: Instant,
+    result: &Result<String, String>,
+) {
+    let duration_ms = started.elapsed().as_millis() as u64;
+    match result {
+        Ok(_) => {
+            tracing::info!(tool, request_id, duration_ms, "Tool invocation completed");
+        }
+        Err(error) => {
+            tracing::warn!(
+                tool,
+                request_id,
+                duration_ms,
+                error = %error,
+                "Tool invocation failed"
+            );
+        }
     }
 }
 
