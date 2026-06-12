@@ -1,5 +1,6 @@
 //! Tests for get_last_responses tool
 
+use crate::ObservabilityConfig;
 use crate::mcp::observability::BufferedResponse;
 use crate::mcp::server::McpServer;
 use crate::mcp::tools::{GetLastResponsesRequest, LastResponsesResponse};
@@ -92,4 +93,51 @@ async fn n_caps_returned_entries_but_reports_total_buffered() {
     assert_eq!(response.responses.len(), 2);
     assert_eq!(response.responses[0].request_id, "3");
     assert_eq!(response.buffered, 3);
+}
+
+#[tokio::test]
+async fn oversized_payload_is_returned_as_stub_with_real_size() {
+    // Server whose buffer stubs payloads over 100 bytes.
+    let server = make_server().with_observability(&ObservabilityConfig {
+        max_buffered_payload_bytes: 100,
+        response_buffer_size: 10,
+        ..ObservabilityConfig::default()
+    });
+
+    // Build a valid-JSON payload that is clearly over 100 bytes.
+    let big_value = "x".repeat(180);
+    let payload = format!(r#"{{"data":"{big_value}"}}"#); // ~190 bytes of valid JSON
+    let real_size = payload.len();
+    assert!(
+        real_size > 100,
+        "test payload must exceed the stub threshold (was {real_size})"
+    );
+
+    server.response_buffer().push(BufferedResponse {
+        request_id: "42".to_string(),
+        tool_name: "search_messages".to_string(),
+        written_at: SystemTime::now(),
+        size_bytes: real_size, // real wire size, unchanged by stubbing
+        payload,
+    });
+
+    let result = server
+        .get_last_responses(
+            Parameters(GetLastResponsesRequest { n: None }),
+            RequestId(NumberOrString::Number(1)),
+        )
+        .await
+        .expect("tool ok");
+    let response: LastResponsesResponse = serde_json::from_str(&result).expect("valid JSON");
+
+    assert_eq!(response.buffered, 1);
+    let entry = &response.responses[0];
+    // size_bytes must reflect the real wire size, not the stub size.
+    assert_eq!(entry.size_bytes, real_size);
+    // The stored payload must be the stub, identified by the "omitted" key.
+    assert!(
+        entry.response.get("omitted").is_some(),
+        "expected stub with \"omitted\" key, got: {}",
+        entry.response
+    );
 }

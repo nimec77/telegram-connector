@@ -91,10 +91,14 @@ pub struct BufferedResponseEntry {
     #[schemars(description = "When the response was written to stdout (RFC3339 UTC)")]
     pub written_at: String,
 
-    #[schemars(description = "Serialized payload size in bytes")]
+    #[schemars(
+        description = "Wire size of the original response in bytes (payloads above max_buffered_payload_bytes are stored as a stub)"
+    )]
     pub size_bytes: usize,
 
-    #[schemars(description = "The JSON-RPC envelope exactly as written to stdout")]
+    #[schemars(
+        description = "The JSON-RPC envelope as written to stdout; very large payloads are replaced with a stub object containing an \"omitted\" key"
+    )]
     pub response: serde_json::Value,
 }
 

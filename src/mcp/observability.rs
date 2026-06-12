@@ -141,6 +141,9 @@ pub struct BufferedResponse {
     /// appended by the transport layer).
     pub size_bytes: usize,
     /// The serialized JSON-RPC envelope exactly as written to stdout (no framing newline).
+    /// Payloads larger than `max_buffered_payload_bytes` are replaced with
+    /// `OVERSIZED_PAYLOAD_STUB` before being stored; `size_bytes` still reflects
+    /// the real wire size of the original response.
     pub payload: String,
 }
 
