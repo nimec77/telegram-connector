@@ -428,6 +428,7 @@ fn test_default_timeout_config_values() {
     assert_eq!(config.resolve_secs, 30);
     assert_eq!(config.history_secs, 60);
     assert_eq!(config.search_secs, 120);
+    assert_eq!(config.download_secs, 120);
 }
 
 #[test]
@@ -439,6 +440,7 @@ api_id = 12345
     assert_eq!(cfg.timeouts.resolve_secs, 30);
     assert_eq!(cfg.timeouts.history_secs, 60);
     assert_eq!(cfg.timeouts.search_secs, 120);
+    assert_eq!(cfg.timeouts.download_secs, 120);
 }
 
 #[test]
@@ -453,6 +455,7 @@ search_secs = 300
     assert_eq!(cfg.timeouts.resolve_secs, 30);
     assert_eq!(cfg.timeouts.history_secs, 60);
     assert_eq!(cfg.timeouts.search_secs, 300);
+    assert_eq!(cfg.timeouts.download_secs, 120);
 }
 
 #[test]
@@ -469,6 +472,7 @@ search_secs = 45
     assert_eq!(cfg.timeouts.resolve_secs, 5);
     assert_eq!(cfg.timeouts.history_secs, 15);
     assert_eq!(cfg.timeouts.search_secs, 45);
+    assert_eq!(cfg.timeouts.download_secs, 120);
 }
 
 #[test]
