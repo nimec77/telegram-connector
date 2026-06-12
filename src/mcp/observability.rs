@@ -144,23 +144,34 @@ pub struct BufferedResponse {
     pub payload: String,
 }
 
+/// Payload stored in place of response bodies larger than
+/// `[observability] max_buffered_payload_bytes`. Valid JSON so
+/// get_last_responses can embed it as-is.
+pub const OVERSIZED_PAYLOAD_STUB: &str =
+    r#"{"omitted":"payload exceeded max_buffered_payload_bytes"}"#;
+
 /// Ring buffer of the last N serialized responses (capacity 0 = disabled).
 pub struct ResponseBuffer {
     capacity: usize,
+    max_payload_bytes: usize,
     entries: Mutex<VecDeque<BufferedResponse>>,
 }
 
 impl ResponseBuffer {
-    pub fn new(capacity: usize) -> Self {
+    pub fn new(capacity: usize, max_payload_bytes: usize) -> Self {
         Self {
             capacity,
+            max_payload_bytes,
             entries: Mutex::new(VecDeque::new()),
         }
     }
 
-    pub fn push(&self, entry: BufferedResponse) {
+    pub fn push(&self, mut entry: BufferedResponse) {
         if self.capacity == 0 {
             return;
+        }
+        if entry.payload.len() > self.max_payload_bytes {
+            entry.payload = OVERSIZED_PAYLOAD_STUB.to_string();
         }
         let mut entries = self.entries.lock().unwrap_or_else(PoisonError::into_inner);
         if entries.len() == self.capacity {
@@ -421,7 +432,7 @@ mod tests {
         Arc<ResponseBuffer>,
     ) {
         let metrics = Arc::new(SessionMetrics::new());
-        let buffer = Arc::new(ResponseBuffer::new(10));
+        let buffer = Arc::new(ResponseBuffer::new(10, usize::MAX));
         let transport = InstrumentedTransport::new(
             FakeTransport::new(incoming),
             Arc::clone(&metrics),
@@ -536,7 +547,7 @@ mod tests {
         // A zero threshold means every nonzero-elapsed write triggers the warn branch.
         // This test constructs InstrumentedTransport directly to use Duration::ZERO.
         let metrics = Arc::new(SessionMetrics::new());
-        let buffer = Arc::new(ResponseBuffer::new(10));
+        let buffer = Arc::new(ResponseBuffer::new(10, usize::MAX));
         let mut transport = InstrumentedTransport::new(
             FakeTransport::new(vec![call_tool_request(1, "search_messages")]),
             Arc::clone(&metrics),
@@ -636,7 +647,7 @@ mod tests {
 
     #[test]
     fn buffer_returns_newest_first() {
-        let buffer = ResponseBuffer::new(5);
+        let buffer = ResponseBuffer::new(5, usize::MAX);
         buffer.push(entry("1"));
         buffer.push(entry("2"));
         let last = buffer.last(None);
@@ -647,7 +658,7 @@ mod tests {
 
     #[test]
     fn buffer_evicts_oldest_at_capacity() {
-        let buffer = ResponseBuffer::new(2);
+        let buffer = ResponseBuffer::new(2, usize::MAX);
         buffer.push(entry("1"));
         buffer.push(entry("2"));
         buffer.push(entry("3"));
@@ -662,7 +673,7 @@ mod tests {
 
     #[test]
     fn buffer_capacity_zero_disables_buffering() {
-        let buffer = ResponseBuffer::new(0);
+        let buffer = ResponseBuffer::new(0, usize::MAX);
         buffer.push(entry("1"));
         assert!(buffer.last(None).is_empty());
         assert!(buffer.is_empty());
@@ -670,11 +681,46 @@ mod tests {
 
     #[test]
     fn buffer_last_caps_n_at_len() {
-        let buffer = ResponseBuffer::new(5);
+        let buffer = ResponseBuffer::new(5, usize::MAX);
         buffer.push(entry("1"));
         buffer.push(entry("2"));
         assert_eq!(buffer.last(Some(1)).len(), 1);
         assert_eq!(buffer.last(Some(1))[0].request_id, "2");
         assert_eq!(buffer.last(Some(10)).len(), 2);
+    }
+
+    #[test]
+    fn push_replaces_oversized_payload_with_stub() {
+        let buffer = ResponseBuffer::new(5, 100);
+        buffer.push(BufferedResponse {
+            request_id: "1".to_string(),
+            tool_name: "get_message_media".to_string(),
+            written_at: SystemTime::now(),
+            size_bytes: 200,
+            payload: "x".repeat(200),
+        });
+
+        let entries = buffer.last(None);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].payload, OVERSIZED_PAYLOAD_STUB);
+        // size_bytes still reports the real wire size.
+        assert_eq!(entries[0].size_bytes, 200);
+        // The stub must stay valid JSON so get_last_responses can embed it.
+        assert!(serde_json::from_str::<serde_json::Value>(OVERSIZED_PAYLOAD_STUB).is_ok());
+    }
+
+    #[test]
+    fn push_keeps_payload_at_or_under_threshold() {
+        let buffer = ResponseBuffer::new(5, 100);
+        buffer.push(BufferedResponse {
+            request_id: "1".to_string(),
+            tool_name: "search_messages".to_string(),
+            written_at: SystemTime::now(),
+            size_bytes: 100,
+            payload: "y".repeat(100),
+        });
+
+        let entries = buffer.last(None);
+        assert_eq!(entries[0].payload, "y".repeat(100));
     }
 }

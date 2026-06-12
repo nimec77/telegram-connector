@@ -39,7 +39,10 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             telegram_client,
             rate_limiter,
             metrics: Arc::new(SessionMetrics::new()),
-            response_buffer: Arc::new(ResponseBuffer::new(observability.response_buffer_size)),
+            response_buffer: Arc::new(ResponseBuffer::new(
+                observability.response_buffer_size,
+                observability.max_buffered_payload_bytes,
+            )),
             slow_write_threshold: Duration::from_millis(observability.slow_write_threshold_ms),
             media_download_cost: 5,
             tool_router: Self::tool_router(),
@@ -48,7 +51,10 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
     /// Apply `[observability]` settings (ring buffer capacity, slow-write threshold).
     pub fn with_observability(mut self, config: &ObservabilityConfig) -> Self {
-        self.response_buffer = Arc::new(ResponseBuffer::new(config.response_buffer_size));
+        self.response_buffer = Arc::new(ResponseBuffer::new(
+            config.response_buffer_size,
+            config.max_buffered_payload_bytes,
+        ));
         self.slow_write_threshold = Duration::from_millis(config.slow_write_threshold_ms);
         self
     }
