@@ -1,3 +1,4 @@
+pub mod observability;
 pub mod server;
 pub mod tools;
 
