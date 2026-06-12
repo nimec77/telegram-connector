@@ -1,6 +1,6 @@
 # Development Memory - Telegram MCP Connector
 
-**Last Updated:** Phase 21 — Flexible Scalar Coercion (2026-05-31)
+**Last Updated:** Phase 22 — Get Message Media (2026-06-12)
 
 ---
 
@@ -2900,3 +2900,47 @@ Some MCP clients send scalar arguments in the "wrong" JSON type — a numeric st
 ### Verification
 
 - `cargo fmt --check` clean; `cargo clippy -- -D warnings` clean; `cargo test` → 331 passed, 0 failed.
+
+---
+
+## Phase 22: Get Message Media (Complete)
+
+### Decision: get_message_media returns Result<CallToolResult, String>
+
+**Date:** 2026-06-12
+
+The project convention "all tools return `Result<String, String>`" is a project-level convention, **not** an rmcp constraint. rmcp's actual requirement is that the return type implements `IntoCallToolResult`. The standard `Result<T, E>` composition holds: `Err(String)` still becomes an `is_error: true` text content block via the trait. `get_message_media` returns `Result<CallToolResult, String>` because an MCP image content block (base64-encoded JPEG bytes) cannot be expressed as a plain JSON string — it must be a `ContentBlock::Image` inside a `CallToolResult`.
+
+### Server-side size selection algorithm
+
+For photos: download the smallest `PhotoSize` variant whose longest side >= `max_dimension`. If all variants are smaller than `max_dimension`, download the largest available. This minimizes download bytes while guaranteeing the request resolution is met.
+
+For video/animation/video notes: apply the same rule to the `VideoSize` thumbnail variants. If no thumbnail variants exist, return a structured error.
+
+The selected variant is refused if its reported byte size exceeds 20 MB.
+
+### ResponseBuffer stub for large payloads
+
+Responses larger than `[observability] max_buffered_payload_bytes` (default 262144 = 256 KiB) are stored in the `get_last_responses` ring buffer as a stub string (`"[image payload ~N bytes — too large to buffer]"`) instead of the full base64 payload. This prevents megabyte-sized image responses from pinning memory in the ring buffer and from being replayed as text blocks by `get_last_responses`.
+
+### Tests: +65 (305 → 370)
+
+- Unit tests for `PhotoSizeSelector` size-selection logic, `VideoSizeSelector`, 20 MB refusal, stub thresholding.
+- Unit tests for the image pipeline (`scale_jpeg_image`, `encode_jpeg`, dimension clamping, downscale guard).
+- MCP tool tests in `src/mcp/tests/message_by_link.rs` and `src/mcp/tests/last_responses.rs` extended; new `src/mcp/tests/media.rs` for `get_message_media` cases.
+- Total: **370 lib tests passing, 5 ignored.**
+
+### Files Changed
+
+- `Cargo.toml` — added `image` crate for JPEG encode/decode/resize.
+- `src/error.rs` — new `Error::MediaTooLarge`, `Error::NoVisualMedia`, `Error::DownloadTimeout` variants.
+- `src/config.rs` — `[rate_limiting] media_download_cost` (default 5); `[telegram.timeouts] download_secs` (default 120); `[observability] max_buffered_payload_bytes` (default 262144).
+- `src/telegram/types/media.rs` — `PhotoSizeInfo`, `VideoSizeInfo`, size-selection helpers.
+- `src/telegram/trait_def.rs` — `download_media` method on `TelegramClientTrait`.
+- `src/telegram/client.rs` — `download_media` implementation; `download_secs` timeout applied.
+- `src/mcp/tools/image.rs` — JPEG pipeline: scale, encode, base64; downscale guard; 1.5 MB payload cap.
+- `src/mcp/tools/types/requests.rs` — `GetMessageMediaRequest`.
+- `src/mcp/tools/types/responses.rs` — `MediaMetadata`.
+- `src/mcp/server.rs` — `get_message_media` tool (tool 10); `with_media_download_cost` builder method.
+- `src/mcp/observability.rs` — `ResponseBuffer::push` stubs payloads above `max_buffered_payload_bytes`.
+- `src/main.rs` — `.with_media_download_cost(config.rate_limiting.media_download_cost)` wired in.

@@ -38,7 +38,7 @@ The same commands are available as `just` recipes (see `justfile`): run `just` t
 
 ```
 MCP Client (Claude) ──JSON-RPC/stdio──► MCP Server Layer (rmcp)
-                                        │  src/mcp/server.rs (9 tools)
+                                        │  src/mcp/server.rs (10 tools)
                                         │  src/mcp/tools/ (helpers + types/{requests,responses,serde_helpers})
                                         │  src/mcp/observability.rs (InstrumentedTransport, SessionMetrics, ResponseBuffer)
                                         ▼
@@ -56,7 +56,7 @@ MCP Client (Claude) ──JSON-RPC/stdio──► MCP Server Layer (rmcp)
 
 **Generic MCP server with trait-based DI:** `McpServer<T: TelegramClientTrait, R: RateLimiterTrait>` takes `Arc<T>` and `Arc<R>`. In production, T=`TelegramClient`, R=`RateLimiter`. In tests, mockall-generated `MockTelegramClientTrait` and `MockRateLimiterTrait`.
 
-**rmcp tool macros:** All 9 tools live in `server.rs` inside a `#[tool_router] impl` block. Each tool method has a `#[tool(...)` attribute. Tools cannot be split to separate files due to macro constraints. All tools return `Result<String, String>` and serialize responses to JSON — this is an rmcp constraint. Each `#[tool]` method is a logging wrapper (request-id-correlated `Tool invocation started` / `Tool invocation completed` / `Tool invocation failed`) around a private `*_impl` method; the stdio transport is wrapped by `InstrumentedTransport` (`src/mcp/observability.rs`), which logs every stdout write and feeds `SessionMetrics`/`ResponseBuffer` (configured via the `[observability]` config table).
+**rmcp tool macros:** All 10 tools live in `server.rs` inside a `#[tool_router] impl` block. Each tool method has a `#[tool(...)` attribute. Tools cannot be split to separate files due to macro constraints. All tools return `Result<String, String>` and serialize responses to JSON, except `get_message_media`, which returns `Result<CallToolResult, String>` because image content blocks cannot be expressed as a JSON string — rmcp's actual constraint is `IntoCallToolResult`. Each `#[tool]` method is a logging wrapper (request-id-correlated `Tool invocation started` / `Tool invocation completed` / `Tool invocation failed`) around a private `*_impl` method; the stdio transport is wrapped by `InstrumentedTransport` (`src/mcp/observability.rs`), which logs every stdout write and feeds `SessionMetrics`/`ResponseBuffer` (configured via the `[observability]` config table).
 
 **Library + Binary split:** `lib.rs` exports all public types/modules. `main.rs` is the CLI entry point with signal handling and setup mode.
 

@@ -29,10 +29,11 @@
 | 19 | Log Cleanup | ✅ Complete | 215 | Startup cleanup, max_log_days enforcement |
 | 20 | Hang Diagnostics & Grammers Timeouts | ✅ Complete | 249 | `with_timeout` wraps all grammers calls; `[telegram.timeouts]` config; tool entry logging |
 | 21 | Flexible Scalar Coercion | ✅ Complete | 305 | Request params accept number↔string↔bool via 5 `serde` `deserialize_with` helpers; schema unchanged |
+| 22 | Get Message Media | ✅ Complete | 370 | New tool: photo/video-thumbnail retrieval as MCP image blocks |
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
-**Overall Progress:** 21/21 phases complete
+**Overall Progress:** 22/22 phases complete
 
 ---
 

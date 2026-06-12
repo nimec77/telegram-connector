@@ -23,7 +23,7 @@ A Model Context Protocol (MCP) service that enables Claude to search and interac
 └──────────────────────────┬──────────────────────────────────┘
                            │ JSON-RPC over stdio
 ┌──────────────────────────▼──────────────────────────────────┐
-│                     MCP Server Layer (7 tools)               │
+│                     MCP Server Layer (10 tools)              │
 │                    (rmcp + server.rs)                        │
 │                                                             │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────┐    │
@@ -32,9 +32,12 @@ A Model Context Protocol (MCP) service that enables Claude to search and interac
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────┐    │
 │  │channel_info │ │gen_link     │ │open_in_telegram     │    │
 │  └─────────────┘ └─────────────┘ └─────────────────────┘    │
-│  ┌─────────────────────────────┐                             │
-│  │get_recent_messages          │                             │
-│  └─────────────────────────────┘                             │
+│  ┌─────────────────────────┐ ┌───────────────────────────┐   │
+│  │get_recent_messages      │ │get_message_by_link        │   │
+│  └─────────────────────────┘ └───────────────────────────┘   │
+│  ┌─────────────────────────┐ ┌───────────────────────────┐   │
+│  │get_last_responses       │ │get_message_media          │   │
+│  └─────────────────────────┘ └───────────────────────────┘   │
 └──────────────────────────┬──────────────────────────────────┘
                            │
 ┌──────────────────────────▼──────────────────────────────────┐
@@ -143,6 +146,7 @@ phone_number = "+1234567890"
 # Optional: token bucket configuration
 # max_tokens = 50
 # refill_rate = 2.0
+# media_download_cost = 5                                       # Rate-limit tokens charged per get_message_media call (default: 5)
 
 [logging]
 # Optional: logging configuration
@@ -486,6 +490,49 @@ Get recent messages from a channel by time window, without requiring a search qu
 ```
 
 **Usage:** Get all recent activity from a channel without needing a search query. Ideal for monitoring or catching up on channel content.
+
+---
+
+### 10. get_message_media
+
+Retrieve the visual media from a Telegram message as an MCP **image content block** (base64-encoded JPEG, quality 80) plus a JSON metadata text block. Useful for reading photos posted in channels without leaving the conversation.
+
+**What it returns:**
+- **Photos:** the photo is downscaled so its longest side fits `max_dimension`, re-encoded as JPEG, and returned as an MCP image block. The metadata block contains `media_type`, `is_thumbnail` (always `false` for photos), `caption`, original dimensions and byte size, and the returned dimensions and byte size.
+- **Videos, animations, video notes:** only the server-side thumbnail is available; it is returned as an image block with `is_thumbnail: true` in the metadata.
+- **Messages without visual media:** a structured error is returned (no image block).
+- **Photos whose selected size variant exceeds 20 MB:** refused with an error.
+- **Payload cap:** the base64 payload is capped at ~1.5 MB; if the image is still too large after the initial downscale it is downscaled further automatically.
+
+**Size variant selection:** the smallest server-side size variant whose longest side is >= `max_dimension` is chosen before downloading, minimising transfer bytes while guaranteeing the requested resolution.
+
+**Rate limiting:** each call charges `media_download_cost` tokens from the rate limiter (default **5**, versus 1 for searches). Configure under `[rate_limiting] media_download_cost`.
+
+**Timeout:** bounded by `[telegram.timeouts] download_secs` (default 120 s).
+
+**Parameters:**
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `channel_id` | string | Yes | - | Channel ID or username |
+| `message_id` | integer | Yes | - | Message ID within the channel |
+| `max_dimension` | integer | No | 1280 | Longest image side in pixels after downscaling (clamped to 64–2048) |
+
+**Metadata response (text block):**
+```json
+{
+  "media_type": "photo",
+  "is_thumbnail": false,
+  "caption": "Optional caption text",
+  "original_width": 1920,
+  "original_height": 1080,
+  "original_bytes": 245760,
+  "returned_width": 1280,
+  "returned_height": 720,
+  "returned_bytes": 98304
+}
+```
+
+**Usage:** Ask Claude to "show me the photo from message 42 in channel technews" or "what does the chart in message 100 of channel @data say?"
 
 ## Manual Testing Guide
 
