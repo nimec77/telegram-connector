@@ -223,6 +223,70 @@ pub fn size_candidates(thumbs: &[PhotoSize]) -> Vec<SizeCandidate> {
         .collect()
 }
 
+/// Convert grammers Message to our Message type
+pub fn convert_message(
+    msg: &grammers_client::message::Message,
+    peer: &grammers_client::peer::Peer,
+) -> Option<Message> {
+    use grammers_client::peer::Peer;
+
+    let (channel_id, channel_name, channel_username) = match peer {
+        Peer::Channel(ch) => (
+            ChannelId::new(ch.id().bare_id()).ok()?,
+            ChannelName::new(ch.title()).ok()?,
+            ch.username()
+                .and_then(|u| Username::new(u).ok())
+                .unwrap_or_else(|| Username::new("unknown").unwrap()),
+        ),
+        Peer::Group(g) => (
+            ChannelId::new(g.id().bare_id()).ok()?,
+            ChannelName::new(g.title().unwrap_or("Unknown")).ok()?,
+            g.username()
+                .and_then(|u| Username::new(u).ok())
+                .unwrap_or_else(|| Username::new("group").unwrap()),
+        ),
+        Peer::User(u) => (
+            ChannelId::new(u.id().bare_id()).ok()?,
+            ChannelName::new(u.first_name().unwrap_or("User")).ok()?,
+            u.username()
+                .and_then(|un| Username::new(un).ok())
+                .unwrap_or_else(|| Username::new("user").unwrap()),
+        ),
+    };
+
+    let message_id = MessageId::new(msg.id() as i64).ok()?;
+
+    // Get sender info
+    // msg.sender() returns Result<&Peer, Option<PeerRef>> in newer grammers versions
+    let (sender_id, sender_name) = match msg.sender() {
+        Some(sender) => {
+            let id = UserId::new(sender.id().bare_id()).ok();
+            let name = sender.name().map(|s: &str| s.to_string());
+            (id, name)
+        }
+        None => (None, None),
+    };
+
+    // Check for media and detect its type
+    let (has_media, media_type) = match msg.media() {
+        Some(media) => (true, convert_media_to_type(&media)),
+        None => (false, MediaType::None),
+    };
+
+    Some(Message {
+        id: message_id,
+        channel_id,
+        channel_name,
+        channel_username,
+        text: msg.text().to_string(),
+        timestamp: msg.date(),
+        sender_id,
+        sender_name,
+        has_media,
+        media_type,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -291,68 +355,4 @@ mod tests {
         let selected = select_size_candidate(&candidates, 1280).unwrap();
         assert_eq!(selected.photo_type, "m");
     }
-}
-
-/// Convert grammers Message to our Message type
-pub fn convert_message(
-    msg: &grammers_client::message::Message,
-    peer: &grammers_client::peer::Peer,
-) -> Option<Message> {
-    use grammers_client::peer::Peer;
-
-    let (channel_id, channel_name, channel_username) = match peer {
-        Peer::Channel(ch) => (
-            ChannelId::new(ch.id().bare_id()).ok()?,
-            ChannelName::new(ch.title()).ok()?,
-            ch.username()
-                .and_then(|u| Username::new(u).ok())
-                .unwrap_or_else(|| Username::new("unknown").unwrap()),
-        ),
-        Peer::Group(g) => (
-            ChannelId::new(g.id().bare_id()).ok()?,
-            ChannelName::new(g.title().unwrap_or("Unknown")).ok()?,
-            g.username()
-                .and_then(|u| Username::new(u).ok())
-                .unwrap_or_else(|| Username::new("group").unwrap()),
-        ),
-        Peer::User(u) => (
-            ChannelId::new(u.id().bare_id()).ok()?,
-            ChannelName::new(u.first_name().unwrap_or("User")).ok()?,
-            u.username()
-                .and_then(|un| Username::new(un).ok())
-                .unwrap_or_else(|| Username::new("user").unwrap()),
-        ),
-    };
-
-    let message_id = MessageId::new(msg.id() as i64).ok()?;
-
-    // Get sender info
-    // msg.sender() returns Result<&Peer, Option<PeerRef>> in newer grammers versions
-    let (sender_id, sender_name) = match msg.sender() {
-        Some(sender) => {
-            let id = UserId::new(sender.id().bare_id()).ok();
-            let name = sender.name().map(|s: &str| s.to_string());
-            (id, name)
-        }
-        None => (None, None),
-    };
-
-    // Check for media and detect its type
-    let (has_media, media_type) = match msg.media() {
-        Some(media) => (true, convert_media_to_type(&media)),
-        None => (false, MediaType::None),
-    };
-
-    Some(Message {
-        id: message_id,
-        channel_id,
-        channel_name,
-        channel_username,
-        text: msg.text().to_string(),
-        timestamp: msg.date(),
-        sender_id,
-        sender_name,
-        has_media,
-        media_type,
-    })
 }

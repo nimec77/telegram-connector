@@ -31,9 +31,12 @@ into the model's vision context.
 **Behavior by media type** (classified via existing `convert_media_to_type`):
 
 - **Photo** → download the photo itself.
-- **Video / Animation / VideoNote** → do NOT download the video; download its largest
-  server-side thumbnail and set `is_thumbnail: true`. If the document has no usable
-  thumbnail, return `Error::DownloadFailed("no thumbnail available …")`.
+- **Video / Animation / VideoNote** → do NOT download the video; download a
+  server-side thumbnail and set `is_thumbnail: true`. Thumbnails go through the same
+  size-selection rule as photos (smallest variant whose longest side >= max_dimension,
+  else the largest available — video thumbs are small, so the largest usually wins).
+  If the document has no usable thumbnail, return
+  `Error::DownloadFailed("no downloadable size variant available")`.
 - **Anything else** (no media, sticker, document, audio, voice, poll, geo, webpage
   preview, …) → `Error::NoVisualMedia { media_type }`, a structured error, never a panic.
 
@@ -138,7 +141,8 @@ in `with_timeout`. New work after the message is fetched:
 1. `msg.media()` → classify with `convert_media_to_type`.
 2. Photo: `photo.thumbs()` → build `Vec<SizeCandidate>` → pure selector picks the
    smallest size with `max(w, h) >= max_dimension`, else the largest available.
-   Video-like: `document.thumbs()` → largest candidate (video thumbs are small).
+   Video-like: `document.thumbs()` → same selection rule via the pure selector
+   (video thumbs are small, so the largest is usually chosen).
 3. 20 MB pre-download check on the selected candidate's size.
 4. Download in-memory with `client.iter_download(&photo_size)`, accumulating chunks,
    wrapped in `with_timeout("download_media", timeouts.download_secs, …)`. The running
