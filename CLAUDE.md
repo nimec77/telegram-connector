@@ -36,8 +36,9 @@ cargo fmt --check && cargo clippy -- -D warnings && cargo test
 
 ```
 MCP Client (Claude) ──JSON-RPC/stdio──► MCP Server Layer (rmcp)
-                                        │  src/mcp/server.rs (8 tools)
+                                        │  src/mcp/server.rs (9 tools)
                                         │  src/mcp/tools/ (helpers + types/{requests,responses,serde_helpers})
+                                        │  src/mcp/observability.rs (InstrumentedTransport, SessionMetrics, ResponseBuffer)
                                         ▼
                                       Application Layer
                                         │  config, logging, rate_limiter, link, error, cli
@@ -53,7 +54,7 @@ MCP Client (Claude) ──JSON-RPC/stdio──► MCP Server Layer (rmcp)
 
 **Generic MCP server with trait-based DI:** `McpServer<T: TelegramClientTrait, R: RateLimiterTrait>` takes `Arc<T>` and `Arc<R>`. In production, T=`TelegramClient`, R=`RateLimiter`. In tests, mockall-generated `MockTelegramClientTrait` and `MockRateLimiterTrait`.
 
-**rmcp tool macros:** All 8 tools live in `server.rs` inside a `#[tool_router] impl` block. Each tool method has a `#[tool(...)` attribute. Tools cannot be split to separate files due to macro constraints. All tools return `Result<String, String>` and serialize responses to JSON — this is an rmcp constraint.
+**rmcp tool macros:** All 9 tools live in `server.rs` inside a `#[tool_router] impl` block. Each tool method has a `#[tool(...)` attribute. Tools cannot be split to separate files due to macro constraints. All tools return `Result<String, String>` and serialize responses to JSON — this is an rmcp constraint. Each `#[tool]` method is a logging wrapper (request-id-correlated `Tool invocation started` / `Tool invocation completed` / `Tool invocation failed`) around a private `*_impl` method; the stdio transport is wrapped by `InstrumentedTransport` (`src/mcp/observability.rs`), which logs every stdout write and feeds `SessionMetrics`/`ResponseBuffer` (configured via the `[observability]` config table).
 
 **Library + Binary split:** `lib.rs` exports all public types/modules. `main.rs` is the CLI entry point with signal handling and setup mode.
 
@@ -70,7 +71,7 @@ MCP Client (Claude) ──JSON-RPC/stdio──► MCP Server Layer (rmcp)
 ### Test Organization
 
 - Unit tests: `#[cfg(test)]` blocks inline in each module, or in separate files via `#[path = "..."]` attribute (e.g., `config.rs` → `config/tests.rs`)
-- MCP tool tests: `src/mcp/tests/{server_core,status,channels,links,search,history,message_by_link}.rs`
+- MCP tool tests: `src/mcp/tests/{server_core,status,channels,links,search,history,message_by_link,last_responses}.rs`
 - Telegram client tests: `src/telegram/tests/client_tests.rs` (mock-based)
 - Test fixtures: `src/test_helpers.rs` — `create_test_message()`, `create_test_channel()`, etc.
 - Config tests require `--test-threads=1` due to `env::set_var()` race conditions
