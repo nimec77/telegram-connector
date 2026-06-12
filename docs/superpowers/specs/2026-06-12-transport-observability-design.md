@@ -166,9 +166,14 @@ log only `started`: `check_mcp_status`, `get_subscribed_channels`,
 Log message strings are standardized to `"Tool invocation started"` /
 `"Tool invocation completed"` / `"Tool invocation failed"`, always with `tool`
 and `request_id` fields. Domain detail fields (query, channel_id, result
-counts, `search_time_ms`, …) stay on the same entries as today. The existing
-bespoke completion messages (`"Search completed"`, etc.) are renamed to the
-standard form, keeping their fields.
+counts, `search_time_ms`, …) stay on the started entry as today. The existing
+bespoke completion messages (`"Search completed"`, etc.) keep their rich result
+fields but are renamed to domain-detail form (`"Search results"`, `"Recent
+messages results"`, `"Message by link results"`) — they live inside the `*_impl`
+bodies where the result data is available, while the single symmetric
+`"Tool invocation completed"` entry always comes from the wrapper. A grep for
+`Tool invocation completed` therefore returns exactly one line per successful
+invocation.
 
 The correlation chain for one request becomes:
 `request received` → `Tool invocation started` → `Tool invocation
@@ -196,8 +201,10 @@ stays flat while the client knows it sent calls.
   conventions. Default and upper bound: the whole buffer.
 - Response: most-recent-first array of `{request_id, tool_name, written_at
   (RFC3339), size_bytes, response}` where `response` is the stored envelope
-  embedded as raw JSON (`serde_json::value::RawValue`), not a double-encoded
-  string.
+  embedded as real JSON, not a double-encoded string (the stored payload string
+  is re-parsed into `serde_json::Value` at read time — at most N≤10 small
+  documents, so the re-parse cost is negligible and avoids enabling
+  serde_json's `raw_value` feature).
 - Empty/disabled buffer → empty array (not an error).
 - Recovery flow: client sees a timeout → calls `get_last_responses(1)` → gets
   the lost payload without re-hitting Telegram or spending rate budget.
