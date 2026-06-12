@@ -7,7 +7,7 @@
 //! size, write+flush duration), warn on blocked writes, and emit a session summary
 //! when the input stream ends.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, PoisonError};
 use std::time::{Instant, SystemTime};
@@ -127,6 +127,61 @@ impl SessionMetrics {
     }
 }
 
+/// One response kept for recovery via `get_last_responses`.
+#[derive(Debug, Clone)]
+pub struct BufferedResponse {
+    pub request_id: String,
+    pub tool_name: String,
+    pub written_at: SystemTime,
+    pub size_bytes: usize,
+    /// The serialized JSON-RPC envelope exactly as written to stdout.
+    pub payload: String,
+}
+
+/// Ring buffer of the last N serialized responses (capacity 0 = disabled).
+pub struct ResponseBuffer {
+    capacity: usize,
+    entries: Mutex<VecDeque<BufferedResponse>>,
+}
+
+impl ResponseBuffer {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            capacity,
+            entries: Mutex::new(VecDeque::new()),
+        }
+    }
+
+    pub fn push(&self, entry: BufferedResponse) {
+        if self.capacity == 0 {
+            return;
+        }
+        let mut entries = self.entries.lock().unwrap_or_else(PoisonError::into_inner);
+        if entries.len() == self.capacity {
+            entries.pop_front();
+        }
+        entries.push_back(entry);
+    }
+
+    /// The most recent `n` entries, newest first. `None` returns everything.
+    pub fn last(&self, n: Option<usize>) -> Vec<BufferedResponse> {
+        let entries = self.entries.lock().unwrap_or_else(PoisonError::into_inner);
+        let n = n.unwrap_or(entries.len()).min(entries.len());
+        entries.iter().rev().take(n).cloned().collect()
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -191,5 +246,59 @@ mod tests {
         let metrics = SessionMetrics::new();
         metrics.record_request("1", "search_messages");
         metrics.log_summary("test");
+    }
+
+    fn entry(id: &str) -> BufferedResponse {
+        BufferedResponse {
+            request_id: id.to_string(),
+            tool_name: "search_messages".to_string(),
+            written_at: SystemTime::now(),
+            size_bytes: 2,
+            payload: "{}".to_string(),
+        }
+    }
+
+    #[test]
+    fn buffer_returns_newest_first() {
+        let buffer = ResponseBuffer::new(5);
+        buffer.push(entry("1"));
+        buffer.push(entry("2"));
+        let last = buffer.last(None);
+        assert_eq!(last.len(), 2);
+        assert_eq!(last[0].request_id, "2");
+        assert_eq!(last[1].request_id, "1");
+    }
+
+    #[test]
+    fn buffer_evicts_oldest_at_capacity() {
+        let buffer = ResponseBuffer::new(2);
+        buffer.push(entry("1"));
+        buffer.push(entry("2"));
+        buffer.push(entry("3"));
+        let ids: Vec<String> = buffer
+            .last(None)
+            .into_iter()
+            .map(|e| e.request_id)
+            .collect();
+        assert_eq!(ids, vec!["3".to_string(), "2".to_string()]);
+        assert_eq!(buffer.len(), 2);
+    }
+
+    #[test]
+    fn buffer_capacity_zero_disables_buffering() {
+        let buffer = ResponseBuffer::new(0);
+        buffer.push(entry("1"));
+        assert!(buffer.last(None).is_empty());
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn buffer_last_caps_n_at_len() {
+        let buffer = ResponseBuffer::new(5);
+        buffer.push(entry("1"));
+        buffer.push(entry("2"));
+        assert_eq!(buffer.last(Some(1)).len(), 1);
+        assert_eq!(buffer.last(Some(1))[0].request_id, "2");
+        assert_eq!(buffer.last(Some(10)).len(), 2);
     }
 }
