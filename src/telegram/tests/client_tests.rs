@@ -542,3 +542,29 @@ async fn mock_get_recent_messages_empty_result() {
     assert!(history_result.messages.is_empty());
     assert_eq!(history_result.total_found, 0);
 }
+
+#[tokio::test]
+async fn mock_download_message_media_returns_media_download() {
+    use crate::telegram::types::{MediaDownload, MediaType};
+
+    let mut mock = MockTelegramClientTrait::new();
+    mock.expect_download_message_media()
+        .withf(|channel_ref, msg_id, max_dim| {
+            channel_ref == "news" && *msg_id == 42 && *max_dim == 1280
+        })
+        .return_once(|_, _, _| {
+            Ok(MediaDownload {
+                bytes: vec![0xff, 0xd8, 0xff],
+                media_type: MediaType::Photo,
+                is_thumbnail: false,
+                caption: None,
+                width: Some(1280),
+                height: Some(720),
+                source_size_bytes: 3,
+            })
+        });
+
+    let result = mock.download_message_media("news", 42, 1280).await.unwrap();
+    assert_eq!(result.media_type, MediaType::Photo);
+    assert_eq!(result.bytes.len(), 3);
+}

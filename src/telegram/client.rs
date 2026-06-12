@@ -3,12 +3,16 @@
 use crate::config::{TelegramConfig, TimeoutConfig};
 use crate::error::Error;
 use crate::telegram::converters::{
-    convert_media_filter, convert_message, convert_peer_to_channel, matches_media_filter,
+    convert_media_filter, convert_media_to_type, convert_message, convert_peer_to_channel,
+    matches_media_filter, select_size_candidate, size_candidates,
 };
 use crate::telegram::trait_def::TelegramClientTrait;
-use crate::telegram::types::{HistoryParams, QueryMetadata, SearchParams, SearchResult};
+use crate::telegram::types::{
+    HistoryParams, MediaDownload, MediaType, QueryMetadata, SearchParams, SearchResult,
+};
 use chrono::{Duration, Utc};
 use grammers_client::Client;
+use grammers_client::media::Media;
 use grammers_mtsender::SenderPool;
 use grammers_session::storages::SqliteSession;
 use std::future::Future;
@@ -157,6 +161,48 @@ impl TelegramClient {
             .map_err(|e| Error::Auth(format!("2FA verification failed: {}", e)))?;
         tracing::info!("Successfully signed in with 2FA");
         Ok(())
+    }
+
+    /// Resolve a channel reference (numeric ID via dialog walk, or username) to a Peer.
+    ///
+    /// Extracted from get_message_by_id so download_message_media shares the
+    /// exact same resolution semantics and timeout budget.
+    async fn resolve_peer(&self, channel_ref: &str) -> Result<grammers_client::peer::Peer, Error> {
+        if let Ok(id) = channel_ref.parse::<i64>() {
+            // Numeric ID — search through dialogs
+            let found = with_timeout("iter_dialogs", self.timeouts.resolve_secs, async {
+                let mut dialogs = self.client.iter_dialogs();
+                while let Some(dialog) = dialogs.next().await.map_err(|e| {
+                    tracing::error!(error = %e, "Failed to iterate dialogs in resolve_peer");
+                    Error::TelegramApi(format!("Failed to iterate dialogs: {}", e))
+                })? {
+                    if dialog.peer().id().bare_id() == id {
+                        return Ok(Some(dialog.peer().clone()));
+                    }
+                }
+                Ok(None)
+            })
+            .await?;
+
+            found.ok_or_else(|| {
+                tracing::warn!(id, "Channel not found in dialogs by ID");
+                Error::InvalidInput(format!("Channel not found: {}", channel_ref))
+            })
+        } else {
+            // Username — resolve directly
+            let username = channel_ref.strip_prefix('@').unwrap_or(channel_ref);
+            with_timeout("resolve_username", self.timeouts.resolve_secs, async {
+                self.client.resolve_username(username).await.map_err(|e| {
+                    tracing::error!(username = %username, error = %e, "Failed to resolve username");
+                    Error::TelegramApi(format!("Failed to resolve username: {}", e))
+                })
+            })
+            .await?
+            .ok_or_else(|| {
+                tracing::warn!(username = %username, "Username not found");
+                Error::InvalidInput(format!("Channel not found: {}", channel_ref))
+            })
+        }
     }
 }
 
@@ -563,41 +609,7 @@ impl TelegramClientTrait for TelegramClient {
         // dialog-walk paths share the same hang exposure as the other tools, so they
         // are bounded by `resolve_secs` even though the plan only flags the message
         // fetch itself.
-        let peer = if let Ok(id) = channel_ref.parse::<i64>() {
-            // Numeric ID — search through dialogs
-            let found = with_timeout("iter_dialogs", self.timeouts.resolve_secs, async {
-                let mut dialogs = self.client.iter_dialogs();
-                while let Some(dialog) = dialogs.next().await.map_err(|e| {
-                    tracing::error!(error = %e, "Failed to iterate dialogs in get_message_by_id");
-                    Error::TelegramApi(format!("Failed to iterate dialogs: {}", e))
-                })? {
-                    if dialog.peer().id().bare_id() == id {
-                        return Ok(Some(dialog.peer().clone()));
-                    }
-                }
-                Ok(None)
-            })
-            .await?;
-
-            found.ok_or_else(|| {
-                tracing::warn!(id, "Channel not found in dialogs by ID");
-                Error::InvalidInput(format!("Channel not found: {}", channel_ref))
-            })?
-        } else {
-            // Username — resolve directly
-            let username = channel_ref.strip_prefix('@').unwrap_or(channel_ref);
-            with_timeout("resolve_username", self.timeouts.resolve_secs, async {
-                self.client.resolve_username(username).await.map_err(|e| {
-                    tracing::error!(username = %username, error = %e, "Failed to resolve username");
-                    Error::TelegramApi(format!("Failed to resolve username: {}", e))
-                })
-            })
-            .await?
-            .ok_or_else(|| {
-                tracing::warn!(username = %username, "Username not found");
-                Error::InvalidInput(format!("Channel not found: {}", channel_ref))
-            })?
-        };
+        let peer = self.resolve_peer(channel_ref).await?;
 
         // Get message by ID using grammers API
         let peer_ref = peer
@@ -642,6 +654,150 @@ impl TelegramClientTrait for TelegramClient {
                 "Failed to convert message to domain type"
             );
             Error::TelegramApi("Failed to convert message".to_string())
+        })
+    }
+
+    async fn download_message_media(
+        &self,
+        channel_ref: &str,
+        message_id: i32,
+        max_dimension: u32,
+    ) -> Result<MediaDownload, Error> {
+        // Spec limit: never pull more than 20 MB over the network.
+        const MAX_DOWNLOAD_BYTES: u64 = 20 * 1024 * 1024;
+
+        if channel_ref.is_empty() {
+            return Err(Error::InvalidInput(
+                "Channel reference cannot be empty".to_string(),
+            ));
+        }
+
+        let peer = self.resolve_peer(channel_ref).await?;
+        let peer_ref = peer
+            .to_ref()
+            .await
+            .ok_or_else(|| Error::TelegramApi("Failed to convert peer to PeerRef".to_string()))?;
+
+        let messages = with_timeout("get_messages_by_id", self.timeouts.history_secs, async {
+            self.client
+                .get_messages_by_id(peer_ref, &[message_id])
+                .await
+                .map_err(|e| {
+                    tracing::error!(
+                        channel_ref = %channel_ref,
+                        message_id,
+                        error = %e,
+                        "Failed to get message for media download"
+                    );
+                    Error::TelegramApi(format!("Failed to get message: {}", e))
+                })
+        })
+        .await?;
+
+        let msg = messages.into_iter().next().flatten().ok_or_else(|| {
+            Error::InvalidInput(format!(
+                "Message {} not found in channel {}",
+                message_id, channel_ref
+            ))
+        })?;
+
+        let media = msg.media().ok_or_else(|| Error::NoVisualMedia {
+            media_type: "none".to_string(),
+        })?;
+        let media_type = convert_media_to_type(&media);
+
+        // Photos are downloaded directly; video-like media contributes only its
+        // server-side thumbnail (the spec forbids full video downloads).
+        let (thumbs, is_thumbnail) = match &media {
+            Media::Photo(photo) => (photo.thumbs(), false),
+            Media::Document(doc)
+                if matches!(
+                    media_type,
+                    MediaType::Video | MediaType::Animation | MediaType::VideoNote
+                ) =>
+            {
+                (doc.thumbs(), true)
+            }
+            _ => {
+                return Err(Error::NoVisualMedia {
+                    media_type: format!("{:?}", media_type).to_lowercase(),
+                });
+            }
+        };
+
+        let candidates = size_candidates(&thumbs);
+        let selected = select_size_candidate(&candidates, max_dimension).ok_or_else(|| {
+            Error::DownloadFailed("no downloadable size variant available".to_string())
+        })?;
+
+        if selected.size_bytes > MAX_DOWNLOAD_BYTES {
+            return Err(Error::MediaTooLarge {
+                size_bytes: selected.size_bytes,
+                max_bytes: MAX_DOWNLOAD_BYTES,
+            });
+        }
+
+        let photo_size = thumbs
+            .iter()
+            .find(|t| t.photo_type() == selected.photo_type)
+            .ok_or_else(|| {
+                Error::DownloadFailed("selected size variant disappeared".to_string())
+            })?;
+
+        let bytes = with_timeout("download_media", self.timeouts.download_secs, async {
+            let mut data: Vec<u8> = Vec::new();
+            let mut download = self.client.iter_download(photo_size);
+            loop {
+                match download.next().await {
+                    Ok(Some(chunk)) => {
+                        data.extend_from_slice(&chunk);
+                        // Reported sizes are untrusted input; re-check while streaming.
+                        if data.len() as u64 > MAX_DOWNLOAD_BYTES {
+                            return Err(Error::MediaTooLarge {
+                                size_bytes: data.len() as u64,
+                                max_bytes: MAX_DOWNLOAD_BYTES,
+                            });
+                        }
+                    }
+                    Ok(None) => break,
+                    Err(e) => {
+                        tracing::error!(
+                            channel_ref = %channel_ref,
+                            message_id,
+                            error = %e,
+                            "Media download failed"
+                        );
+                        return Err(Error::DownloadFailed(format!("download failed: {}", e)));
+                    }
+                }
+            }
+            Ok(data)
+        })
+        .await?;
+
+        let caption = match msg.text() {
+            "" => None,
+            text => Some(text.to_string()),
+        };
+
+        tracing::info!(
+            channel_ref = %channel_ref,
+            message_id,
+            media_type = ?media_type,
+            is_thumbnail,
+            selected_type = %selected.photo_type,
+            bytes = bytes.len(),
+            "Media downloaded"
+        );
+
+        Ok(MediaDownload {
+            bytes,
+            media_type,
+            is_thumbnail,
+            caption,
+            width: Some(selected.width),
+            height: Some(selected.height),
+            source_size_bytes: selected.size_bytes,
         })
     }
 }

@@ -3,7 +3,9 @@
 //! This trait allows mocking the Telegram client in tests.
 
 use crate::error::Error;
-use crate::telegram::types::{Channel, HistoryParams, Message, SearchParams, SearchResult};
+use crate::telegram::types::{
+    Channel, HistoryParams, MediaDownload, Message, SearchParams, SearchResult,
+};
 
 /// Trait for Telegram client operations (allows mocking in tests)
 #[cfg_attr(test, mockall::automock)]
@@ -34,4 +36,17 @@ pub trait TelegramClientTrait: Send + Sync {
     /// Uses grammers' `get_messages_by_id` under the hood.
     async fn get_message_by_id(&self, channel_ref: &str, message_id: i32)
     -> Result<Message, Error>;
+
+    /// Download the visual media of a message: the photo itself, or the
+    /// server-side thumbnail for video-like media (video, animation, video note).
+    ///
+    /// `max_dimension` is a size-selection hint: the smallest server-side size
+    /// whose longest side is at least `max_dimension` is downloaded (the largest
+    /// available if none qualifies). Exact downscaling happens in the MCP layer.
+    async fn download_message_media(
+        &self,
+        channel_ref: &str,
+        message_id: i32,
+        max_dimension: u32,
+    ) -> Result<MediaDownload, Error>;
 }
