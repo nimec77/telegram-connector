@@ -312,11 +312,28 @@ pub fn convert_message(
         None => (None, None),
     };
 
-    // Check for media and detect its type
-    let (has_media, media_type) = match msg.media() {
-        Some(media) => (true, convert_media_to_type(&media)),
+    // Check for media and detect its type (computed once; reused for link preview)
+    let media = msg.media();
+    let (has_media, media_type) = match &media {
+        Some(m) => (true, convert_media_to_type(m)),
         None => (false, MediaType::None),
     };
+
+    // Enrichment (all derived from data already in `msg` — no network calls):
+    let link_preview = match &media {
+        Some(Media::WebPage(wp)) => extract_link_preview(&wp.raw),
+        _ => None,
+    };
+
+    let forwarded_from = msg
+        .forward_header()
+        .map(|tl::enums::MessageFwdHeader::Header(header)| extract_forward_info(&header));
+
+    let views = msg.view_count().and_then(|v| u64::try_from(v).ok());
+    let forwards = msg.forward_count().and_then(|v| u64::try_from(v).ok());
+    let reply_to_message_id = msg
+        .reply_to_message_id()
+        .and_then(|id| MessageId::new(id as i64).ok());
 
     Some(Message {
         id: message_id,
@@ -329,11 +346,11 @@ pub fn convert_message(
         sender_name,
         has_media,
         media_type,
-        forwarded_from: None,
-        link_preview: None,
-        views: None,
-        forwards: None,
-        reply_to_message_id: None,
+        forwarded_from,
+        link_preview,
+        views,
+        forwards,
+        reply_to_message_id,
     })
 }
 
