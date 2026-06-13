@@ -4,8 +4,8 @@
 //! reducing duplication across test files.
 
 use crate::telegram::types::{
-    Channel, ChannelId, ChannelName, MediaType, Message, MessageId, QueryMetadata, SearchResult,
-    UserId, Username,
+    Channel, ChannelId, ChannelName, ForwardInfo, LinkPreview, MediaType, Message, MessageId,
+    QueryMetadata, SearchResult, UserId, Username,
 };
 use chrono::{DateTime, Utc};
 
@@ -77,6 +77,43 @@ pub fn create_test_message_with_sender(
     let mut msg = create_test_message(id, text, channel_id);
     msg.sender_id = Some(UserId::new(sender_id).expect("Test sender ID must be positive"));
     msg.sender_name = Some(sender_name.to_string());
+    msg
+}
+
+/// Create a test message carrying forward attribution (channel forward).
+pub fn create_test_message_with_forward(
+    id: i64,
+    text: &str,
+    channel_id: i64,
+    forwarded_channel_id: i64,
+    original_message_id: i64,
+) -> Message {
+    let mut msg = create_test_message(id, text, channel_id);
+    msg.forwarded_from = Some(ForwardInfo {
+        channel_id: Some(ChannelId::new(forwarded_channel_id).expect("valid channel id")),
+        channel_name: None,
+        channel_username: None,
+        sender_name: None,
+        original_date: None,
+        original_message_id: Some(MessageId::new(original_message_id).expect("valid message id")),
+    });
+    msg
+}
+
+/// Create a test message carrying a link preview.
+pub fn create_test_message_with_link_preview(
+    id: i64,
+    text: &str,
+    channel_id: i64,
+    url: &str,
+) -> Message {
+    let mut msg = create_test_message(id, text, channel_id);
+    msg.link_preview = Some(LinkPreview {
+        url: url.to_string(),
+        site_name: None,
+        title: None,
+        description: None,
+    });
     msg
 }
 

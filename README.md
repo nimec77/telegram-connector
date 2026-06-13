@@ -412,7 +412,21 @@ Search for messages across channels with optional media type filtering.
       "sender_id": 987654321,
       "sender_name": "John Doe",
       "has_media": false,
-      "media_type": "none"
+      "media_type": "none",
+      "views": 15000,
+      "forwards": 230,
+      "forwarded_from": {
+        "channel_id": 1009988776,
+        "original_message_id": 8123,
+        "original_date": "2025-12-28T09:00:00Z"
+      },
+      "link_preview": {
+        "url": "https://example.com/ai-model",
+        "site_name": "Example",
+        "title": "New AI model released",
+        "description": "A short summary pulled from Telegram's server-side preview..."
+      },
+      "reply_to_message_id": 41
     }
   ],
   "total_found": 15,
@@ -424,6 +438,17 @@ Search for messages across channels with optional media type filtering.
   }
 }
 ```
+
+**Forward attribution & link previews:** Messages carry optional enrichment derived
+from the same Telegram response — no extra API calls. `forwarded_from` attributes a
+forwarded post to its source (`channel_id`, `original_message_id`, `original_date`,
+and `sender_name` for hidden senders); the source channel's **title and username are
+not included** — Telegram does not expose them per message without an extra lookup,
+so pair `channel_id` with `generate_message_link` if you need to reach the source.
+`link_preview` surfaces Telegram's server-side webpage preview (`url`, `site_name`,
+`title`, `description`, truncated to 500 characters). `views`, `forwards`, and
+`reply_to_message_id` are included when present. All of these fields are omitted
+entirely when absent, so existing consumers are unaffected.
 
 **Media Types:** `none`, `photo`, `video`, `document`, `audio`, `voice`, `videonote`, `animation`, `sticker`, `contact`, `location`, `venue`, `poll`, `dice`
 
