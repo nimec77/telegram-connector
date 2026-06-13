@@ -241,7 +241,8 @@ fn extract_forward_info(header: &tl::types::MessageFwdHeader) -> ForwardInfo {
         channel_name: None,
         channel_username: None,
         sender_name: header.from_name.clone(),
-        original_date: DateTime::<Utc>::from_timestamp(header.date as i64, 0),
+        original_date: DateTime::<Utc>::from_timestamp(header.date as i64, 0)
+            .filter(|dt| dt.timestamp() > 0),
         original_message_id: header
             .channel_post
             .and_then(|id| MessageId::new(id as i64).ok()),
@@ -488,7 +489,7 @@ mod tests {
         let info = extract_forward_info(&header);
         assert_eq!(info.channel_id.map(|c| c.get()), Some(555));
         assert_eq!(info.original_message_id.map(|m| m.get()), Some(42));
-        assert!(info.original_date.is_some());
+        assert_eq!(info.original_date.unwrap().timestamp(), 1_700_000_000);
         assert!(info.channel_name.is_none());
         assert!(info.channel_username.is_none());
         assert!(info.sender_name.is_none());
@@ -503,6 +504,15 @@ mod tests {
         assert_eq!(info.sender_name.as_deref(), Some("Hidden User"));
         assert!(info.channel_id.is_none());
         assert!(info.original_message_id.is_none());
+    }
+
+    #[test]
+    fn forward_with_zero_date_has_no_original_date() {
+        let mut header = fwd_header();
+        header.date = 0;
+
+        let info = extract_forward_info(&header);
+        assert!(info.original_date.is_none());
     }
 
     #[test]
