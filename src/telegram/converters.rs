@@ -1,9 +1,10 @@
 //! Type conversion helpers for grammers types to our domain types
 
 use crate::telegram::types::{
-    Channel, ChannelId, ChannelName, MediaFilter, MediaType, Message, MessageId, SizeCandidate,
-    UserId, Username,
+    Channel, ChannelId, ChannelName, ForwardInfo, LinkPreview, MediaFilter, MediaType, Message,
+    MessageId, SizeCandidate, UserId, Username,
 };
+use chrono::{DateTime, Utc};
 use grammers_client::media::{Document, Media, PhotoSize};
 use grammers_client::tl;
 
@@ -223,6 +224,50 @@ pub fn size_candidates(thumbs: &[PhotoSize]) -> Vec<SizeCandidate> {
         .collect()
 }
 
+/// Extract forward attribution from a raw forward header.
+///
+/// Drops down to the raw TL `MessageFwdHeader` because grammers' high-level API
+/// exposes only `forward_header()` (the raw enum). `channel_name`/`channel_username`
+/// are left `None`: `from_id` is an ID-only TL `Peer`, and the resolved
+/// title/username are not available without an extra resolve call.
+fn extract_forward_info(header: &tl::types::MessageFwdHeader) -> ForwardInfo {
+    let channel_id = match &header.from_id {
+        Some(tl::enums::Peer::Channel(ch)) => ChannelId::new(ch.channel_id).ok(),
+        _ => None,
+    };
+
+    ForwardInfo {
+        channel_id,
+        channel_name: None,
+        channel_username: None,
+        sender_name: header.from_name.clone(),
+        original_date: DateTime::<Utc>::from_timestamp(header.date as i64, 0),
+        original_message_id: header
+            .channel_post
+            .and_then(|id| MessageId::new(id as i64).ok()),
+    }
+}
+
+/// Extract a link preview from a raw webpage media block.
+///
+/// Only the `WebPage::Page` variant carries content; `Empty`/`Pending`/`NotModified`
+/// yield `None`. `description` is truncated to 500 Unicode scalar values so multi-byte
+/// (e.g. Cyrillic) text is never split mid-codepoint.
+fn extract_link_preview(media: &tl::types::MessageMediaWebPage) -> Option<LinkPreview> {
+    match &media.webpage {
+        tl::enums::WebPage::Page(page) => Some(LinkPreview {
+            url: page.url.clone(),
+            site_name: page.site_name.clone(),
+            title: page.title.clone(),
+            description: page
+                .description
+                .as_ref()
+                .map(|d| d.chars().take(500).collect()),
+        }),
+        _ => None,
+    }
+}
+
 /// Convert grammers Message to our Message type
 pub fn convert_message(
     msg: &grammers_client::message::Message,
@@ -359,5 +404,115 @@ mod tests {
         let candidates = vec![candidate(320, 180, 10_000, "m")];
         let selected = select_size_candidate(&candidates, 1280).unwrap();
         assert_eq!(selected.photo_type, "m");
+    }
+
+    fn fwd_header() -> tl::types::MessageFwdHeader {
+        tl::types::MessageFwdHeader {
+            imported: false,
+            saved_out: false,
+            from_id: None,
+            from_name: None,
+            date: 1_700_000_000,
+            channel_post: None,
+            post_author: None,
+            saved_from_peer: None,
+            saved_from_msg_id: None,
+            saved_from_id: None,
+            saved_from_name: None,
+            saved_date: None,
+            psa_type: None,
+        }
+    }
+
+    fn webpage_media(
+        url: &str,
+        site_name: Option<&str>,
+        title: Option<&str>,
+        description: Option<String>,
+    ) -> tl::types::MessageMediaWebPage {
+        tl::types::MessageMediaWebPage {
+            force_large_media: false,
+            force_small_media: false,
+            manual: false,
+            safe: false,
+            webpage: tl::enums::WebPage::Page(tl::types::WebPage {
+                has_large_media: false,
+                video_cover_photo: false,
+                id: 1,
+                url: url.to_string(),
+                display_url: url.to_string(),
+                hash: 0,
+                r#type: None,
+                site_name: site_name.map(|s| s.to_string()),
+                title: title.map(|s| s.to_string()),
+                description,
+                photo: None,
+                embed_url: None,
+                embed_type: None,
+                embed_width: None,
+                embed_height: None,
+                duration: None,
+                author: None,
+                document: None,
+                cached_page: None,
+                attributes: None,
+            }),
+        }
+    }
+
+    #[test]
+    fn forward_from_channel_extracts_ids_not_names() {
+        let mut header = fwd_header();
+        header.from_id = Some(tl::enums::Peer::Channel(tl::types::PeerChannel {
+            channel_id: 555,
+        }));
+        header.channel_post = Some(42);
+
+        let info = extract_forward_info(&header);
+        assert_eq!(info.channel_id.map(|c| c.get()), Some(555));
+        assert_eq!(info.original_message_id.map(|m| m.get()), Some(42));
+        assert!(info.original_date.is_some());
+        assert!(info.channel_name.is_none());
+        assert!(info.channel_username.is_none());
+        assert!(info.sender_name.is_none());
+    }
+
+    #[test]
+    fn forward_from_hidden_user_has_name_only() {
+        let mut header = fwd_header();
+        header.from_name = Some("Hidden User".to_string());
+
+        let info = extract_forward_info(&header);
+        assert_eq!(info.sender_name.as_deref(), Some("Hidden User"));
+        assert!(info.channel_id.is_none());
+        assert!(info.original_message_id.is_none());
+    }
+
+    #[test]
+    fn link_preview_extracted_and_description_truncated_to_500_chars() {
+        let media = webpage_media(
+            "https://example.com/article",
+            Some("Example"),
+            Some("Headline"),
+            Some("я".repeat(600)),
+        );
+
+        let preview = extract_link_preview(&media).unwrap();
+        assert_eq!(preview.url, "https://example.com/article");
+        assert_eq!(preview.site_name.as_deref(), Some("Example"));
+        assert_eq!(preview.title.as_deref(), Some("Headline"));
+        assert_eq!(preview.description.as_ref().unwrap().chars().count(), 500);
+    }
+
+    #[test]
+    fn link_preview_empty_webpage_returns_none() {
+        let media = tl::types::MessageMediaWebPage {
+            force_large_media: false,
+            force_small_media: false,
+            manual: false,
+            safe: false,
+            webpage: tl::enums::WebPage::Empty(tl::types::WebPageEmpty { id: 0, url: None }),
+        };
+        assert!(extract_link_preview(&media).is_none());
     }
 }
