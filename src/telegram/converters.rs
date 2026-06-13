@@ -284,6 +284,11 @@ pub fn convert_message(
         sender_name,
         has_media,
         media_type,
+        forwarded_from: None,
+        link_preview: None,
+        views: None,
+        forwards: None,
+        reply_to_message_id: None,
     })
 }
 

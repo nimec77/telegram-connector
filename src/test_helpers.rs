@@ -33,6 +33,11 @@ pub fn create_test_message(id: i64, text: &str, channel_id: i64) -> Message {
         sender_name: None,
         has_media: false,
         media_type: MediaType::None,
+        forwarded_from: None,
+        link_preview: None,
+        views: None,
+        forwards: None,
+        reply_to_message_id: None,
     }
 }
 

@@ -20,6 +20,16 @@ pub struct Message {
     pub sender_name: Option<String>,
     pub has_media: bool,
     pub media_type: MediaType,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub forwarded_from: Option<ForwardInfo>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub link_preview: Option<LinkPreview>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub views: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub forwards: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub reply_to_message_id: Option<MessageId>,
 }
 
 impl Message {
@@ -33,6 +43,41 @@ impl Message {
     pub fn is_text_only(&self) -> bool {
         self.media_type == MediaType::None
     }
+}
+
+/// Attribution for a forwarded message.
+///
+/// `channel_name` / `channel_username` are intentionally never populated: the
+/// grammers forward header carries only the source's numeric `from_id`, and the
+/// resolved title/username live in the response's peer map (not exposed per
+/// message). Filling them would require an extra resolve call, which the
+/// zero-extra-call enrichment path must avoid.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ForwardInfo {
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub channel_id: Option<ChannelId>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub channel_name: Option<ChannelName>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub channel_username: Option<Username>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub sender_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub original_date: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub original_message_id: Option<MessageId>,
+}
+
+/// Telegram's server-side webpage preview attached to a message.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct LinkPreview {
+    pub url: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub site_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub description: Option<String>,
 }
 
 /// A Telegram channel or group.
@@ -65,6 +110,11 @@ mod tests {
             sender_name: None,
             has_media: false,
             media_type: MediaType::None,
+            forwarded_from: None,
+            link_preview: None,
+            views: None,
+            forwards: None,
+            reply_to_message_id: None,
         }
     }
 
@@ -105,6 +155,48 @@ mod tests {
         assert_eq!(deserialized.id, msg.id);
         assert_eq!(deserialized.channel_id, msg.channel_id);
         assert_eq!(deserialized.text, msg.text);
+    }
+
+    #[test]
+    fn message_omits_new_fields_when_absent() {
+        let msg = create_test_message();
+        let json = serde_json::to_value(&msg).unwrap();
+        assert!(json.get("forwarded_from").is_none());
+        assert!(json.get("link_preview").is_none());
+        assert!(json.get("views").is_none());
+        assert!(json.get("forwards").is_none());
+        assert!(json.get("reply_to_message_id").is_none());
+    }
+
+    #[test]
+    fn message_includes_new_fields_when_present() {
+        let mut msg = create_test_message();
+        msg.views = Some(1234);
+        msg.forwards = Some(56);
+        msg.reply_to_message_id = Some(MessageId::new(99).unwrap());
+        msg.forwarded_from = Some(ForwardInfo {
+            channel_id: Some(ChannelId::new(100).unwrap()),
+            channel_name: None,
+            channel_username: None,
+            sender_name: None,
+            original_date: None,
+            original_message_id: Some(MessageId::new(7).unwrap()),
+        });
+        msg.link_preview = Some(LinkPreview {
+            url: "https://example.com".to_string(),
+            site_name: Some("Example".to_string()),
+            title: Some("Title".to_string()),
+            description: Some("Desc".to_string()),
+        });
+
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(json["views"], 1234);
+        assert_eq!(json["forwards"], 56);
+        assert_eq!(json["reply_to_message_id"], 99);
+        assert_eq!(json["forwarded_from"]["channel_id"], 100);
+        assert_eq!(json["forwarded_from"]["original_message_id"], 7);
+        assert!(json["forwarded_from"].get("channel_name").is_none());
+        assert_eq!(json["link_preview"]["url"], "https://example.com");
     }
 
     #[test]
