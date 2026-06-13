@@ -1,6 +1,10 @@
 //! Response types for MCP tools.
 
-use crate::telegram::types::{Channel, MediaType};
+use crate::telegram::types::{
+    Channel, ChannelId, ChannelName, ForwardInfo, LinkPreview, MediaType, Message, MessageId,
+    QueryMetadata, SearchResult, UserId, Username,
+};
+use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -152,6 +156,77 @@ pub struct GetMessageMediaResponse {
     pub mime_type: String,
 }
 
+/// Wire representation of a single message (mirrors the domain `Message`).
+///
+/// `sender_id` / `sender_name` mirror the domain type exactly (serialized as `null`
+/// when absent, no `skip_serializing_if`) to preserve the existing wire format; the
+/// enrichment fields are omitted when absent.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MessageResponse {
+    pub id: MessageId,
+    pub channel_id: ChannelId,
+    pub channel_name: ChannelName,
+    pub channel_username: Username,
+    pub text: String,
+    pub timestamp: DateTime<Utc>,
+    pub sender_id: Option<UserId>,
+    pub sender_name: Option<String>,
+    pub has_media: bool,
+    pub media_type: MediaType,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub forwarded_from: Option<ForwardInfo>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub link_preview: Option<LinkPreview>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub views: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub forwards: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub reply_to_message_id: Option<MessageId>,
+}
+
+impl From<Message> for MessageResponse {
+    fn from(m: Message) -> Self {
+        Self {
+            id: m.id,
+            channel_id: m.channel_id,
+            channel_name: m.channel_name,
+            channel_username: m.channel_username,
+            text: m.text,
+            timestamp: m.timestamp,
+            sender_id: m.sender_id,
+            sender_name: m.sender_name,
+            has_media: m.has_media,
+            media_type: m.media_type,
+            forwarded_from: m.forwarded_from,
+            link_preview: m.link_preview,
+            views: m.views,
+            forwards: m.forwards,
+            reply_to_message_id: m.reply_to_message_id,
+        }
+    }
+}
+
+/// Wire representation of a search/history result set.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SearchResponse {
+    pub messages: Vec<MessageResponse>,
+    pub total_found: u64,
+    pub search_time_ms: u64,
+    pub query_metadata: QueryMetadata,
+}
+
+impl From<SearchResult> for SearchResponse {
+    fn from(r: SearchResult) -> Self {
+        Self {
+            messages: r.messages.into_iter().map(MessageResponse::from).collect(),
+            total_found: r.total_found,
+            search_time_ms: r.search_time_ms,
+            query_metadata: r.query_metadata,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,5 +300,80 @@ mod tests {
         assert!(json.contains("\"media_type\":\"photo\""));
         assert!(json.contains("\"is_thumbnail\":false"));
         assert!(json.contains("benchmark table"));
+    }
+
+    #[test]
+    fn message_response_maps_and_omits_absent_fields() {
+        use crate::telegram::types::{
+            ChannelId, ChannelName, MediaType, Message, MessageId, Username,
+        };
+
+        let msg = Message {
+            id: MessageId::new(1).unwrap(),
+            channel_id: ChannelId::new(100).unwrap(),
+            channel_name: ChannelName::new("Test").unwrap(),
+            channel_username: Username::new("testchan").unwrap(),
+            text: "hi".to_string(),
+            timestamp: chrono::Utc::now(),
+            sender_id: None,
+            sender_name: None,
+            has_media: false,
+            media_type: MediaType::None,
+            forwarded_from: None,
+            link_preview: None,
+            views: Some(10),
+            forwards: None,
+            reply_to_message_id: None,
+        };
+
+        let dto = MessageResponse::from(msg);
+        let json = serde_json::to_value(&dto).unwrap();
+        assert_eq!(json["views"], 10);
+        assert!(json.get("forwards").is_none());
+        assert!(json.get("forwarded_from").is_none());
+        // sender_id mirrors the domain type: present as null, not skipped.
+        assert!(json.get("sender_id").is_some());
+        assert!(json["sender_id"].is_null());
+    }
+
+    #[test]
+    fn search_response_maps_from_search_result() {
+        use crate::telegram::types::{
+            ChannelId, ChannelName, MediaType, Message, MessageId, QueryMetadata, SearchResult,
+            Username,
+        };
+
+        let result = SearchResult {
+            messages: vec![Message {
+                id: MessageId::new(1).unwrap(),
+                channel_id: ChannelId::new(100).unwrap(),
+                channel_name: ChannelName::new("Test").unwrap(),
+                channel_username: Username::new("testchan").unwrap(),
+                text: "hi".to_string(),
+                timestamp: chrono::Utc::now(),
+                sender_id: None,
+                sender_name: None,
+                has_media: false,
+                media_type: MediaType::None,
+                forwarded_from: None,
+                link_preview: None,
+                views: None,
+                forwards: None,
+                reply_to_message_id: None,
+            }],
+            total_found: 1,
+            search_time_ms: 5,
+            query_metadata: QueryMetadata {
+                query: "x".to_string(),
+                hours_back: 48,
+                channels_searched: 1,
+            },
+        };
+
+        let dto = SearchResponse::from(result);
+        assert_eq!(dto.messages.len(), 1);
+        assert_eq!(dto.total_found, 1);
+        let json = serde_json::to_value(&dto).unwrap();
+        assert_eq!(json["query_metadata"]["query"], "x");
     }
 }
