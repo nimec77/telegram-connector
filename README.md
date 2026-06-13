@@ -486,7 +486,7 @@ Get recent messages from a channel by time window, without requiring a search qu
 | Underlying API | `search_messages()` / `search_all_messages()` | `iter_messages()` |
 | Use case | Find specific content | Get all recent activity |
 
-**Response:** Same format as `search_messages` (reuses `SearchResult` type).
+**Response:** Same format as `search_messages` (same `SearchResponse` JSON shape).
 
 ```json
 {
