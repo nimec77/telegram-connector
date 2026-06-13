@@ -90,12 +90,17 @@ pub fn create_test_message_with_forward(
 ) -> Message {
     let mut msg = create_test_message(id, text, channel_id);
     msg.forwarded_from = Some(ForwardInfo {
-        channel_id: Some(ChannelId::new(forwarded_channel_id).expect("valid channel id")),
+        channel_id: Some(
+            ChannelId::new(forwarded_channel_id)
+                .expect("Test forwarded channel ID must be positive"),
+        ),
         channel_name: None,
         channel_username: None,
         sender_name: None,
         original_date: None,
-        original_message_id: Some(MessageId::new(original_message_id).expect("valid message id")),
+        original_message_id: Some(
+            MessageId::new(original_message_id).expect("Test original message ID must be positive"),
+        ),
     });
     msg
 }
@@ -230,6 +235,24 @@ mod tests {
         let msg = create_test_message_with_sender(3, "Hello", 100, 42, "Alice");
         assert_eq!(msg.sender_id.unwrap().get(), 42);
         assert_eq!(msg.sender_name.unwrap(), "Alice");
+    }
+
+    #[test]
+    fn create_test_message_with_forward_works() {
+        let msg = create_test_message_with_forward(4, "Forwarded", 100, 555, 42);
+        let fwd = msg.forwarded_from.expect("forward attribution present");
+        assert_eq!(fwd.channel_id.unwrap().get(), 555);
+        assert_eq!(fwd.original_message_id.unwrap().get(), 42);
+        assert!(fwd.channel_name.is_none());
+        assert!(fwd.channel_username.is_none());
+    }
+
+    #[test]
+    fn create_test_message_with_link_preview_works() {
+        let msg = create_test_message_with_link_preview(5, "Link", 100, "https://example.com");
+        let preview = msg.link_preview.expect("link preview present");
+        assert_eq!(preview.url, "https://example.com");
+        assert!(preview.title.is_none());
     }
 
     #[test]
