@@ -337,3 +337,81 @@ async fn search_passes_media_filter_to_params() {
     // Then: Success and media_filter was passed to client
     assert!(result.is_ok());
 }
+
+#[tokio::test]
+async fn search_messages_serializes_enrichment_fields() {
+    use crate::telegram::types::{ForwardInfo, LinkPreview};
+
+    let mut mock_client = MockTelegramClientTrait::new();
+    let enriched = SearchResult {
+        messages: vec![Message {
+            id: MessageId::new(1).unwrap(),
+            channel_id: ChannelId::new(123).unwrap(),
+            channel_name: ChannelName::new("Test Channel").unwrap(),
+            channel_username: Username::new("testchannel").unwrap(),
+            text: "forwarded post".to_string(),
+            timestamp: chrono::Utc::now(),
+            sender_id: None,
+            sender_name: None,
+            has_media: false,
+            media_type: MediaType::None,
+            forwarded_from: Some(ForwardInfo {
+                channel_id: Some(ChannelId::new(555).unwrap()),
+                channel_name: None,
+                channel_username: None,
+                sender_name: None,
+                original_date: None,
+                original_message_id: Some(MessageId::new(42).unwrap()),
+            }),
+            link_preview: Some(LinkPreview {
+                url: "https://example.com".to_string(),
+                site_name: Some("Example".to_string()),
+                title: Some("Title".to_string()),
+                description: Some("Desc".to_string()),
+            }),
+            views: Some(999),
+            forwards: Some(12),
+            reply_to_message_id: None,
+        }],
+        total_found: 1,
+        search_time_ms: 10,
+        query_metadata: QueryMetadata {
+            query: "x".to_string(),
+            hours_back: 48,
+            channels_searched: 1,
+        },
+    };
+
+    mock_client
+        .expect_search_messages()
+        .returning(move |_| Ok(enriched.clone()));
+
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
+
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = SearchRequest {
+        query: "x".to_string(),
+        channel_id: None,
+        hours_back: None,
+        limit: None,
+        media_filter: None,
+    };
+
+    let result = server
+        .search_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await
+        .unwrap();
+
+    let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+    let msg = &json["messages"][0];
+    assert_eq!(msg["views"], 999);
+    assert_eq!(msg["forwards"], 12);
+    assert_eq!(msg["forwarded_from"]["channel_id"], 555);
+    assert_eq!(msg["forwarded_from"]["original_message_id"], 42);
+    assert!(msg["forwarded_from"].get("channel_name").is_none());
+    assert_eq!(msg["link_preview"]["url"], "https://example.com");
+    // Plain-message backward compat: sender_id still present as null.
+    assert!(msg["sender_id"].is_null());
+}

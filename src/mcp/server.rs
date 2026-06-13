@@ -6,8 +6,8 @@ use crate::mcp::tools::{
     BufferedResponseEntry, ChannelsResponse, GenerateLinkRequest, GetChannelInfoRequest,
     GetChannelsRequest, GetLastResponsesRequest, GetMessageByLinkRequest, GetMessageMediaRequest,
     GetMessageMediaResponse, GetRecentMessagesRequest, LastResponsesResponse, MessageLinkResponse,
-    OpenMessageRequest, OpenMessageResponse, SearchRequest, StatusResponse, parse_channel_id,
-    parse_message_id, parse_optional_channel_id,
+    MessageResponse, OpenMessageRequest, OpenMessageResponse, SearchRequest, SearchResponse,
+    StatusResponse, parse_channel_id, parse_message_id, parse_optional_channel_id,
 };
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
@@ -300,7 +300,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "Search results"
         );
 
-        serde_json::to_string(&result).map_err(|e| e.to_string())
+        serde_json::to_string(&SearchResponse::from(result)).map_err(|e| e.to_string())
     }
 
     async fn get_recent_messages_impl(
@@ -380,7 +380,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "Recent messages results"
         );
 
-        serde_json::to_string(&result).map_err(|e| e.to_string())
+        serde_json::to_string(&SearchResponse::from(result)).map_err(|e| e.to_string())
     }
 
     async fn get_message_by_link_impl(
@@ -417,7 +417,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "Message by link results"
         );
 
-        serde_json::to_string(&message).map_err(|e| e.to_string())
+        serde_json::to_string(&MessageResponse::from(message)).map_err(|e| e.to_string())
     }
 
     async fn get_last_responses_impl(
