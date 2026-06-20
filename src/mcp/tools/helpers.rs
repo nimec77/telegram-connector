@@ -54,6 +54,15 @@ pub fn parse_optional_channel_id(id_str: &Option<String>) -> Result<Option<Chann
     }
 }
 
+/// Serialize a value to a JSON string for an MCP tool response.
+///
+/// Centralizes the `serde_json::to_string(..).map_err(|e| e.to_string())` tail
+/// repeated by every `*_impl` method, mapping serialization failures to the
+/// `String` error half of the rmcp `Result<String, String>` tool contract.
+pub fn json_response<T: serde::Serialize>(value: &T) -> Result<String, String> {
+    serde_json::to_string(value).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -117,5 +126,11 @@ mod tests {
     fn parse_optional_channel_id_some_invalid() {
         let result = parse_optional_channel_id(&Some("invalid".to_string()));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn json_response_serializes_value() {
+        let out = json_response(&vec![1, 2, 3]).expect("serializes");
+        assert_eq!(out, "[1,2,3]");
     }
 }

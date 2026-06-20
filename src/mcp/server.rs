@@ -8,7 +8,7 @@ use crate::mcp::tools::{
     GetChannelsRequest, GetLastResponsesRequest, GetMessageByLinkRequest, GetMessageMediaRequest,
     GetMessageMediaResponse, GetRecentMessagesRequest, LastResponsesResponse, MessageLinkResponse,
     MessageResponse, OpenMessageRequest, OpenMessageResponse, SearchRequest, SearchResponse,
-    StatusResponse, TranscribeVoiceMessageRequest, TranscribeVoiceMessageResponse,
+    StatusResponse, TranscribeVoiceMessageRequest, TranscribeVoiceMessageResponse, json_response,
     parse_channel_id, parse_message_id, parse_optional_channel_id,
 };
 use crate::rate_limiter::RateLimiterTrait;

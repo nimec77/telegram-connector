@@ -31,7 +31,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             },
         };
 
-        serde_json::to_string(&response).map_err(|e| e.to_string())
+        json_response(&response)
     }
 
     pub(super) async fn open_message_in_telegram_impl(
@@ -88,6 +88,6 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             },
         };
 
-        serde_json::to_string(&response).map_err(|e| e.to_string())
+        json_response(&response)
     }
 }

@@ -28,7 +28,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             has_more,
         };
 
-        serde_json::to_string(&response).map_err(|e| e.to_string())
+        json_response(&response)
     }
 
     pub(super) async fn get_channel_info_impl(
@@ -41,6 +41,6 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             .await
             .map_err(|e| e.to_string())?;
 
-        serde_json::to_string(&channel).map_err(|e| e.to_string())
+        json_response(&channel)
     }
 }

@@ -22,7 +22,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             premium: self.telegram_client.is_premium().await,
         };
 
-        serde_json::to_string(&response).map_err(|e| e.to_string())
+        json_response(&response)
     }
 
     pub(super) async fn get_last_responses_impl(
@@ -47,6 +47,6 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             responses,
         };
 
-        serde_json::to_string(&response).map_err(|e| e.to_string())
+        json_response(&response)
     }
 }

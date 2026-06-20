@@ -59,7 +59,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "Message media results"
         );
 
-        let metadata_json = serde_json::to_string(&metadata).map_err(|e| e.to_string())?;
+        let metadata_json = json_response(&metadata)?;
 
         Ok(CallToolResult::success(vec![
             Content::image(processed.base64_jpeg, "image/jpeg"),
@@ -129,6 +129,6 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "Transcription results"
         );
 
-        serde_json::to_string(&response).map_err(|e| e.to_string())
+        json_response(&response)
     }
 }

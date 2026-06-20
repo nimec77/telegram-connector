@@ -75,7 +75,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "Search results"
         );
 
-        serde_json::to_string(&SearchResponse::from(result)).map_err(|e| e.to_string())
+        json_response(&SearchResponse::from(result))
     }
 
     pub(super) async fn get_recent_messages_impl(
@@ -155,7 +155,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "Recent messages results"
         );
 
-        serde_json::to_string(&SearchResponse::from(result)).map_err(|e| e.to_string())
+        json_response(&SearchResponse::from(result))
     }
 
     pub(super) async fn get_message_by_link_impl(
@@ -192,6 +192,6 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "Message by link results"
         );
 
-        serde_json::to_string(&MessageResponse::from(message)).map_err(|e| e.to_string())
+        json_response(&MessageResponse::from(message))
     }
 }
