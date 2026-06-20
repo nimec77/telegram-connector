@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Breaking:** `Channel.member_count` is now `Option<u64>` (JSON `null` when not fetched) instead of always-`0`. Both the channel list (`get_subscribed_channels`) and the single-channel lookup (`get_channel_info`) derive channels from basic dialog/peer info, which carries no member count — so they previously reported a misleading `0`, indistinguishable from a genuinely empty channel. They now report `null` to mean "not fetched." Clients keying on `member_count` being a number must tolerate `null`.
 
+### Fixed
+- `get_subscribed_channels` no longer reports `has_more: true` when the page exactly fills the requested `limit` (or a multiple of it). The server now over-fetches one extra channel to detect a real next page, so consumers no longer make a wasted round-trip that returns zero channels at exact page boundaries.
+
 ## [0.11.0] - 2026-06-20
 
 ### Added

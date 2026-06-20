@@ -26,6 +26,13 @@ fn create_test_channel(id: i64, name: &str) -> Channel {
     }
 }
 
+/// Build `n` distinct test channels (ids 1000.., names "Channel N").
+fn n_channels(n: usize) -> Vec<Channel> {
+    (0..n)
+        .map(|i| create_test_channel(1000 + i as i64, &format!("Channel {i}")))
+        .collect()
+}
+
 #[tokio::test]
 async fn get_subscribed_channels_returns_list() {
     // Given: Mock client returning test channels
@@ -39,7 +46,7 @@ async fn get_subscribed_channels_returns_list() {
     mock_client
         .expect_get_subscribed_channels()
         .with(
-            mockall::predicate::eq(20), // default limit
+            mockall::predicate::eq(21), // default limit (20) + 1 over-fetch (CQ-5)
             mockall::predicate::eq(0),  // default offset
         )
         .return_once(move |_, _| Ok(expected));
@@ -75,7 +82,7 @@ async fn get_subscribed_channels_respects_pagination() {
     mock_client
         .expect_get_subscribed_channels()
         .with(
-            mockall::predicate::eq(10), // custom limit
+            mockall::predicate::eq(11), // custom limit (10) + 1 over-fetch (CQ-5)
             mockall::predicate::eq(5),  // custom offset
         )
         .return_once(move |_, _| Ok(expected));
@@ -214,4 +221,71 @@ async fn get_channel_info_unfetched_member_count_serializes_as_null() {
         "unfetched member_count must cross the MCP boundary as null, got {}",
         json["member_count"]
     );
+}
+
+#[tokio::test]
+async fn get_subscribed_channels_no_false_has_more_at_exact_boundary() {
+    // Exactly `limit` channels exist, so the next page is empty and has_more
+    // must be false. Pre-CQ-5 the server fetched exactly `limit` and reported
+    // has_more = (len >= limit) = true — a misleading wasted round-trip. The mock
+    // returns min(available, requested) so it models a finite dialog list.
+    let available = 3usize;
+    let limit = 3u32;
+
+    let mut mock_client = MockTelegramClientTrait::new();
+    mock_client
+        .expect_get_subscribed_channels()
+        .returning(move |requested, _offset| Ok(n_channels((requested as usize).min(available))));
+
+    let mock_limiter = MockRateLimiterTrait::new();
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = GetChannelsRequest {
+        limit: Some(limit),
+        offset: None,
+    };
+
+    let result = server
+        .get_subscribed_channels(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await
+        .expect("tool call should succeed");
+    let response: ChannelsResponse = serde_json::from_str(&result).unwrap();
+
+    assert_eq!(response.channels.len(), 3);
+    assert_eq!(response.total, 3);
+    assert!(
+        !response.has_more,
+        "exactly `limit` channels exist; has_more must be false"
+    );
+}
+
+#[tokio::test]
+async fn get_subscribed_channels_reports_has_more_when_more_exist() {
+    // More than `limit` channels exist: the server over-fetches one extra to
+    // detect the next page, reports has_more = true, and truncates to `limit`.
+    let available = 5usize;
+    let limit = 3u32;
+
+    let mut mock_client = MockTelegramClientTrait::new();
+    mock_client
+        .expect_get_subscribed_channels()
+        .returning(move |requested, _offset| Ok(n_channels((requested as usize).min(available))));
+
+    let mock_limiter = MockRateLimiterTrait::new();
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = GetChannelsRequest {
+        limit: Some(limit),
+        offset: None,
+    };
+
+    let result = server
+        .get_subscribed_channels(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await
+        .expect("tool call should succeed");
+    let response: ChannelsResponse = serde_json::from_str(&result).unwrap();
+
+    assert_eq!(response.channels.len(), 3, "page truncated to limit");
+    assert_eq!(response.total, 3);
+    assert!(response.has_more, "more than `limit` channels exist");
 }

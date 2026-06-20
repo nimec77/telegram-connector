@@ -13,14 +13,19 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         let limit = request.limit.unwrap_or(20);
         let offset = request.offset.unwrap_or(0);
 
-        let channels = self
+        // Over-fetch one extra channel so an exact page boundary doesn't falsely
+        // report a next page (CQ-5): `has_more` is true only if the extra row
+        // actually came back. The client tolerates any limit; we truncate to the
+        // requested page below.
+        let mut channels = self
             .telegram_client
-            .get_subscribed_channels(limit, offset)
+            .get_subscribed_channels(limit.saturating_add(1), offset)
             .await
             .map_err(|e| e.to_string())?;
 
+        let has_more = channels.len() > limit as usize;
+        channels.truncate(limit as usize);
         let total = channels.len();
-        let has_more = total >= limit as usize;
 
         let response = ChannelsResponse {
             channels,
