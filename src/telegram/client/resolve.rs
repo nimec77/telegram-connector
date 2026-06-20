@@ -1,0 +1,87 @@
+//! Channel-reference -> peer resolution (the consolidated AD-1 resolver).
+//!
+//! Unit of `client` (LM-2).
+
+use super::*;
+
+impl TelegramClient {
+    /// Canonical channel-reference resolver: a numeric ref is found by walking the
+    /// dialog list; anything else is treated as a username (leading `@` stripped).
+    /// Both forms hard-error with `InvalidInput` when nothing matches. This is the
+    /// single entry point — `get_channel_info`, `get_message_by_id`,
+    /// `download_message_media`, and `transcribe_audio` all go through it (AD-1).
+    pub(super) async fn resolve_peer(
+        &self,
+        channel_ref: &str,
+    ) -> Result<grammers_client::peer::Peer, Error> {
+        if let Ok(id) = channel_ref.parse::<i64>() {
+            // Numeric ID — search through dialogs.
+            self.find_dialog_peer(id).await?.ok_or_else(|| {
+                tracing::warn!(id, "Channel not found in dialogs by ID");
+                Error::InvalidInput(format!("Channel not found: {}", channel_ref))
+            })
+        } else {
+            // Username — resolve directly.
+            self.resolve_username_peer(channel_ref)
+                .await?
+                .ok_or_else(|| {
+                    tracing::warn!(channel_ref = %channel_ref, "Username not found");
+                    Error::InvalidInput(format!("Channel not found: {}", channel_ref))
+                })
+        }
+    }
+
+    /// Resolve a username to a peer via `resolve_username`, bounded by the resolve
+    /// timeout (a leading `@` is stripped). `Ok(None)` means the username does not
+    /// exist; `Err` is an RPC/timeout failure. Shared by [`Self::resolve_peer`]
+    /// (which hard-errors on `None`) and `get_recent_messages` (which falls back to
+    /// a dialog walk on `None`/`Err`).
+    pub(super) async fn resolve_username_peer(
+        &self,
+        channel_ref: &str,
+    ) -> Result<Option<grammers_client::peer::Peer>, Error> {
+        let username = channel_ref.strip_prefix('@').unwrap_or(channel_ref);
+        with_timeout("resolve_username", self.timeouts.resolve_secs, async {
+            self.client.resolve_username(username).await.map_err(|e| {
+                tracing::error!(username = %username, error = %e, "Failed to resolve username");
+                Error::TelegramApi(format!("Failed to resolve username: {}", e))
+            })
+        })
+        .await
+    }
+
+    /// Find a subscribed peer by its bare numeric ID by walking the dialog list,
+    /// bounded by the resolve timeout. `Ok(None)` means no dialog matched. Shared
+    /// by [`Self::resolve_peer`] and `get_recent_messages`'s dialog fallback.
+    pub(super) async fn find_dialog_peer(
+        &self,
+        id: i64,
+    ) -> Result<Option<grammers_client::peer::Peer>, Error> {
+        with_timeout("iter_dialogs", self.timeouts.resolve_secs, async {
+            let mut dialogs = self.client.iter_dialogs();
+            while let Some(dialog) = dialogs.next().await.map_err(|e| {
+                tracing::error!(error = %e, "Failed to iterate dialogs");
+                Error::TelegramApi(format!("Failed to iterate dialogs: {}", e))
+            })? {
+                if dialog.peer().id().bare_id() == id {
+                    return Ok(Some(dialog.peer().clone()));
+                }
+            }
+            Ok(None)
+        })
+        .await
+    }
+}
+
+/// The username to attempt for a history `channel_identifier`, or `None` when the
+/// identifier (after stripping a leading `@`) is purely numeric. Preserves the
+/// original `get_recent_messages` rule of resolving only provably-non-numeric
+/// usernames before falling back to a dialog walk by numeric id (AD-1).
+pub(crate) fn username_to_resolve(identifier: &str) -> Option<&str> {
+    let username = identifier.strip_prefix('@').unwrap_or(identifier);
+    if username.chars().all(|c| c.is_ascii_digit()) {
+        None
+    } else {
+        Some(identifier)
+    }
+}

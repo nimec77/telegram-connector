@@ -4,7 +4,7 @@
 //! real network.
 
 use crate::error::Error;
-use crate::telegram::client::with_timeout;
+use crate::telegram::timeout::with_timeout;
 use std::time::Duration;
 use tokio::time::{self, sleep};
 
