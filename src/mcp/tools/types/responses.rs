@@ -44,6 +44,23 @@ pub struct StatusResponse {
     pub premium: Option<bool>,
 }
 
+/// Response for transcribe_voice_message tool
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct TranscribeVoiceMessageResponse {
+    #[schemars(description = "The transcription text (may be partial)")]
+    pub text: String,
+
+    #[schemars(description = "True if the timeout elapsed before Telegram finished transcribing")]
+    pub partial: bool,
+
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[schemars(description = "Audio duration in seconds (from message metadata), if available")]
+    pub duration_seconds: Option<u32>,
+
+    #[schemars(description = "Media type: \"voice\" or \"video_note\"")]
+    pub media_type: String,
+}
+
 /// Response for get_subscribed_channels tool
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ChannelsResponse {
