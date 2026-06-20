@@ -253,11 +253,8 @@ impl Config {
         // This allows ${VAR} syntax in any field, including numeric fields like api_id
         let expanded_content = expand_env_vars(&content)?;
 
-        let mut config: Config =
+        let config: Config =
             toml::from_str(&expanded_content).context("Failed to parse config.toml")?;
-
-        // Apply defaults (currently no-op, but kept for future use)
-        config.apply_defaults();
 
         // Validate sub-configs that have non-credential invariants. Credential
         // validation is deferred to `validate_for_setup()` because the daemon path
@@ -305,11 +302,6 @@ impl Config {
             .ok_or_else(|| anyhow::anyhow!("Could not determine config directory"))?;
 
         Ok(dirs.config_dir().join("config.toml"))
-    }
-
-    fn apply_defaults(&mut self) {
-        // Defaults are handled by serde with #[serde(default)] attributes
-        // This method is kept for potential future use
     }
 }
 
