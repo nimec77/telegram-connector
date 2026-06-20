@@ -3,10 +3,10 @@
 //! Sub-domain of `converters` (LM-4). Depends on `media` for media-type
 //! detection and video/audio info.
 
+use super::channel::peer_identity;
 use super::media::{convert_media_to_type, extract_audio_info, extract_video_info};
 use crate::telegram::types::{
-    ChannelId, ChannelName, ForwardInfo, LinkPreview, MediaType, Message, MessageId, UserId,
-    Username,
+    ChannelId, ForwardInfo, LinkPreview, MediaType, Message, MessageId, UserId,
 };
 use chrono::{DateTime, Utc};
 use grammers_client::media::Media;
@@ -62,31 +62,7 @@ pub fn convert_message(
     msg: &grammers_client::message::Message,
     peer: &grammers_client::peer::Peer,
 ) -> Option<Message> {
-    use grammers_client::peer::Peer;
-
-    let (channel_id, channel_name, channel_username) = match peer {
-        Peer::Channel(ch) => (
-            ChannelId::new(ch.id().bare_id()).ok()?,
-            ChannelName::new(ch.title()).ok()?,
-            ch.username()
-                .and_then(|u| Username::new(u).ok())
-                .unwrap_or_else(|| Username::new("unknown").unwrap()),
-        ),
-        Peer::Group(g) => (
-            ChannelId::new(g.id().bare_id()).ok()?,
-            ChannelName::new(g.title().unwrap_or("Unknown")).ok()?,
-            g.username()
-                .and_then(|u| Username::new(u).ok())
-                .unwrap_or_else(|| Username::new("group").unwrap()),
-        ),
-        Peer::User(u) => (
-            ChannelId::new(u.id().bare_id()).ok()?,
-            ChannelName::new(u.first_name().unwrap_or("User")).ok()?,
-            u.username()
-                .and_then(|un| Username::new(un).ok())
-                .unwrap_or_else(|| Username::new("user").unwrap()),
-        ),
-    };
+    let (channel_id, channel_name, channel_username) = peer_identity(peer)?;
 
     let message_id = MessageId::new(msg.id() as i64).ok()?;
 

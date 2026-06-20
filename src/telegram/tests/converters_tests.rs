@@ -370,3 +370,13 @@ fn extract_audio_info_none_for_video() {
     let media = video_doc(false, 30.0, 1920, 1080, 5_000_000, "video/mp4", true);
     assert!(extract_audio_info(&media).is_none());
 }
+
+#[test]
+fn fallback_username_yields_kind_sentinel_without_panicking() {
+    use super::channel::fallback_username;
+    // The only two sentinels peer_identity passes: both are valid `Username`s
+    // (>= 5 chars), so the single fallback site never panics. The user kind
+    // reuses "unknown" because "user" (4 chars) fails Username validation.
+    assert_eq!(fallback_username("unknown").as_str(), "unknown");
+    assert_eq!(fallback_username("group").as_str(), "group");
+}
