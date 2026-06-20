@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod client;
 pub mod converters;
+pub mod timeout;
 pub mod trait_def;
 pub mod transcription;
 pub mod types;

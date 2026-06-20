@@ -1,0 +1,132 @@
+//! get_recent_messages operation.
+//!
+//! Unit of `client` (LM-2).
+
+use super::*;
+
+impl TelegramClient {
+    pub(super) async fn get_recent_messages_impl(
+        &self,
+        params: &HistoryParams,
+    ) -> Result<SearchResult, Error> {
+        // Validate limit
+        if params.limit == 0 {
+            return Err(Error::InvalidInput(
+                "Limit must be greater than 0".to_string(),
+            ));
+        }
+
+        let start_time = Instant::now();
+        let cutoff_time = Utc::now() - Duration::hours(params.hours_back as i64);
+
+        // Resolve the channel: prefer a best-effort username lookup (doesn't require
+        // subscription), then fall back to a dialog walk by the known numeric id. A
+        // username miss or RPC failure is non-fatal — it falls through to the dialog
+        // walk, preserving the original "prefer username, fall back to dialog by id"
+        // behaviour (AD-1).
+        let resolved_peer = match params
+            .channel_identifier
+            .as_deref()
+            .and_then(username_to_resolve)
+        {
+            Some(identifier) => match self.resolve_username_peer(identifier).await {
+                Ok(Some(peer)) => Some(peer),
+                Ok(None) => {
+                    tracing::warn!(
+                        identifier = %identifier,
+                        "Username not found, falling back to dialog search"
+                    );
+                    None
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        identifier = %identifier,
+                        error = %e,
+                        "Failed to resolve username, falling back to dialog search"
+                    );
+                    None
+                }
+            },
+            None => None,
+        };
+
+        // Use the resolved peer, or fall back to a dialog walk by numeric id.
+        let peer = match resolved_peer {
+            Some(peer) => peer,
+            None => self
+                .find_dialog_peer(params.channel_id.get())
+                .await?
+                .ok_or_else(|| {
+                    tracing::warn!(
+                        channel_id = %params.channel_id,
+                        "Channel not found in dialogs"
+                    );
+                    Error::InvalidInput(format!("Channel not found: {}", params.channel_id))
+                })?,
+        };
+
+        // Use iter_messages to get message history (no search query)
+        let peer_ref = peer
+            .to_ref()
+            .await
+            .ok_or_else(|| Error::TelegramApi("Failed to convert peer to PeerRef".to_string()))?;
+
+        let messages = with_timeout("iter_messages", self.timeouts.history_secs, async {
+            let mut messages = Vec::new();
+            let mut messages_iter = self.client.iter_messages(peer_ref);
+
+            while let Some(msg) = messages_iter
+                .next()
+                .await
+                .map_err(|e| Error::TelegramApi(format!("Failed to iterate messages: {}", e)))?
+            {
+                // Check time filter - messages are in reverse chronological order
+                if msg.date() < cutoff_time {
+                    break;
+                }
+
+                // Apply media filter client-side (iter_messages doesn't support server-side filtering)
+                if params
+                    .media_filter
+                    .as_ref()
+                    .is_some_and(|filter| !matches_media_filter(&msg, filter))
+                {
+                    continue;
+                }
+
+                if let Some(converted) = convert_message(&msg, &peer) {
+                    messages.push(converted);
+                    if messages.len() >= params.limit as usize {
+                        break;
+                    }
+                }
+            }
+            Ok(messages)
+        })
+        .await?;
+
+        let search_time_ms = start_time.elapsed().as_millis() as u64;
+        let total_found = messages.len() as u64;
+
+        tracing::info!(
+            channel_id = %params.channel_id,
+            identifier = ?params.channel_identifier,
+            media_filter = ?params.media_filter,
+            results = total_found,
+            hours_back = params.hours_back,
+            duration_ms = search_time_ms,
+            "Get recent messages completed"
+        );
+
+        Ok(SearchResult {
+            messages,
+            total_found,
+            search_time_ms,
+            query_metadata: QueryMetadata {
+                query: String::new(), // No query for history retrieval
+                hours_back: params.hours_back,
+                channels_searched: 1,
+            },
+        })
+    }
+}
