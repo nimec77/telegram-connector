@@ -71,14 +71,15 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         request: TranscribeVoiceMessageRequest,
     ) -> Result<String, String> {
-        const DEFAULT_TIMEOUT: u32 = 30;
-        const MAX_TIMEOUT: u32 = 120;
-
         let message_id = parse_message_id(request.message_id)?;
+        // Bounds come from [transcription] config (AD-6). Floor at 1 and cap at the
+        // configured max via min/max rather than clamp(1, max) so a misconfigured
+        // max of 0 can't panic clamp's min<=max invariant.
         let timeout_secs = request
             .timeout_seconds
-            .unwrap_or(DEFAULT_TIMEOUT)
-            .clamp(1, MAX_TIMEOUT);
+            .unwrap_or(self.transcription_default_timeout_secs)
+            .min(self.transcription_max_timeout_secs)
+            .max(1);
 
         // Premium fast-fail: only a definitive `false` short-circuits (before
         // spending a rate-limit token or a transcribeAudio call). Unknown

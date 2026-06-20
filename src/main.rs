@@ -107,7 +107,11 @@ async fn run_mcp_server(telegram_client: TelegramClient, config: Config) -> Resu
     let server = McpServer::new(Arc::new(telegram_client), Arc::new(rate_limiter))
         .with_observability(&config.observability)
         .with_media_download_cost(config.rate_limiting.media_download_cost)
-        .with_transcription_cost(config.rate_limiting.transcription_cost);
+        .with_transcription_cost(config.rate_limiting.transcription_cost)
+        .with_transcription_timeouts(
+            config.transcription.default_timeout_seconds,
+            config.transcription.max_timeout_seconds,
+        );
 
     // Metrics handle survives the move of `server` into run_stdio
     let metrics = server.metrics();

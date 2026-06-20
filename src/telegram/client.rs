@@ -47,6 +47,8 @@ pub struct TelegramClient {
     session: Arc<SqliteSession>,
     session_path: PathBuf,
     timeouts: TimeoutConfig,
+    /// Hard cap (bytes) on a single media download (`[telegram] max_download_bytes`, AD-6).
+    max_download_bytes: u64,
     /// Cached Premium flag for the connected account (None = not yet determined).
     premium: tokio::sync::RwLock<Option<bool>>,
     _runner_handle: JoinHandle<()>,

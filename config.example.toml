@@ -21,6 +21,11 @@ phone_number = "+1234567890"
 # Note: The session file path itself is not sensitive, but the file contents are.
 # session_file = "~/.config/telegram-connector/session.bin"
 
+# Optional: hard cap (bytes) on a single media download (get_message_media).
+# Transfers larger than this are rejected before and during streaming.
+# Default: 20971520 (20 MiB). Pairs with [rate_limiting] media_download_cost.
+# max_download_bytes = 20971520
+
 # [telegram.timeouts]
 # Optional: per-call-type wall-clock budgets (seconds) for grammers network calls.
 # Hitting a budget cancels the in-flight call and returns Error::Timeout to the
@@ -39,6 +44,11 @@ phone_number = "+1234567890"
 # Optional: Token bucket configuration
 # max_tokens = 50                          # Default: 50 (burst capacity)
 # refill_rate = 2.0                        # Default: 2.0 tokens/second
+
+# [transcription]
+# Optional: bounds for the transcribe_voice_message `timeout_seconds` request param.
+# default_timeout_seconds = 30             # Default: 30 (applied when the request omits it)
+# max_timeout_seconds = 120                # Default: 120 (request value is clamped to this)
 
 [logging]
 # Optional: Logging configuration

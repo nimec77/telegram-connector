@@ -123,6 +123,7 @@ fn create_test_config(api_id: i32, api_hash: Option<&str>, phone_number: Option<
                 .map(|s| SecretString::new(s.to_string().into_boxed_str())),
             session_file: PathBuf::from("session.bin"),
             timeouts: default_timeout_config(),
+            max_download_bytes: default_max_download_bytes(),
         },
         search: SearchConfig {
             default_hours_back: 48,
@@ -146,6 +147,7 @@ fn create_test_config(api_id: i32, api_hash: Option<&str>, phone_number: Option<
             shutdown_timeout_seconds: 5,
         },
         observability: default_observability_config(),
+        transcription: default_transcription_config(),
     }
 }
 
@@ -474,6 +476,39 @@ search_secs = 45
     assert_eq!(cfg.timeouts.history_secs, 15);
     assert_eq!(cfg.timeouts.search_secs, 45);
     assert_eq!(cfg.timeouts.download_secs, 120);
+}
+
+#[test]
+fn test_telegram_config_default_max_download_bytes() {
+    // AD-6: the media download cap is configurable; absent, it defaults to 20 MiB.
+    let toml_str = "api_id = 12345\n";
+    let cfg: TelegramConfig = toml::from_str(toml_str).expect("parse");
+    assert_eq!(cfg.max_download_bytes, 20 * 1024 * 1024);
+}
+
+#[test]
+fn test_telegram_config_max_download_bytes_override() {
+    let toml_str = "api_id = 12345\nmax_download_bytes = 5242880\n";
+    let cfg: TelegramConfig = toml::from_str(toml_str).expect("parse");
+    assert_eq!(cfg.max_download_bytes, 5_242_880);
+}
+
+#[test]
+fn test_transcription_config_defaults_when_section_absent() {
+    // AD-6: transcription timeout bounds default to 30/120 when [transcription] is absent.
+    let toml_str = "[telegram]\napi_id = 12345\n";
+    let cfg: Config = toml::from_str(toml_str).expect("parse");
+    assert_eq!(cfg.transcription.default_timeout_seconds, 30);
+    assert_eq!(cfg.transcription.max_timeout_seconds, 120);
+}
+
+#[test]
+fn test_transcription_config_override() {
+    let toml_str = "[telegram]\napi_id = 12345\n\n\
+                    [transcription]\ndefault_timeout_seconds = 20\nmax_timeout_seconds = 90\n";
+    let cfg: Config = toml::from_str(toml_str).expect("parse");
+    assert_eq!(cfg.transcription.default_timeout_seconds, 20);
+    assert_eq!(cfg.transcription.max_timeout_seconds, 90);
 }
 
 #[test]

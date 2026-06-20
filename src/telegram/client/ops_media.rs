@@ -11,8 +11,9 @@ impl TelegramClient {
         message_id: i32,
         max_dimension: u32,
     ) -> Result<MediaDownload, Error> {
-        // Spec limit: never pull more than 20 MB over the network.
-        const MAX_DOWNLOAD_BYTES: u64 = 20 * 1024 * 1024;
+        // Hard cap on a single download (`[telegram] max_download_bytes`, AD-6).
+        // Hoisted to a Copy local so the streaming closure captures the value.
+        let max_download_bytes = self.max_download_bytes;
 
         if channel_ref.is_empty() {
             return Err(Error::InvalidInput(
@@ -78,10 +79,10 @@ impl TelegramClient {
             Error::DownloadFailed("no downloadable size variant available".to_string())
         })?;
 
-        if selected.size_bytes > MAX_DOWNLOAD_BYTES {
+        if selected.size_bytes > max_download_bytes {
             return Err(Error::MediaTooLarge {
                 size_bytes: selected.size_bytes,
-                max_bytes: MAX_DOWNLOAD_BYTES,
+                max_bytes: max_download_bytes,
             });
         }
 
@@ -100,10 +101,10 @@ impl TelegramClient {
                     Ok(Some(chunk)) => {
                         data.extend_from_slice(&chunk);
                         // Reported sizes are untrusted input; re-check while streaming.
-                        if data.len() as u64 > MAX_DOWNLOAD_BYTES {
+                        if data.len() as u64 > max_download_bytes {
                             return Err(Error::MediaTooLarge {
                                 size_bytes: data.len() as u64,
-                                max_bytes: MAX_DOWNLOAD_BYTES,
+                                max_bytes: max_download_bytes,
                             });
                         }
                     }

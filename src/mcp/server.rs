@@ -31,6 +31,8 @@ pub struct McpServer<T: TelegramClientTrait, R: RateLimiterTrait> {
     slow_write_threshold: Duration,
     media_download_cost: u32,
     transcription_cost: u32,
+    transcription_default_timeout_secs: u32,
+    transcription_max_timeout_secs: u32,
     #[allow(dead_code)]
     tool_router: ToolRouter<Self>,
 }
@@ -49,6 +51,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             slow_write_threshold: Duration::from_millis(observability.slow_write_threshold_ms),
             media_download_cost: 5,
             transcription_cost: 5,
+            transcription_default_timeout_secs: 30,
+            transcription_max_timeout_secs: 120,
             tool_router: Self::tool_router(),
         }
     }
@@ -74,6 +78,14 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     /// (`[rate_limiting] transcription_cost`, default 5).
     pub fn with_transcription_cost(mut self, cost: u32) -> Self {
         self.transcription_cost = cost;
+        self
+    }
+
+    /// Set the transcription `timeout_seconds` bounds: the default applied when a
+    /// request omits it, and the max it is clamped to (`[transcription]`, AD-6).
+    pub fn with_transcription_timeouts(mut self, default_secs: u32, max_secs: u32) -> Self {
+        self.transcription_default_timeout_secs = default_secs;
+        self.transcription_max_timeout_secs = max_secs;
         self
     }
 

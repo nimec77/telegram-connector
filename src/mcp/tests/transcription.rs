@@ -218,3 +218,36 @@ fn media_type_wire_name_is_consistent_across_endpoints() {
     let value = serde_json::to_value(&resp).unwrap();
     assert_eq!(value["media_type"], serde_json::json!("video_note"));
 }
+
+#[tokio::test]
+async fn clamps_request_timeout_to_configured_max() {
+    let mut client = MockTelegramClientTrait::new();
+    client.expect_is_premium().return_once(|| Some(true));
+    client
+        .expect_transcribe_audio()
+        // The configured max is 45; a 999s request must clamp to it, proving the
+        // config value drives the clamp rather than the old hardcoded 120 (AD-6).
+        .withf(|_, _, t| *t == 45)
+        .return_once(|_, _, _| {
+            Ok(TranscriptionOutcome {
+                text: "ok".to_string(),
+                partial: false,
+                media_type: MediaType::Voice,
+                duration_seconds: None,
+            })
+        });
+    let mut limiter = MockRateLimiterTrait::new();
+    limiter.expect_acquire().return_once(|_| Ok(()));
+
+    let server = McpServer::new(Arc::new(client), Arc::new(limiter))
+        .with_transcription_cost(5)
+        .with_transcription_timeouts(30, 45);
+
+    server
+        .transcribe_voice_message(
+            Parameters(request("news", 42, Some(999))),
+            RequestId(NumberOrString::Number(1)),
+        )
+        .await
+        .expect("should succeed");
+}

@@ -5,6 +5,7 @@
 
 use super::{
     LoggingConfig, ObservabilityConfig, RateLimitConfig, SearchConfig, ServerConfig, TimeoutConfig,
+    TranscriptionConfig,
 };
 use std::path::PathBuf;
 
@@ -82,6 +83,25 @@ pub(crate) fn default_media_download_cost() -> u32 {
 
 pub(crate) fn default_transcription_cost() -> u32 {
     5
+}
+
+pub(crate) fn default_max_download_bytes() -> u64 {
+    20 * 1024 * 1024
+}
+
+pub(crate) fn default_transcription_default_timeout() -> u32 {
+    30
+}
+
+pub(crate) fn default_transcription_max_timeout() -> u32 {
+    120
+}
+
+pub(crate) fn default_transcription_config() -> TranscriptionConfig {
+    TranscriptionConfig {
+        default_timeout_seconds: default_transcription_default_timeout(),
+        max_timeout_seconds: default_transcription_max_timeout(),
+    }
 }
 
 pub(crate) fn default_max_buffered_payload_bytes() -> usize {

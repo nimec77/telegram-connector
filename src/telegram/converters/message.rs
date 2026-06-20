@@ -37,11 +37,15 @@ pub(crate) fn extract_forward_info(header: &tl::types::MessageFwdHeader) -> Forw
     }
 }
 
+/// Cap on a link preview's `description`, in Unicode scalar values. Internal
+/// presentation limit; not operator-configurable (AD-6 KISS — left a named const).
+const LINK_PREVIEW_DESCRIPTION_MAX_CHARS: usize = 500;
+
 /// Extract a link preview from a raw webpage media block.
 ///
 /// Only the `WebPage::Page` variant carries content; `Empty`/`Pending`/`NotModified`
-/// yield `None`. `description` is truncated to 500 Unicode scalar values so multi-byte
-/// (e.g. Cyrillic) text is never split mid-codepoint.
+/// yield `None`. `description` is truncated to [`LINK_PREVIEW_DESCRIPTION_MAX_CHARS`]
+/// Unicode scalar values so multi-byte (e.g. Cyrillic) text is never split mid-codepoint.
 pub(crate) fn extract_link_preview(media: &tl::types::MessageMediaWebPage) -> Option<LinkPreview> {
     match &media.webpage {
         tl::enums::WebPage::Page(page) => Some(LinkPreview {
@@ -51,7 +55,7 @@ pub(crate) fn extract_link_preview(media: &tl::types::MessageMediaWebPage) -> Op
             description: page
                 .description
                 .as_ref()
-                .map(|d| d.chars().take(500).collect()),
+                .map(|d| d.chars().take(LINK_PREVIEW_DESCRIPTION_MAX_CHARS).collect()),
         }),
         _ => None,
     }

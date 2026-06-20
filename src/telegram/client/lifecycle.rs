@@ -50,6 +50,7 @@ impl TelegramClient {
             session,
             session_path: config.session_file.clone(),
             timeouts: config.timeouts.clone(),
+            max_download_bytes: config.max_download_bytes,
             premium: tokio::sync::RwLock::new(None),
             _runner_handle: runner_handle,
         })

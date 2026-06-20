@@ -21,6 +21,8 @@ pub struct Config {
     pub server: ServerConfig,
     #[serde(default = "default_observability_config")]
     pub observability: ObservabilityConfig,
+    #[serde(default = "default_transcription_config")]
+    pub transcription: TranscriptionConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -45,6 +47,11 @@ pub struct TelegramConfig {
     /// Per-call-type timeout budgets for grammers network operations.
     #[serde(default = "default_timeout_config")]
     pub timeouts: TimeoutConfig,
+    /// Hard cap (bytes) on a single media download; transfers exceeding it are
+    /// rejected before and during streaming. Default 20 MiB. Pairs with
+    /// `[rate_limiting] media_download_cost`, which prices the download (AD-6).
+    #[serde(default = "default_max_download_bytes")]
+    pub max_download_bytes: u64,
 }
 
 /// Timeout budgets (seconds) applied to grammers calls in [`crate::telegram::client`].
@@ -151,6 +158,20 @@ pub struct RateLimitConfig {
     /// transcription quota makes these calls precious; searches cost 1).
     #[serde(default = "default_transcription_cost")]
     pub transcription_cost: u32,
+}
+
+/// Bounds for the `transcribe_voice_message` `timeout_seconds` request param.
+///
+/// Sibling of the `transcription_cost` rate-limit knob; previously these were
+/// hardcoded constants in the transcription tool (AD-6).
+#[derive(Debug, Clone, Deserialize)]
+pub struct TranscriptionConfig {
+    /// Wait applied when a request omits `timeout_seconds`.
+    #[serde(default = "default_transcription_default_timeout")]
+    pub default_timeout_seconds: u32,
+    /// Upper bound the request's `timeout_seconds` is clamped to.
+    #[serde(default = "default_transcription_max_timeout")]
+    pub max_timeout_seconds: u32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
