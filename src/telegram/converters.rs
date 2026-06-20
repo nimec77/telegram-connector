@@ -1,8 +1,8 @@
 //! Type conversion helpers for grammers types to our domain types
 
 use crate::telegram::types::{
-    Channel, ChannelId, ChannelName, ForwardInfo, LinkPreview, MediaFilter, MediaType, Message,
-    MessageId, SizeCandidate, UserId, Username,
+    AudioInfo, AudioKind, Channel, ChannelId, ChannelName, ForwardInfo, LinkPreview, MediaFilter,
+    MediaType, Message, MessageId, SizeCandidate, UserId, Username, VideoInfo, VideoKind,
 };
 use chrono::{DateTime, Utc};
 use grammers_client::media::{Document, Media, PhotoSize};
@@ -108,6 +108,80 @@ pub fn extract_audio_duration(media: &Media) -> Option<u32> {
         }
     }
     None
+}
+
+/// Derive `VideoInfo` from a video-class media's document attributes. Returns
+/// `None` for non-video media. Reads raw TL attributes because the high-level
+/// grammers `Document` API does not expose video duration / pixel dimensions.
+/// `image/gif` animations may carry no `Video` attribute, in which case
+/// duration/width/height stay `0` (design decision). No network calls.
+pub fn extract_video_info(media: &Media) -> Option<VideoInfo> {
+    let kind = match convert_media_to_type(media) {
+        MediaType::Video => VideoKind::Video,
+        MediaType::VideoNote => VideoKind::VideoNote,
+        MediaType::Animation => VideoKind::Animation,
+        _ => return None,
+    };
+    let Media::Document(doc) = media else {
+        return None;
+    };
+    let Some(tl::enums::Document::Document(raw)) = doc.raw.document.as_ref() else {
+        return None;
+    };
+
+    let mut duration_seconds = 0;
+    let mut width = 0;
+    let mut height = 0;
+    for attr in &raw.attributes {
+        if let tl::enums::DocumentAttribute::Video(v) = attr {
+            duration_seconds = v.duration.max(0.0) as u32;
+            width = v.w.max(0) as u32;
+            height = v.h.max(0) as u32;
+            break;
+        }
+    }
+
+    Some(VideoInfo {
+        duration_seconds,
+        width,
+        height,
+        file_size_bytes: raw.size.max(0) as u64,
+        kind,
+        has_thumbnail: raw.thumbs.as_ref().is_some_and(|t| !t.is_empty()),
+        mime_type: Some(raw.mime_type.clone()),
+    })
+}
+
+/// Derive `AudioInfo` from an audio-class media's document attributes. Returns
+/// `None` for non-audio media. Same zero-cost raw-TL source as
+/// [`extract_video_info`].
+pub fn extract_audio_info(media: &Media) -> Option<AudioInfo> {
+    let kind = match convert_media_to_type(media) {
+        MediaType::Audio => AudioKind::Audio,
+        MediaType::Voice => AudioKind::Voice,
+        _ => return None,
+    };
+    let Media::Document(doc) = media else {
+        return None;
+    };
+    let Some(tl::enums::Document::Document(raw)) = doc.raw.document.as_ref() else {
+        return None;
+    };
+
+    let mut duration_seconds = 0;
+    for attr in &raw.attributes {
+        if let tl::enums::DocumentAttribute::Audio(a) = attr {
+            duration_seconds = a.duration.max(0) as u32;
+            break;
+        }
+    }
+
+    Some(AudioInfo {
+        duration_seconds,
+        file_size_bytes: raw.size.max(0) as u64,
+        kind,
+        mime_type: Some(raw.mime_type.clone()),
+    })
 }
 
 /// Check if a message's media matches the given filter (for client-side filtering)
@@ -346,6 +420,10 @@ pub fn convert_message(
         _ => None,
     };
 
+    // Zero-cost media metadata derived from the in-hand document attributes.
+    let video_info = media.as_ref().and_then(extract_video_info);
+    let audio_info = media.as_ref().and_then(extract_audio_info);
+
     let forwarded_from = msg
         .forward_header()
         .map(|tl::enums::MessageFwdHeader::Header(header)| extract_forward_info(&header));
@@ -372,6 +450,8 @@ pub fn convert_message(
         views,
         forwards,
         reply_to_message_id,
+        video_info,
+        audio_info,
     })
 }
 
@@ -561,5 +641,188 @@ mod tests {
             webpage: tl::enums::WebPage::Empty(tl::types::WebPageEmpty { id: 0, url: None }),
         };
         assert!(extract_link_preview(&media).is_none());
+    }
+
+    fn video_doc(
+        round_message: bool,
+        duration: f64,
+        w: i32,
+        h: i32,
+        size: i64,
+        mime: &str,
+        with_thumb: bool,
+    ) -> Media {
+        let thumbs = with_thumb.then(|| {
+            vec![tl::enums::PhotoSize::Empty(tl::types::PhotoSizeEmpty {
+                r#type: "i".to_string(),
+            })]
+        });
+        Media::Document(Document::from_raw_media(tl::types::MessageMediaDocument {
+            nopremium: false,
+            spoiler: false,
+            video: false,
+            round: false,
+            voice: false,
+            document: Some(tl::enums::Document::Document(tl::types::Document {
+                id: 1,
+                access_hash: 0,
+                file_reference: Vec::new(),
+                date: 0,
+                mime_type: mime.to_string(),
+                size,
+                thumbs,
+                video_thumbs: None,
+                dc_id: 0,
+                attributes: vec![tl::enums::DocumentAttribute::Video(
+                    tl::types::DocumentAttributeVideo {
+                        round_message,
+                        supports_streaming: false,
+                        nosound: false,
+                        duration,
+                        w,
+                        h,
+                        preload_prefix_size: None,
+                        video_start_ts: None,
+                        video_codec: None,
+                    },
+                )],
+            })),
+            alt_documents: None,
+            video_cover: None,
+            video_timestamp: None,
+            ttl_seconds: None,
+        }))
+    }
+
+    fn gif_doc(size: i64, with_thumb: bool) -> Media {
+        let thumbs = with_thumb.then(|| {
+            vec![tl::enums::PhotoSize::Empty(tl::types::PhotoSizeEmpty {
+                r#type: "i".to_string(),
+            })]
+        });
+        Media::Document(Document::from_raw_media(tl::types::MessageMediaDocument {
+            nopremium: false,
+            spoiler: false,
+            video: false,
+            round: false,
+            voice: false,
+            document: Some(tl::enums::Document::Document(tl::types::Document {
+                id: 1,
+                access_hash: 0,
+                file_reference: Vec::new(),
+                date: 0,
+                mime_type: "image/gif".to_string(),
+                size,
+                thumbs,
+                video_thumbs: None,
+                dc_id: 0,
+                attributes: vec![tl::enums::DocumentAttribute::Animated],
+            })),
+            alt_documents: None,
+            video_cover: None,
+            video_timestamp: None,
+            ttl_seconds: None,
+        }))
+    }
+
+    fn audio_doc(voice: bool, duration: i32, size: i64, mime: &str) -> Media {
+        Media::Document(Document::from_raw_media(tl::types::MessageMediaDocument {
+            nopremium: false,
+            spoiler: false,
+            video: false,
+            round: false,
+            voice: false,
+            document: Some(tl::enums::Document::Document(tl::types::Document {
+                id: 1,
+                access_hash: 0,
+                file_reference: Vec::new(),
+                date: 0,
+                mime_type: mime.to_string(),
+                size,
+                thumbs: None,
+                video_thumbs: None,
+                dc_id: 0,
+                attributes: vec![tl::enums::DocumentAttribute::Audio(
+                    tl::types::DocumentAttributeAudio {
+                        voice,
+                        duration,
+                        title: None,
+                        performer: None,
+                        waveform: None,
+                    },
+                )],
+            })),
+            alt_documents: None,
+            video_cover: None,
+            video_timestamp: None,
+            ttl_seconds: None,
+        }))
+    }
+
+    #[test]
+    fn extract_video_info_regular_video() {
+        let media = video_doc(false, 30.0, 1920, 1080, 5_000_000, "video/mp4", true);
+        let info = extract_video_info(&media).expect("video info present");
+        assert_eq!(info.kind, VideoKind::Video);
+        assert_eq!(info.duration_seconds, 30);
+        assert_eq!(info.width, 1920);
+        assert_eq!(info.height, 1080);
+        assert_eq!(info.file_size_bytes, 5_000_000);
+        assert!(info.has_thumbnail);
+        assert_eq!(info.mime_type.as_deref(), Some("video/mp4"));
+    }
+
+    #[test]
+    fn extract_video_info_round_message_is_video_note() {
+        let media = video_doc(true, 5.0, 240, 240, 100_000, "video/mp4", true);
+        let info = extract_video_info(&media).expect("video info present");
+        assert_eq!(info.kind, VideoKind::VideoNote);
+    }
+
+    #[test]
+    fn extract_video_info_gif_is_animation_with_zero_dims() {
+        let media = gif_doc(20_000, true);
+        let info = extract_video_info(&media).expect("video info present");
+        assert_eq!(info.kind, VideoKind::Animation);
+        assert_eq!(info.duration_seconds, 0);
+        assert_eq!(info.width, 0);
+        assert_eq!(info.height, 0);
+        assert!(info.has_thumbnail);
+    }
+
+    #[test]
+    fn extract_video_info_without_thumbs_is_false() {
+        let media = video_doc(false, 10.0, 640, 480, 1_000, "video/mp4", false);
+        let info = extract_video_info(&media).expect("video info present");
+        assert!(!info.has_thumbnail);
+    }
+
+    #[test]
+    fn extract_video_info_none_for_audio() {
+        let media = audio_doc(true, 7, 1000, "audio/ogg");
+        assert!(extract_video_info(&media).is_none());
+    }
+
+    #[test]
+    fn extract_audio_info_voice() {
+        let media = audio_doc(true, 7, 1000, "audio/ogg");
+        let info = extract_audio_info(&media).expect("audio info present");
+        assert_eq!(info.kind, AudioKind::Voice);
+        assert_eq!(info.duration_seconds, 7);
+        assert_eq!(info.file_size_bytes, 1000);
+        assert_eq!(info.mime_type.as_deref(), Some("audio/ogg"));
+    }
+
+    #[test]
+    fn extract_audio_info_music() {
+        let media = audio_doc(false, 200, 4_000_000, "audio/mpeg");
+        let info = extract_audio_info(&media).expect("audio info present");
+        assert_eq!(info.kind, AudioKind::Audio);
+    }
+
+    #[test]
+    fn extract_audio_info_none_for_video() {
+        let media = video_doc(false, 30.0, 1920, 1080, 5_000_000, "video/mp4", true);
+        assert!(extract_audio_info(&media).is_none());
     }
 }

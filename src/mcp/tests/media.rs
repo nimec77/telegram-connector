@@ -25,6 +25,7 @@ fn photo_download(width: u32, height: u32) -> MediaDownload {
         width: Some(width),
         height: Some(height),
         source_size_bytes,
+        video_info: None,
     }
 }
 
@@ -100,6 +101,7 @@ async fn video_thumbnail_sets_is_thumbnail() {
                 width: Some(320),
                 height: Some(180),
                 source_size_bytes,
+                video_info: None,
             })
         });
 
@@ -122,6 +124,59 @@ async fn video_thumbnail_sets_is_thumbnail() {
     assert_eq!(metadata.media_type, MediaType::Video);
     assert!(metadata.is_thumbnail);
     assert!(metadata.caption.is_none());
+}
+
+#[tokio::test]
+async fn video_metadata_included_in_response() {
+    use crate::telegram::types::{VideoInfo, VideoKind};
+
+    let mut mock_client = MockTelegramClientTrait::new();
+    mock_client
+        .expect_download_message_media()
+        .return_once(|_, _, _| {
+            let bytes = create_test_jpeg(320, 180);
+            let source_size_bytes = bytes.len() as u64;
+            Ok(MediaDownload {
+                bytes,
+                media_type: MediaType::Video,
+                is_thumbnail: true,
+                caption: None,
+                width: Some(320),
+                height: Some(180),
+                source_size_bytes,
+                video_info: Some(VideoInfo {
+                    duration_seconds: 30,
+                    width: 1920,
+                    height: 1080,
+                    file_size_bytes: 5_000_000,
+                    kind: VideoKind::Video,
+                    has_thumbnail: true,
+                    mime_type: Some("video/mp4".to_string()),
+                }),
+            })
+        });
+
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
+
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+    let result = server
+        .get_message_media(
+            Parameters(request("news", 7, None)),
+            RequestId(NumberOrString::Number(1)),
+        )
+        .await;
+
+    let call_result = result.expect("tool should succeed");
+    let RawContent::Text(text) = &call_result.content[1].raw else {
+        panic!("second content block must be text");
+    };
+    let metadata: GetMessageMediaResponse = serde_json::from_str(&text.text).unwrap();
+    let vi = metadata.video_info.expect("video_info present in metadata");
+    assert_eq!(vi.kind, VideoKind::Video);
+    assert_eq!(vi.duration_seconds, 30);
+    assert_eq!(vi.width, 1920);
+    assert!(vi.has_thumbnail);
 }
 
 #[tokio::test]
@@ -283,6 +338,7 @@ async fn corrupt_image_bytes_return_decode_error() {
                 width: None,
                 height: None,
                 source_size_bytes: 32,
+                video_info: None,
             })
         });
 

@@ -433,7 +433,22 @@ Search for messages across channels with optional media type filtering.
         "title": "New AI model released",
         "description": "A short summary pulled from Telegram's server-side preview..."
       },
-      "reply_to_message_id": 41
+      "reply_to_message_id": 41,
+      "video_info": {
+        "duration_seconds": 95,
+        "width": 1280,
+        "height": 720,
+        "file_size_bytes": 12485760,
+        "kind": "video",
+        "has_thumbnail": true,
+        "mime_type": "video/mp4"
+      },
+      "audio_info": {
+        "duration_seconds": 8,
+        "file_size_bytes": 41200,
+        "kind": "voice",
+        "mime_type": "audio/ogg"
+      }
     }
   ],
   "total_found": 15,
@@ -456,6 +471,18 @@ so pair `channel_id` with `generate_message_link` if you need to reach the sourc
 `title`, `description`, truncated to 500 characters). `views`, `forwards`, and
 `reply_to_message_id` are included when present. All of these fields are omitted
 entirely when absent, so existing consumers are unaffected.
+
+**Video & audio metadata:** Messages with video-class media carry an optional
+`video_info` object — `duration_seconds`, `width`, `height`, `file_size_bytes`,
+`kind` (`video` | `video_note` | `animation`), `has_thumbnail`, and `mime_type` —
+and audio-class media carry an optional `audio_info` object (`duration_seconds`,
+`file_size_bytes`, `kind` (`audio` | `voice`), `mime_type`). Both are derived from
+the message's document attributes with **no extra API calls** (the full video is
+never downloaded), so the client can judge a clip's length and shape — and whether
+fetching its thumbnail via `get_message_media`, or transcribing a voice message, is
+worthwhile — before spending a request. Rare GIF-class animations without a video
+attribute report `duration_seconds`/`width`/`height` as `0`. Both objects are
+omitted when the message has no video/audio media.
 
 **Media Types:** `none`, `photo`, `video`, `document`, `audio`, `voice`, `video_note`, `animation`, `sticker`, `contact`, `location`, `venue`, `poll`, `dice`
 
@@ -531,7 +558,7 @@ Retrieve the visual media from a Telegram message as an MCP **image content bloc
 
 **What it returns:**
 - **Photos:** the photo is downscaled so its longest side fits `max_dimension`, re-encoded as JPEG, and returned as an MCP image block. The metadata block contains `media_type`, `is_thumbnail` (always `false` for photos), `caption`, original dimensions and byte size, and the returned dimensions and byte size.
-- **Videos, animations, video notes:** only the server-side thumbnail is available; it is returned as an image block with `is_thumbnail: true` in the metadata.
+- **Videos, animations, video notes:** only the server-side thumbnail is available; it is returned as an image block with `is_thumbnail: true` and a `video_info` object (duration, dimensions, kind) in the metadata.
 - **Messages without visual media:** a structured error is returned (no image block).
 - **Photos whose selected size variant exceeds 20 MB:** refused with an error.
 - **Payload cap:** the base64 payload is capped at ~1.5 MB; if the image is still too large after the initial downscale it is downscaled further automatically.
@@ -554,8 +581,8 @@ Retrieve the visual media from a Telegram message as an MCP **image content bloc
 {
   "channel_id": "@technews",
   "message_id": 42,
-  "media_type": "photo",
-  "is_thumbnail": false,
+  "media_type": "video",
+  "is_thumbnail": true,
   "caption": "Optional caption text",
   "original_width": 2560,
   "original_height": 1440,
@@ -563,7 +590,16 @@ Retrieve the visual media from a Telegram message as an MCP **image content bloc
   "returned_width": 1280,
   "returned_height": 720,
   "returned_size_bytes": 98304,
-  "mime_type": "image/jpeg"
+  "mime_type": "image/jpeg",
+  "video_info": {
+    "duration_seconds": 95,
+    "width": 1280,
+    "height": 720,
+    "file_size_bytes": 12485760,
+    "kind": "video",
+    "has_thumbnail": true,
+    "mime_type": "video/mp4"
+  }
 }
 ```
 

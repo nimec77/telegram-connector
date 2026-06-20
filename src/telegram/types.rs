@@ -20,7 +20,10 @@ pub mod transcription;
 // Re-export all public types for convenience
 pub use entities::{Channel, ForwardInfo, LinkPreview, Message};
 pub use ids::{ChannelId, MessageId, UserId};
-pub use media::{MediaDownload, MediaFilter, MediaType, SizeCandidate};
+pub use media::{
+    AudioInfo, AudioKind, MediaDownload, MediaFilter, MediaType, SizeCandidate, VideoInfo,
+    VideoKind,
+};
 pub use names::{ChannelName, Username};
 pub use params::{HistoryParams, QueryMetadata, SearchParams, SearchResult};
 pub use transcription::{TranscriptionOutcome, TranscriptionState};

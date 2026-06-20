@@ -40,6 +40,8 @@ fn create_test_message(id: i32, text: &str, channel_id: i64) -> Message {
         views: None,
         forwards: None,
         reply_to_message_id: None,
+        video_info: None,
+        audio_info: None,
     }
 }
 
@@ -566,6 +568,7 @@ async fn mock_download_message_media_returns_media_download() {
                 width: Some(1280),
                 height: Some(720),
                 source_size_bytes: 3,
+                video_info: None,
             })
         });
 
