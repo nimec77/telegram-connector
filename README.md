@@ -11,9 +11,16 @@ A Model Context Protocol (MCP) service that enables Claude to search and interac
 - **Channel Management** - List subscribed channels and get channel metadata
 - **Deep Linking** - Generate `tg://` and `https://t.me` links for messages
 - **Native Integration** - Open messages directly in Telegram Desktop (macOS)
+- **Voice Transcription** - Transcribe voice messages and video notes to text via Telegram's server-side transcription (requires Telegram Premium)
 - **Rate Limiting** - Built-in token bucket rate limiter to prevent API abuse
 - **Secure Credentials** - API keys and phone numbers protected with `secrecy` crate
 - **File Logging** - Daily log rotation with automatic cleanup of old logs
+
+> **Requires Telegram Premium:** `transcribe_voice_message` uses Telegram's
+> server-side `messages.transcribeAudio`, which is only available on accounts
+> with Telegram Premium and is subject to Telegram's weekly transcription
+> quota. Without Premium the tool returns a clear error. `check_mcp_status`
+> reports a `premium` flag so you can tell in advance.
 
 ## Architecture
 
@@ -23,7 +30,7 @@ A Model Context Protocol (MCP) service that enables Claude to search and interac
 └──────────────────────────┬──────────────────────────────────┘
                            │ JSON-RPC over stdio
 ┌──────────────────────────▼──────────────────────────────────┐
-│                     MCP Server Layer (10 tools)              │
+│                     MCP Server Layer (11 tools)              │
 │                    (rmcp + server.rs)                        │
 │                                                             │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────┐    │
@@ -561,6 +568,39 @@ Retrieve the visual media from a Telegram message as an MCP **image content bloc
 ```
 
 **Usage:** Ask Claude to "show me the photo from message 42 in channel technews" or "what does the chart in message 100 of channel @data say?"
+
+### 11. transcribe_voice_message
+
+Transcribe a voice message or video note (round video) to text using Telegram's server-side `messages.transcribeAudio` (no local ML).
+
+> **Requires Telegram Premium.** Transcription is only available on accounts with Telegram Premium and is subject to Telegram's weekly transcription quota. Without Premium the tool returns a clear error; `check_mcp_status` reports a `premium` flag so you can check in advance.
+
+**What it returns:**
+- The transcription `text` (may be partial). Only voice messages and video notes are transcribable; other media types are rejected with a structured error.
+- `partial: true` when the wait elapsed before Telegram finished transcribing — the latest accumulated text is returned. The tool re-invokes (`polls`) the transcription until it completes or `timeout_seconds` elapses.
+- `duration_seconds` of the source audio when available (from message metadata).
+- `media_type`: `"voice"` or `"video_note"`.
+
+**Rate limiting:** each call charges `transcription_cost` tokens from the rate limiter (default **5**, versus 1 for searches — Telegram's weekly quota makes these calls precious). Configure under `[rate_limiting] transcription_cost`.
+
+**Parameters:**
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `channel_id` | string | Yes | - | Channel ID or username |
+| `message_id` | integer | Yes | - | Message ID within the channel |
+| `timeout_seconds` | integer | No | 30 | Seconds to wait for transcription to complete (clamped to 1–120) |
+
+**Response:**
+```json
+{
+  "text": "привет, это голосовое сообщение",
+  "partial": false,
+  "duration_seconds": 7,
+  "media_type": "voice"
+}
+```
+
+**Usage:** Ask Claude to "transcribe the voice message in message 42 of channel @podcast".
 
 ## Manual Testing Guide
 
