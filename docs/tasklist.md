@@ -31,6 +31,9 @@
 | 21 | Flexible Scalar Coercion | ✅ Complete | 305 | Request params accept number↔string↔bool via 5 `serde` `deserialize_with` helpers; schema unchanged |
 | 22 | Get Message Media | ✅ Complete | 370 | New tool: photo/video-thumbnail retrieval as MCP image blocks |
 | 23 | Audio Transcription | ✅ Complete | 408 | transcribe_voice_message via messages.transcribeAudio; Premium-gated; poll-by-reinvoke |
+| 24 | Refactor: hygiene & test extraction | ✅ Complete | 437 | LM-1 test extraction; CQ-1/2/3/6 + AD-5 (see `docs/refactoring/04-roadmap.md`) |
+| 25 | Refactor: module splits & dedup | ✅ Complete | 437 | LM-2…6 splits; AD-1…4 peer-resolution/identity consolidation |
+| 26 | Channel data & config refinements | 🔄 In Progress | 437 | AD-6 done; **CQ-4** (honest channel fields) + **CQ-5** (`has_more` boundary) pending |
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 

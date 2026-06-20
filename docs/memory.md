@@ -1,6 +1,6 @@
 # Development Memory - Telegram MCP Connector
 
-**Last Updated:** Phase 22 — Get Message Media (2026-06-12)
+**Last Updated:** Refactor roadmap — Phase A hygiene (CQ-2/3/6), 2026-06-20
 
 ---
 
@@ -2965,3 +2965,18 @@ gate green per step. Tests 432 → 437.
 - **`Username::new` requires 5–32 chars, so the `"user"` fallback sentinel (4 chars) was a latent panic.** `convert_message`'s `Peer::User` branch did `Username::new("user").unwrap()` — it would panic for any user-peer message without a public username. CQ-1's premise that "the `Username` literals are statically valid" is false. Resolution: a user with no username now reuses the valid `"unknown"` sentinel (`"unknown"`/`"group"` unchanged). Any sentinel routed through `Username::new` must satisfy the 5–32-char rule.
 - **AD-3's declarative-macro option cannot compose with rmcp.** A `macro_rules!` emitting a `#[tool]` method in *item position* inside the `impl` expands *after* `#[tool_router]` (an attribute macro) has already scanned the impl body, so the generated tool never registers in `list_tools`/`call_tool`. The non-fragile guard object was chosen instead.
 - **Configurable clamp bound:** with a config-driven max, `value.clamp(1, max)` panics if `max == 0` (violates `min <= max`). Use `value.min(max).max(1)` instead.
+
+## Refactor: Phase A hygiene (CQ-2, CQ-3, CQ-6) — 2026-06-20
+
+Closed out the remaining Phase A items from `docs/refactoring/04-roadmap.md`
+(CQ-1 and AD-5 were done in the earlier AD sweep; LM-1 covered Phase B). One
+commit per finding, gate green per step, test count unchanged at 437.
+
+- **CQ-3** — removed `dashmap` (zero usages) and `tokio-test` from deps.
+- **CQ-2** — deleted the empty `apply_defaults()` and its `load_from` call; `config` no longer needs `mut`.
+- **CQ-6** — `CLAUDE.md` "10 tools" → 11 (×2); same drift fixed in the gitignored local instruction files (`.claude/rules/ast-index.md`, `.claude/skills/project-conventions/SKILL.md`); declared `tasklist.md` the single source of truth for phase/test counts and reframed memory.md's per-phase list as historical.
+
+### Lessons (non-obvious)
+
+- **`tokio-test` was unused as a crate but was transitively supplying tokio's `test-util` feature.** Five tests (`tests/timeout_tests.rs` ×4, `transcription.rs` ×2) use `#[tokio::test(start_paused = true)]` / `time::advance`, which require `test-util`. That feature is **intentionally excluded from tokio's `full`** (it swaps in a pausable clock), so it must be requested explicitly. Naively deleting `tokio-test` broke the build with `no method named start_paused on Builder`. Fix: drop the unused crate and add `tokio = { features = ["test-util"] }` to `[dev-dependencies]` — Cargo unifies it into test builds while release builds (which skip dev-deps) stay clean. Lesson: before removing a "dead" dev-dep, check whether it's feeding a feature into a shared crate; `cargo check` won't warn, only a full test build reveals it.
+- **`.claude/` is gitignored here**, so edits to `.claude/rules/*` and `.claude/skills/*` take effect locally but can never be committed — don't claim them in a commit body, and don't `git add -f` against the team's deliberate ignore policy.
