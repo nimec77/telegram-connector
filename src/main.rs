@@ -100,10 +100,14 @@ async fn run_mcp_server(telegram_client: TelegramClient, config: Config) -> Resu
     // Create rate limiter
     let rate_limiter = RateLimiter::new(&config.rate_limiting);
 
+    // Warm the Premium flag so check_mcp_status reports it from the first request.
+    let _ = telegram_client.is_premium().await;
+
     // Create MCP server
     let server = McpServer::new(Arc::new(telegram_client), Arc::new(rate_limiter))
         .with_observability(&config.observability)
-        .with_media_download_cost(config.rate_limiting.media_download_cost);
+        .with_media_download_cost(config.rate_limiting.media_download_cost)
+        .with_transcription_cost(config.rate_limiting.transcription_cost);
 
     // Metrics handle survives the move of `server` into run_stdio
     let metrics = server.metrics();
