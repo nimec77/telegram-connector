@@ -74,6 +74,10 @@ fn default_media_download_cost() -> u32 {
     5
 }
 
+fn default_transcription_cost() -> u32 {
+    5
+}
+
 fn default_max_buffered_payload_bytes() -> usize {
     262_144
 }
@@ -106,6 +110,7 @@ fn default_rate_limit_config() -> RateLimitConfig {
         max_tokens: default_max_tokens(),
         refill_rate: default_refill_rate(),
         media_download_cost: default_media_download_cost(),
+        transcription_cost: default_transcription_cost(),
     }
 }
 
@@ -270,6 +275,10 @@ pub struct RateLimitConfig {
     /// Tokens charged per get_message_media call (searches cost 1).
     #[serde(default = "default_media_download_cost")]
     pub media_download_cost: u32,
+    /// Tokens charged per transcribe_voice_message call (Telegram's weekly
+    /// transcription quota makes these calls precious; searches cost 1).
+    #[serde(default = "default_transcription_cost")]
+    pub transcription_cost: u32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
