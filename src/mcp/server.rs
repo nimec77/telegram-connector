@@ -124,16 +124,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     /// Tool 1: check_mcp_status - Health check and diagnostics
     #[tool(description = "Check MCP connection status, rate limiter state, and session counters")]
     pub async fn check_mcp_status(&self, id: RequestId) -> Result<String, String> {
-        let request_id = id.0.to_string();
-        let started = Instant::now();
+        let inv = ToolInvocation::start("check_mcp_status", id);
         tracing::info!(
-            tool = "check_mcp_status",
-            request_id = %request_id,
+            tool = inv.tool,
+            request_id = %inv.request_id,
             "Tool invocation started"
         );
-        let result = self.check_mcp_status_impl().await;
-        log_tool_outcome("check_mcp_status", &request_id, started, &result);
-        result
+        inv.finish(self.check_mcp_status_impl().await)
     }
 
     /// Tool 2: get_subscribed_channels - List user's Telegram channels with pagination
@@ -143,18 +140,15 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         Parameters(request): Parameters<GetChannelsRequest>,
         id: RequestId,
     ) -> Result<String, String> {
-        let request_id = id.0.to_string();
-        let started = Instant::now();
+        let inv = ToolInvocation::start("get_subscribed_channels", id);
         tracing::info!(
-            tool = "get_subscribed_channels",
-            request_id = %request_id,
+            tool = inv.tool,
+            request_id = %inv.request_id,
             limit = ?request.limit,
             offset = ?request.offset,
             "Tool invocation started"
         );
-        let result = self.get_subscribed_channels_impl(request).await;
-        log_tool_outcome("get_subscribed_channels", &request_id, started, &result);
-        result
+        inv.finish(self.get_subscribed_channels_impl(request).await)
     }
 
     /// Tool 3: get_channel_info - Get detailed information about a Telegram channel
@@ -164,17 +158,14 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         Parameters(request): Parameters<GetChannelInfoRequest>,
         id: RequestId,
     ) -> Result<String, String> {
-        let request_id = id.0.to_string();
-        let started = Instant::now();
+        let inv = ToolInvocation::start("get_channel_info", id);
         tracing::info!(
-            tool = "get_channel_info",
-            request_id = %request_id,
+            tool = inv.tool,
+            request_id = %inv.request_id,
             channel_identifier = %request.channel_identifier,
             "Tool invocation started"
         );
-        let result = self.get_channel_info_impl(request).await;
-        log_tool_outcome("get_channel_info", &request_id, started, &result);
-        result
+        inv.finish(self.get_channel_info_impl(request).await)
     }
 
     /// Tool 4: generate_message_link - Generate deep links for a Telegram message
@@ -184,19 +175,16 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         Parameters(request): Parameters<GenerateLinkRequest>,
         id: RequestId,
     ) -> Result<String, String> {
-        let request_id = id.0.to_string();
-        let started = Instant::now();
+        let inv = ToolInvocation::start("generate_message_link", id);
         tracing::info!(
-            tool = "generate_message_link",
-            request_id = %request_id,
+            tool = inv.tool,
+            request_id = %inv.request_id,
             channel_id = %request.channel_id,
             message_id = request.message_id,
             include_tg_protocol = ?request.include_tg_protocol,
             "Tool invocation started"
         );
-        let result = self.generate_message_link_impl(request).await;
-        log_tool_outcome("generate_message_link", &request_id, started, &result);
-        result
+        inv.finish(self.generate_message_link_impl(request).await)
     }
 
     /// Tool 5: open_message_in_telegram - Open message in Telegram Desktop (macOS)
@@ -206,19 +194,16 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         Parameters(request): Parameters<OpenMessageRequest>,
         id: RequestId,
     ) -> Result<String, String> {
-        let request_id = id.0.to_string();
-        let started = Instant::now();
+        let inv = ToolInvocation::start("open_message_in_telegram", id);
         tracing::info!(
-            tool = "open_message_in_telegram",
-            request_id = %request_id,
+            tool = inv.tool,
+            request_id = %inv.request_id,
             channel_id = %request.channel_id,
             message_id = request.message_id,
             use_tg_protocol = ?request.use_tg_protocol,
             "Tool invocation started"
         );
-        let result = self.open_message_in_telegram_impl(request).await;
-        log_tool_outcome("open_message_in_telegram", &request_id, started, &result);
-        result
+        inv.finish(self.open_message_in_telegram_impl(request).await)
     }
 
     /// Tool 6: search_messages - Search messages across Telegram channels
@@ -230,11 +215,10 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         Parameters(request): Parameters<SearchRequest>,
         id: RequestId,
     ) -> Result<String, String> {
-        let request_id = id.0.to_string();
-        let started = Instant::now();
+        let inv = ToolInvocation::start("search_messages", id);
         tracing::info!(
-            tool = "search_messages",
-            request_id = %request_id,
+            tool = inv.tool,
+            request_id = %inv.request_id,
             query = %request.query,
             channel_id = ?request.channel_id,
             hours_back = ?request.hours_back,
@@ -242,9 +226,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             media_filter = ?request.media_filter,
             "Tool invocation started"
         );
-        let result = self.search_messages_impl(request).await;
-        log_tool_outcome("search_messages", &request_id, started, &result);
-        result
+        inv.finish(self.search_messages_impl(request).await)
     }
 
     /// Tool 7: get_recent_messages - Get recent messages from a channel by time window
@@ -256,20 +238,17 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         Parameters(request): Parameters<GetRecentMessagesRequest>,
         id: RequestId,
     ) -> Result<String, String> {
-        let request_id = id.0.to_string();
-        let started = Instant::now();
+        let inv = ToolInvocation::start("get_recent_messages", id);
         tracing::info!(
-            tool = "get_recent_messages",
-            request_id = %request_id,
+            tool = inv.tool,
+            request_id = %inv.request_id,
             channel_id = %request.channel_id,
             hours_back = ?request.hours_back,
             limit = ?request.limit,
             media_filter = ?request.media_filter,
             "Tool invocation started"
         );
-        let result = self.get_recent_messages_impl(request).await;
-        log_tool_outcome("get_recent_messages", &request_id, started, &result);
-        result
+        inv.finish(self.get_recent_messages_impl(request).await)
     }
 
     /// Tool 8: get_message_by_link - Get a specific message by its t.me link
@@ -281,17 +260,14 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         Parameters(request): Parameters<GetMessageByLinkRequest>,
         id: RequestId,
     ) -> Result<String, String> {
-        let request_id = id.0.to_string();
-        let started = Instant::now();
+        let inv = ToolInvocation::start("get_message_by_link", id);
         tracing::info!(
-            tool = "get_message_by_link",
-            request_id = %request_id,
+            tool = inv.tool,
+            request_id = %inv.request_id,
             link = %request.link,
             "Tool invocation started"
         );
-        let result = self.get_message_by_link_impl(request).await;
-        log_tool_outcome("get_message_by_link", &request_id, started, &result);
-        result
+        inv.finish(self.get_message_by_link_impl(request).await)
     }
 
     /// Tool 9: get_last_responses - Recover recently written responses
@@ -303,17 +279,14 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         Parameters(request): Parameters<GetLastResponsesRequest>,
         id: RequestId,
     ) -> Result<String, String> {
-        let request_id = id.0.to_string();
-        let started = Instant::now();
+        let inv = ToolInvocation::start("get_last_responses", id);
         tracing::info!(
-            tool = "get_last_responses",
-            request_id = %request_id,
+            tool = inv.tool,
+            request_id = %inv.request_id,
             n = ?request.n,
             "Tool invocation started"
         );
-        let result = self.get_last_responses_impl(request).await;
-        log_tool_outcome("get_last_responses", &request_id, started, &result);
-        result
+        inv.finish(self.get_last_responses_impl(request).await)
     }
 
     /// Tool 10: get_message_media - Return a message's photo (or video thumbnail) as an image
@@ -325,19 +298,16 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         Parameters(request): Parameters<GetMessageMediaRequest>,
         id: RequestId,
     ) -> Result<CallToolResult, String> {
-        let request_id = id.0.to_string();
-        let started = Instant::now();
+        let inv = ToolInvocation::start("get_message_media", id);
         tracing::info!(
-            tool = "get_message_media",
-            request_id = %request_id,
+            tool = inv.tool,
+            request_id = %inv.request_id,
             channel_id = %request.channel_id,
             message_id = request.message_id,
             max_dimension = ?request.max_dimension,
             "Tool invocation started"
         );
-        let result = self.get_message_media_impl(request).await;
-        log_tool_outcome("get_message_media", &request_id, started, &result);
-        result
+        inv.finish(self.get_message_media_impl(request).await)
     }
 
     /// Tool 11: transcribe_voice_message - Transcribe a voice/video-note message to text
@@ -349,19 +319,16 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         Parameters(request): Parameters<TranscribeVoiceMessageRequest>,
         id: RequestId,
     ) -> Result<String, String> {
-        let request_id = id.0.to_string();
-        let started = Instant::now();
+        let inv = ToolInvocation::start("transcribe_voice_message", id);
         tracing::info!(
-            tool = "transcribe_voice_message",
-            request_id = %request_id,
+            tool = inv.tool,
+            request_id = %inv.request_id,
             channel_id = %request.channel_id,
             message_id = request.message_id,
             timeout_seconds = ?request.timeout_seconds,
             "Tool invocation started"
         );
-        let result = self.transcribe_voice_message_impl(request).await;
-        log_tool_outcome("transcribe_voice_message", &request_id, started, &result);
-        result
+        inv.finish(self.transcribe_voice_message_impl(request).await)
     }
 }
 
@@ -378,6 +345,33 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> ServerHand
         InitializeResult::new(capabilities)
             .with_server_info(server_info)
             .with_instructions("Telegram MCP Connector - Search Russian Telegram channels")
+    }
+}
+
+/// Guard binding a tool invocation's name, request id, and start time so the
+/// `#[tool]` wrappers don't re-derive them or repeat the tool name in the
+/// completion log. Each wrapper does `let inv = ToolInvocation::start(name, id)`,
+/// emits its per-tool "started" line via `inv.tool`/`inv.request_id`, then
+/// returns `inv.finish(self.<tool>_impl(..).await)` to log the symmetric
+/// completed/failed line with the elapsed duration (AD-3).
+struct ToolInvocation {
+    tool: &'static str,
+    request_id: String,
+    started: Instant,
+}
+
+impl ToolInvocation {
+    fn start(tool: &'static str, id: RequestId) -> Self {
+        Self {
+            tool,
+            request_id: id.0.to_string(),
+            started: Instant::now(),
+        }
+    }
+
+    fn finish<T>(self, result: Result<T, String>) -> Result<T, String> {
+        log_tool_outcome(self.tool, &self.request_id, self.started, &result);
+        result
     }
 }
 
