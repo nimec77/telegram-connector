@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- New `transcribe_voice_message` tool (tool 11): transcribes voice messages and video notes (round videos) to text via Telegram's server-side `messages.transcribeAudio` (no local ML). Resolves the peer once, validates the media type (rejecting non-voice/non-video_note), then polls by re-invoking until the transcription completes or `timeout_seconds` (default 30, clamped to 1–120) elapses, returning partial text with `partial: true` on timeout. **Requires Telegram Premium** on the connected account, and is subject to Telegram's weekly transcription quota; without Premium the tool fast-fails before spending a rate-limit token or making a transcription call. Charged `rate_limiting.transcription_cost` tokens (default 5, versus 1 for searches).
+- `premium` flag in `check_mcp_status` output: reports whether the connected account has Telegram Premium (`null` if it could not be determined). Detected eagerly at startup and cached, so it is available from the first request.
+- `[rate_limiting] transcription_cost` config option (default 5): rate-limiter tokens charged per `transcribe_voice_message` call.
+
 ## [0.9.0] - 2026-06-13
 
 ### Added

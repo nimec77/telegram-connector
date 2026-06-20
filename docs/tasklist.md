@@ -30,10 +30,11 @@
 | 20 | Hang Diagnostics & Grammers Timeouts | ✅ Complete | 249 | `with_timeout` wraps all grammers calls; `[telegram.timeouts]` config; tool entry logging |
 | 21 | Flexible Scalar Coercion | ✅ Complete | 305 | Request params accept number↔string↔bool via 5 `serde` `deserialize_with` helpers; schema unchanged |
 | 22 | Get Message Media | ✅ Complete | 370 | New tool: photo/video-thumbnail retrieval as MCP image blocks |
+| 23 | Audio Transcription | ✅ Complete | 408 | transcribe_voice_message via messages.transcribeAudio; Premium-gated; poll-by-reinvoke |
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
-**Overall Progress:** 22/22 phases complete
+**Overall Progress:** 23/23 phases complete
 
 ---
 
