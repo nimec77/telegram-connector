@@ -503,7 +503,7 @@ async fn mock_get_recent_messages_channel_not_found() {
         .times(1)
         .returning(|params| {
             Err(Error::InvalidInput(format!(
-                "Channel not found: {}",
+                "Channel not found: {:?}",
                 params.channel_id
             )))
         });

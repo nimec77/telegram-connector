@@ -87,20 +87,18 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             return Err("channel_id is required".to_string());
         }
 
-        // Parse channel_id (can be numeric ID or username)
-        let original_identifier = request.channel_id.clone();
+        // Parse channel_id (can be numeric ID or username). The client owns
+        // resolution; the server no longer pre-resolves usernames via
+        // get_channel_info (AD-2) — that second resolve was redundant with the
+        // client's own resolve_username_peer.
         let (channel_id, channel_identifier) =
             if request.channel_id.chars().all(|c| c.is_ascii_digit()) {
-                // Numeric ID - use helper for validation, no identifier needed
-                (parse_channel_id(&request.channel_id)?, None)
+                // Numeric ID - validate now; the client walks dialogs by it.
+                (Some(parse_channel_id(&request.channel_id)?), None)
             } else {
-                // Username provided - resolve via get_channel_info and pass identifier
-                let channel = self
-                    .telegram_client
-                    .get_channel_info(&request.channel_id)
-                    .await
-                    .map_err(|e| format!("Channel not found: {}", e))?;
-                (channel.id, Some(original_identifier))
+                // Username - hand the raw reference to the client, which resolves
+                // it (and derives the numeric id from the resolved peer).
+                (None, Some(request.channel_id.clone()))
             };
 
         // Apply defaults and limits
@@ -144,7 +142,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         // Log results (IDs only, not message text - for privacy and log size)
         let message_ids: Vec<i64> = result.messages.iter().map(|m| m.id.get()).collect();
         tracing::info!(
-            channel_id = %params.channel_id,
+            channel_id = ?params.channel_id.map(|c| c.get()),
             media_filter = ?params.media_filter,
             hours_back = params.hours_back,
             limit = params.limit,

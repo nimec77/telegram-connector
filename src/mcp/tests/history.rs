@@ -5,7 +5,7 @@ use crate::mcp::tools::GetRecentMessagesRequest;
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::{
-    Channel, ChannelId, ChannelName, MediaFilter, MediaType, Message, MessageId, QueryMetadata,
+    ChannelId, ChannelName, MediaFilter, MediaType, Message, MessageId, QueryMetadata,
     SearchResult, Username,
 };
 use rmcp::handler::server::common::RequestId;
@@ -32,20 +32,6 @@ fn create_test_message(id: i64, text: &str, channel_id: i64) -> Message {
         reply_to_message_id: None,
         video_info: None,
         audio_info: None,
-    }
-}
-
-fn create_test_channel(id: i64, username: &str) -> Channel {
-    Channel {
-        id: ChannelId::new(id).unwrap(),
-        name: ChannelName::new("Test Channel").unwrap(),
-        username: Username::new(username).unwrap(),
-        description: None,
-        member_count: 1000,
-        is_verified: false,
-        is_public: true,
-        is_subscribed: true,
-        last_message_date: None,
     }
 }
 
@@ -214,17 +200,14 @@ async fn get_recent_messages_applies_limits() {
 }
 
 #[tokio::test]
-async fn get_recent_messages_with_username_resolves_channel() {
-    // Given: Mock client that resolves username to channel
+async fn get_recent_messages_with_username_passes_identifier_without_pre_resolving() {
+    // Given: Mock client. AD-2: the server must NOT pre-resolve the username via
+    // get_channel_info — the client owns resolution. No expect_get_channel_info()
+    // is set, so any such call makes mockall panic and fails this test.
     let mut mock_client = MockTelegramClientTrait::new();
 
-    // First, get_channel_info is called to resolve username
-    mock_client
-        .expect_get_channel_info()
-        .withf(|id| id == "tech_news")
-        .returning(|_| Ok(create_test_channel(456, "tech_news")));
-
-    // Then, get_recent_messages is called with resolved channel_id
+    // get_recent_messages receives the raw username as the identifier and a None
+    // numeric channel_id (the client resolves and derives the id from the peer).
     let expected_result = SearchResult {
         messages: vec![create_test_message(1, "News update", 456)],
         total_found: 1,
@@ -239,7 +222,9 @@ async fn get_recent_messages_with_username_resolves_channel() {
 
     mock_client
         .expect_get_recent_messages()
-        .withf(|params| params.channel_id.get() == 456)
+        .withf(|params| {
+            params.channel_identifier.as_deref() == Some("tech_news") && params.channel_id.is_none()
+        })
         .returning(move |_| Ok(expected.clone()));
 
     let mut mock_limiter = MockRateLimiterTrait::new();

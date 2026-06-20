@@ -50,20 +50,28 @@ impl TelegramClient {
             None => None,
         };
 
-        // Use the resolved peer, or fall back to a dialog walk by numeric id.
+        // Use the resolved peer, or fall back to a dialog walk by numeric id. A
+        // username reference carries no numeric id (`channel_id == None`), so a
+        // username that fails to resolve hard-errors here rather than walking
+        // dialogs by an id we never had (AD-2).
         let peer = match resolved_peer {
             Some(peer) => peer,
-            None => self
-                .find_dialog_peer(params.channel_id.get())
-                .await?
-                .ok_or_else(|| {
-                    tracing::warn!(
-                        channel_id = %params.channel_id,
-                        "Channel not found in dialogs"
-                    );
-                    Error::InvalidInput(format!("Channel not found: {}", params.channel_id))
-                })?,
+            None => {
+                let id = params.channel_id.ok_or_else(|| {
+                    let reference = params.channel_identifier.as_deref().unwrap_or("");
+                    tracing::warn!(reference, "Channel not found: username did not resolve");
+                    Error::InvalidInput(format!("Channel not found: {}", reference))
+                })?;
+                self.find_dialog_peer(id.get()).await?.ok_or_else(|| {
+                    tracing::warn!(channel_id = %id, "Channel not found in dialogs");
+                    Error::InvalidInput(format!("Channel not found: {}", id))
+                })?
+            }
         };
+
+        // Numeric id of the resolved channel, for logging (derived from the peer
+        // rather than pre-resolved in the server — AD-2).
+        let resolved_channel_id = peer.id().bare_id();
 
         // Use iter_messages to get message history (no search query)
         let peer_ref = peer
@@ -109,7 +117,7 @@ impl TelegramClient {
         let total_found = messages.len() as u64;
 
         tracing::info!(
-            channel_id = %params.channel_id,
+            channel_id = resolved_channel_id,
             identifier = ?params.channel_identifier,
             media_filter = ?params.media_filter,
             results = total_found,

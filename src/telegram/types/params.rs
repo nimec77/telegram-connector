@@ -48,8 +48,10 @@ impl Default for SearchParams {
 /// Uses grammers' `iter_messages()` to iterate message history.
 #[derive(Debug, Clone)]
 pub struct HistoryParams {
-    /// Channel to retrieve messages from (required)
-    pub channel_id: ChannelId,
+    /// Known numeric channel id, used to walk the dialog list. `None` for a
+    /// username reference, where the client owns resolution via
+    /// `channel_identifier` and derives the id from the resolved peer (AD-2).
+    pub channel_id: Option<ChannelId>,
     /// Original channel identifier (username or ID string) for direct resolution.
     /// When set to a username, the client can resolve the channel via `resolve_username`
     /// instead of iterating dialogs, allowing access to non-subscribed channels.
@@ -70,7 +72,7 @@ impl HistoryParams {
 
     pub fn new(channel_id: ChannelId) -> Self {
         Self {
-            channel_id,
+            channel_id: Some(channel_id),
             channel_identifier: None,
             hours_back: Self::DEFAULT_HOURS_BACK,
             limit: Self::DEFAULT_LIMIT,
@@ -176,7 +178,7 @@ mod tests {
         let channel_id = ChannelId::new(123456).unwrap();
         let params = HistoryParams::new(channel_id);
 
-        assert_eq!(params.channel_id.get(), 123456);
+        assert_eq!(params.channel_id.map(|c| c.get()), Some(123456));
         assert_eq!(params.hours_back, HistoryParams::DEFAULT_HOURS_BACK);
         assert_eq!(params.limit, HistoryParams::DEFAULT_LIMIT);
         assert!(params.media_filter.is_none());
