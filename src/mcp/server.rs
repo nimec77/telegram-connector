@@ -1,4 +1,5 @@
 use crate::config::ObservabilityConfig;
+use crate::error::Error;
 use crate::link::{ChannelRef, MessageLink, parse_telegram_link};
 use crate::mcp::observability::{InstrumentedTransport, ResponseBuffer, SessionMetrics};
 use crate::mcp::tools::image::process_image;
@@ -7,7 +8,8 @@ use crate::mcp::tools::{
     GetChannelsRequest, GetLastResponsesRequest, GetMessageByLinkRequest, GetMessageMediaRequest,
     GetMessageMediaResponse, GetRecentMessagesRequest, LastResponsesResponse, MessageLinkResponse,
     MessageResponse, OpenMessageRequest, OpenMessageResponse, SearchRequest, SearchResponse,
-    StatusResponse, parse_channel_id, parse_message_id, parse_optional_channel_id,
+    StatusResponse, TranscribeVoiceMessageRequest, TranscribeVoiceMessageResponse,
+    parse_channel_id, parse_message_id, parse_optional_channel_id,
 };
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
@@ -28,6 +30,7 @@ pub struct McpServer<T: TelegramClientTrait, R: RateLimiterTrait> {
     response_buffer: Arc<ResponseBuffer>,
     slow_write_threshold: Duration,
     media_download_cost: u32,
+    transcription_cost: u32,
     #[allow(dead_code)]
     tool_router: ToolRouter<Self>,
 }
@@ -45,6 +48,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             )),
             slow_write_threshold: Duration::from_millis(observability.slow_write_threshold_ms),
             media_download_cost: 5,
+            transcription_cost: 5,
             tool_router: Self::tool_router(),
         }
     }
@@ -63,6 +67,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     /// (`[rate_limiting] media_download_cost`, default 5).
     pub fn with_media_download_cost(mut self, cost: u32) -> Self {
         self.media_download_cost = cost;
+        self
+    }
+
+    /// Set the rate-limiter cost charged per transcribe_voice_message call
+    /// (`[rate_limiting] transcription_cost`, default 5).
+    pub fn with_transcription_cost(mut self, cost: u32) -> Self {
+        self.transcription_cost = cost;
         self
     }
 
@@ -505,6 +516,71 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             Content::text(metadata_json),
         ]))
     }
+
+    async fn transcribe_voice_message_impl(
+        &self,
+        request: TranscribeVoiceMessageRequest,
+    ) -> Result<String, String> {
+        const DEFAULT_TIMEOUT: u32 = 30;
+        const MAX_TIMEOUT: u32 = 120;
+
+        let message_id = parse_message_id(request.message_id)?;
+        let timeout_secs = request
+            .timeout_seconds
+            .unwrap_or(DEFAULT_TIMEOUT)
+            .clamp(1, MAX_TIMEOUT);
+
+        // Premium fast-fail: only a definitive `false` short-circuits (before
+        // spending a rate-limit token or a transcribeAudio call). Unknown
+        // (`None`) falls through to the RPC-error path.
+        if self.telegram_client.is_premium().await == Some(false) {
+            return Err(Error::PremiumRequired.to_string());
+        }
+
+        // Transcription is precious (Telegram weekly quota); charge more than a search.
+        self.rate_limiter
+            .acquire(self.transcription_cost)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let outcome = self
+            .telegram_client
+            .transcribe_audio(&request.channel_id, message_id.get() as i32, timeout_secs)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // The feature contract specifies "voice" / "video_note"; MediaType's
+        // lowercase serialization would emit "videonote", so map explicitly.
+        let media_type = match outcome.media_type {
+            crate::telegram::types::MediaType::Voice => "voice",
+            crate::telegram::types::MediaType::VideoNote => "video_note",
+            other => {
+                return Err(format!(
+                    "unexpected media type for transcription: {:?}",
+                    other
+                ));
+            }
+        }
+        .to_string();
+
+        let response = TranscribeVoiceMessageResponse {
+            text: outcome.text,
+            partial: outcome.partial,
+            duration_seconds: outcome.duration_seconds,
+            media_type,
+        };
+
+        tracing::info!(
+            channel = %request.channel_id,
+            message_id = message_id.get(),
+            media_type = %response.media_type,
+            partial = response.partial,
+            duration_seconds = ?response.duration_seconds,
+            "Transcription results"
+        );
+
+        serde_json::to_string(&response).map_err(|e| e.to_string())
+    }
 }
 
 #[tool_router]
@@ -729,6 +805,30 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         );
         let result = self.get_message_media_impl(request).await;
         log_tool_outcome("get_message_media", &request_id, started, &result);
+        result
+    }
+
+    /// Tool 11: transcribe_voice_message - Transcribe a voice/video-note message to text
+    #[tool(
+        description = "Transcribe a voice message or video note (round video) to text using Telegram's server-side transcription (no local ML). REQUIRES Telegram Premium on the connected account; check_mcp_status reports `premium`. Charged transcription_cost rate-limit tokens (more than a search). Returns partial text with partial=true if the wait times out."
+    )]
+    pub async fn transcribe_voice_message(
+        &self,
+        Parameters(request): Parameters<TranscribeVoiceMessageRequest>,
+        id: RequestId,
+    ) -> Result<String, String> {
+        let request_id = id.0.to_string();
+        let started = Instant::now();
+        tracing::info!(
+            tool = "transcribe_voice_message",
+            request_id = %request_id,
+            channel_id = %request.channel_id,
+            message_id = request.message_id,
+            timeout_seconds = ?request.timeout_seconds,
+            "Tool invocation started"
+        );
+        let result = self.transcribe_voice_message_impl(request).await;
+        log_tool_outcome("transcribe_voice_message", &request_id, started, &result);
         result
     }
 }
