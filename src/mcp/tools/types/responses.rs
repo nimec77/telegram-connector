@@ -57,8 +57,10 @@ pub struct TranscribeVoiceMessageResponse {
     #[schemars(description = "Audio duration in seconds (from message metadata), if available")]
     pub duration_seconds: Option<u32>,
 
-    #[schemars(description = "Media type: \"voice\" or \"video_note\"")]
-    pub media_type: String,
+    #[schemars(
+        description = "Media type of the transcribed message (\"voice\" or \"video_note\")"
+    )]
+    pub media_type: MediaType,
 }
 
 /// Response for get_subscribed_channels tool
