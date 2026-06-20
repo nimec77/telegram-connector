@@ -498,6 +498,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             returned_height: processed.height,
             returned_size_bytes: processed.encoded_size_bytes,
             mime_type: "image/jpeg".to_string(),
+            video_info: download.video_info,
         };
 
         tracing::info!(

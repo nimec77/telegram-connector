@@ -179,6 +179,12 @@ pub struct GetMessageMediaResponse {
 
     #[schemars(description = "Always image/jpeg")]
     pub mime_type: String,
+
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[schemars(
+        description = "Zero-cost video metadata (duration, dimensions, kind); video media only"
+    )]
+    pub video_info: Option<VideoInfo>,
 }
 
 /// Wire representation of a single message (mirrors the domain `Message`).
@@ -326,6 +332,7 @@ mod tests {
             returned_height: 720,
             returned_size_bytes: 150_000,
             mime_type: "image/jpeg".to_string(),
+            video_info: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();
