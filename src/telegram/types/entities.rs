@@ -1,7 +1,7 @@
 //! Domain entities: Message and Channel.
 
 use super::ids::{ChannelId, MessageId, UserId};
-use super::media::MediaType;
+use super::media::{AudioInfo, MediaType, VideoInfo};
 use super::names::{ChannelName, Username};
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
@@ -30,6 +30,10 @@ pub struct Message {
     pub forwards: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub reply_to_message_id: Option<MessageId>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub video_info: Option<VideoInfo>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub audio_info: Option<AudioInfo>,
 }
 
 impl Message {
@@ -115,6 +119,8 @@ mod tests {
             views: None,
             forwards: None,
             reply_to_message_id: None,
+            video_info: None,
+            audio_info: None,
         }
     }
 
@@ -166,6 +172,8 @@ mod tests {
         assert!(json.get("views").is_none());
         assert!(json.get("forwards").is_none());
         assert!(json.get("reply_to_message_id").is_none());
+        assert!(json.get("video_info").is_none());
+        assert!(json.get("audio_info").is_none());
     }
 
     #[test]
@@ -197,6 +205,37 @@ mod tests {
         assert_eq!(json["forwarded_from"]["original_message_id"], 7);
         assert!(json["forwarded_from"].get("channel_name").is_none());
         assert_eq!(json["link_preview"]["url"], "https://example.com");
+    }
+
+    #[test]
+    fn message_includes_video_and_audio_info_when_present() {
+        use super::super::media::{AudioInfo, AudioKind, VideoInfo, VideoKind};
+
+        let mut msg = create_test_message();
+        msg.has_media = true;
+        msg.media_type = MediaType::Video;
+        msg.video_info = Some(VideoInfo {
+            duration_seconds: 42,
+            width: 1280,
+            height: 720,
+            file_size_bytes: 9_000_000,
+            kind: VideoKind::Video,
+            has_thumbnail: true,
+            mime_type: Some("video/mp4".to_string()),
+        });
+        msg.audio_info = Some(AudioInfo {
+            duration_seconds: 8,
+            file_size_bytes: 4096,
+            kind: AudioKind::Voice,
+            mime_type: None,
+        });
+
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(json["video_info"]["kind"], "video");
+        assert_eq!(json["video_info"]["duration_seconds"], 42);
+        assert_eq!(json["video_info"]["has_thumbnail"], true);
+        assert_eq!(json["audio_info"]["kind"], "voice");
+        assert!(json["audio_info"].get("mime_type").is_none());
     }
 
     #[test]

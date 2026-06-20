@@ -40,6 +40,8 @@ fn create_test_message(id: i32, text: &str, channel_id: i64) -> Message {
         views: None,
         forwards: None,
         reply_to_message_id: None,
+        video_info: None,
+        audio_info: None,
     }
 }
 
