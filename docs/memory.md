@@ -6,7 +6,9 @@
 
 ## Current Status
 
-**Progress:** 21/21 phases complete
+> **Phase & test counts:** `docs/tasklist.md` is the single source of truth.
+> The per-phase list below is a historical journal and may lag the live totals.
+
 - ✅ Phase 1: Project Setup
 - ✅ Phase 2: Error Types (11/11 tests)
 - ✅ Phase 3: Configuration (15/15 tests + 5 ignored)
