@@ -34,6 +34,20 @@ pub enum Error {
 
     #[error("media download failed: {0}")]
     DownloadFailed(String),
+
+    #[error("transcription requires Telegram Premium on the connected account")]
+    PremiumRequired,
+
+    #[error("transcription failed: {0}")]
+    TranscriptionFailed(String),
+
+    #[error("audio exceeds Telegram's transcription length limit")]
+    VoiceTooLong,
+
+    #[error(
+        "message is not transcribable (media type: {media_type}); only voice and video_note are supported"
+    )]
+    NotTranscribable { media_type: String },
 }
 
 #[cfg(test)]
@@ -146,5 +160,43 @@ mod tests {
     fn test_download_failed_error_display() {
         let error = Error::DownloadFailed("connection reset".to_string());
         assert_eq!(error.to_string(), "media download failed: connection reset");
+    }
+
+    #[test]
+    fn test_premium_required_error_display() {
+        let error = Error::PremiumRequired;
+        assert_eq!(
+            error.to_string(),
+            "transcription requires Telegram Premium on the connected account"
+        );
+    }
+
+    #[test]
+    fn test_transcription_failed_error_display() {
+        let error = Error::TranscriptionFailed("TRANSCRIPTION_FAILED".to_string());
+        assert_eq!(
+            error.to_string(),
+            "transcription failed: TRANSCRIPTION_FAILED"
+        );
+    }
+
+    #[test]
+    fn test_voice_too_long_error_display() {
+        let error = Error::VoiceTooLong;
+        assert_eq!(
+            error.to_string(),
+            "audio exceeds Telegram's transcription length limit"
+        );
+    }
+
+    #[test]
+    fn test_not_transcribable_error_display() {
+        let error = Error::NotTranscribable {
+            media_type: "photo".to_string(),
+        };
+        assert_eq!(
+            error.to_string(),
+            "message is not transcribable (media type: photo); only voice and video_note are supported"
+        );
     }
 }
