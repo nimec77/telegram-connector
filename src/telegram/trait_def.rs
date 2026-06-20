@@ -5,6 +5,7 @@
 use crate::error::Error;
 use crate::telegram::types::{
     Channel, HistoryParams, MediaDownload, Message, SearchParams, SearchResult,
+    TranscriptionOutcome,
 };
 
 /// Trait for Telegram client operations (allows mocking in tests)
@@ -49,4 +50,22 @@ pub trait TelegramClientTrait: Send + Sync {
         message_id: i32,
         max_dimension: u32,
     ) -> Result<MediaDownload, Error>;
+
+    /// Transcribe a voice / video-note message's audio via `messages.transcribeAudio`.
+    ///
+    /// Resolves the peer once, validates the media type (rejecting non-voice /
+    /// non-video_note with `Error::NotTranscribable`), invokes `TranscribeAudio`,
+    /// then polls by re-invoking until the transcription completes or
+    /// `timeout_secs` elapses (returning a partial result on timeout).
+    async fn transcribe_audio(
+        &self,
+        channel_ref: &str,
+        message_id: i32,
+        timeout_secs: u32,
+    ) -> Result<TranscriptionOutcome, Error>;
+
+    /// Cached Telegram Premium flag for the connected account. Returns the cached
+    /// value; if unknown, performs one `get_me()` and caches it. Returns `None`
+    /// only when Premium status could not be determined.
+    async fn is_premium(&self) -> Option<bool>;
 }

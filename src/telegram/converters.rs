@@ -90,6 +90,26 @@ fn detect_document_type(doc: &Document) -> MediaType {
     MediaType::Document
 }
 
+/// Extract the duration (seconds) of a voice message or round video from its
+/// document attributes. Returns `None` for media without an audio/video
+/// attribute. Used by transcription metadata.
+pub fn extract_audio_duration(media: &Media) -> Option<u32> {
+    let Media::Document(doc) = media else {
+        return None;
+    };
+    let Some(tl::enums::Document::Document(raw)) = doc.raw.document.as_ref() else {
+        return None;
+    };
+    for attr in &raw.attributes {
+        match attr {
+            tl::enums::DocumentAttribute::Audio(a) => return Some(a.duration.max(0) as u32),
+            tl::enums::DocumentAttribute::Video(v) => return Some(v.duration.max(0.0) as u32),
+            _ => {}
+        }
+    }
+    None
+}
+
 /// Check if a message's media matches the given filter (for client-side filtering)
 ///
 /// Used by `get_recent_messages` since `iter_messages` doesn't support server-side filtering.
