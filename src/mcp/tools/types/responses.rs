@@ -1,8 +1,8 @@
 //! Response types for MCP tools.
 
 use crate::telegram::types::{
-    Channel, ChannelId, ChannelName, ForwardInfo, LinkPreview, MediaType, Message, MessageId,
-    QueryMetadata, SearchResult, UserId, Username,
+    AudioInfo, Channel, ChannelId, ChannelName, ForwardInfo, LinkPreview, MediaType, Message,
+    MessageId, QueryMetadata, SearchResult, UserId, Username, VideoInfo,
 };
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
@@ -208,6 +208,10 @@ pub struct MessageResponse {
     pub forwards: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub reply_to_message_id: Option<MessageId>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub video_info: Option<VideoInfo>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub audio_info: Option<AudioInfo>,
 }
 
 impl From<Message> for MessageResponse {
@@ -228,6 +232,8 @@ impl From<Message> for MessageResponse {
             views: m.views,
             forwards: m.forwards,
             reply_to_message_id: m.reply_to_message_id,
+            video_info: m.video_info,
+            audio_info: m.audio_info,
         }
     }
 }
@@ -362,6 +368,47 @@ mod tests {
         // sender_id mirrors the domain type: present as null, not skipped.
         assert!(json.get("sender_id").is_some());
         assert!(json["sender_id"].is_null());
+    }
+
+    #[test]
+    fn message_response_maps_video_info() {
+        use crate::telegram::types::{
+            ChannelId, ChannelName, MediaType, Message, MessageId, Username, VideoInfo, VideoKind,
+        };
+
+        let msg = Message {
+            id: MessageId::new(1).unwrap(),
+            channel_id: ChannelId::new(100).unwrap(),
+            channel_name: ChannelName::new("Test").unwrap(),
+            channel_username: Username::new("testchan").unwrap(),
+            text: String::new(),
+            timestamp: chrono::Utc::now(),
+            sender_id: None,
+            sender_name: None,
+            has_media: true,
+            media_type: MediaType::Video,
+            forwarded_from: None,
+            link_preview: None,
+            views: None,
+            forwards: None,
+            reply_to_message_id: None,
+            video_info: Some(VideoInfo {
+                duration_seconds: 30,
+                width: 1920,
+                height: 1080,
+                file_size_bytes: 5_000_000,
+                kind: VideoKind::Video,
+                has_thumbnail: true,
+                mime_type: Some("video/mp4".to_string()),
+            }),
+            audio_info: None,
+        };
+
+        let dto = MessageResponse::from(msg);
+        let json = serde_json::to_value(&dto).unwrap();
+        assert_eq!(json["video_info"]["kind"], "video");
+        assert_eq!(json["video_info"]["width"], 1920);
+        assert!(json.get("audio_info").is_none());
     }
 
     #[test]
