@@ -21,3 +21,5 @@ mod search;
 mod server_core;
 #[path = "tests/status.rs"]
 mod status;
+#[path = "tests/transcription.rs"]
+mod transcription;
