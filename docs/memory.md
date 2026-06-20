@@ -1,6 +1,6 @@
 # Development Memory - Telegram MCP Connector
 
-**Last Updated:** Refactor roadmap — Phase A hygiene (CQ-2/3/6), 2026-06-20
+**Last Updated:** Refactor roadmap COMPLETE — Phase D data honesty (CQ-4/5), 2026-06-20
 
 ---
 
@@ -2980,3 +2980,18 @@ commit per finding, gate green per step, test count unchanged at 437.
 
 - **`tokio-test` was unused as a crate but was transitively supplying tokio's `test-util` feature.** Five tests (`tests/timeout_tests.rs` ×4, `transcription.rs` ×2) use `#[tokio::test(start_paused = true)]` / `time::advance`, which require `test-util`. That feature is **intentionally excluded from tokio's `full`** (it swaps in a pausable clock), so it must be requested explicitly. Naively deleting `tokio-test` broke the build with `no method named start_paused on Builder`. Fix: drop the unused crate and add `tokio = { features = ["test-util"] }` to `[dev-dependencies]` — Cargo unifies it into test builds while release builds (which skip dev-deps) stay clean. Lesson: before removing a "dead" dev-dep, check whether it's feeding a feature into a shared crate; `cargo check` won't warn, only a full test build reveals it.
 - **`.claude/` is gitignored here**, so edits to `.claude/rules/*` and `.claude/skills/*` take effect locally but can never be committed — don't claim them in a commit body, and don't `git add -f` against the team's deliberate ignore policy.
+
+## Refactor: Phase D data honesty (CQ-4, CQ-5) — 2026-06-20
+
+Closed the final two roadmap items, completing the whole refactoring roadmap
+(`docs/refactoring/04-roadmap.md`: every LM/AD/CQ finding now done). TDD,
+one commit per finding. Tests 439 → 441.
+
+- **CQ-4** — `Channel.member_count` is now `Option<u64>` (None → JSON null). The converter (`convert_peer_to_channel`) emitted a hardcoded `0`, indistinguishable from an empty channel; it now emits `None`. Scope: optional-fields-only (user chose this over the full `getFullChannel` fetch in `get_channel_info`, which adds untestable network surface). **Breaking** schema change — documented in CHANGELOG + README.
+- **CQ-5** — `get_subscribed_channels` over-fetches `limit + 1` and sets `has_more = returned > limit`, then truncates. Replaces `has_more = len >= limit`, which falsely advertised a next page at an exact-multiple boundary.
+
+### Lessons / notes (non-obvious)
+
+- **`convert_peer_to_channel` is effectively un-unit-testable**: it takes a grammers `peer::Peer`, which can't be fabricated in a unit test (no public constructor; that's *why* the whole stack is mock-driven at the trait boundary). So CQ-4's converter behavior (`None`) is guarded only indirectly — a type-level serialization test (`entities.rs`) and a mock-boundary test through `get_channel_info` (`channels.rs`). The converter line itself rides on the compiler. Don't reach for a converter unit test here; there's no Peer fixture.
+- **`description` was *already* always `null`** in practice (the converter hardcodes `description: None` on every path), so the README example showing a description string was pre-existing drift. CQ-4 was the moment to make the README honest for both fields, not just `member_count`.
+- **Over-fetch is a server-boundary fix, not a client change.** The trait method already accepts an arbitrary `limit`; passing `limit + 1` + truncating keeps the client/trait/mock signatures untouched. Cost: the two existing pinned-arg mock tests (`.with(eq(20))` / `eq(10)`) had to move to `eq(21)` / `eq(11)` — that's the new contract, not test-fudging. Use `saturating_add(1)` so `limit == u32::MAX` can't overflow.

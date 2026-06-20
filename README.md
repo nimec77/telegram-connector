@@ -275,8 +275,8 @@ List all Telegram channels you're subscribed to.
       "id": 1234567890,
       "name": "Tech News",
       "username": "technews",
-      "description": "Latest tech updates",
-      "member_count": 50000,
+      "description": null,
+      "member_count": null,
       "is_verified": true,
       "is_public": true,
       "is_subscribed": true,
@@ -287,6 +287,12 @@ List all Telegram channels you're subscribed to.
   "has_more": false
 }
 ```
+
+> **Note:** `description` and `member_count` are `null` from this endpoint — the
+> channel list is built from basic dialog info and does not fetch them. `null`
+> means "not fetched", not "no description" / "empty channel". `has_more` reflects
+> whether a further page exists (the server over-fetches one row to avoid a false
+> positive at an exact page boundary).
 
 **Usage:** Get a list of available channels before searching or filtering.
 
@@ -307,14 +313,19 @@ Get detailed information about a specific channel.
   "id": 1234567890,
   "name": "Tech News",
   "username": "technews",
-  "description": "Latest tech updates and analysis",
-  "member_count": 50000,
+  "description": null,
+  "member_count": null,
   "is_verified": true,
   "is_public": true,
   "is_subscribed": true,
   "last_message_date": "2025-12-28T10:30:00Z"
 }
 ```
+
+> **Note:** `description` and `member_count` are currently `null` —
+> `get_channel_info` resolves the channel from basic peer info and does not perform
+> a full-channel fetch, so it reports `null` ("not fetched") rather than a
+> misleading `0` / empty description.
 
 **Usage:** Verify channel details or get the numeric ID for other operations.
 
