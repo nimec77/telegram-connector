@@ -420,6 +420,10 @@ pub fn convert_message(
         _ => None,
     };
 
+    // Zero-cost media metadata derived from the in-hand document attributes.
+    let video_info = media.as_ref().and_then(extract_video_info);
+    let audio_info = media.as_ref().and_then(extract_audio_info);
+
     let forwarded_from = msg
         .forward_header()
         .map(|tl::enums::MessageFwdHeader::Header(header)| extract_forward_info(&header));
@@ -446,6 +450,8 @@ pub fn convert_message(
         views,
         forwards,
         reply_to_message_id,
+        video_info,
+        audio_info,
     })
 }
 

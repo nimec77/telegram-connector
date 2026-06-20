@@ -350,6 +350,8 @@ mod tests {
             views: Some(10),
             forwards: None,
             reply_to_message_id: None,
+            video_info: None,
+            audio_info: None,
         };
 
         let dto = MessageResponse::from(msg);
@@ -386,6 +388,8 @@ mod tests {
                 views: None,
                 forwards: None,
                 reply_to_message_id: None,
+                video_info: None,
+                audio_info: None,
             }],
             total_found: 1,
             search_time_ms: 5,
