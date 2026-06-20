@@ -24,6 +24,51 @@ pub enum MediaType {
     Dice,      // Dice/dart/etc game
 }
 
+/// Video-class media metadata, derived entirely from a message's document
+/// attributes (no network calls). Present only for video / video_note /
+/// animation media.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct VideoInfo {
+    pub duration_seconds: u32,
+    pub width: u32,
+    pub height: u32,
+    pub file_size_bytes: u64,
+    pub kind: VideoKind,
+    pub has_thumbnail: bool,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub mime_type: Option<String>,
+}
+
+/// Closed set of video-class kinds. Dedicated (not reused `MediaType`) so the
+/// advertised JSON schema is exactly `video | video_note | animation`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum VideoKind {
+    Video,
+    VideoNote,
+    Animation,
+}
+
+/// Audio-class media metadata (zero-cost, same source as `VideoInfo`).
+/// Present only for audio (music) / voice media. Pairs with the transcription
+/// tool: duration tells the client whether a voice message is worth a quota call.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct AudioInfo {
+    pub duration_seconds: u32,
+    pub file_size_bytes: u64,
+    pub kind: AudioKind,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub mime_type: Option<String>,
+}
+
+/// Closed set of audio-class kinds (`audio | voice`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AudioKind {
+    Audio,
+    Voice,
+}
+
 /// Media filter for search (maps to Telegram's InputMessagesFilter).
 ///
 /// **Important:** This is metadata-based filtering, NOT content recognition.
@@ -209,5 +254,67 @@ mod tests {
             photo_type: "x".to_string(),
         };
         assert_eq!(candidate.width.max(candidate.height), 800);
+    }
+
+    // =========================================================================
+    // VideoInfo / AudioInfo Tests
+    // =========================================================================
+
+    #[test]
+    fn video_kind_serializes_snake_case() {
+        assert_eq!(
+            serde_json::to_string(&VideoKind::VideoNote).unwrap(),
+            "\"video_note\""
+        );
+        assert_eq!(
+            serde_json::to_string(&VideoKind::Animation).unwrap(),
+            "\"animation\""
+        );
+        assert_eq!(
+            serde_json::to_string(&VideoKind::Video).unwrap(),
+            "\"video\""
+        );
+    }
+
+    #[test]
+    fn audio_kind_serializes_snake_case() {
+        assert_eq!(
+            serde_json::to_string(&AudioKind::Voice).unwrap(),
+            "\"voice\""
+        );
+        assert_eq!(
+            serde_json::to_string(&AudioKind::Audio).unwrap(),
+            "\"audio\""
+        );
+    }
+
+    #[test]
+    fn video_info_omits_mime_type_when_none() {
+        let info = VideoInfo {
+            duration_seconds: 0,
+            width: 0,
+            height: 0,
+            file_size_bytes: 100,
+            kind: VideoKind::Animation,
+            has_thumbnail: false,
+            mime_type: None,
+        };
+        let json = serde_json::to_value(&info).unwrap();
+        assert!(json.get("mime_type").is_none());
+        assert_eq!(json["kind"], "animation");
+        assert_eq!(json["duration_seconds"], 0);
+    }
+
+    #[test]
+    fn audio_info_roundtrips() {
+        let info = AudioInfo {
+            duration_seconds: 12,
+            file_size_bytes: 2048,
+            kind: AudioKind::Voice,
+            mime_type: Some("audio/ogg".to_string()),
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        let back: AudioInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, info);
     }
 }
