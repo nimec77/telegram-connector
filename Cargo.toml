@@ -52,7 +52,6 @@ thiserror = "2.0.18"
 
 # Utilities
 chrono = { version = "0.4.45", features = ["serde"] }
-dashmap = "6.2.1"
 
 # Security
 secrecy = { version = "0.10", features = ["serde"] }
@@ -62,7 +61,10 @@ image = { version = "0.25", default-features = false, features = ["jpeg"] }
 base64 = "0.22"
 
 [dev-dependencies]
-tokio-test = "0.4.5"
+# `test-util` enables the pausable clock (`start_paused`, `time::advance`) used by
+# the timeout/transcription tests. It is intentionally excluded from `full`, so it
+# must be requested explicitly here (dev-only, never compiled into release builds).
+tokio = { version = "1.52.3", features = ["test-util"] }
 tempfile = "3.27.0"
 proptest = "1.11.0"
 mockall = "0.14.0"
