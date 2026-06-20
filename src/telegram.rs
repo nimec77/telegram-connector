@@ -9,7 +9,8 @@ pub use client::TelegramClient;
 pub use trait_def::TelegramClientTrait;
 pub use types::{
     Channel, ChannelId, ChannelName, HistoryParams, MediaFilter, MediaType, Message, MessageId,
-    QueryMetadata, SearchParams, SearchResult, UserId, Username,
+    QueryMetadata, SearchParams, SearchResult, TranscriptionOutcome, TranscriptionState, UserId,
+    Username,
 };
 
 // Re-export mock for tests
