@@ -1,4 +1,8 @@
+use super::message::{extract_forward_info, extract_link_preview};
 use super::*;
+use crate::telegram::types::{AudioKind, SizeCandidate, VideoKind};
+use grammers_client::media::{Document, Media};
+use grammers_client::tl;
 
 fn candidate(width: u32, height: u32, size_bytes: u64, tag: &str) -> SizeCandidate {
     SizeCandidate {
