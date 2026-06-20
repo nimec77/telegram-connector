@@ -2,6 +2,7 @@ pub mod auth;
 pub mod client;
 pub mod converters;
 pub mod trait_def;
+pub mod transcription;
 pub mod types;
 
 // Re-export main types for convenience
