@@ -457,7 +457,7 @@ so pair `channel_id` with `generate_message_link` if you need to reach the sourc
 `reply_to_message_id` are included when present. All of these fields are omitted
 entirely when absent, so existing consumers are unaffected.
 
-**Media Types:** `none`, `photo`, `video`, `document`, `audio`, `voice`, `videonote`, `animation`, `sticker`, `contact`, `location`, `venue`, `poll`, `dice`
+**Media Types:** `none`, `photo`, `video`, `document`, `audio`, `voice`, `video_note`, `animation`, `sticker`, `contact`, `location`, `venue`, `poll`, `dice`
 
 **Usage Examples:**
 
