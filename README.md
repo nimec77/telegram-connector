@@ -581,8 +581,8 @@ Retrieve the visual media from a Telegram message as an MCP **image content bloc
 {
   "channel_id": "@technews",
   "message_id": 42,
-  "media_type": "photo",
-  "is_thumbnail": false,
+  "media_type": "video",
+  "is_thumbnail": true,
   "caption": "Optional caption text",
   "original_width": 2560,
   "original_height": 1440,
