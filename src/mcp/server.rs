@@ -106,6 +106,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             last_response_write_age_secs: self.metrics.last_write_age_secs(),
             session_started_at: self.metrics.session_started_at_rfc3339(),
             session_uptime_secs: self.metrics.uptime_secs(),
+            premium: self.telegram_client.is_premium().await,
         };
 
         serde_json::to_string(&response).map_err(|e| e.to_string())

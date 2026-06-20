@@ -13,6 +13,7 @@ async fn check_status_returns_connection_info() {
     // Given: Server with mock client (connected) and rate limiter (tokens available)
     let mut mock_client = MockTelegramClientTrait::new();
     mock_client.expect_is_connected().return_once(|| true);
+    mock_client.expect_is_premium().return_once(|| Some(true));
 
     let mut mock_limiter = MockRateLimiterTrait::new();
     mock_limiter.expect_available_tokens().return_once(|| 45.5);
@@ -30,6 +31,7 @@ async fn check_status_returns_connection_info() {
     assert!(response.telegram_connected);
     assert_eq!(response.rate_limiter_tokens, 45.5);
     assert_eq!(response.server_version, env!("CARGO_PKG_VERSION"));
+    assert_eq!(response.premium, Some(true));
 }
 
 #[tokio::test]
@@ -37,6 +39,7 @@ async fn check_status_reports_disconnected() {
     // Given: Server with disconnected client
     let mut mock_client = MockTelegramClientTrait::new();
     mock_client.expect_is_connected().return_once(|| false);
+    mock_client.expect_is_premium().return_once(|| Some(false));
 
     let mut mock_limiter = MockRateLimiterTrait::new();
     mock_limiter.expect_available_tokens().return_once(|| 0.0);
@@ -59,6 +62,7 @@ async fn check_status_reports_disconnected() {
 async fn check_status_includes_session_counters() {
     let mut mock_client = MockTelegramClientTrait::new();
     mock_client.expect_is_connected().return_once(|| true);
+    mock_client.expect_is_premium().return_once(|| Some(false));
     let mut mock_limiter = MockRateLimiterTrait::new();
     mock_limiter.expect_available_tokens().return_once(|| 10.0);
 
@@ -83,6 +87,7 @@ async fn check_status_includes_session_counters() {
 async fn check_status_age_is_none_before_first_write() {
     let mut mock_client = MockTelegramClientTrait::new();
     mock_client.expect_is_connected().return_once(|| true);
+    mock_client.expect_is_premium().return_once(|| Some(false));
     let mut mock_limiter = MockRateLimiterTrait::new();
     mock_limiter.expect_available_tokens().return_once(|| 10.0);
 
