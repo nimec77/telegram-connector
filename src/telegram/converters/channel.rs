@@ -76,8 +76,8 @@ pub fn convert_peer_to_channel(peer: &grammers_client::peer::Peer) -> Option<Cha
         id,
         name,
         username,
-        description: None, // Not available from basic chat info
-        member_count: 0,   // Would need additional API call
+        description: None,  // Not available from basic chat info
+        member_count: None, // Not fetched from basic chat info; None ≠ a real zero (CQ-4)
         is_verified,
         is_public,
         is_subscribed: true, // We're iterating our dialogs, so we're subscribed

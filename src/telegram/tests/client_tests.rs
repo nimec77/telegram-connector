@@ -14,7 +14,7 @@ fn create_test_channel(id: i64, name: &str) -> Channel {
         name: ChannelName::new(name).unwrap(),
         username: Username::new("testchannel").unwrap(),
         description: Some("Test channel".to_string()),
-        member_count: 1000,
+        member_count: Some(1000),
         is_verified: false,
         is_public: true,
         is_subscribed: true,

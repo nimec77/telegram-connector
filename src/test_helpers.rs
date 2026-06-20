@@ -141,7 +141,7 @@ pub fn create_test_channel(id: i64, username: &str) -> Channel {
         name: ChannelName::new(format!("Channel {}", username)).expect("Valid channel name"),
         username: Username::new(username).expect("Valid username"),
         description: Some(format!("Description for {}", username)),
-        member_count: 1000,
+        member_count: Some(1000),
         is_verified: false,
         is_public: true,
         is_subscribed: true,
@@ -162,7 +162,7 @@ pub fn create_test_channel_detailed(
         name: ChannelName::new(name).expect("Valid channel name"),
         username: Username::new(username).expect("Valid username"),
         description: None,
-        member_count,
+        member_count: Some(member_count),
         is_verified,
         is_public: true,
         is_subscribed: true,
@@ -271,7 +271,7 @@ mod tests {
             create_test_channel_detailed(200, "verified_ch", "Verified Channel", 50000, true);
         assert_eq!(channel.id.get(), 200);
         assert!(channel.is_verified);
-        assert_eq!(channel.member_count, 50000);
+        assert_eq!(channel.member_count, Some(50000));
     }
 
     #[test]

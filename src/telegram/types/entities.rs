@@ -91,7 +91,9 @@ pub struct Channel {
     pub name: ChannelName,
     pub username: Username,
     pub description: Option<String>,
-    pub member_count: u64,
+    /// Number of members/subscribers. `None` means the count was not fetched
+    /// (distinct from a real zero); the cheap list/lookup paths leave it unset.
+    pub member_count: Option<u64>,
     pub is_verified: bool,
     pub is_public: bool,
     pub is_subscribed: bool,
@@ -245,7 +247,7 @@ mod tests {
             name: ChannelName::new("Tech News").unwrap(),
             username: Username::new("technews").unwrap(),
             description: Some("Latest tech updates".to_string()),
-            member_count: 5000,
+            member_count: Some(5000),
             is_verified: true,
             is_public: true,
             is_subscribed: true,
@@ -258,5 +260,32 @@ mod tests {
         assert_eq!(deserialized.id, channel.id);
         assert_eq!(deserialized.member_count, channel.member_count);
         assert_eq!(deserialized.is_verified, channel.is_verified);
+    }
+
+    #[test]
+    fn channel_member_count_none_serializes_as_null_when_unfetched() {
+        // member_count is Option<u64>: None means "not fetched" and must stay
+        // distinguishable from a real zero (CQ-4). It serializes as JSON null.
+        let channel = Channel {
+            id: ChannelId::new(201).unwrap(),
+            name: ChannelName::new("No Count").unwrap(),
+            username: Username::new("nocount").unwrap(),
+            description: None,
+            member_count: None,
+            is_verified: false,
+            is_public: false,
+            is_subscribed: true,
+            last_message_date: None,
+        };
+
+        let json = serde_json::to_value(&channel).unwrap();
+        assert!(
+            json["member_count"].is_null(),
+            "unfetched member_count must serialize as null, got {}",
+            json["member_count"]
+        );
+
+        let back: Channel = serde_json::from_value(json).unwrap();
+        assert_eq!(back.member_count, None);
     }
 }

@@ -18,7 +18,7 @@ fn create_test_channel(id: i64, name: &str) -> Channel {
         name: ChannelName::new(name).unwrap(),
         username: Username::new("testchannel").unwrap(),
         description: Some("Test channel".to_string()),
-        member_count: 1000,
+        member_count: Some(1000),
         is_verified: false,
         is_public: true,
         is_subscribed: true,
@@ -110,7 +110,7 @@ async fn get_channel_info_returns_channel_details() {
         name: ChannelName::new("Test Channel").unwrap(),
         username: Username::new("testchannel").unwrap(),
         description: Some("A test channel".to_string()),
-        member_count: 5000,
+        member_count: Some(5000),
         is_verified: true,
         is_public: true,
         is_subscribed: false,
@@ -141,7 +141,7 @@ async fn get_channel_info_returns_channel_details() {
     assert_eq!(channel.id, ChannelId::new(12345).unwrap());
     assert_eq!(channel.name.as_str(), "Test Channel");
     assert!(channel.is_verified);
-    assert_eq!(channel.member_count, 5000);
+    assert_eq!(channel.member_count, Some(5000));
 }
 
 #[tokio::test]
@@ -172,4 +172,46 @@ async fn get_channel_info_handles_error() {
     if let Err(error_msg) = result {
         assert!(error_msg.contains("Channel not found"));
     }
+}
+
+#[tokio::test]
+async fn get_channel_info_unfetched_member_count_serializes_as_null() {
+    // A channel whose member count was not fetched must cross the MCP boundary
+    // as member_count: null, not a misleading 0 (CQ-4).
+    let mut mock_client = MockTelegramClientTrait::new();
+    let test_channel = Channel {
+        id: ChannelId::new(777).unwrap(),
+        name: ChannelName::new("Unfetched").unwrap(),
+        username: Username::new("unfetched").unwrap(),
+        description: None,
+        member_count: None,
+        is_verified: false,
+        is_public: true,
+        is_subscribed: true,
+        last_message_date: None,
+    };
+
+    mock_client
+        .expect_get_channel_info()
+        .with(mockall::predicate::eq("unfetched"))
+        .return_once(move |_| Ok(test_channel));
+
+    let mock_limiter = MockRateLimiterTrait::new();
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = GetChannelInfoRequest {
+        channel_identifier: "unfetched".to_string(),
+    };
+
+    let result = server
+        .get_channel_info(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await
+        .expect("tool call should succeed");
+
+    let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert!(
+        json["member_count"].is_null(),
+        "unfetched member_count must cross the MCP boundary as null, got {}",
+        json["member_count"]
+    );
 }
