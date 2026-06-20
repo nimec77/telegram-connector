@@ -2945,3 +2945,21 @@ Responses larger than `[observability] max_buffered_payload_bytes` (default 2621
 - `src/mcp/server.rs` — `get_message_media` tool (tool 10); `media_download_cost` field + `with_media_download_cost` builder; `log_tool_outcome` generalized to `<T>`.
 - `src/mcp/observability.rs` — `ResponseBuffer::push` stubs payloads above `max_buffered_payload_bytes` (two-arg constructor).
 - `src/main.rs` — `.with_media_download_cost(config.rate_limiting.media_download_cost)` wired in.
+
+## Refactor: architecture & duplication (AD-2 … AD-6)
+
+Followed `docs/refactoring/02-architecture-and-duplication.md`; AD-1 (one
+`resolve_peer`) and the LM-* splits were already done. One commit per finding,
+gate green per step. Tests 432 → 437.
+
+- **AD-5** — `json_response<T: Serialize>` in `mcp/tools/helpers.rs` (re-exported via `mcp/tools`) replaces ~11 `serde_json::to_string(..).map_err(|e| e.to_string())` tails in the server impl modules.
+- **AD-4 / CQ-1** — `peer_identity(&Peer) -> Option<(ChannelId, ChannelName, Username)>` in `converters/channel.rs` shared by `convert_peer_to_channel` and `convert_message`; one `fallback_username(kind)` using `.expect()` replaces five bare `Username::new(..).unwrap()`.
+- **AD-2** — `get_recent_messages` no longer double-resolves usernames. Server stops the `get_channel_info` pre-call and hands the raw identifier through; `HistoryParams.channel_id` is now `Option<ChannelId>` (`None` for a username). Client owns resolution and derives the id from the resolved peer for logging.
+- **AD-3** — tool-wrapper boilerplate collapsed into a `ToolInvocation` guard (`start`/`finish`), not a macro.
+- **AD-6** — `[telegram] max_download_bytes` (20 MiB) and `[transcription] {default,max}_timeout_seconds` (30/120) are now config, `#[serde(default)]`. Internal consts (JPEG_QUALITY, POLL_INTERVAL_SECS, base64 cap, image dimensions) stay; the 500-char preview cap is now `LINK_PREVIEW_DESCRIPTION_MAX_CHARS`.
+
+### Lessons (non-obvious)
+
+- **`Username::new` requires 5–32 chars, so the `"user"` fallback sentinel (4 chars) was a latent panic.** `convert_message`'s `Peer::User` branch did `Username::new("user").unwrap()` — it would panic for any user-peer message without a public username. CQ-1's premise that "the `Username` literals are statically valid" is false. Resolution: a user with no username now reuses the valid `"unknown"` sentinel (`"unknown"`/`"group"` unchanged). Any sentinel routed through `Username::new` must satisfy the 5–32-char rule.
+- **AD-3's declarative-macro option cannot compose with rmcp.** A `macro_rules!` emitting a `#[tool]` method in *item position* inside the `impl` expands *after* `#[tool_router]` (an attribute macro) has already scanned the impl body, so the generated tool never registers in `list_tools`/`call_tool`. The non-fragile guard object was chosen instead.
+- **Configurable clamp bound:** with a config-driven max, `value.clamp(1, max)` panics if `max == 0` (violates `min <= max`). Use `value.min(max).max(1)` instead.
