@@ -133,6 +133,7 @@ fn create_test_config(api_id: i32, api_hash: Option<&str>, phone_number: Option<
             max_tokens: 50,
             refill_rate: 2.0,
             media_download_cost: default_media_download_cost(),
+            transcription_cost: default_transcription_cost(),
         },
         logging: LoggingConfig {
             level: "info".to_string(),
@@ -611,6 +612,12 @@ fn test_media_download_cost_from_toml() {
     let toml_str = "[telegram]\napi_id = 12345\n[rate_limiting]\nmedia_download_cost = 9\n";
     let config: Config = toml::from_str(toml_str).unwrap();
     assert_eq!(config.rate_limiting.media_download_cost, 9);
+}
+
+#[test]
+fn test_default_rate_limit_has_transcription_cost() {
+    let config = default_rate_limit_config();
+    assert_eq!(config.transcription_cost, 5);
 }
 
 #[test]

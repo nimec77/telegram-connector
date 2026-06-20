@@ -112,6 +112,7 @@ mod tests {
             max_tokens,
             refill_rate,
             media_download_cost: 5,
+            transcription_cost: 5,
         }
     }
 
