@@ -36,6 +36,12 @@ pub struct StatusResponse {
 
     #[schemars(description = "Session uptime in seconds")]
     pub session_uptime_secs: u64,
+
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[schemars(
+        description = "Whether the connected account has Telegram Premium (null if unknown)"
+    )]
+    pub premium: Option<bool>,
 }
 
 /// Response for get_subscribed_channels tool
@@ -242,6 +248,7 @@ mod tests {
             last_response_write_age_secs: Some(0),
             session_started_at: "2026-06-12T00:00:00+00:00".to_string(),
             session_uptime_secs: 60,
+            premium: Some(true),
         };
 
         let json = serde_json::to_string(&response).unwrap();
