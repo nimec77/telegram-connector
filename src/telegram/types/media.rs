@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 /// All Telegram media types (for message content)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum MediaType {
     #[default]
     None, // Text-only message
@@ -104,9 +104,9 @@ mod tests {
     }
 
     #[test]
-    fn media_type_serde_lowercase() {
+    fn media_type_serde_snake_case() {
         let json = serde_json::to_string(&MediaType::VideoNote).unwrap();
-        assert_eq!(json, "\"videonote\"");
+        assert_eq!(json, "\"video_note\"");
     }
 
     #[test]
