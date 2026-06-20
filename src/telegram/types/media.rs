@@ -121,6 +121,8 @@ pub struct MediaDownload {
     pub height: Option<u32>,
     /// Byte size of the downloaded size variant.
     pub source_size_bytes: u64,
+    /// Zero-cost video metadata for video-class media (`None` for photos).
+    pub video_info: Option<VideoInfo>,
 }
 
 /// A downloadable size variant of a photo or thumbnail, decoupled from
@@ -240,6 +242,7 @@ mod tests {
             width: Some(1280),
             height: Some(720),
             source_size_bytes: 2,
+            video_info: None,
         };
         assert_eq!(download.media_type, MediaType::Photo);
         assert!(!download.is_thumbnail);

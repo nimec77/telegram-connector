@@ -4,7 +4,8 @@ use crate::config::{TelegramConfig, TimeoutConfig};
 use crate::error::Error;
 use crate::telegram::converters::{
     convert_media_filter, convert_media_to_type, convert_message, convert_peer_to_channel,
-    extract_audio_duration, matches_media_filter, select_size_candidate, size_candidates,
+    extract_audio_duration, extract_video_info, matches_media_filter, select_size_candidate,
+    size_candidates,
 };
 use crate::telegram::trait_def::TelegramClientTrait;
 use crate::telegram::types::{
@@ -829,6 +830,7 @@ impl TelegramClientTrait for TelegramClient {
             width: Some(selected.width),
             height: Some(selected.height),
             source_size_bytes: selected.size_bytes,
+            video_info: extract_video_info(&media),
         })
     }
 

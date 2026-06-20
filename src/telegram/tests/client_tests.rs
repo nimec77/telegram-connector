@@ -568,6 +568,7 @@ async fn mock_download_message_media_returns_media_download() {
                 width: Some(1280),
                 height: Some(720),
                 source_size_bytes: 3,
+                video_info: None,
             })
         });
 
