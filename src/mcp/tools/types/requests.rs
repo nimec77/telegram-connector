@@ -138,6 +138,24 @@ pub struct GetMessageMediaRequest {
     pub max_dimension: Option<u32>,
 }
 
+/// Request for transcribe_voice_message tool
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct TranscribeVoiceMessageRequest {
+    #[schemars(description = "Channel ID or username (required)")]
+    #[serde(deserialize_with = "flexible_string")]
+    pub channel_id: String,
+
+    #[schemars(description = "Message ID within the channel")]
+    #[serde(deserialize_with = "flexible_i64")]
+    pub message_id: i64,
+
+    #[schemars(
+        description = "Seconds to wait for transcription to complete (default: 30, max: 120)"
+    )]
+    #[serde(default, deserialize_with = "flexible_opt_u32")]
+    pub timeout_seconds: Option<u32>,
+}
+
 /// Request for get_last_responses tool
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct GetLastResponsesRequest {
@@ -388,5 +406,21 @@ mod tests {
         let json = r#"{"channel_id": "news", "message_id": 42}"#;
         let request: GetMessageMediaRequest = serde_json::from_str(json).unwrap();
         assert_eq!(request.max_dimension, None);
+    }
+
+    #[test]
+    fn transcribe_request_deserializes_with_flexible_scalars() {
+        let json = r#"{"channel_id": 123456, "message_id": "42", "timeout_seconds": "60"}"#;
+        let request: TranscribeVoiceMessageRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(request.channel_id, "123456");
+        assert_eq!(request.message_id, 42);
+        assert_eq!(request.timeout_seconds, Some(60));
+    }
+
+    #[test]
+    fn transcribe_request_timeout_defaults_to_none() {
+        let json = r#"{"channel_id": "news", "message_id": 42}"#;
+        let request: TranscribeVoiceMessageRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(request.timeout_seconds, None);
     }
 }
