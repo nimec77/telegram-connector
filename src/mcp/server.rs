@@ -549,19 +549,19 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             .await
             .map_err(|e| e.to_string())?;
 
-        // The feature contract specifies "voice" / "video_note"; MediaType's
-        // lowercase serialization would emit "videonote", so map explicitly.
+        // Only voice and video_note are transcribable. Pass the MediaType through
+        // unchanged so its serde derive (snake_case) is the single source of the
+        // "voice" / "video_note" wire names — shared with search_messages.
         let media_type = match outcome.media_type {
-            crate::telegram::types::MediaType::Voice => "voice",
-            crate::telegram::types::MediaType::VideoNote => "video_note",
+            mt @ (crate::telegram::types::MediaType::Voice
+            | crate::telegram::types::MediaType::VideoNote) => mt,
             other => {
                 return Err(format!(
                     "unexpected media type for transcription: {:?}",
                     other
                 ));
             }
-        }
-        .to_string();
+        };
 
         let response = TranscribeVoiceMessageResponse {
             text: outcome.text,
@@ -573,7 +573,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         tracing::info!(
             channel = %request.channel_id,
             message_id = message_id.get(),
-            media_type = %response.media_type,
+            media_type = ?response.media_type,
             partial = response.partial,
             duration_seconds = ?response.duration_seconds,
             "Transcription results"

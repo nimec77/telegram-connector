@@ -56,7 +56,7 @@ async fn returns_transcription_text() {
     let resp: TranscribeVoiceMessageResponse = serde_json::from_str(&result).unwrap();
     assert_eq!(resp.text, "привет мир");
     assert!(!resp.partial);
-    assert_eq!(resp.media_type, "voice");
+    assert_eq!(resp.media_type, MediaType::Voice);
     assert_eq!(resp.duration_seconds, Some(5));
 }
 
@@ -85,7 +85,7 @@ async fn returns_partial_flag_and_video_note_type() {
 
     let resp: TranscribeVoiceMessageResponse = serde_json::from_str(&result).unwrap();
     assert!(resp.partial);
-    assert_eq!(resp.media_type, "video_note");
+    assert_eq!(resp.media_type, MediaType::VideoNote);
     assert_eq!(resp.duration_seconds, None);
 }
 
@@ -199,4 +199,22 @@ async fn surfaces_flood_wait_retry_after() {
         .expect_err("should fail");
 
     assert!(err.contains("retry after 42"), "error was: {err}");
+}
+
+#[test]
+fn media_type_wire_name_is_consistent_across_endpoints() {
+    // search_messages serializes MediaType directly; transcribe_voice_message
+    // embeds the same MediaType. Both must emit the identical wire string for a
+    // round video, or the two endpoints disagree — the bug this guards against.
+    let search_name = serde_json::to_string(&MediaType::VideoNote).unwrap();
+    assert_eq!(search_name, "\"video_note\"");
+
+    let resp = TranscribeVoiceMessageResponse {
+        text: String::new(),
+        partial: false,
+        duration_seconds: None,
+        media_type: MediaType::VideoNote,
+    };
+    let value = serde_json::to_value(&resp).unwrap();
+    assert_eq!(value["media_type"], serde_json::json!("video_note"));
 }
