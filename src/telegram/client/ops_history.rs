@@ -77,6 +77,7 @@ impl TelegramClient {
         let peer_ref = peer
             .to_ref()
             .await
+            .map_err(|e| Error::TelegramApi(format!("Failed to convert peer to PeerRef: {e}")))?
             .ok_or_else(|| Error::TelegramApi("Failed to convert peer to PeerRef".to_string()))?;
 
         let messages = with_timeout("iter_messages", self.timeouts.history_secs, async {
@@ -89,7 +90,7 @@ impl TelegramClient {
                 .map_err(|e| Error::TelegramApi(format!("Failed to iterate messages: {}", e)))?
             {
                 // Check time filter - messages are in reverse chronological order
-                if msg.date() < cutoff_time {
+                if msg.date().as_second() < cutoff_time.timestamp() {
                     break;
                 }
 

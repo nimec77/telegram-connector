@@ -26,6 +26,7 @@ impl TelegramClient {
         let peer_ref = peer
             .to_ref()
             .await
+            .map_err(|e| Error::TelegramApi(format!("Failed to convert peer to PeerRef: {e}")))?
             .ok_or_else(|| Error::TelegramApi("Failed to convert peer to PeerRef".to_string()))?;
         let input_peer: tl::enums::InputPeer = peer_ref.into();
 

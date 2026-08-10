@@ -25,21 +25,28 @@ pub(crate) fn peer_identity(
 
     let triple = match peer {
         Peer::Channel(ch) => (
-            ChannelId::new(ch.id().bare_id()).ok()?,
+            ChannelId::new(ch.id().bare_id()?).ok()?,
             ChannelName::new(ch.title()).ok()?,
             ch.username()
                 .and_then(|u| Username::new(u).ok())
                 .unwrap_or_else(|| fallback_username("unknown")),
         ),
         Peer::Group(g) => (
-            ChannelId::new(g.id().bare_id()).ok()?,
+            ChannelId::new(g.id().bare_id()?).ok()?,
             ChannelName::new(g.title().unwrap_or("Unknown")).ok()?,
             g.username()
                 .and_then(|u| Username::new(u).ok())
                 .unwrap_or_else(|| fallback_username("group")),
         ),
+        // grammers 0.10 peer kind; exposes no username accessor, so it always
+        // uses the group fallback sentinel.
+        Peer::Community(c) => (
+            ChannelId::new(c.id().bare_id()?).ok()?,
+            ChannelName::new(c.title()).ok()?,
+            fallback_username("group"),
+        ),
         Peer::User(u) => (
-            ChannelId::new(u.id().bare_id()).ok()?,
+            ChannelId::new(u.id().bare_id()?).ok()?,
             ChannelName::new(u.first_name().unwrap_or("User")).ok()?,
             u.username()
                 .and_then(|un| Username::new(un).ok())

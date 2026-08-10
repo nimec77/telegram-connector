@@ -15,10 +15,11 @@ path = "src/main.rs"
 # MCP
 rmcp = { version = "1.7.0", features = ["server"] }
 
-# Telegram
-grammers-client = { git = "https://github.com/Lonami/grammers", branch = "master" }
-grammers-session = { git = "https://github.com/Lonami/grammers", branch = "master" }
-grammers-mtsender = { git = "https://github.com/Lonami/grammers", branch = "master" }
+# Telegram — upstream moved to Codeberg in Feb 2026; the GitHub repo is a
+# stale mirror slated for deletion. Do not point these back at github.com.
+grammers-client = { git = "https://codeberg.org/Lonami/grammers", branch = "master" }
+grammers-session = { git = "https://codeberg.org/Lonami/grammers", branch = "master" }
+grammers-mtsender = { git = "https://codeberg.org/Lonami/grammers", branch = "master" }
 
 # Async
 tokio = { version = "1.52.3", features = ["full"] }
