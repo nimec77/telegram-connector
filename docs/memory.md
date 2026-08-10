@@ -3085,3 +3085,18 @@ in this repo's PR/CHANGELOG for the change; lessons only here.
   (`static.crates.io/crates/<name>/<v>.crate`) and grepping the exact API
   surface used took minutes and turned "two majors, unknown risk" into a
   one-rename plan before touching Cargo.toml.
+
+### Stacked-PR merge mishap (same day) — how the rmcp commit briefly vanished
+
+PR #29 (rmcp) was stacked on PR #28's branch as its base. Merging #28
+(rebase-merge) did NOT retarget #29 to master; #29 was then merged while its
+base still pointed at the feature branch, so its merge commit landed on that
+branch — which was immediately deleted. Result: GitHub showed both PRs
+"Merged" while master lacked the rmcp change entirely. Recovered by
+cherry-picking the local commit onto master (nothing lost, one extra PR).
+Lessons: (1) with stacked PRs, merge bottom-up and manually retarget the
+child to master BEFORE merging it — don't trust auto-retargeting,
+especially with rebase-merges; (2) "PR shows Merged" ≠ "change is on
+master" — verify with `git log origin/master` after stacked merges;
+(3) deleted local branch tips survive in the object store — `git branch
+<name> <sha>` / cherry-pick recovers them until GC.
