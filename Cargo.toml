@@ -1,6 +1,6 @@
 [package]
 name = "telegram-connector"
-version = "0.11.1"
+version = "0.12.0"
 edition = "2024"
 
 [lib]
