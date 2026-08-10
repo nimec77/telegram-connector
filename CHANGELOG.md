@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The three `grammers-*` git dependencies now point at the new upstream home, `https://codeberg.org/Lonami/grammers` (the project migrated off GitHub in February 2026; the GitHub repository is a stale mirror slated for deletion — do not point the dependencies back at it). This carries grammers 0.8.1 → 0.10.0: message dates are now jiff `Timestamp`s at the grammers boundary (converted to the domain's chrono `DateTime<Utc>` at second precision — Telegram dates carry no sub-second component, so nothing is lost), `Peer::to_ref` is fallible, `PeerId::bare_id` returns `Option<i64>` (`None` only for the self-user sentinel), the new `Peer::Community` kind is mapped like a group, and the account Premium flag is read from the raw TL user object (`User::is_premium` was removed). No MCP-visible schema changes.
+- Refreshed all semver-compatible dependencies via a full `cargo update` (notably rmcp 1.7.0 → 1.8.0 and tokio → 1.53.1).
+
+### Fixed
+- Fresh dependency resolution (bare `cargo update`, or any build without the committed `Cargo.lock`) no longer fails. Every version of the transitive crate `core2` was yanked from crates.io, and `glass_pumpkin` 1.7–1.9 (required as `^1.7` by grammers-crypto 0.8) depend on it, while the core2-free 1.10.0 was also yanked — so no `^1.7` version was resolvable and the lockfile was the only thing keeping builds alive. grammers 0.10 requires `glass_pumpkin 2.0.0-rc0`, which drops core2 entirely.
+
 ## [0.11.1] - 2026-06-20
 
 ### Changed

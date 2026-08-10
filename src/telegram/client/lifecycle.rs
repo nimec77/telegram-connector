@@ -81,7 +81,12 @@ impl TelegramClient {
         }
         match self.client.get_me().await {
             Ok(me) => {
-                let premium = me.is_premium();
+                // grammers 0.10 dropped `User::is_premium`; read the flag from
+                // the now-public raw TL user object instead.
+                let premium = match &me.raw {
+                    grammers_client::tl::enums::User::User(u) => u.premium,
+                    grammers_client::tl::enums::User::Empty(_) => false,
+                };
                 *self.premium.write().await = Some(premium);
                 Some(premium)
             }

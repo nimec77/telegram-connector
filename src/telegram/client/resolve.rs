@@ -63,7 +63,7 @@ impl TelegramClient {
                 tracing::error!(error = %e, "Failed to iterate dialogs");
                 Error::TelegramApi(format!("Failed to iterate dialogs: {}", e))
             })? {
-                if dialog.peer().id().bare_id() == id {
+                if dialog.peer().id().bare_id() == Some(id) {
                     return Ok(Some(dialog.peer().clone()));
                 }
             }

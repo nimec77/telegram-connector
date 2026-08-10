@@ -2995,3 +2995,40 @@ one commit per finding. Tests 439 → 441.
 - **`convert_peer_to_channel` is effectively un-unit-testable**: it takes a grammers `peer::Peer`, which can't be fabricated in a unit test (no public constructor; that's *why* the whole stack is mock-driven at the trait boundary). So CQ-4's converter behavior (`None`) is guarded only indirectly — a type-level serialization test (`entities.rs`) and a mock-boundary test through `get_channel_info` (`channels.rs`). The converter line itself rides on the compiler. Don't reach for a converter unit test here; there's no Peer fixture.
 - **`description` was *already* always `null`** in practice (the converter hardcodes `description: None` on every path), so the README example showing a description string was pre-existing drift. CQ-4 was the moment to make the README honest for both fields, not just `member_count`.
 - **Over-fetch is a server-boundary fix, not a client change.** The trait method already accepts an arbitrary `limit`; passing `limit + 1` + truncating keeps the client/trait/mock signatures untouched. Cost: the two existing pinned-arg mock tests (`.with(eq(20))` / `eq(10)`) had to move to `eq(21)` / `eq(11)` — that's the new contract, not test-fudging. Use `saturating_add(1)` so `limit == u32::MAX` can't overflow.
+
+## Dependency rescue: grammers → Codeberg, yanked core2/glass_pumpkin — 2026-08-10
+
+Bare `cargo update` had been silently broken for the whole project; only the
+committed `Cargo.lock` kept builds alive. Root cause was a two-yank collision
+outside our tree, fixed by moving the grammers git deps to their new upstream.
+Gate green, tests 441 (no count change — pure dependency/boundary work).
+
+- **The yank chain:** grammers-crypto 0.8 requires `glass_pumpkin ^1.7` (used in
+  exactly one line: `safe_prime::check` for SRP 2FA). glass_pumpkin 1.7–1.9
+  depend on `core2 ^0.4`, and **every version of core2 is yanked**. 1.10.0
+  dropped core2 but was itself yanked (it broke semver by bumping rand_core in a
+  minor) and was republished as 2.0.0-rc0 — outside `^1.7`. Net: no resolvable
+  version existed; any fresh resolve failed, while the lock pinning the yanked
+  1.10.0 still built. A lockfile can mask a dead dependency graph for months.
+- **grammers left GitHub in Feb 2026.** `github.com/Lonami/grammers` is a stale
+  mirror (last commit fa7692e, "Migrate off GitHub") and "may be deleted".
+  Real upstream: `https://codeberg.org/Lonami/grammers` — master already had the
+  glass_pumpkin fix (grammers-crypto 0.10). **Never point the git deps back at
+  github.com**, and don't assume a git dep's GitHub URL is alive just because
+  cargo still fetches it.
+- **Fallback bridge exists:** `nimec77/grammers` (GitHub fork of the mirror,
+  branch `fix/glass-pumpkin-yanked-core2`) carries the minimal one-line fix at
+  the old commit — useful only if Codeberg master ever regresses badly; safe to
+  delete once 0.10 has soaked.
+- **grammers 0.8.1 → 0.10.0 API churn survived at the boundary** (domain model
+  untouched): `Peer::to_ref` now `Result<Option<PeerRef>, _>` (map_err +
+  ok_or_else, five call sites); `PeerId::bare_id` now `Option<i64>` (`None` only
+  for the self-user sentinel — converters `?` it away, comparisons wrap in
+  `Some(..)`); message dates are jiff `Timestamp` — **domain stays chrono**,
+  compare/convert via `.as_second()` so jiff never becomes a direct dependency
+  (Telegram dates are second-precision; nothing lost); new `Peer::Community`
+  kind mapped like a group (no username accessor → `fallback_username("group")`);
+  `User::is_premium` removed — read `u.premium` by matching the now-public
+  `me.raw` TL enum.
+- **glass_pumpkin 2.0.0-rc0 is a pre-release pinned by grammers**, not by us; it
+  will move to `"2.0.0"` upstream when stable. Nothing to do on our side.

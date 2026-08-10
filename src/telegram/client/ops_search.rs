@@ -41,13 +41,23 @@ impl TelegramClient {
                         Error::TelegramApi(format!("Failed to iterate dialogs: {}", e))
                     })? {
                         let peer = dialog.peer();
-                        if peer.id().bare_id() == channel_id.get() {
+                        if peer.id().bare_id() == Some(channel_id.get()) {
                             channels_searched += 1;
 
                             // Search in this specific channel
-                            let peer_ref = peer.to_ref().await.ok_or_else(|| {
-                                Error::TelegramApi("Failed to convert peer to PeerRef".to_string())
-                            })?;
+                            let peer_ref = peer
+                                .to_ref()
+                                .await
+                                .map_err(|e| {
+                                    Error::TelegramApi(format!(
+                                        "Failed to convert peer to PeerRef: {e}"
+                                    ))
+                                })?
+                                .ok_or_else(|| {
+                                    Error::TelegramApi(
+                                        "Failed to convert peer to PeerRef".to_string(),
+                                    )
+                                })?;
                             let mut search_iter =
                                 self.client.search_messages(peer_ref).query(&params.query);
 
@@ -62,8 +72,8 @@ impl TelegramClient {
                                 .await
                                 .map_err(|e| Error::TelegramApi(format!("Search failed: {}", e)))?
                             {
-                                let msg_time = msg.date();
-                                if msg_time < cutoff_time {
+                                let msg_time = msg.date().as_second();
+                                if msg_time < cutoff_time.timestamp() {
                                     break; // reverse chronological order
                                 }
                                 if let Some(converted) = convert_message(&msg, peer) {
@@ -95,8 +105,8 @@ impl TelegramClient {
                     .await
                     .map_err(|e| Error::TelegramApi(format!("Search failed: {}", e)))?
                 {
-                    let msg_time = msg.date();
-                    if msg_time < cutoff_time {
+                    let msg_time = msg.date().as_second();
+                    if msg_time < cutoff_time.timestamp() {
                         continue; // Skip old messages but keep searching
                     }
                     if let Some(peer) = msg.peer()

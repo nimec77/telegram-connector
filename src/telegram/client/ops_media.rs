@@ -25,6 +25,7 @@ impl TelegramClient {
         let peer_ref = peer
             .to_ref()
             .await
+            .map_err(|e| Error::TelegramApi(format!("Failed to convert peer to PeerRef: {e}")))?
             .ok_or_else(|| Error::TelegramApi("Failed to convert peer to PeerRef".to_string()))?;
 
         let messages = with_timeout("get_messages_by_id", self.timeouts.history_secs, async {

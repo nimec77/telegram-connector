@@ -74,7 +74,7 @@ pub fn convert_message(
     // msg.sender() returns Result<&Peer, Option<PeerRef>> in newer grammers versions
     let (sender_id, sender_name) = match msg.sender() {
         Some(sender) => {
-            let id = UserId::new(sender.id().bare_id()).ok();
+            let id = sender.id().bare_id().and_then(|i| UserId::new(i).ok());
             let name = sender.name().map(|s: &str| s.to_string());
             (id, name)
         }
@@ -114,7 +114,9 @@ pub fn convert_message(
         channel_name,
         channel_username,
         text: msg.text().to_string(),
-        timestamp: msg.date(),
+        // grammers 0.10 returns a jiff `Timestamp`; the domain model stays on
+        // chrono. Telegram dates are second-precision, so seconds round-trip.
+        timestamp: DateTime::from_timestamp(msg.date().as_second(), 0)?,
         sender_id,
         sender_name,
         has_media,
