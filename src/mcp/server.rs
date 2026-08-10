@@ -7,9 +7,10 @@ use crate::mcp::tools::{
     BufferedResponseEntry, ChannelsResponse, GenerateLinkRequest, GetChannelInfoRequest,
     GetChannelsRequest, GetLastResponsesRequest, GetMessageByLinkRequest, GetMessageMediaRequest,
     GetMessageMediaResponse, GetRecentMessagesRequest, LastResponsesResponse, MessageLinkResponse,
-    MessageResponse, OpenMessageRequest, OpenMessageResponse, SearchRequest, SearchResponse,
-    StatusResponse, TranscribeVoiceMessageRequest, TranscribeVoiceMessageResponse, json_response,
-    parse_channel_id, parse_message_id, parse_optional_channel_id, parse_optional_utc,
+    MessageResponse, OpenMessageRequest, OpenMessageResponse, SearchPublicChannelsRequest,
+    SearchRequest, SearchResponse, StatusResponse, TranscribeVoiceMessageRequest,
+    TranscribeVoiceMessageResponse, json_response, parse_channel_id, parse_message_id,
+    parse_optional_channel_id, parse_optional_utc,
 };
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
@@ -124,6 +125,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 // to them. Kept out of this file so it stays focused on the macro-bound
 // router + handler (LM-3).
 mod impl_channels;
+mod impl_discovery;
 mod impl_links;
 mod impl_media;
 mod impl_search;
@@ -343,6 +345,26 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "Tool invocation started"
         );
         inv.finish(self.transcribe_voice_message_impl(request).await)
+    }
+
+    /// Tool 12: search_public_channels - Discover public channels/groups by keyword
+    #[tool(
+        description = "Search Telegram's public directory for channels and groups by keyword. Results are not from your subscriptions (is_subscribed: false); use get_channel_info or search_messages with the returned id/username to go deeper."
+    )]
+    pub async fn search_public_channels(
+        &self,
+        Parameters(request): Parameters<SearchPublicChannelsRequest>,
+        id: RequestId,
+    ) -> Result<String, String> {
+        let inv = ToolInvocation::start("search_public_channels", id);
+        tracing::info!(
+            tool = inv.tool,
+            request_id = %inv.request_id,
+            query = %request.query,
+            limit = ?request.limit,
+            "Tool invocation started"
+        );
+        inv.finish(self.search_public_channels_impl(request).await)
     }
 }
 

@@ -9,7 +9,7 @@ mod channel;
 mod media;
 mod message;
 
-pub use channel::convert_peer_to_channel;
+pub use channel::{convert_discovered_peer, convert_peer_to_channel};
 pub use media::{
     convert_media_filter, convert_media_to_type, extract_audio_duration, extract_audio_info,
     extract_video_info, matches_media_filter, select_size_candidate, size_candidates,

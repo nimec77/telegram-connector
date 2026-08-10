@@ -34,6 +34,18 @@ pub struct GetChannelInfoRequest {
     pub include_full: Option<bool>,
 }
 
+/// Request for search_public_channels tool
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct SearchPublicChannelsRequest {
+    #[schemars(description = "Keyword or name to search Telegram's public directory for")]
+    #[serde(deserialize_with = "flexible_string")]
+    pub query: String,
+
+    #[schemars(description = "Maximum results to return (default: 10, max: 50)")]
+    #[serde(default, deserialize_with = "flexible_opt_u32")]
+    pub limit: Option<u32>,
+}
+
 /// Request for generate_message_link tool
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct GenerateLinkRequest {

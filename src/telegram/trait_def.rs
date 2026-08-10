@@ -34,6 +34,10 @@ pub trait TelegramClientTrait: Send + Sync {
     async fn get_subscribed_channels(&self, limit: u32, offset: u32)
     -> Result<Vec<Channel>, Error>;
 
+    /// Search Telegram's public directory for channels/groups by keyword.
+    /// Results carry `is_subscribed: false`.
+    async fn search_public_channels(&self, query: &str, limit: u32) -> Result<Vec<Channel>, Error>;
+
     /// Check if client is connected and authorized
     async fn is_connected(&self) -> bool;
 

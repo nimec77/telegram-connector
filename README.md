@@ -30,7 +30,7 @@ A Model Context Protocol (MCP) service that enables Claude to search and interac
 └──────────────────────────┬──────────────────────────────────┘
                            │ JSON-RPC over stdio
 ┌──────────────────────────▼──────────────────────────────────┐
-│                     MCP Server Layer (11 tools)              │
+│                     MCP Server Layer (12 tools)              │
 │                    (rmcp + server.rs)                        │
 │                                                             │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────┐    │
@@ -679,6 +679,42 @@ Transcribe a voice message or video note (round video) to text using Telegram's 
 ```
 
 **Usage:** Ask Claude to "transcribe the voice message in message 42 of channel @podcast".
+
+---
+
+### 12. search_public_channels
+
+Search Telegram's public directory (`contacts.search`) for channels and groups by keyword — not limited to channels you're already subscribed to. Closes the "find sources" gap: use it to discover new channels, then follow up with `get_channel_info` or `search_messages` using the returned `id`/`username`.
+
+**Parameters:**
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `query` | string | Yes | - | Keyword or name to search Telegram's public directory for |
+| `limit` | integer | No | 10 | Maximum results to return (max: 50) |
+
+**Response:** Same `ChannelsResponse` shape as `get_subscribed_channels`, with `has_more` always `false` (this is a single search call, not a paginated listing) and every returned channel's `is_subscribed` set to `false`:
+
+```json
+{
+  "channels": [
+    {
+      "id": 987654321,
+      "name": "Rust Programming News",
+      "username": "rustnews",
+      "description": null,
+      "member_count": null,
+      "is_verified": false,
+      "is_public": true,
+      "is_subscribed": false,
+      "last_message_date": null
+    }
+  ],
+  "total": 1,
+  "has_more": false
+}
+```
+
+**Usage:** Ask Claude to "find public Telegram channels about Rust programming" — Claude calls `search_public_channels` with `query: "Rust programming"`, then can drill into a result with `get_channel_info` or `search_messages`.
 
 ## Manual Testing Guide
 

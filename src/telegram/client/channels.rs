@@ -101,4 +101,55 @@ impl TelegramClient {
 
         Ok(channel)
     }
+
+    pub(super) async fn search_public_channels_impl(
+        &self,
+        query: &str,
+        limit: u32,
+    ) -> Result<Vec<crate::telegram::Channel>, Error> {
+        use grammers_client::peer::Peer;
+
+        if query.trim().is_empty() {
+            return Err(Error::InvalidInput(
+                "Search query cannot be empty".to_string(),
+            ));
+        }
+
+        let request = tl::functions::contacts::Search {
+            // No restriction to broadcasts-only or bots-only; a general keyword
+            // search over the whole public directory.
+            broadcasts: false,
+            bots: false,
+            q: query.to_string(),
+            limit: limit.clamp(1, 50) as i32,
+        };
+        let found = with_timeout("contacts_search", self.timeouts.search_secs, async {
+            self.client
+                .invoke(&request)
+                .await
+                .map_err(|e| Error::TelegramApi(format!("Public search failed: {e}")))
+        })
+        .await?;
+
+        let tl::enums::contacts::Found::Found(found) = found;
+        let channels = found
+            .chats
+            .into_iter()
+            .filter_map(|chat| {
+                // `Chat::Empty` carries no usable identity; skip it rather than
+                // surfacing a placeholder "Unknown" channel.
+                if matches!(&chat, tl::enums::Chat::Empty(_)) {
+                    return None;
+                }
+                // `Peer::from_raw` already routes each `Chat` variant to the right
+                // peer kind (including the broadcast-vs-megagroup distinction
+                // inside `Chat::Channel`/`ChannelForbidden`, which the individual
+                // `Channel`/`Group`/`Community::from_raw` constructors panic on if
+                // mismatched) — reuse it instead of re-deriving that routing here.
+                let peer = Peer::from_raw(&self.client, chat);
+                convert_discovered_peer(&peer)
+            })
+            .collect();
+        Ok(channels)
+    }
 }

@@ -8,9 +8,9 @@
 use crate::config::{TelegramConfig, TimeoutConfig};
 use crate::error::Error;
 use crate::telegram::converters::{
-    convert_media_filter, convert_media_to_type, convert_message, convert_peer_to_channel,
-    extract_audio_duration, extract_video_info, matches_media_filter, message_timestamp,
-    select_size_candidate, size_candidates,
+    convert_discovered_peer, convert_media_filter, convert_media_to_type, convert_message,
+    convert_peer_to_channel, extract_audio_duration, extract_video_info, matches_media_filter,
+    message_timestamp, select_size_candidate, size_candidates,
 };
 use crate::telegram::timeout::with_timeout;
 use crate::telegram::trait_def::TelegramClientTrait;
@@ -96,6 +96,14 @@ impl TelegramClientTrait for TelegramClient {
         offset: u32,
     ) -> Result<Vec<crate::telegram::Channel>, Error> {
         self.get_subscribed_channels_impl(limit, offset).await
+    }
+
+    async fn search_public_channels(
+        &self,
+        query: &str,
+        limit: u32,
+    ) -> Result<Vec<crate::telegram::Channel>, Error> {
+        self.search_public_channels_impl(query, limit).await
     }
 
     async fn is_connected(&self) -> bool {
