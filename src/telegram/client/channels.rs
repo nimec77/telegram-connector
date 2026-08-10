@@ -132,6 +132,12 @@ impl TelegramClient {
         .await?;
 
         let tl::enums::contacts::Found::Found(found) = found;
+        // `my_results` are matches from the caller's own dialogs (already
+        // subscribed); `chats` carries the `Chat` objects for both `my_results`
+        // and the wider `results` set with no per-entry subscribed flag, so
+        // membership has to be recomputed by bare id.
+        let subscribed_ids = subscribed_chat_ids(&found.my_results);
+
         let channels = found
             .chats
             .into_iter()
@@ -141,15 +147,63 @@ impl TelegramClient {
                 if matches!(&chat, tl::enums::Chat::Empty(_)) {
                     return None;
                 }
+                let is_subscribed = subscribed_ids.contains(&chat.id());
                 // `Peer::from_raw` already routes each `Chat` variant to the right
                 // peer kind (including the broadcast-vs-megagroup distinction
                 // inside `Chat::Channel`/`ChannelForbidden`, which the individual
                 // `Channel`/`Group`/`Community::from_raw` constructors panic on if
                 // mismatched) — reuse it instead of re-deriving that routing here.
                 let peer = Peer::from_raw(&self.client, chat);
-                convert_discovered_peer(&peer)
+                if is_subscribed {
+                    convert_peer_to_channel(&peer)
+                } else {
+                    convert_discovered_peer(&peer)
+                }
             })
             .collect();
         Ok(channels)
+    }
+}
+
+/// Bare `chat_id`/`channel_id`s present in `contacts.search`'s `my_results` —
+/// matches from the caller's own dialogs, as opposed to the wider `results`
+/// set. Pure function over plain TL data (no client/session needed), so it's
+/// unit-tested directly rather than through the network-bound `*_impl` method.
+/// `Peer::User` entries are irrelevant here: only `Chat`-shaped results are
+/// ever converted to a `Channel`.
+fn subscribed_chat_ids(my_results: &[tl::enums::Peer]) -> std::collections::HashSet<i64> {
+    my_results
+        .iter()
+        .filter_map(|peer| match peer {
+            tl::enums::Peer::Chat(p) => Some(p.chat_id),
+            tl::enums::Peer::Channel(p) => Some(p.channel_id),
+            tl::enums::Peer::User(_) => None,
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn subscribed_chat_ids_collects_chat_and_channel_ids_only() {
+        let my_results = vec![
+            tl::enums::Peer::Chat(tl::types::PeerChat { chat_id: 111 }),
+            tl::enums::Peer::Channel(tl::types::PeerChannel { channel_id: 222 }),
+            tl::enums::Peer::User(tl::types::PeerUser { user_id: 333 }),
+        ];
+
+        let ids = subscribed_chat_ids(&my_results);
+
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains(&111));
+        assert!(ids.contains(&222));
+        assert!(!ids.contains(&333));
+    }
+
+    #[test]
+    fn subscribed_chat_ids_empty_when_no_matches() {
+        assert!(subscribed_chat_ids(&[]).is_empty());
     }
 }

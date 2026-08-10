@@ -70,7 +70,7 @@ fn tools_list_carries_cache_hints_and_stable_order() {
     // Then: All 12 tools are present, with SEP-2549 cache hints attached
     assert_eq!(result.tools.len(), 12);
     assert_eq!(result.ttl_ms, Some(3_600_000));
-    assert!(result.cache_scope.is_some());
+    assert_eq!(result.cache_scope, Some(rmcp::model::CacheScope::Private));
 
     // And: Ordering is deterministic across calls
     let names: Vec<_> = result.tools.iter().map(|t| t.name.clone()).collect();
@@ -95,7 +95,7 @@ fn tools_list_hints_gated_on_protocol_version() {
     // gets the cache hints...
     let current = server.tools_list_result_for(Some(rmcp::model::ProtocolVersion::V_2026_07_28));
     assert_eq!(current.ttl_ms, Some(3_600_000));
-    assert!(current.cache_scope.is_some());
+    assert_eq!(current.cache_scope, Some(rmcp::model::CacheScope::Private));
     assert_eq!(current.tools.len(), 12);
 
     // ...but a client on an older negotiated version does not, mirroring the
