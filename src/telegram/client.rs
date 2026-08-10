@@ -8,15 +8,15 @@
 use crate::config::{TelegramConfig, TimeoutConfig};
 use crate::error::Error;
 use crate::telegram::converters::{
-    convert_discovered_peer, convert_media_filter, convert_media_to_type, convert_message,
-    convert_peer_to_channel, extract_audio_duration, extract_video_info, matches_media_filter,
-    message_timestamp, select_size_candidate, size_candidates,
+    channel_identity, convert_discovered_peer, convert_media_filter, convert_media_to_type,
+    convert_message, convert_peer_to_channel, extract_audio_duration, extract_video_info,
+    matches_media_filter, message_timestamp, select_size_candidate, size_candidates,
 };
 use crate::telegram::timeout::with_timeout;
 use crate::telegram::trait_def::TelegramClientTrait;
 use crate::telegram::types::{
-    HistoryParams, MediaDownload, MediaType, QueryMetadata, SearchParams, SearchResult,
-    TranscriptionOutcome, TranscriptionState,
+    ChannelIdentity, HistoryParams, MediaDownload, MediaType, QueryMetadata, SearchParams,
+    SearchResult, TranscriptionOutcome, TranscriptionState,
 };
 use grammers_client::Client;
 use grammers_client::media::Media;
@@ -117,6 +117,13 @@ impl TelegramClientTrait for TelegramClient {
         message_id: i32,
     ) -> Result<crate::telegram::Message, Error> {
         self.get_message_by_id_impl(channel_ref, message_id).await
+    }
+
+    async fn resolve_channel_identity(
+        &self,
+        channel_ref: &str,
+    ) -> Result<crate::telegram::ChannelIdentity, Error> {
+        self.resolve_channel_identity_impl(channel_ref).await
     }
 
     async fn download_message_media(

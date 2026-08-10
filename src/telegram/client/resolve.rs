@@ -71,6 +71,26 @@ impl TelegramClient {
         })
         .await
     }
+
+    /// Trait backing for `resolve_channel_identity` (work-order B2): one
+    /// resolve, then sentinel-free identity extraction.
+    pub(super) async fn resolve_channel_identity_impl(
+        &self,
+        channel_ref: &str,
+    ) -> Result<ChannelIdentity, Error> {
+        if channel_ref.is_empty() {
+            return Err(Error::InvalidInput(
+                "Channel reference cannot be empty".to_string(),
+            ));
+        }
+        let peer = self.resolve_peer(channel_ref).await?;
+        channel_identity(&peer).ok_or_else(|| {
+            Error::TelegramApi(format!(
+                "Failed to read channel identity for {}",
+                channel_ref
+            ))
+        })
+    }
 }
 
 /// The username to attempt for a history `channel_identifier`, or `None` when the
