@@ -112,6 +112,31 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             .with_cache_scope(CacheScope::Private)
     }
 
+    /// `tools_list_result()`, with the SEP-2549 cache hints stripped for
+    /// clients that didn't negotiate MCP 2026-07-28 or later. Mirrors the
+    /// `supports_cache_hints` gate in `#[tool_handler]`'s own default
+    /// `list_tools` (rmcp-macros' `tool_handler.rs`): legacy-handshake and
+    /// pre-2026-07-28 clients don't know `ttlMs`/`cacheScope` exist, so the
+    /// reference behavior withholds them rather than sending fields the
+    /// client can't interpret.
+    pub(crate) fn tools_list_result_for(
+        &self,
+        protocol_version: Option<rmcp::model::ProtocolVersion>,
+    ) -> ListToolsResult {
+        let result = self.tools_list_result();
+        let supports_cache_hints = protocol_version
+            .is_some_and(|version| version >= rmcp::model::ProtocolVersion::V_2026_07_28);
+        if supports_cache_hints {
+            result
+        } else {
+            ListToolsResult {
+                ttl_ms: None,
+                cache_scope: None,
+                ..result
+            }
+        }
+    }
+
     pub async fn run_stdio(self) -> anyhow::Result<()> {
         use rmcp::transport::async_rw::AsyncRwTransport;
         use tokio::io::{stdin, stdout};
@@ -398,13 +423,15 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> ServerHand
     // Defining list_tools here (instead of relying on #[tool_handler]'s default)
     // lets us attach SEP-2549 cache hints; the macro skips generating a method
     // that's already present on the impl block, so call_tool/get_tool are
-    // still macro-generated as usual.
+    // still macro-generated as usual. The hints are gated on the negotiated
+    // protocol version (tools_list_result_for), matching the macro's own
+    // default list_tools.
     async fn list_tools(
         &self,
         _request: Option<PaginatedRequestParams>,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, rmcp::ErrorData> {
-        Ok(self.tools_list_result())
+        Ok(self.tools_list_result_for(context.protocol_version()))
     }
 }
 
