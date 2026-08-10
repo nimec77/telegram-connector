@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-08-10
+
 ### Added
 - `generate_message_link` and `open_message_in_telegram` now emit shareable public links for public channels: when the channel has a username, `https_link` is `https://t.me/<username>/<id>` and `tg_protocol_link` is `tg://resolve?domain=<username>&post=<id>`; chats without a username keep the members-only `https://t.me/c/<channel_id>/<id>` / `tg://privatepost` forms (previously every channel got the members-only forms, which don't resolve for non-members). Two additive fields on the link response: `internal_link` (always the members-only `t.me/c/` https form) and `is_public`. The stray `?single`/`&single` suffix — a media-group hint, not part of a canonical message link — is no longer appended. To learn the username, both tools now resolve the peer once through a shared link builder, so they are no longer offline: each call charges 1 rate-limiter token and requires a connected session, and the response's `channel_id` now carries the canonical numeric id rather than echoing the raw input.
 - `generate_message_link` accepts a channel username (`"swodki"`, `"@swodki"`) as well as a numeric id in `channel_id` — it was previously the only tool restricted to strictly numeric ids.
