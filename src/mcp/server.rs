@@ -384,7 +384,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
     /// Tool 12: search_public_channels - Discover public channels/groups by keyword
     #[tool(
-        description = "Search Telegram's public directory for channels and groups by keyword (not limited to your subscriptions). Each result's is_subscribed reflects whether you're already subscribed to it; use get_channel_info or search_messages with the returned id/username to go deeper."
+        description = "Search Telegram's public directory for channels and groups by keyword (not limited to your subscriptions). is_subscribed: true is reliable; false is best-effort (the already-subscribed side of the result set is server-capped and prefix-matched). To go deeper on a result that has a real @username, call get_channel_info with that username."
     )]
     pub async fn search_public_channels(
         &self,

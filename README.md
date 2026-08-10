@@ -342,9 +342,16 @@ Get detailed information about a specific channel.
   "is_verified": true,
   "is_public": true,
   "is_subscribed": true,
-  "last_message_date": "2025-12-28T10:30:00Z"
+  "last_message_date": null
 }
 ```
+
+> **Note:** `include_full` fills in `description` and `member_count` only —
+> `last_message_date` is not populated by any `get_channel_info` path. The extra
+> RPC applies to channel-kind peers (broadcasts and megagroups); if it fails
+> (e.g. a private or forbidden channel) the basic channel info is still returned,
+> with `description`/`member_count` left as `null`. It costs one rate-limiter
+> token on top of the basic lookup.
 
 **Usage:** Verify channel details or get the numeric ID for other operations. Use `include_full: true` when you specifically need the description or member count — it costs one extra Telegram RPC round-trip.
 
@@ -418,8 +425,8 @@ Search for messages across channels with optional media type filtering.
 | `hours_back` | integer | No | 48 | How many hours back to search (max: 72) |
 | `limit` | integer | No | 20 | Maximum results to return (max: 100) |
 | `media_filter` | string | No | - | Filter by media type (see below) |
-| `from_date` | string | No | - | Inclusive start of the time window as RFC 3339 UTC (e.g. `2026-08-01T00:00:00Z`). Overrides `hours_back` and may reach arbitrarily far back |
-| `to_date` | string | No | - | Inclusive end of the time window as RFC 3339 UTC. Messages newer than this are excluded |
+| `from_date` | string | No | - | Inclusive start of the time window as RFC 3339 UTC (e.g. `2026-08-01T00:00:00Z`). Overrides `hours_back`. Reaching far back works best on low-traffic channels; on active channels prefer a narrower recent window, since deep windows are paged client-side and may time out |
+| `to_date` | string | No | - | Inclusive end of the time window as RFC 3339 UTC. Messages newer than this are excluded. Set without `from_date`, it must fall inside the `hours_back` window — otherwise the window is empty and the call is rejected |
 
 **Media Filter Options:**
 | Value | Description |
@@ -548,8 +555,8 @@ Get recent messages from a channel by time window, without requiring a search qu
 | `hours_back` | integer | No | 48 | Hours of history to retrieve (max: 168) |
 | `limit` | integer | No | 20 | Maximum messages to return (max: 100) |
 | `media_filter` | string | No | - | Filter by media type (same options as `search_messages`) |
-| `from_date` | string | No | - | Inclusive start of the time window as RFC 3339 UTC (e.g. `2026-08-01T00:00:00Z`). Overrides `hours_back` and may reach arbitrarily far back |
-| `to_date` | string | No | - | Inclusive end of the time window as RFC 3339 UTC. Messages newer than this are excluded |
+| `from_date` | string | No | - | Inclusive start of the time window as RFC 3339 UTC (e.g. `2026-08-01T00:00:00Z`). Overrides `hours_back`. Reaching far back works best on low-traffic channels; on active channels prefer a narrower recent window, since deep windows are paged client-side and may time out |
+| `to_date` | string | No | - | Inclusive end of the time window as RFC 3339 UTC. Messages newer than this are excluded. Set without `from_date`, it must fall inside the `hours_back` window — otherwise the window is empty and the call is rejected |
 
 **Key Difference from `search_messages`:**
 
@@ -687,7 +694,7 @@ Transcribe a voice message or video note (round video) to text using Telegram's 
 
 ### 12. search_public_channels
 
-Search Telegram's public directory (`contacts.search`) for channels and groups by keyword — not limited to channels you're already subscribed to. Closes the "find sources" gap: use it to discover new channels, then follow up with `get_channel_info` or `search_messages` using the returned `id`/`username`.
+Search Telegram's public directory (`contacts.search`) for channels and groups by keyword — not limited to channels you're already subscribed to. Closes the "find sources" gap: use it to discover new channels, then follow up with `get_channel_info` using a result's real `@username`.
 
 **Parameters:**
 | Name | Type | Required | Default | Description |
@@ -695,7 +702,7 @@ Search Telegram's public directory (`contacts.search`) for channels and groups b
 | `query` | string | Yes | - | Keyword or name to search Telegram's public directory for |
 | `limit` | integer | No | 10 | Maximum results to return (max: 50) |
 
-**Response:** Same `ChannelsResponse` shape as `get_subscribed_channels`, with `has_more` always `false` (this is a single search call, not a paginated listing). Each returned channel's `is_subscribed` reflects whether you're already subscribed to it — Telegram's `contacts.search` returns matches from both the public directory and your own dialogs in the same result set, so a search can surface a mix of new and already-subscribed channels:
+**Response:** Same `ChannelsResponse` shape as `get_subscribed_channels`, with `has_more` always `false` (this is a single search call, not a paginated listing) and at most `limit` entries. Each returned channel's `is_subscribed` reflects whether you're already subscribed to it — Telegram's `contacts.search` returns matches from both the public directory and your own dialogs in the same result set, so a search can surface a mix of new and already-subscribed channels. `is_subscribed: true` is reliable; `is_subscribed: false` is best-effort, because the already-subscribed side of the result set is server-capped and prefix-matched:
 
 ```json
 {
@@ -717,7 +724,16 @@ Search Telegram's public directory (`contacts.search`) for channels and groups b
 }
 ```
 
-**Usage:** Ask Claude to "find public Telegram channels about Rust programming" — Claude calls `search_public_channels` with `query: "Rust programming"`, then can drill into a result with `get_channel_info` or `search_messages`.
+**Usage:** Ask Claude to "find public Telegram channels about Rust programming" — Claude calls `search_public_channels` with `query: "Rust programming"`, then drills into a result with `get_channel_info` using its `@username`.
+
+> **Drill-down limits:** follow-ups go through a result's real public `@username`
+> — `get_channel_info` (and `get_recent_messages`, which also resolves usernames
+> server-side) reach a channel you have not joined. Two things do **not** work on
+> an unsubscribed result: following up by the returned numeric `id` (id lookups
+> walk your dialog list, and `contacts.search` does not add its results to the
+> peer cache), and `search_messages`, whose `channel_id` is numeric-only. A result
+> with no public username reports the `unknown`/`group` placeholder and cannot be
+> drilled into at all. To keyword-search a newly discovered channel, join it first.
 
 ## Manual Testing Guide
 

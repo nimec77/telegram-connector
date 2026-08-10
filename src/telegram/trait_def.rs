@@ -35,7 +35,13 @@ pub trait TelegramClientTrait: Send + Sync {
     -> Result<Vec<Channel>, Error>;
 
     /// Search Telegram's public directory for channels/groups by keyword.
-    /// Results carry `is_subscribed: false`.
+    ///
+    /// `contacts.search` returns matches from the public directory *and* from the
+    /// caller's own dialogs in one result set, so each result's `is_subscribed`
+    /// reflects whether it appeared among the caller's own matches. That makes
+    /// `is_subscribed: true` reliable but `false` best-effort: the dialog-side
+    /// matches are server-capped and prefix-matched, so an actually-subscribed
+    /// channel can still come back as `false`.
     async fn search_public_channels(&self, query: &str, limit: u32) -> Result<Vec<Channel>, Error>;
 
     /// Check if client is connected and authorized
