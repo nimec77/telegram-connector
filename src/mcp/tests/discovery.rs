@@ -78,3 +78,44 @@ async fn search_public_channels_rejects_empty_query() {
         assert!(error_msg.contains("query cannot be empty"));
     }
 }
+
+#[tokio::test]
+async fn search_public_channels_truncates_to_requested_limit() {
+    // `contacts.search` bounds only its global `results` set; the `chats` it
+    // returns also carries the caller's own dialog matches, so the converted list
+    // can overshoot. The response must never exceed the requested limit, and
+    // `total` must match what is actually returned.
+    let mut mock_client = MockTelegramClientTrait::new();
+    mock_client
+        .expect_search_public_channels()
+        .withf(|q, limit| q == "rust" && *limit == 3)
+        .return_once(|_, _| {
+            Ok((0..25)
+                .map(|i| create_test_channel(1000 + i, &format!("Channel {i}")))
+                .collect())
+        });
+
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
+
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = SearchPublicChannelsRequest {
+        query: "rust".to_string(),
+        limit: Some(3),
+    };
+
+    let result = server
+        .search_public_channels(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await
+        .expect("tool call should succeed");
+
+    let response: ChannelsResponse = serde_json::from_str(&result).unwrap();
+    assert_eq!(
+        response.channels.len(),
+        3,
+        "must not exceed requested limit"
+    );
+    assert_eq!(response.total, 3, "total must match the truncated list");
+    assert!(!response.has_more);
+}

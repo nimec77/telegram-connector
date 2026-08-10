@@ -37,20 +37,9 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             return Err("Search limit must be greater than 0".to_string());
         }
 
-        // Parse and validate the optional date range
+        // Parse the optional date range
         let from_date = parse_optional_utc("from_date", &request.from_date)?;
         let to_date = parse_optional_utc("to_date", &request.to_date)?;
-        if let (Some(f), Some(t)) = (from_date, to_date)
-            && f >= t
-        {
-            return Err("from_date must be earlier than to_date".to_string());
-        }
-
-        // Acquire rate limiter tokens (1 token per search)
-        self.rate_limiter
-            .acquire(1)
-            .await
-            .map_err(|e| e.to_string())?;
 
         // Build search params
         let params = SearchParams {
@@ -62,6 +51,20 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             from_date,
             to_date,
         };
+
+        // Reject an empty window before spending a token or a network round-trip.
+        validate_date_window(
+            params.from_date,
+            params.to_date,
+            params.window_start(),
+            params.hours_back,
+        )?;
+
+        // Acquire rate limiter tokens (1 token per search)
+        self.rate_limiter
+            .acquire(1)
+            .await
+            .map_err(|e| e.to_string())?;
 
         // Execute search
         let result = self
@@ -128,20 +131,9 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             return Err("Limit must be greater than 0".to_string());
         }
 
-        // Parse and validate the optional date range
+        // Parse the optional date range
         let from_date = parse_optional_utc("from_date", &request.from_date)?;
         let to_date = parse_optional_utc("to_date", &request.to_date)?;
-        if let (Some(f), Some(t)) = (from_date, to_date)
-            && f >= t
-        {
-            return Err("from_date must be earlier than to_date".to_string());
-        }
-
-        // Acquire rate limiter tokens (1 token per request)
-        self.rate_limiter
-            .acquire(1)
-            .await
-            .map_err(|e| e.to_string())?;
 
         // Build history params
         let params = HistoryParams {
@@ -153,6 +145,20 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             from_date,
             to_date,
         };
+
+        // Reject an empty window before spending a token or a network round-trip.
+        validate_date_window(
+            params.from_date,
+            params.to_date,
+            params.window_start(),
+            params.hours_back,
+        )?;
+
+        // Acquire rate limiter tokens (1 token per request)
+        self.rate_limiter
+            .acquire(1)
+            .await
+            .map_err(|e| e.to_string())?;
 
         // Execute history retrieval
         let result = self

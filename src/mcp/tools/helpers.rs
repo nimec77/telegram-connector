@@ -55,6 +55,11 @@ pub fn parse_optional_channel_id(id_str: &Option<String>) -> Result<Option<Chann
 }
 
 /// Parse an optional RFC 3339 datetime request field into UTC.
+///
+/// The value is trimmed first, so a padded-but-valid date parses. A
+/// present-but-blank value is *not* silently treated as "absent": it is a caller
+/// mistake and produces the same `Invalid {field}` error as any other unparseable
+/// input, rather than quietly widening the requested window.
 pub(crate) fn parse_optional_utc(
     field: &str,
     value: &Option<String>,
@@ -62,13 +67,39 @@ pub(crate) fn parse_optional_utc(
     value
         .as_deref()
         .map(|s| {
-            chrono::DateTime::parse_from_rfc3339(s)
+            chrono::DateTime::parse_from_rfc3339(s.trim())
                 .map(|dt| dt.with_timezone(&chrono::Utc))
                 .map_err(|e| {
                     format!("Invalid {field}: {e} (expected RFC 3339, e.g. 2026-08-01T00:00:00Z)")
                 })
         })
         .transpose()
+}
+
+/// Reject a date window that cannot contain any message.
+///
+/// Two structurally empty shapes:
+/// * an inverted range (`from_date` strictly after `to_date`) — equal bounds are
+///   fine, both ends are documented as inclusive;
+/// * a `to_date` with no `from_date` that lands at or before the `hours_back`
+///   window start, which leaves nothing between the two ends. The history walk
+///   would silently return `[]` and a global search would burn its whole timeout
+///   budget, so this is caught up front and the caller is told to pass
+///   `from_date` when reaching further back than `hours_back`.
+pub(crate) fn validate_date_window(
+    from_date: Option<chrono::DateTime<chrono::Utc>>,
+    to_date: Option<chrono::DateTime<chrono::Utc>>,
+    window_start: chrono::DateTime<chrono::Utc>,
+    hours_back: u32,
+) -> Result<(), String> {
+    match (from_date, to_date) {
+        (Some(f), Some(t)) if f > t => Err("from_date must be earlier than to_date".to_string()),
+        (None, Some(t)) if t <= window_start => Err(format!(
+            "to_date is at or before the start of the hours_back window (last {hours_back}h), \
+             so the requested window is empty; supply from_date to reach further back"
+        )),
+        _ => Ok(()),
+    }
 }
 
 /// Serialize a value to a JSON string for an MCP tool response.
@@ -149,5 +180,87 @@ mod tests {
     fn json_response_serializes_value() {
         let out = json_response(&vec![1, 2, 3]).expect("serializes");
         assert_eq!(out, "[1,2,3]");
+    }
+
+    #[test]
+    fn parse_optional_utc_rejects_blank_value() {
+        for blank in ["", "   ", "\t"] {
+            let err = parse_optional_utc("from_date", &Some(blank.to_string()))
+                .expect_err("a blank date must not be treated as absent");
+            assert!(err.contains("Invalid from_date"), "got: {err}");
+        }
+    }
+
+    #[test]
+    fn parse_optional_utc_trims_before_parsing() {
+        let parsed = parse_optional_utc("from_date", &Some(" 2026-08-01T00:00:00Z ".to_string()))
+            .expect("a padded but valid date must parse");
+        assert_eq!(parsed, Some("2026-08-01T00:00:00Z".parse().unwrap()));
+    }
+
+    #[test]
+    fn parse_optional_utc_none_stays_none() {
+        assert_eq!(parse_optional_utc("from_date", &None).expect("ok"), None);
+    }
+
+    fn utc(s: &str) -> chrono::DateTime<chrono::Utc> {
+        s.parse().expect("valid test timestamp")
+    }
+
+    #[test]
+    fn validate_date_window_accepts_equal_bounds() {
+        let instant = utc("2026-08-01T00:00:00Z");
+        assert!(validate_date_window(Some(instant), Some(instant), instant, 48).is_ok());
+    }
+
+    #[test]
+    fn validate_date_window_rejects_inverted_range() {
+        let err = validate_date_window(
+            Some(utc("2026-08-05T00:00:00Z")),
+            Some(utc("2026-08-01T00:00:00Z")),
+            utc("2026-07-01T00:00:00Z"),
+            48,
+        )
+        .expect_err("inverted range must be rejected");
+        assert!(err.contains("from_date must be earlier than to_date"));
+    }
+
+    #[test]
+    fn validate_date_window_rejects_to_date_at_or_before_window_start() {
+        let window_start = utc("2026-08-01T00:00:00Z");
+        for to_date in ["2026-07-30T00:00:00Z", "2026-08-01T00:00:00Z"] {
+            let err = validate_date_window(None, Some(utc(to_date)), window_start, 48)
+                .expect_err("empty window must be rejected");
+            assert!(err.contains("from_date"), "got: {err}");
+            assert!(err.contains("48h"), "got: {err}");
+        }
+    }
+
+    #[test]
+    fn validate_date_window_accepts_to_date_inside_window() {
+        assert!(
+            validate_date_window(
+                None,
+                Some(utc("2026-08-02T00:00:00Z")),
+                utc("2026-08-01T00:00:00Z"),
+                48,
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn validate_date_window_ignores_window_start_when_from_date_is_set() {
+        // An explicit from_date overrides hours_back, so a to_date older than the
+        // hours_back-derived start is a perfectly good historical window.
+        assert!(
+            validate_date_window(
+                Some(utc("2026-01-01T00:00:00Z")),
+                Some(utc("2026-01-05T00:00:00Z")),
+                utc("2026-08-01T00:00:00Z"),
+                48,
+            )
+            .is_ok()
+        );
     }
 }

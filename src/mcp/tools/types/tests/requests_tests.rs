@@ -255,3 +255,36 @@ fn transcribe_request_timeout_defaults_to_none() {
     let request: TranscribeVoiceMessageRequest = serde_json::from_str(json).unwrap();
     assert_eq!(request.timeout_seconds, None);
 }
+
+#[test]
+fn search_request_preserves_blank_from_date() {
+    // A present-but-blank date must survive deserialization so the tool layer can
+    // report it as invalid, rather than being folded to None ("no filter") and
+    // silently widening the window.
+    let json = r#"{"query": "ai", "from_date": ""}"#;
+    let request: SearchRequest = serde_json::from_str(json).unwrap();
+    assert_eq!(request.from_date, Some("".to_string()));
+}
+
+#[test]
+fn search_request_preserves_whitespace_to_date() {
+    let json = r#"{"query": "ai", "to_date": "   "}"#;
+    let request: SearchRequest = serde_json::from_str(json).unwrap();
+    assert_eq!(request.to_date, Some("   ".to_string()));
+}
+
+#[test]
+fn search_request_null_dates_are_none() {
+    let json = r#"{"query": "ai", "from_date": null, "to_date": null}"#;
+    let request: SearchRequest = serde_json::from_str(json).unwrap();
+    assert_eq!(request.from_date, None);
+    assert_eq!(request.to_date, None);
+}
+
+#[test]
+fn get_recent_messages_request_preserves_blank_dates() {
+    let json = r#"{"channel_id": "123", "from_date": "", "to_date": " "}"#;
+    let request: GetRecentMessagesRequest = serde_json::from_str(json).unwrap();
+    assert_eq!(request.from_date, Some("".to_string()));
+    assert_eq!(request.to_date, Some(" ".to_string()));
+}

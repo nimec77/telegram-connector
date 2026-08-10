@@ -18,12 +18,17 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             .await
             .map_err(|e| e.to_string())?;
 
-        let channels = self
+        let mut channels = self
             .telegram_client
             .search_public_channels(&request.query, limit)
             .await
             .map_err(|e| e.to_string())?;
 
+        // `contacts.search`'s `limit` bounds only its global `results` set, while
+        // the `chats` it returns also carries the caller's own dialog matches — so
+        // the converted list can overshoot. The client truncates too; this keeps
+        // the MCP contract ("at most `limit` results") true for any client impl.
+        channels.truncate(limit as usize);
         let total = channels.len();
         let response = ChannelsResponse {
             channels,

@@ -106,15 +106,19 @@ pub struct SearchRequest {
     pub media_filter: Option<MediaFilter>,
 
     #[schemars(
-        description = "Optional: inclusive start of the time window as RFC 3339 UTC, e.g. \"2026-08-01T00:00:00Z\". Overrides hours_back and may reach arbitrarily far back."
+        description = "Optional: inclusive start of the time window as RFC 3339 UTC, e.g. \"2026-08-01T00:00:00Z\". Overrides hours_back. Reaching far back works best on low-traffic channels; on active channels prefer a narrower recent window, since deep windows are paged client-side and may time out."
     )]
-    #[serde(default, deserialize_with = "flexible_opt_string")]
+    // Deliberately NOT `flexible_opt_string`: that helper folds a blank string to
+    // `None`, which would silently drop the caller's window instead of reporting a
+    // bad date. Cross-type number coercion was never advertised for dates.
+    #[serde(default)]
     pub from_date: Option<String>,
 
     #[schemars(
-        description = "Optional: inclusive end of the time window as RFC 3339 UTC. Messages newer than this are excluded."
+        description = "Optional: inclusive end of the time window as RFC 3339 UTC. Messages newer than this are excluded. When set without from_date it must fall inside the hours_back window."
     )]
-    #[serde(default, deserialize_with = "flexible_opt_string")]
+    // Blank-preserving for the same reason as `from_date` above.
+    #[serde(default)]
     pub to_date: Option<String>,
 }
 
@@ -140,15 +144,19 @@ pub struct GetRecentMessagesRequest {
     pub media_filter: Option<MediaFilter>,
 
     #[schemars(
-        description = "Optional: inclusive start of the time window as RFC 3339 UTC, e.g. \"2026-08-01T00:00:00Z\". Overrides hours_back and may reach arbitrarily far back."
+        description = "Optional: inclusive start of the time window as RFC 3339 UTC, e.g. \"2026-08-01T00:00:00Z\". Overrides hours_back. Reaching far back works best on low-traffic channels; on active channels prefer a narrower recent window, since deep windows are paged client-side and may time out."
     )]
-    #[serde(default, deserialize_with = "flexible_opt_string")]
+    // Deliberately NOT `flexible_opt_string`: that helper folds a blank string to
+    // `None`, which would silently drop the caller's window instead of reporting a
+    // bad date. Cross-type number coercion was never advertised for dates.
+    #[serde(default)]
     pub from_date: Option<String>,
 
     #[schemars(
-        description = "Optional: inclusive end of the time window as RFC 3339 UTC. Messages newer than this are excluded."
+        description = "Optional: inclusive end of the time window as RFC 3339 UTC. Messages newer than this are excluded. When set without from_date it must fall inside the hours_back window."
     )]
-    #[serde(default, deserialize_with = "flexible_opt_string")]
+    // Blank-preserving for the same reason as `from_date` above.
+    #[serde(default)]
     pub to_date: Option<String>,
 }
 

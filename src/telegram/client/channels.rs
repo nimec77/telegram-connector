@@ -46,12 +46,7 @@ impl TelegramClient {
         &self,
         identifier: &str,
     ) -> Result<crate::telegram::Channel, Error> {
-        // Validate identifier
-        if identifier.is_empty() {
-            return Err(Error::InvalidInput(
-                "Channel identifier cannot be empty".to_string(),
-            ));
-        }
+        validate_channel_identifier(identifier)?;
 
         // Resolve the channel reference (numeric id or username) to a peer. The
         // former inline @-prefix / numeric / bare-username branches are exactly
@@ -71,35 +66,69 @@ impl TelegramClient {
         &self,
         identifier: &str,
     ) -> Result<crate::telegram::Channel, Error> {
+        // Same guard as the basic path: an empty identifier is a caller error, not
+        // something to hand to peer resolution.
+        validate_channel_identifier(identifier)?;
+
         let peer = self.resolve_peer(identifier).await?;
         let mut channel = convert_peer_to_channel(&peer)
             .ok_or_else(|| Error::InvalidInput("Not a channel or group".to_string()))?;
 
         // channels.GetFullChannel only exists for channel-kind peers
         // (broadcasts + megagroups). Others keep basic info.
-        if matches!(peer, grammers_client::peer::Peer::Channel(_)) {
-            let peer_ref = peer_to_ref(&peer).await?;
-            let request = tl::functions::channels::GetFullChannel {
-                channel: (&peer_ref).into(),
-            };
-            let full = with_timeout("get_full_channel", self.timeouts.resolve_secs, async {
-                self.client
-                    .invoke(&request)
-                    .await
-                    .map_err(|e| Error::TelegramApi(format!("GetFullChannel failed: {e}")))
-            })
-            .await?;
-
-            let tl::enums::messages::ChatFull::Full(chat_full) = full;
-            if let tl::enums::ChatFull::ChannelFull(cf) = chat_full.full_chat {
-                if !cf.about.is_empty() {
-                    channel.description = Some(cf.about);
+        if supports_full_channel_rpc(&peer) {
+            // Enrichment is strictly opt-in-for-more: a failure here (private or
+            // forbidden channel, timeout, transport error) must never turn the
+            // basic info the caller would otherwise have got into an error.
+            match self.fetch_channel_full(&peer).await {
+                Ok((description, member_count)) => {
+                    if let Some(about) = description {
+                        channel.description = Some(about);
+                    }
+                    channel.member_count = member_count;
                 }
-                channel.member_count = cf.participants_count.and_then(|c| u64::try_from(c).ok());
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        channel_id = channel.id.get(),
+                        "GetFullChannel enrichment failed; returning basic channel info"
+                    );
+                }
             }
         }
 
         Ok(channel)
+    }
+
+    /// Invoke `channels.GetFullChannel` and pull out the two enrichment fields.
+    ///
+    /// Split from [`Self::get_full_channel_info_impl`] so the failure of the
+    /// extra RPC is a value the caller can degrade on rather than a `?` that
+    /// discards the already-built basic `Channel`.
+    async fn fetch_channel_full(
+        &self,
+        peer: &grammers_client::peer::Peer,
+    ) -> Result<(Option<String>, Option<u64>), Error> {
+        let peer_ref = peer_to_ref(peer).await?;
+        let request = tl::functions::channels::GetFullChannel {
+            channel: (&peer_ref).into(),
+        };
+        let full = with_timeout("get_full_channel", self.timeouts.resolve_secs, async {
+            self.client
+                .invoke(&request)
+                .await
+                .map_err(|e| Error::TelegramApi(format!("GetFullChannel failed: {e}")))
+        })
+        .await?;
+
+        let tl::enums::messages::ChatFull::Full(chat_full) = full;
+        if let tl::enums::ChatFull::ChannelFull(cf) = chat_full.full_chat {
+            let description = (!cf.about.is_empty()).then_some(cf.about);
+            let member_count = cf.participants_count.and_then(|c| u64::try_from(c).ok());
+            Ok((description, member_count))
+        } else {
+            Ok((None, None))
+        }
     }
 
     pub(super) async fn search_public_channels_impl(
@@ -115,13 +144,14 @@ impl TelegramClient {
             ));
         }
 
+        let clamped_limit = limit.clamp(1, 50);
         let request = tl::functions::contacts::Search {
             // No restriction to broadcasts-only or bots-only; a general keyword
             // search over the whole public directory.
             broadcasts: false,
             bots: false,
             q: query.to_string(),
-            limit: limit.clamp(1, 50) as i32,
+            limit: clamped_limit as i32,
         };
         let found = with_timeout("contacts_search", self.timeouts.search_secs, async {
             self.client
@@ -136,8 +166,12 @@ impl TelegramClient {
         // subscribed); `chats` carries the `Chat` objects for both `my_results`
         // and the wider `results` set with no per-entry subscribed flag, so
         // membership has to be recomputed by bare id.
-        let subscribed_ids = subscribed_chat_ids(&found.my_results);
+        let subscribed_keys = subscribed_peer_keys(&found.my_results);
 
+        // `contacts.Search.limit` bounds only the global `results` set; `chats`
+        // additionally carries the `Chat` objects behind `my_results`, so the
+        // converted list can overshoot the caller's limit. Truncate to what was
+        // asked for.
         let channels = found
             .chats
             .into_iter()
@@ -147,7 +181,7 @@ impl TelegramClient {
                 if matches!(&chat, tl::enums::Chat::Empty(_)) {
                     return None;
                 }
-                let is_subscribed = subscribed_ids.contains(&chat.id());
+                let is_subscribed = subscribed_keys.contains(&chat_subscription_key(&chat));
                 // `Peer::from_raw` already routes each `Chat` variant to the right
                 // peer kind (including the broadcast-vs-megagroup distinction
                 // inside `Chat::Channel`/`ChannelForbidden`, which the individual
@@ -160,50 +194,293 @@ impl TelegramClient {
                     convert_discovered_peer(&peer)
                 }
             })
+            .take(clamped_limit as usize)
             .collect();
         Ok(channels)
     }
 }
 
-/// Bare `chat_id`/`channel_id`s present in `contacts.search`'s `my_results` —
-/// matches from the caller's own dialogs, as opposed to the wider `results`
-/// set. Pure function over plain TL data (no client/session needed), so it's
-/// unit-tested directly rather than through the network-bound `*_impl` method.
-/// `Peer::User` entries are irrelevant here: only `Chat`-shaped results are
-/// ever converted to a `Channel`.
-fn subscribed_chat_ids(my_results: &[tl::enums::Peer]) -> std::collections::HashSet<i64> {
+/// Reject an empty channel identifier before it reaches peer resolution.
+///
+/// Shared by the basic and the `include_full` lookup paths so both report the
+/// same error for the same caller mistake.
+fn validate_channel_identifier(identifier: &str) -> Result<(), Error> {
+    if identifier.is_empty() {
+        return Err(Error::InvalidInput(
+            "Channel identifier cannot be empty".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// Whether `channels.GetFullChannel` applies to this peer.
+///
+/// "Channel-kind" in TL terms covers broadcasts *and* megagroups. grammers routes
+/// a non-broadcast `Chat::Channel` to `Peer::Group` (`Peer::from_raw`), so a
+/// megagroup arrives as a `Group` and has to be recognised via `is_megagroup()`.
+/// Small groups (`Chat::Chat`) are chat-kind and must be excluded: their `PeerRef`
+/// converts to `InputChannel::Empty`, which the RPC would reject.
+fn supports_full_channel_rpc(peer: &grammers_client::peer::Peer) -> bool {
+    use grammers_client::peer::Peer;
+
+    match peer {
+        Peer::Channel(_) => true,
+        Peer::Group(g) => g.is_megagroup(),
+        Peer::Community(_) | Peer::User(_) => false,
+    }
+}
+
+/// Identity of a `contacts.search` result within its own id namespace.
+///
+/// `PeerChat.chat_id` and `PeerChannel.channel_id` are independent namespaces, so
+/// a bare `i64` cannot distinguish them — keying membership by kind + id prevents
+/// a numeric collision from marking a never-joined channel as subscribed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum SubscriptionKey {
+    Chat(i64),
+    Channel(i64),
+}
+
+/// Namespace-qualified keys for `contacts.search`'s `my_results` — matches from
+/// the caller's own dialogs, as opposed to the wider `results` set. Pure function
+/// over plain TL data (no client/session needed), so it's unit-tested directly
+/// rather than through the network-bound `*_impl` method. `Peer::User` entries
+/// are irrelevant here: only `Chat`-shaped results are ever converted.
+fn subscribed_peer_keys(
+    my_results: &[tl::enums::Peer],
+) -> std::collections::HashSet<SubscriptionKey> {
     my_results
         .iter()
         .filter_map(|peer| match peer {
-            tl::enums::Peer::Chat(p) => Some(p.chat_id),
-            tl::enums::Peer::Channel(p) => Some(p.channel_id),
+            tl::enums::Peer::Chat(p) => Some(SubscriptionKey::Chat(p.chat_id)),
+            tl::enums::Peer::Channel(p) => Some(SubscriptionKey::Channel(p.channel_id)),
             tl::enums::Peer::User(_) => None,
         })
         .collect()
 }
 
+/// The [`SubscriptionKey`] a `Chat` result is probed with — same namespace split
+/// grammers itself applies when deriving a `PeerId` from a `Chat`.
+fn chat_subscription_key(chat: &tl::enums::Chat) -> SubscriptionKey {
+    use tl::enums::Chat as C;
+
+    match chat {
+        C::Empty(c) => SubscriptionKey::Chat(c.id),
+        C::Chat(c) => SubscriptionKey::Chat(c.id),
+        C::Forbidden(c) => SubscriptionKey::Chat(c.id),
+        C::Channel(c) => SubscriptionKey::Channel(c.id),
+        C::ChannelForbidden(c) => SubscriptionKey::Channel(c.id),
+        C::Community(c) => SubscriptionKey::Channel(c.id),
+        C::CommunityForbidden(c) => SubscriptionKey::Channel(c.id),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use grammers_client::peer::Peer;
+    use grammers_mtsender::SenderPool;
+    use grammers_session::storages::MemorySession;
+
+    /// Build an inert `Client` for offline `Peer::from_raw` construction: the
+    /// `SenderPool` runner is never spawned, so no I/O can happen. Same trick as
+    /// the `converters::channel` tests.
+    fn inert_client() -> Client {
+        let session = Arc::new(MemorySession::default());
+        let SenderPool { handle, .. } = SenderPool::new(session, 1);
+        Client::new(handle)
+    }
+
+    /// A raw `channel#...` TL object. `broadcast`/`megagroup` are the two flags
+    /// that decide which `Peer` variant `Peer::from_raw` produces.
+    fn raw_channel(id: i64, broadcast: bool) -> tl::types::Channel {
+        tl::types::Channel {
+            creator: false,
+            left: false,
+            broadcast,
+            verified: false,
+            megagroup: !broadcast,
+            restricted: false,
+            signatures: false,
+            min: false,
+            scam: false,
+            has_link: false,
+            has_geo: false,
+            slowmode_enabled: false,
+            call_active: false,
+            call_not_empty: false,
+            fake: false,
+            gigagroup: false,
+            noforwards: false,
+            join_to_send: false,
+            join_request: false,
+            forum: false,
+            stories_hidden: false,
+            stories_hidden_min: false,
+            stories_unavailable: false,
+            signature_profiles: false,
+            autotranslation: false,
+            broadcast_messages_allowed: false,
+            monoforum: false,
+            forum_tabs: false,
+            id,
+            access_hash: Some(1234),
+            title: "Test Channel".to_string(),
+            username: Some("testchannel".to_string()),
+            photo: tl::enums::ChatPhoto::Empty,
+            date: 0,
+            restriction_reason: None,
+            admin_rights: None,
+            banned_rights: None,
+            default_banned_rights: None,
+            participants_count: None,
+            usernames: None,
+            stories_max_id: None,
+            color: None,
+            profile_color: None,
+            emoji_status: None,
+            level: None,
+            subscription_until_date: None,
+            bot_verification_icon: None,
+            send_paid_messages_stars: None,
+            linked_monoforum_id: None,
+            linked_community_id: None,
+        }
+    }
+
+    /// A raw small-group `chat#...` TL object (chat-kind, not channel-kind).
+    fn raw_small_group(id: i64) -> tl::types::Chat {
+        tl::types::Chat {
+            creator: false,
+            left: false,
+            deactivated: false,
+            call_active: false,
+            call_not_empty: false,
+            noforwards: false,
+            id,
+            title: "Small Group".to_string(),
+            photo: tl::enums::ChatPhoto::Empty,
+            participants_count: 3,
+            date: 0,
+            version: 1,
+            migrated_to: None,
+            admin_rights: None,
+            default_banned_rights: None,
+        }
+    }
 
     #[test]
-    fn subscribed_chat_ids_collects_chat_and_channel_ids_only() {
+    fn subscribed_peer_keys_collects_chat_and_channel_keys_only() {
         let my_results = vec![
             tl::enums::Peer::Chat(tl::types::PeerChat { chat_id: 111 }),
             tl::enums::Peer::Channel(tl::types::PeerChannel { channel_id: 222 }),
             tl::enums::Peer::User(tl::types::PeerUser { user_id: 333 }),
         ];
 
-        let ids = subscribed_chat_ids(&my_results);
+        let keys = subscribed_peer_keys(&my_results);
 
-        assert_eq!(ids.len(), 2);
-        assert!(ids.contains(&111));
-        assert!(ids.contains(&222));
-        assert!(!ids.contains(&333));
+        assert_eq!(keys.len(), 2);
+        assert!(keys.contains(&SubscriptionKey::Chat(111)));
+        assert!(keys.contains(&SubscriptionKey::Channel(222)));
+        assert!(!keys.contains(&SubscriptionKey::Chat(333)));
+        assert!(!keys.contains(&SubscriptionKey::Channel(333)));
     }
 
     #[test]
-    fn subscribed_chat_ids_empty_when_no_matches() {
-        assert!(subscribed_chat_ids(&[]).is_empty());
+    fn subscribed_peer_keys_empty_when_no_matches() {
+        assert!(subscribed_peer_keys(&[]).is_empty());
+    }
+
+    #[test]
+    fn subscribed_peer_keys_do_not_collide_across_namespaces() {
+        // `PeerChat.chat_id` and `PeerChannel.channel_id` are independent id
+        // namespaces: a subscribed small group with id 111 must never mark a
+        // never-joined channel that happens to also have id 111 as subscribed.
+        let my_results = vec![tl::enums::Peer::Chat(tl::types::PeerChat { chat_id: 111 })];
+        let keys = subscribed_peer_keys(&my_results);
+
+        let channel_with_same_bare_id = tl::enums::Chat::Channel(raw_channel(111, true));
+        assert!(
+            !keys.contains(&chat_subscription_key(&channel_with_same_bare_id)),
+            "a chat-namespace id must not mark a channel-namespace peer subscribed"
+        );
+
+        let group_with_same_bare_id = tl::enums::Chat::Chat(raw_small_group(111));
+        assert!(
+            keys.contains(&chat_subscription_key(&group_with_same_bare_id)),
+            "the actual subscribed small group must still be recognised"
+        );
+    }
+
+    #[test]
+    fn chat_subscription_key_routes_each_variant_to_its_namespace() {
+        assert_eq!(
+            chat_subscription_key(&tl::enums::Chat::Chat(raw_small_group(7))),
+            SubscriptionKey::Chat(7)
+        );
+        assert_eq!(
+            chat_subscription_key(&tl::enums::Chat::Channel(raw_channel(7, true))),
+            SubscriptionKey::Channel(7)
+        );
+        assert_eq!(
+            chat_subscription_key(&tl::enums::Chat::Channel(raw_channel(7, false))),
+            SubscriptionKey::Channel(7)
+        );
+    }
+
+    #[test]
+    fn supports_full_channel_rpc_accepts_broadcasts() {
+        let client = inert_client();
+        let peer = Peer::from_raw(&client, tl::enums::Chat::Channel(raw_channel(1, true)));
+
+        assert!(
+            matches!(peer, Peer::Channel(_)),
+            "broadcast routes to Peer::Channel"
+        );
+        assert!(supports_full_channel_rpc(&peer));
+    }
+
+    #[test]
+    fn supports_full_channel_rpc_accepts_megagroups() {
+        // grammers routes a non-broadcast `Chat::Channel` to `Peer::Group`, but a
+        // megagroup is still channel-kind in TL: its `PeerRef` converts to a real
+        // `InputChannel`, so `channels.GetFullChannel` applies.
+        let client = inert_client();
+        let peer = Peer::from_raw(&client, tl::enums::Chat::Channel(raw_channel(2, false)));
+
+        assert!(
+            matches!(peer, Peer::Group(_)),
+            "grammers routes megagroups to Peer::Group"
+        );
+        assert!(
+            supports_full_channel_rpc(&peer),
+            "megagroups must reach GetFullChannel"
+        );
+    }
+
+    #[test]
+    fn supports_full_channel_rpc_rejects_small_groups() {
+        // A small group is chat-kind: `From<&PeerRef> for InputChannel` yields
+        // `InputChannel::Empty` for it, so it must not reach the RPC.
+        let client = inert_client();
+        let peer = Peer::from_raw(&client, tl::enums::Chat::Chat(raw_small_group(3)));
+
+        assert!(matches!(peer, Peer::Group(_)));
+        assert!(!supports_full_channel_rpc(&peer));
+    }
+
+    #[test]
+    fn validate_channel_identifier_rejects_empty() {
+        let err = validate_channel_identifier("").expect_err("empty identifier must be rejected");
+        assert!(matches!(err, Error::InvalidInput(_)));
+        assert!(
+            err.to_string()
+                .contains("Channel identifier cannot be empty")
+        );
+    }
+
+    #[test]
+    fn validate_channel_identifier_accepts_non_empty() {
+        assert!(validate_channel_identifier("@news").is_ok());
     }
 }

@@ -10,7 +10,7 @@ use crate::mcp::tools::{
     MessageResponse, OpenMessageRequest, OpenMessageResponse, SearchPublicChannelsRequest,
     SearchRequest, SearchResponse, StatusResponse, TranscribeVoiceMessageRequest,
     TranscribeVoiceMessageResponse, json_response, parse_channel_id, parse_message_id,
-    parse_optional_channel_id, parse_optional_utc,
+    parse_optional_channel_id, parse_optional_utc, validate_date_window,
 };
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
