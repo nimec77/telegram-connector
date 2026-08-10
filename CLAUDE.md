@@ -29,7 +29,7 @@ The same commands are available as `just` recipes (see `justfile`): run `just` t
 ## Toolchain & Dependencies
 
 - **Rust nightly** (2024 edition) — required for `let chains` and other nightly features; no `rust-toolchain.toml`, nightly is implied by `edition = "2024"`
-- **`grammers` from git master** (not crates.io) — API can change between builds; check `grammers-client` docs if compilation fails after update
+- **`grammers` from Codeberg git, pinned by rev** (not crates.io; upstream left GitHub in Feb 2026 — never point the deps back at the stale github.com mirror). Bump the pinned rev deliberately, all three crates together, and expect to absorb API churn when you do
 - **`schemars` v1** (not v0.8) — different derive API; uses `#[derive(JsonSchema)]` from `schemars::JsonSchema`
 - **`rmcp` v1.7** — MCP server SDK; `#[tool_router]` and `#[tool(...)]` proc macros. `InitializeResult` uses a builder API (`InitializeResult::new(capabilities).with_server_info(...).with_instructions(...)`).
 - **`secrecy`** — `SecretString` wraps sensitive config fields (`api_hash`, `phone_number`); access via `.expose_secret()`

@@ -12,6 +12,16 @@ use chrono::{DateTime, Utc};
 use grammers_client::media::Media;
 use grammers_client::tl;
 
+/// A message's date at the grammers boundary as the domain's `DateTime<Utc>`.
+///
+/// grammers 0.10 reports dates as jiff `Timestamp`s; the domain model stays on
+/// chrono. Telegram dates are whole-second `i32`s, so converting via seconds
+/// loses nothing, and `None` is unreachable for any date Telegram can send.
+/// Single owner of the jiff→chrono conversion — date-type churn lands here.
+pub(crate) fn message_timestamp(msg: &grammers_client::message::Message) -> Option<DateTime<Utc>> {
+    DateTime::from_timestamp(msg.date().as_second(), 0)
+}
+
 /// Extract forward attribution from a raw forward header.
 ///
 /// Drops down to the raw TL `MessageFwdHeader` because grammers' high-level API
@@ -70,8 +80,7 @@ pub fn convert_message(
 
     let message_id = MessageId::new(msg.id() as i64).ok()?;
 
-    // Get sender info
-    // msg.sender() returns Result<&Peer, Option<PeerRef>> in newer grammers versions
+    // Get sender info; msg.sender() is Option<&Peer> (None for anonymous posts).
     let (sender_id, sender_name) = match msg.sender() {
         Some(sender) => {
             let id = sender.id().bare_id().and_then(|i| UserId::new(i).ok());
@@ -114,9 +123,7 @@ pub fn convert_message(
         channel_name,
         channel_username,
         text: msg.text().to_string(),
-        // grammers 0.10 returns a jiff `Timestamp`; the domain model stays on
-        // chrono. Telegram dates are second-precision, so seconds round-trip.
-        timestamp: DateTime::from_timestamp(msg.date().as_second(), 0)?,
+        timestamp: message_timestamp(msg)?,
         sender_id,
         sender_name,
         has_media,

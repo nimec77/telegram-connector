@@ -3032,3 +3032,30 @@ Gate green, tests 441 (no count change — pure dependency/boundary work).
   `me.raw` TL enum.
 - **glass_pumpkin 2.0.0-rc0 is a pre-release pinned by grammers**, not by us; it
   will move to `"2.0.0"` upstream when stable. Nothing to do on our side.
+
+### Post-review round (same day)
+
+- **grammers deps are now pinned by `rev`, not `branch = "master"`.** Review
+  caught that the old master-tracking policy silently relied on the GitHub
+  mirror being frozen (a de-facto pin); Codeberg master is active and shipped
+  two breaking bumps in five months, so tracking it would re-create the
+  "fresh resolve breaks" failure this change fixed. Upgrades = deliberate rev
+  bump of all three crates together (see Cargo.toml comment + CLAUDE.md).
+- **The June "Peer is un-unit-testable" lesson is stale as of grammers 0.10:**
+  `MemorySession::default()` + destructured `SenderPool::new` (runner never
+  spawned) + `Client::new(handle)` does no I/O, and `Community::from_raw` /
+  TL structs are public — see `community_peer()` in
+  `src/telegram/converters/channel.rs` tests. Converter tests are writable now;
+  don't cite the old excuse.
+- **The Community bug was a two-match trap:** `peer_identity` got a Community
+  arm but `convert_peer_to_channel`'s separate flags-match had a `_` catch-all
+  that silently dropped it (messages visible, channel invisible). The catch-all
+  is now an explicit `Peer::User(_)` arm so the next new grammers peer kind
+  fails to compile instead of vanishing at runtime. Lesson: when a dependency
+  adds an enum variant, grep every `match` on that enum — and prefer exhaustive
+  matches over `_` for foreign enums that grow.
+- **Boundary helpers own the churn now:** `peer_to_ref` (client.rs) is the
+  single `to_ref` error-mapping site (distinguishes session error vs.
+  cache-miss in logs), and `message_timestamp` (converters/message.rs) is the
+  single jiff→chrono site — cutoff comparisons are back to full-precision
+  chrono ordering, undoing the ≤1 s window widening the first pass introduced.

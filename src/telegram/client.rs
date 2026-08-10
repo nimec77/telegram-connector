@@ -9,8 +9,8 @@ use crate::config::{TelegramConfig, TimeoutConfig};
 use crate::error::Error;
 use crate::telegram::converters::{
     convert_media_filter, convert_media_to_type, convert_message, convert_peer_to_channel,
-    extract_audio_duration, extract_video_info, matches_media_filter, select_size_candidate,
-    size_candidates,
+    extract_audio_duration, extract_video_info, matches_media_filter, message_timestamp,
+    select_size_candidate, size_candidates,
 };
 use crate::telegram::timeout::with_timeout;
 use crate::telegram::trait_def::TelegramClientTrait;
@@ -40,6 +40,22 @@ mod ops_transcribe;
 mod resolve;
 
 pub(crate) use resolve::username_to_resolve;
+
+/// Convert a resolved peer into the `PeerRef` that grammers RPC calls take.
+///
+/// grammers 0.10 split two failure modes that used to be one `Option`; keep
+/// them distinguishable in logs: `Err` is a session/storage error, `Ok(None)`
+/// means the peer is not in the session cache (no usable access hash).
+async fn peer_to_ref(
+    peer: &grammers_client::peer::Peer,
+) -> Result<grammers_session::types::PeerRef, Error> {
+    peer.to_ref()
+        .await
+        .map_err(|e| Error::TelegramApi(format!("Failed to convert peer to PeerRef: {e}")))?
+        .ok_or_else(|| {
+            Error::TelegramApi("Peer has no PeerRef (not in the session cache)".to_string())
+        })
+}
 
 /// Telegram client wrapping grammers-client
 pub struct TelegramClient {

@@ -23,11 +23,7 @@ impl TelegramClient {
 
         // Resolve once; reuse the InputPeer for every poll (no repeated dialog walk).
         let peer = self.resolve_peer(channel_ref).await?;
-        let peer_ref = peer
-            .to_ref()
-            .await
-            .map_err(|e| Error::TelegramApi(format!("Failed to convert peer to PeerRef: {e}")))?
-            .ok_or_else(|| Error::TelegramApi("Failed to convert peer to PeerRef".to_string()))?;
+        let peer_ref = peer_to_ref(&peer).await?;
         let input_peer: tl::enums::InputPeer = peer_ref.into();
 
         // Fetch the message to validate media type and read duration.

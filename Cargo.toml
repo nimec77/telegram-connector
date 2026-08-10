@@ -17,9 +17,12 @@ rmcp = { version = "1.7.0", features = ["server"] }
 
 # Telegram — upstream moved to Codeberg in Feb 2026; the GitHub repo is a
 # stale mirror slated for deletion. Do not point these back at github.com.
-grammers-client = { git = "https://codeberg.org/Lonami/grammers", branch = "master" }
-grammers-session = { git = "https://codeberg.org/Lonami/grammers", branch = "master" }
-grammers-mtsender = { git = "https://codeberg.org/Lonami/grammers", branch = "master" }
+# Pinned by rev, not branch: Codeberg master is active and ships breaking
+# changes; bump the rev deliberately (all three together) and expect to
+# absorb API churn when you do.
+grammers-client = { git = "https://codeberg.org/Lonami/grammers", rev = "9fef0bae1e59b6138ae7777c783983934a80e129" }
+grammers-session = { git = "https://codeberg.org/Lonami/grammers", rev = "9fef0bae1e59b6138ae7777c783983934a80e129" }
+grammers-mtsender = { git = "https://codeberg.org/Lonami/grammers", rev = "9fef0bae1e59b6138ae7777c783983934a80e129" }
 
 # Async
 tokio = { version = "1.52.3", features = ["full"] }

@@ -45,19 +45,7 @@ impl TelegramClient {
                             channels_searched += 1;
 
                             // Search in this specific channel
-                            let peer_ref = peer
-                                .to_ref()
-                                .await
-                                .map_err(|e| {
-                                    Error::TelegramApi(format!(
-                                        "Failed to convert peer to PeerRef: {e}"
-                                    ))
-                                })?
-                                .ok_or_else(|| {
-                                    Error::TelegramApi(
-                                        "Failed to convert peer to PeerRef".to_string(),
-                                    )
-                                })?;
+                            let peer_ref = peer_to_ref(peer).await?;
                             let mut search_iter =
                                 self.client.search_messages(peer_ref).query(&params.query);
 
@@ -72,8 +60,7 @@ impl TelegramClient {
                                 .await
                                 .map_err(|e| Error::TelegramApi(format!("Search failed: {}", e)))?
                             {
-                                let msg_time = msg.date().as_second();
-                                if msg_time < cutoff_time.timestamp() {
+                                if message_timestamp(&msg).is_none_or(|t| t < cutoff_time) {
                                     break; // reverse chronological order
                                 }
                                 if let Some(converted) = convert_message(&msg, peer) {
@@ -105,8 +92,7 @@ impl TelegramClient {
                     .await
                     .map_err(|e| Error::TelegramApi(format!("Search failed: {}", e)))?
                 {
-                    let msg_time = msg.date().as_second();
-                    if msg_time < cutoff_time.timestamp() {
+                    if message_timestamp(&msg).is_none_or(|t| t < cutoff_time) {
                         continue; // Skip old messages but keep searching
                     }
                     if let Some(peer) = msg.peer()
