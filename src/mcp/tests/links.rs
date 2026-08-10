@@ -2,9 +2,9 @@
 
 use crate::error::Error;
 use crate::mcp::server::McpServer;
-use crate::mcp::tools::{
-    GenerateLinkRequest, MessageLinkResponse, OpenMessageRequest, OpenMessageResponse,
-};
+#[cfg(target_os = "macos")]
+use crate::mcp::tools::OpenMessageResponse;
+use crate::mcp::tools::{GenerateLinkRequest, MessageLinkResponse, OpenMessageRequest};
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::{ChannelId, ChannelIdentity};
@@ -172,6 +172,7 @@ async fn generate_message_link_unknown_channel_errors() {
 // open_message_in_telegram tests
 // ============================================================================
 
+#[cfg(target_os = "macos")]
 #[tokio::test]
 async fn open_message_in_telegram_unknown_channel_errors() {
     let mut mock_client = MockTelegramClientTrait::new();
@@ -204,6 +205,7 @@ async fn open_message_in_telegram_unknown_channel_errors() {
     );
 }
 
+#[cfg(target_os = "macos")]
 #[tokio::test]
 async fn open_message_in_telegram_uses_public_tg_form_by_default() {
     let mut mock_client = MockTelegramClientTrait::new();
@@ -229,6 +231,7 @@ async fn open_message_in_telegram_uses_public_tg_form_by_default() {
     assert_eq!(response.link_used, "tg://resolve?domain=swodki&post=42");
 }
 
+#[cfg(target_os = "macos")]
 #[tokio::test]
 async fn open_message_in_telegram_uses_https_when_requested() {
     let mut mock_client = MockTelegramClientTrait::new();
@@ -252,4 +255,33 @@ async fn open_message_in_telegram_uses_https_when_requested() {
     let response: OpenMessageResponse =
         serde_json::from_str(&result.expect("tool must succeed")).expect("valid json");
     assert_eq!(response.link_used, "https://t.me/c/123456/42");
+}
+
+/// Non-macOS contract: the tool rejects up front, before spending a
+/// rate-limiter token or resolving the channel. The mocks carry no
+/// expectations, so any acquire/resolve call would panic the test.
+#[cfg(not(target_os = "macos"))]
+#[tokio::test]
+async fn open_message_in_telegram_errors_on_non_macos() {
+    let server = McpServer::new(
+        Arc::new(MockTelegramClientTrait::new()),
+        Arc::new(MockRateLimiterTrait::new()),
+    );
+
+    let request = OpenMessageRequest {
+        channel_id: "swodki".to_string(),
+        message_id: 42,
+        use_tg_protocol: None,
+    };
+
+    let result = server
+        .open_message_in_telegram(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
+
+    assert!(result.is_err());
+    assert!(
+        result
+            .expect_err("must be unsupported")
+            .contains("only supported on macOS")
+    );
 }

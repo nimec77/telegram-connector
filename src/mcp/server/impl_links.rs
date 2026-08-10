@@ -51,10 +51,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     ) -> Result<String, String> {
         let message_id = parse_message_id(request.message_id)?;
 
+        // On non-macOS the entire macOS block below is compiled out, making
+        // this block the function's tail expression — no `return` (clippy's
+        // needless_return fires on Linux otherwise).
         #[cfg(not(target_os = "macos"))]
         {
             let _ = message_id;
-            return Err("open_message_in_telegram is only supported on macOS".to_string());
+            Err("open_message_in_telegram is only supported on macOS".to_string())
         }
 
         #[cfg(target_os = "macos")]
