@@ -3184,8 +3184,12 @@ the four feature tasks (`+6` T1, `+2` T2, `+3` T3, `+2` T4 across its two commit
 Six-task fix set (`docs/superpowers/specs/2026-08-10-correctness-core-design.md`,
 `docs/superpowers/plans/2026-08-10-correctness-core.md`) addressing the three most severe findings
 from the v0.13.0 black-box audit (`docs/telegram-mcp-0.13.0-work-order.md`) — first of five
-audit sub-projects, releasing as v0.13.1. TDD throughout, gate green per task, one commit per
-task. Tests 456 → 499 across six commits (`cbb4090` → `625d1f5`).
+audit sub-projects. TDD throughout, gate green per task, one commit per task. Tests 456 → 499
+across six commits (`cbb4090` → `625d1f5`). Merged as PR #32 and **released as v0.14.0**
+(2026-08-10) — the spec's provisional v0.13.1 number was superseded: the B2 link-response
+additions (`internal_link`, `is_public`, username acceptance) are new surface, so it shipped as
+a minor bump. PR #32 landed without CHANGELOG entries; they were written post-merge (`cec38ad`)
+before tagging — changelog entries belong in the feature PR itself.
 
 - **B1** (`cbb4090`, `200a711`) — deleted/never-existed message ids now error
   (`Message {id} not found or deleted in channel {ref}`) instead of fabricating an

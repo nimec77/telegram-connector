@@ -35,7 +35,7 @@
 | 25 | Refactor: module splits & dedup | ✅ Complete | 437 | LM-2…6 splits; AD-1…4 peer-resolution/identity consolidation |
 | 26 | Channel data & config refinements | ✅ Complete | 441 | AD-6 (configurable limits) + CQ-4 (Optional `member_count`) + CQ-5 (`has_more` over-fetch) — refactoring roadmap complete |
 | 27 | Local MCP improvements (Tasks 1-5) | ✅ Complete | 456 | Task 1: `from_date`/`to_date` range filters on search/history. Task 2: opt-in `include_full` on `get_channel_info`. Task 3: new `search_public_channels` tool (12th MCP tool) — `contacts.search` discovery; `is_subscribed` is recomputed from the call's own `my_results` (reliable when `true`, best-effort when `false`). Task 4: `tools/list` SEP-2549 cache hints (`ttlMs`/`cacheScope`), gated on negotiated protocol version ≥ 2026-07-28. Task 5: docs alignment sweep — see `docs/superpowers/plans/2026-08-10-local-mcp-improvements.md` |
-| 28 | Correctness core (work-order B1/B2/B3/D9) | ✅ Complete | 499 | MessageEmpty → not-found across all fetch paths; shared link builder emits public t.me/username + internal_link/is_public; media_filter enum inlined + $ref schema guard |
+| 28 | Correctness core (work-order B1/B2/B3/D9) | ✅ Complete | 499 | MessageEmpty → not-found across all fetch paths; shared link builder emits public t.me/username + internal_link/is_public; media_filter enum inlined + $ref schema guard. **Released as v0.14.0** (2026-08-10, PR #32) |
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
