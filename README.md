@@ -364,19 +364,39 @@ Generate shareable links for a specific message.
 **Parameters:**
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| `channel_id` | string | Yes | - | Numeric channel ID |
+| `channel_id` | string | Yes | - | Channel ID or username (e.g. `@channelname` or `1234567890`) |
 | `message_id` | integer | Yes | - | Message ID within the channel |
 | `include_tg_protocol` | boolean | No | true | Include `tg://` protocol link |
 
-**Response:**
+**Response (public channel):**
+```json
+{
+  "channel_id": "1144180066",
+  "message_id": 610121,
+  "https_link": "https://t.me/swodki/610121",
+  "tg_protocol_link": "tg://resolve?domain=swodki&post=610121",
+  "internal_link": "https://t.me/c/1144180066/610121",
+  "is_public": true
+}
+```
+
+**Response (private chat, no public username):**
 ```json
 {
   "channel_id": "1234567890",
   "message_id": 42,
-  "https_link": "https://t.me/c/1234567890/42?single",
-  "tg_protocol_link": "tg://privatepost?channel=1234567890&post=42&single"
+  "https_link": "https://t.me/c/1234567890/42",
+  "tg_protocol_link": "tg://privatepost?channel=1234567890&post=42",
+  "internal_link": "https://t.me/c/1234567890/42",
+  "is_public": false
 }
 ```
+
+> **Note:** For public channels, `https_link`/`tg_protocol_link` use the shareable
+> `t.me/<username>` / `tg://resolve` forms; `internal_link` always carries the
+> members-only `t.me/c/…` form regardless of `is_public`. `channel_id` accepts
+> either a username or a numeric ID — the response always echoes back the
+> canonical numeric ID. No link ever carries a `?single`/`&single` suffix.
 
 **Link Formats:**
 - **HTTPS:** Opens in browser or Telegram Web
@@ -395,7 +415,7 @@ Open a message directly in Telegram Desktop.
 **Parameters:**
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| `channel_id` | string | Yes | - | Numeric channel ID |
+| `channel_id` | string | Yes | - | Channel ID or username (e.g. `@channelname` or `1234567890`) |
 | `message_id` | integer | Yes | - | Message ID |
 | `use_tg_protocol` | boolean | No | true | Use `tg://` (true) or `https://` (false) |
 
@@ -404,10 +424,16 @@ Open a message directly in Telegram Desktop.
 {
   "success": true,
   "message": "Opened message in Telegram",
-  "link_used": "tg://privatepost?channel=1234567890&post=42&single",
+  "link_used": "tg://resolve?domain=swodki&post=42",
   "app_opened": true
 }
 ```
+
+> **Note:** `link_used` reflects the same public-vs-private form rules as
+> `generate_message_link` — a public channel opens via `tg://resolve`
+> (or `https://t.me/<username>/...`), a private chat via `tg://privatepost`
+> (or the members-only `https://t.me/c/...` form). Never a `?single`/`&single`
+> suffix.
 
 **Usage:** Quickly navigate to a message in the native Telegram app.
 
