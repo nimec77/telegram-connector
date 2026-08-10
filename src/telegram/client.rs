@@ -30,6 +30,7 @@ use tokio::task::JoinHandle;
 
 mod auth;
 mod channels;
+mod guard;
 mod lifecycle;
 mod ops_history;
 mod ops_media;
