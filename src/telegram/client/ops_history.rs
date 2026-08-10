@@ -74,11 +74,7 @@ impl TelegramClient {
         let resolved_channel_id = peer.id().bare_id();
 
         // Use iter_messages to get message history (no search query)
-        let peer_ref = peer
-            .to_ref()
-            .await
-            .map_err(|e| Error::TelegramApi(format!("Failed to convert peer to PeerRef: {e}")))?
-            .ok_or_else(|| Error::TelegramApi("Failed to convert peer to PeerRef".to_string()))?;
+        let peer_ref = peer_to_ref(&peer).await?;
 
         let messages = with_timeout("iter_messages", self.timeouts.history_secs, async {
             let mut messages = Vec::new();
@@ -90,7 +86,7 @@ impl TelegramClient {
                 .map_err(|e| Error::TelegramApi(format!("Failed to iterate messages: {}", e)))?
             {
                 // Check time filter - messages are in reverse chronological order
-                if msg.date().as_second() < cutoff_time.timestamp() {
+                if message_timestamp(&msg).is_none_or(|t| t < cutoff_time) {
                     break;
                 }
 

@@ -895,6 +895,6 @@ MIT License - see LICENSE file for details.
 
 ## Acknowledgments
 
-- [grammers](https://github.com/Lonami/grammers) - Rust MTProto implementation
+- [grammers](https://codeberg.org/Lonami/grammers) - Rust MTProto implementation
 - [rmcp](https://github.com/anthropics/mcp) - Model Context Protocol SDK
 - [Telegram](https://telegram.org) - Messaging platform

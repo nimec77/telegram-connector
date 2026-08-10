@@ -63,15 +63,19 @@ pub(crate) fn peer_identity(
 pub fn convert_peer_to_channel(peer: &grammers_client::peer::Peer) -> Option<Channel> {
     use grammers_client::peer::Peer;
 
-    // Only channels and groups convert; a User peer is not a channel. Capture the
-    // variant-specific flags here, then share the identity triple via peer_identity.
+    // Channels, groups, and communities convert; a User peer is not a channel.
+    // Capture the variant-specific flags here, then share the identity triple
+    // via peer_identity.
     let (is_verified, is_public) = match peer {
         Peer::Channel(ch) => (ch.raw.verified, ch.username().is_some()),
         Peer::Group(g) => (false, g.username().is_some()),
-        _ => {
+        // Community (grammers 0.10) exposes neither a username nor a verified
+        // flag, so both default to false — same treatment as a private group.
+        Peer::Community(_) => (false, false),
+        Peer::User(_) => {
             tracing::debug!(
                 peer_id = peer.id().bare_id(),
-                "Skipping non-channel/group peer in convert_peer_to_channel (likely a User)"
+                "Skipping User peer in convert_peer_to_channel"
             );
             return None;
         }
@@ -90,4 +94,67 @@ pub fn convert_peer_to_channel(peer: &grammers_client::peer::Peer) -> Option<Cha
         is_subscribed: true, // We're iterating our dialogs, so we're subscribed
         last_message_date: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use grammers_client::peer::{Community, Peer};
+    use grammers_client::{Client, tl};
+    use grammers_mtsender::SenderPool;
+    use grammers_session::storages::MemorySession;
+    use std::sync::Arc;
+
+    /// Build a `Peer::Community` without any I/O: the `SenderPool` runner is
+    /// never spawned, so the `Client` is inert plumbing for `from_raw`.
+    /// (grammers 0.10 made this possible; older versions had no offline path
+    /// to a `Peer`, which is why converter tests didn't exist before.)
+    fn community_peer(id: i64, title: &str) -> Peer {
+        let session = Arc::new(MemorySession::default());
+        let SenderPool { handle, .. } = SenderPool::new(session, 1);
+        let client = Client::new(handle);
+        let raw = tl::types::Community {
+            creator: false,
+            left: false,
+            min: false,
+            collapsed_in_dialogs: false,
+            id,
+            access_hash: Some(0),
+            title: title.to_string(),
+            photo: tl::enums::ChatPhoto::Empty,
+            date: 0,
+            admin_rights: None,
+            default_banned_rights: None,
+        };
+        Peer::Community(Community::from_raw(
+            &client,
+            tl::enums::Chat::Community(raw),
+        ))
+    }
+
+    #[test]
+    fn peer_identity_maps_community_with_group_fallback_username() {
+        let peer = community_peer(1234, "Test Community");
+
+        let (id, name, username) = peer_identity(&peer).expect("community must yield an identity");
+
+        assert_eq!(Some(id.get()), peer.id().bare_id());
+        assert_eq!(name.as_str(), "Test Community");
+        assert_eq!(username.as_str(), "group");
+    }
+
+    #[test]
+    fn convert_peer_to_channel_does_not_drop_community() {
+        let peer = community_peer(1234, "Test Community");
+
+        let channel = convert_peer_to_channel(&peer)
+            .expect("community is a group-like dialog and must convert to a Channel");
+
+        assert_eq!(Some(channel.id.get()), peer.id().bare_id());
+        assert_eq!(channel.name.as_str(), "Test Community");
+        // Community exposes no username or verified flag in grammers 0.10.
+        assert!(!channel.is_public);
+        assert!(!channel.is_verified);
+        assert!(channel.is_subscribed);
+    }
 }

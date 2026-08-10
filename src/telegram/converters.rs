@@ -15,6 +15,7 @@ pub use media::{
     extract_video_info, matches_media_filter, select_size_candidate, size_candidates,
 };
 pub use message::convert_message;
+pub(crate) use message::message_timestamp;
 
 #[cfg(test)]
 #[path = "tests/converters_tests.rs"]
