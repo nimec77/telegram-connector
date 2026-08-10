@@ -220,7 +220,9 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Tool 4: generate_message_link - Generate deep links for a Telegram message
-    #[tool(description = "Generate tg:// and https://t.me deep links for a Telegram message")]
+    #[tool(
+        description = "Generate shareable deep links for a Telegram message (accepts channel ID or username; public channels get https://t.me/<username> links)"
+    )]
     pub async fn generate_message_link(
         &self,
         Parameters(request): Parameters<GenerateLinkRequest>,
@@ -239,7 +241,9 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Tool 5: open_message_in_telegram - Open message in Telegram Desktop (macOS)
-    #[tool(description = "Open a specific message in Telegram Desktop application (macOS only)")]
+    #[tool(
+        description = "Open a specific message in Telegram Desktop application (macOS only; accepts channel ID or username)"
+    )]
     pub async fn open_message_in_telegram(
         &self,
         Parameters(request): Parameters<OpenMessageRequest>,

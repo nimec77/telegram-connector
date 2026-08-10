@@ -79,17 +79,27 @@ pub struct ChannelsResponse {
 /// Response for generate_message_link tool
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MessageLinkResponse {
-    #[schemars(description = "Channel ID")]
+    #[schemars(description = "Canonical numeric channel ID")]
     pub channel_id: String,
 
     #[schemars(description = "Message ID")]
     pub message_id: i64,
 
-    #[schemars(description = "HTTPS link: https://t.me/c/{channel_id}/{message_id}?single")]
+    #[schemars(
+        description = "Best shareable HTTPS link: https://t.me/{username}/{message_id} for public channels, https://t.me/c/{channel_id}/{message_id} for private chats"
+    )]
     pub https_link: String,
 
-    #[schemars(description = "tg:// protocol link for native macOS handling")]
+    #[schemars(
+        description = "tg:// protocol link (tg://resolve for public channels, tg://privatepost for private chats)"
+    )]
     pub tg_protocol_link: Option<String>,
+
+    #[schemars(description = "Members-only https://t.me/c/… form (always present)")]
+    pub internal_link: String,
+
+    #[schemars(description = "Whether the channel has a public username")]
+    pub is_public: bool,
 }
 
 /// Response for open_message_in_telegram tool

@@ -26,11 +26,15 @@ fn message_link_response_serializes() {
         message_id: 456,
         https_link: "https://t.me/c/123/456".to_string(),
         tg_protocol_link: Some("tg://privatepost?channel=123&post=456".to_string()),
+        internal_link: "https://t.me/c/123/456".to_string(),
+        is_public: false,
     };
 
     let json = serde_json::to_string(&response).unwrap();
     assert!(json.contains("https_link"));
     assert!(json.contains("tg_protocol_link"));
+    assert!(json.contains("internal_link"));
+    assert!(json.contains("is_public"));
 }
 
 #[test]

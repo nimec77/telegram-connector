@@ -10,18 +10,27 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         request: GenerateLinkRequest,
     ) -> Result<String, String> {
-        // Parse and validate IDs using helpers
-        let channel_id = parse_channel_id(&request.channel_id)?;
         let message_id = parse_message_id(request.message_id)?;
 
-        // Generate links using existing MessageLink from link.rs
-        let link = MessageLink::new(channel_id, message_id, None);
+        // One rate-limited peer resolution: the username is required to emit
+        // the shareable t.me/<username> form for public channels (B2), and
+        // it lets channel_id be a username too (D9).
+        self.rate_limiter
+            .acquire(1)
+            .await
+            .map_err(|e| e.to_string())?;
 
-        // Build response based on include_tg_protocol flag (defaults to true)
+        let identity = self
+            .telegram_client
+            .resolve_channel_identity(&request.channel_id)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let link = MessageLink::new(identity.id, message_id, identity.username.as_deref());
         let include_tg = request.include_tg_protocol.unwrap_or(true);
 
         let response = MessageLinkResponse {
-            channel_id: request.channel_id,
+            channel_id: identity.id.to_string(),
             message_id: request.message_id,
             https_link: link.https_link,
             tg_protocol_link: if include_tg {
@@ -29,6 +38,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             } else {
                 None
             },
+            internal_link: link.internal_link,
+            is_public: link.is_public,
         };
 
         json_response(&response)
@@ -38,12 +49,20 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         request: OpenMessageRequest,
     ) -> Result<String, String> {
-        // Parse and validate IDs using helpers
-        let channel_id = parse_channel_id(&request.channel_id)?;
         let message_id = parse_message_id(request.message_id)?;
 
-        // Generate links
-        let link = MessageLink::new(channel_id, message_id, None);
+        self.rate_limiter
+            .acquire(1)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let identity = self
+            .telegram_client
+            .resolve_channel_identity(&request.channel_id)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let link = MessageLink::new(identity.id, message_id, identity.username.as_deref());
 
         // Choose link type (defaults to tg:// protocol)
         let use_tg = request.use_tg_protocol.unwrap_or(true);

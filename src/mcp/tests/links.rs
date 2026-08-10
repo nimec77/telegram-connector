@@ -1,56 +1,127 @@
 //! Tests for generate_message_link and open_message_in_telegram tools
 
+use crate::error::Error;
 use crate::mcp::server::McpServer;
 use crate::mcp::tools::{
     GenerateLinkRequest, MessageLinkResponse, OpenMessageRequest, OpenMessageResponse,
 };
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
+use crate::telegram::types::{ChannelId, ChannelIdentity};
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::NumberOrString;
 use std::sync::Arc;
+
+fn identity(id: i64, username: Option<&str>) -> ChannelIdentity {
+    ChannelIdentity {
+        id: ChannelId::new(id).expect("valid test id"),
+        username: username.map(str::to_string),
+    }
+}
 
 // ============================================================================
 // generate_message_link tests
 // ============================================================================
 
 #[tokio::test]
-async fn generate_message_link_returns_both_formats() {
-    // Given: Server and valid request
-    let mock_client = MockTelegramClientTrait::new();
-    let mock_limiter = MockRateLimiterTrait::new();
+async fn generate_message_link_public_channel_returns_public_forms() {
+    let mut mock_client = MockTelegramClientTrait::new();
+    mock_client
+        .expect_resolve_channel_identity()
+        .return_once(|_| Ok(identity(1144180066, Some("swodki"))));
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GenerateLinkRequest {
-        channel_id: "123456789".to_string(),
-        message_id: 42,
+        channel_id: "1144180066".to_string(),
+        message_id: 610121,
         include_tg_protocol: None, // defaults to true
     };
 
-    // When: Generate link
     let result = server
         .generate_message_link(Parameters(request), RequestId(NumberOrString::Number(1)))
         .await;
 
-    // Then: Returns both link formats
-    assert!(result.is_ok());
-    let response: MessageLinkResponse = serde_json::from_str(&result.unwrap()).unwrap();
-    assert_eq!(response.channel_id, "123456789");
-    assert_eq!(response.message_id, 42);
-    assert_eq!(response.https_link, "https://t.me/c/123456789/42");
-    assert!(response.tg_protocol_link.is_some());
+    let response: MessageLinkResponse =
+        serde_json::from_str(&result.expect("tool must succeed")).expect("valid json");
+    assert_eq!(response.channel_id, "1144180066");
+    assert_eq!(response.message_id, 610121);
+    assert_eq!(response.https_link, "https://t.me/swodki/610121");
     assert_eq!(
-        response.tg_protocol_link.unwrap(),
-        "tg://privatepost?channel=123456789&post=42"
+        response.tg_protocol_link.as_deref(),
+        Some("tg://resolve?domain=swodki&post=610121")
     );
+    assert_eq!(response.internal_link, "https://t.me/c/1144180066/610121");
+    assert!(response.is_public);
+}
+
+#[tokio::test]
+async fn generate_message_link_accepts_username_input() {
+    let mut mock_client = MockTelegramClientTrait::new();
+    mock_client
+        .expect_resolve_channel_identity()
+        .withf(|channel_ref| channel_ref == "swodki")
+        .return_once(|_| Ok(identity(1144180066, Some("swodki"))));
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = GenerateLinkRequest {
+        channel_id: "swodki".to_string(),
+        message_id: 610121,
+        include_tg_protocol: None,
+    };
+
+    let result = server
+        .generate_message_link(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
+
+    let response: MessageLinkResponse =
+        serde_json::from_str(&result.expect("username input must work")).expect("valid json");
+    assert_eq!(response.https_link, "https://t.me/swodki/610121");
+    assert_eq!(response.channel_id, "1144180066"); // canonical numeric id
+}
+
+#[tokio::test]
+async fn generate_message_link_private_chat_returns_internal_forms() {
+    let mut mock_client = MockTelegramClientTrait::new();
+    mock_client
+        .expect_resolve_channel_identity()
+        .return_once(|_| Ok(identity(521440428, None)));
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = GenerateLinkRequest {
+        channel_id: "521440428".to_string(),
+        message_id: 7,
+        include_tg_protocol: None,
+    };
+
+    let result = server
+        .generate_message_link(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
+
+    let response: MessageLinkResponse =
+        serde_json::from_str(&result.expect("tool must succeed")).expect("valid json");
+    assert_eq!(response.https_link, "https://t.me/c/521440428/7");
+    assert_eq!(
+        response.tg_protocol_link.as_deref(),
+        Some("tg://privatepost?channel=521440428&post=7")
+    );
+    assert!(!response.is_public);
 }
 
 #[tokio::test]
 async fn generate_message_link_without_tg_protocol() {
-    // Given: Server and request with include_tg_protocol = false
-    let mock_client = MockTelegramClientTrait::new();
-    let mock_limiter = MockRateLimiterTrait::new();
+    let mut mock_client = MockTelegramClientTrait::new();
+    mock_client
+        .expect_resolve_channel_identity()
+        .return_once(|_| Ok(identity(999, None)));
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GenerateLinkRequest {
@@ -59,41 +130,42 @@ async fn generate_message_link_without_tg_protocol() {
         include_tg_protocol: Some(false),
     };
 
-    // When: Generate link
     let result = server
         .generate_message_link(Parameters(request), RequestId(NumberOrString::Number(1)))
         .await;
 
-    // Then: Returns only HTTPS link (tg_protocol_link is None)
-    assert!(result.is_ok());
-    let response: MessageLinkResponse = serde_json::from_str(&result.unwrap()).unwrap();
+    let response: MessageLinkResponse =
+        serde_json::from_str(&result.expect("tool must succeed")).expect("valid json");
     assert_eq!(response.https_link, "https://t.me/c/999/111");
     assert!(response.tg_protocol_link.is_none());
 }
 
 #[tokio::test]
-async fn generate_message_link_invalid_channel_id() {
-    // Given: Server and request with non-numeric channel_id
-    let mock_client = MockTelegramClientTrait::new();
-    let mock_limiter = MockRateLimiterTrait::new();
+async fn generate_message_link_unknown_channel_errors() {
+    let mut mock_client = MockTelegramClientTrait::new();
+    mock_client
+        .expect_resolve_channel_identity()
+        .return_once(|_| Err(Error::InvalidInput("Channel not found: @nope".to_string())));
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GenerateLinkRequest {
-        channel_id: "not_a_number".to_string(),
+        channel_id: "@nope".to_string(),
         message_id: 42,
         include_tg_protocol: None,
     };
 
-    // When: Generate link
     let result = server
         .generate_message_link(Parameters(request), RequestId(NumberOrString::Number(1)))
         .await;
 
-    // Then: Returns error
     assert!(result.is_err());
-    if let Err(error_msg) = result {
-        assert!(error_msg.contains("Invalid channel_id"));
-    }
+    assert!(
+        result
+            .expect_err("must be error")
+            .contains("Channel not found")
+    );
 }
 
 // ============================================================================
@@ -101,10 +173,17 @@ async fn generate_message_link_invalid_channel_id() {
 // ============================================================================
 
 #[tokio::test]
-async fn open_message_in_telegram_invalid_channel_id() {
-    // Given: Server and request with non-numeric channel_id
-    let mock_client = MockTelegramClientTrait::new();
-    let mock_limiter = MockRateLimiterTrait::new();
+async fn open_message_in_telegram_unknown_channel_errors() {
+    let mut mock_client = MockTelegramClientTrait::new();
+    mock_client
+        .expect_resolve_channel_identity()
+        .return_once(|_| {
+            Err(Error::InvalidInput(
+                "Channel not found: invalid".to_string(),
+            ))
+        });
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = OpenMessageRequest {
@@ -113,47 +192,51 @@ async fn open_message_in_telegram_invalid_channel_id() {
         use_tg_protocol: None,
     };
 
-    // When: Try to open message
     let result = server
         .open_message_in_telegram(Parameters(request), RequestId(NumberOrString::Number(1)))
         .await;
 
-    // Then: Returns error
     assert!(result.is_err());
-    if let Err(error_msg) = result {
-        assert!(error_msg.contains("Invalid channel_id"));
-    }
+    assert!(
+        result
+            .expect_err("must be error")
+            .contains("Channel not found")
+    );
 }
 
 #[tokio::test]
-async fn open_message_in_telegram_uses_tg_protocol_by_default() {
-    // Given: Server and request without use_tg_protocol specified
-    let mock_client = MockTelegramClientTrait::new();
-    let mock_limiter = MockRateLimiterTrait::new();
+async fn open_message_in_telegram_uses_public_tg_form_by_default() {
+    let mut mock_client = MockTelegramClientTrait::new();
+    mock_client
+        .expect_resolve_channel_identity()
+        .return_once(|_| Ok(identity(1144180066, Some("swodki"))));
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = OpenMessageRequest {
-        channel_id: "123456".to_string(),
+        channel_id: "swodki".to_string(),
         message_id: 42,
         use_tg_protocol: None, // defaults to true
     };
 
-    // When: Open message
     let result = server
         .open_message_in_telegram(Parameters(request), RequestId(NumberOrString::Number(1)))
         .await;
 
-    // Then: Returns response with tg:// link
-    assert!(result.is_ok());
-    let response: OpenMessageResponse = serde_json::from_str(&result.unwrap()).unwrap();
-    assert!(response.link_used.starts_with("tg://"));
+    let response: OpenMessageResponse =
+        serde_json::from_str(&result.expect("tool must succeed")).expect("valid json");
+    assert_eq!(response.link_used, "tg://resolve?domain=swodki&post=42");
 }
 
 #[tokio::test]
 async fn open_message_in_telegram_uses_https_when_requested() {
-    // Given: Server and request with use_tg_protocol = false
-    let mock_client = MockTelegramClientTrait::new();
-    let mock_limiter = MockRateLimiterTrait::new();
+    let mut mock_client = MockTelegramClientTrait::new();
+    mock_client
+        .expect_resolve_channel_identity()
+        .return_once(|_| Ok(identity(123456, None)));
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = OpenMessageRequest {
@@ -162,13 +245,11 @@ async fn open_message_in_telegram_uses_https_when_requested() {
         use_tg_protocol: Some(false),
     };
 
-    // When: Open message
     let result = server
         .open_message_in_telegram(Parameters(request), RequestId(NumberOrString::Number(1)))
         .await;
 
-    // Then: Returns response with https:// link
-    assert!(result.is_ok());
-    let response: OpenMessageResponse = serde_json::from_str(&result.unwrap()).unwrap();
-    assert!(response.link_used.starts_with("https://"));
+    let response: OpenMessageResponse =
+        serde_json::from_str(&result.expect("tool must succeed")).expect("valid json");
+    assert_eq!(response.link_used, "https://t.me/c/123456/42");
 }
