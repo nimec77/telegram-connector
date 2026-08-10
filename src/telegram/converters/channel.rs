@@ -124,6 +124,8 @@ pub(crate) fn channel_identity(peer: &grammers_client::peer::Peer) -> Option<Cha
         Peer::Channel(ch) => ch.username().map(str::to_string),
         Peer::Group(g) => g.username().map(str::to_string),
         Peer::Community(_) => None,
+        // A user peer's username builds a profile link (t.me/<username>), not
+        // a message link, when fed into the link builder — pre-existing behavior.
         Peer::User(u) => u.username().map(str::to_string),
     };
     Some(ChannelIdentity { id, username })

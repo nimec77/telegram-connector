@@ -397,6 +397,9 @@ Generate shareable links for a specific message.
 > members-only `t.me/c/…` form regardless of `is_public`. `channel_id` accepts
 > either a username or a numeric ID — the response always echoes back the
 > canonical numeric ID. No link ever carries a `?single`/`&single` suffix.
+> The tool performs one channel resolution to build the link (costs one
+> rate-limiter token), and the channel must be resolvable by the connected
+> account (a subscribed dialog or a public username) or the call errors.
 
 **Link Formats:**
 - **HTTPS:** Opens in browser or Telegram Web
@@ -433,7 +436,10 @@ Open a message directly in Telegram Desktop.
 > `generate_message_link` — a public channel opens via `tg://resolve`
 > (or `https://t.me/<username>/...`), a private chat via `tg://privatepost`
 > (or the members-only `https://t.me/c/...` form). Never a `?single`/`&single`
-> suffix.
+> suffix. Like `generate_message_link`, this tool performs one channel
+> resolution (costs one rate-limiter token), and the channel must be
+> resolvable by the connected account (subscribed dialog or public username)
+> or the call errors.
 
 **Usage:** Quickly navigate to a message in the native Telegram app.
 
