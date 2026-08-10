@@ -9,16 +9,7 @@ Telegram MCP Connector — a Model Context Protocol (MCP) service that enables C
 ## Build & Test Commands
 
 ```bash
-cargo build                            # Debug build
-cargo build --release                  # Release build
-cargo test                             # All tests (some ignored)
-cargo test <module>                    # e.g. cargo test mcp, cargo test types
-cargo test <test_fn_name>              # Run a single test by name
 cargo test config -- --test-threads=1  # Config tests MUST run serial (env var mutation)
-cargo test -- --nocapture              # Show println!/dbg! output during tests
-cargo fmt --check                      # Check formatting
-cargo clippy -- -D warnings           # Lint (warnings = errors)
-cargo run --bin telegram-mcp           # Run the binary
 
 # Pre-commit (all must pass)
 cargo fmt --check && cargo clippy -- -D warnings && cargo test
@@ -35,22 +26,6 @@ The same commands are available as `just` recipes (see `justfile`): run `just` t
 - **`secrecy`** — `SecretString` wraps sensitive config fields (`api_hash`, `phone_number`); access via `.expose_secret()`
 
 ## Architecture
-
-```
-MCP Client (Claude) ──JSON-RPC/stdio──► MCP Server Layer (rmcp)
-                                        │  src/mcp/server.rs (11 tools)
-                                        │  src/mcp/tools/ (helpers + types/{requests,responses,serde_helpers})
-                                        │  src/mcp/observability.rs (InstrumentedTransport, SessionMetrics, ResponseBuffer)
-                                        ▼
-                                      Application Layer
-                                        │  config, logging, rate_limiter, link, error, cli
-                                        ▼
-                                      Telegram Layer (grammers)
-                                        │  client.rs, trait_def.rs, converters.rs, auth.rs
-                                        │  types/ (ids, names, media, entities, params)
-                                        ▼
-                                      Telegram Cloud API (MTProto)
-```
 
 ### Key Patterns
 
@@ -72,10 +47,6 @@ MCP Client (Claude) ──JSON-RPC/stdio──► MCP Server Layer (rmcp)
 
 ### Test Organization
 
-- Unit tests: `#[cfg(test)]` blocks inline in each module, or in separate files via `#[path = "..."]` attribute (e.g., `config.rs` → `config/tests.rs`)
-- MCP tool tests: `src/mcp/tests/{server_core,status,channels,links,search,history,message_by_link,last_responses}.rs`
-- Telegram client tests: `src/telegram/tests/client_tests.rs` (mock-based)
-- Test fixtures: `src/test_helpers.rs` — `create_test_message()`, `create_test_channel()`, etc.
 - Config tests require `--test-threads=1` due to `env::set_var()` race conditions
 
 ## Coding Conventions
