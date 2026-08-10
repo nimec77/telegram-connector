@@ -76,6 +76,12 @@ pub fn convert_message(
     msg: &grammers_client::message::Message,
     peer: &grammers_client::peer::Peer,
 ) -> Option<Message> {
+    // A MessageEmpty placeholder (deleted / never-existed id) must never map
+    // to a domain Message — it has an epoch-0 date and empty text (B1).
+    if matches!(msg.raw, tl::enums::Message::Empty(_)) {
+        return None;
+    }
+
     let (channel_id, channel_name, channel_username) = peer_identity(peer)?;
 
     let message_id = MessageId::new(msg.id() as i64).ok()?;

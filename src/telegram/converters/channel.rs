@@ -2,7 +2,7 @@
 //!
 //! Sub-domain of `converters` (LM-4).
 
-use crate::telegram::types::{Channel, ChannelId, ChannelName, Username};
+use crate::telegram::types::{Channel, ChannelId, ChannelIdentity, ChannelName, Username};
 
 /// Build the sentinel `Username` used when a peer exposes no public username.
 ///
@@ -112,6 +112,25 @@ fn convert_peer_with_subscription(
     })
 }
 
+/// Extract the numeric-ID + optional-username pair used for link generation.
+///
+/// Unlike [`peer_identity`], no username fallback sentinel is applied: `None`
+/// means the peer has no public username (work-order B2).
+pub(crate) fn channel_identity(peer: &grammers_client::peer::Peer) -> Option<ChannelIdentity> {
+    use grammers_client::peer::Peer;
+
+    let id = ChannelId::new(peer.id().bare_id()?).ok()?;
+    let username = match peer {
+        Peer::Channel(ch) => ch.username().map(str::to_string),
+        Peer::Group(g) => g.username().map(str::to_string),
+        Peer::Community(_) => None,
+        // A user peer's username builds a profile link (t.me/<username>), not
+        // a message link, when fed into the link builder — pre-existing behavior.
+        Peer::User(u) => u.username().map(str::to_string),
+    };
+    Some(ChannelIdentity { id, username })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -120,6 +139,70 @@ mod tests {
     use grammers_mtsender::SenderPool;
     use grammers_session::storages::MemorySession;
     use std::sync::Arc;
+
+    /// Offline `Peer::Channel` fixture, mirroring `community_peer` — grammers'
+    /// `Channel::from_raw` is public and needs only an inert client.
+    fn channel_peer(id: i64, title: &str, username: Option<&str>) -> Peer {
+        let session = Arc::new(MemorySession::default());
+        let SenderPool { handle, .. } = SenderPool::new(session, 1);
+        let client = Client::new(handle);
+        let raw = tl::types::Channel {
+            creator: false,
+            left: false,
+            broadcast: true,
+            verified: false,
+            megagroup: false,
+            restricted: false,
+            signatures: false,
+            min: false,
+            scam: false,
+            has_link: false,
+            has_geo: false,
+            slowmode_enabled: false,
+            call_active: false,
+            call_not_empty: false,
+            fake: false,
+            gigagroup: false,
+            noforwards: false,
+            join_to_send: false,
+            join_request: false,
+            forum: false,
+            stories_hidden: false,
+            stories_hidden_min: false,
+            stories_unavailable: true,
+            signature_profiles: false,
+            autotranslation: false,
+            broadcast_messages_allowed: false,
+            monoforum: false,
+            forum_tabs: false,
+            id,
+            access_hash: Some(0),
+            title: title.to_string(),
+            username: username.map(str::to_string),
+            photo: tl::enums::ChatPhoto::Empty,
+            date: 0,
+            restriction_reason: None,
+            admin_rights: None,
+            banned_rights: None,
+            default_banned_rights: None,
+            participants_count: None,
+            usernames: None,
+            stories_max_id: None,
+            color: None,
+            profile_color: None,
+            emoji_status: None,
+            level: None,
+            subscription_until_date: None,
+            bot_verification_icon: None,
+            send_paid_messages_stars: None,
+            linked_monoforum_id: None,
+            linked_community_id: None,
+        };
+        Peer::Channel(grammers_client::peer::Channel::from_raw(
+            &client,
+            tl::enums::Chat::Channel(raw),
+        ))
+    }
 
     /// Build a `Peer::Community` without any I/O: the `SenderPool` runner is
     /// never spawned, so the `Client` is inert plumbing for `from_raw`.
@@ -187,5 +270,25 @@ mod tests {
                 .expect("must convert")
                 .is_subscribed
         );
+    }
+
+    #[test]
+    fn channel_identity_public_channel_carries_username() {
+        let peer = channel_peer(1144180066, "Сводки", Some("swodki"));
+
+        let identity = channel_identity(&peer).expect("channel must yield an identity");
+
+        assert_eq!(identity.id.get(), 1144180066);
+        assert_eq!(identity.username.as_deref(), Some("swodki"));
+    }
+
+    #[test]
+    fn channel_identity_private_peer_has_no_username_sentinel() {
+        let peer = community_peer(521440428, "Семейный чатик");
+
+        let identity = channel_identity(&peer).expect("community must yield an identity");
+
+        assert_eq!(identity.id.get(), 521440428);
+        assert_eq!(identity.username, None);
     }
 }

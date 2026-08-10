@@ -7,11 +7,15 @@ use crate::mcp::tools::{
     BufferedResponseEntry, ChannelsResponse, GenerateLinkRequest, GetChannelInfoRequest,
     GetChannelsRequest, GetLastResponsesRequest, GetMessageByLinkRequest, GetMessageMediaRequest,
     GetMessageMediaResponse, GetRecentMessagesRequest, LastResponsesResponse, MessageLinkResponse,
-    MessageResponse, OpenMessageRequest, OpenMessageResponse, SearchPublicChannelsRequest,
-    SearchRequest, SearchResponse, StatusResponse, TranscribeVoiceMessageRequest,
-    TranscribeVoiceMessageResponse, json_response, parse_channel_id, parse_message_id,
-    parse_optional_channel_id, parse_optional_utc, validate_date_window,
+    MessageResponse, OpenMessageRequest, SearchPublicChannelsRequest, SearchRequest,
+    SearchResponse, StatusResponse, TranscribeVoiceMessageRequest, TranscribeVoiceMessageResponse,
+    json_response, parse_channel_id, parse_message_id, parse_optional_channel_id,
+    parse_optional_utc, validate_date_window,
 };
+// Constructed only inside open_message_in_telegram's macOS-only body; an
+// unconditional import is an unused-import error on Linux builds.
+#[cfg(target_os = "macos")]
+use crate::mcp::tools::OpenMessageResponse;
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
 use crate::telegram::types::{HistoryParams, SearchParams};
@@ -220,7 +224,9 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Tool 4: generate_message_link - Generate deep links for a Telegram message
-    #[tool(description = "Generate tg:// and https://t.me deep links for a Telegram message")]
+    #[tool(
+        description = "Generate shareable deep links for a Telegram message (accepts channel ID or username; public channels get https://t.me/<username> links)"
+    )]
     pub async fn generate_message_link(
         &self,
         Parameters(request): Parameters<GenerateLinkRequest>,
@@ -239,7 +245,9 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Tool 5: open_message_in_telegram - Open message in Telegram Desktop (macOS)
-    #[tool(description = "Open a specific message in Telegram Desktop application (macOS only)")]
+    #[tool(
+        description = "Open a specific message in Telegram Desktop application (macOS only; accepts channel ID or username)"
+    )]
     pub async fn open_message_in_telegram(
         &self,
         Parameters(request): Parameters<OpenMessageRequest>,

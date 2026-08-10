@@ -134,7 +134,7 @@ async fn get_message_by_link_message_not_found() {
     let mut mock_client = MockTelegramClientTrait::new();
     mock_client.expect_get_message_by_id().return_once(|_, _| {
         Err(Error::InvalidInput(
-            "Message 999999 not found in channel swodki".to_string(),
+            "Message 999999 not found or deleted in channel swodki".to_string(),
         ))
     });
 

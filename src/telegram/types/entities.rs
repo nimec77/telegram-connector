@@ -100,6 +100,17 @@ pub struct Channel {
     pub last_message_date: Option<DateTime<Utc>>,
 }
 
+/// A channel's canonical numeric ID plus its public username, if any.
+///
+/// Unlike [`Channel::username`], there are no fallback sentinels here — `None`
+/// means the chat has no public username. Used by link generation (work-order
+/// B2), where a sentinel would fabricate a `t.me/unknown/…` link.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelIdentity {
+    pub id: ChannelId,
+    pub username: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

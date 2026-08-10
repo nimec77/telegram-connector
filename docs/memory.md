@@ -3178,3 +3178,58 @@ the four feature tasks (`+6` T1, `+2` T2, `+3` T3, `+2` T4 across its two commit
   declined to extract a generic `inert_client()` out of the existing `community_peer()` fixture
   helper — the new test only needed `community_peer()` as-is, and there was no second call site to
   justify the indirection (YAGNI over premature reuse).
+
+## Correctness core (B1, B2+D9, B3) — 2026-08-10
+
+Six-task fix set (`docs/superpowers/specs/2026-08-10-correctness-core-design.md`,
+`docs/superpowers/plans/2026-08-10-correctness-core.md`) addressing the three most severe findings
+from the v0.13.0 black-box audit (`docs/telegram-mcp-0.13.0-work-order.md`) — first of five
+audit sub-projects, releasing as v0.13.1. TDD throughout, gate green per task, one commit per
+task. Tests 456 → 499 across six commits (`cbb4090` → `625d1f5`).
+
+- **B1** (`cbb4090`, `200a711`) — deleted/never-existed message ids now error
+  (`Message {id} not found or deleted in channel {ref}`) instead of fabricating an
+  epoch-timestamp (`1970-01-01T00:00:00Z`) message with empty text and no `views`/`forwards`.
+  Guard applied to `get_message_by_link`, `get_message_media`, `transcribe_voice_message` fetch
+  paths, plus a defense-in-depth early return in `convert_message` itself.
+- **B2+D9 groundwork** (`9371ec7`) — sentinel-free `ChannelIdentity { id, username:
+  Option<String> }` + `resolve_channel_identity` trait method, replacing the sentinel-bearing
+  `Channel::username`/`fallback_username` path for link building.
+- **B2 link builder** (`756c066`) — `MessageLink::new` gains `username: Option<&str>`, becomes
+  the single builder shared by `generate_message_link` and `open_message_in_telegram`; emits
+  public `https://t.me/<username>` + `tg://resolve` forms when a username exists, an
+  always-present `internal_link` (members-only `t.me/c/…`) + `is_public` field pair; the
+  `?single`/`&single` suffix is dropped from every generated link.
+- **B2+D9 wiring** (`4235f03`) — both link tools accept `channel_id` as either a username or a
+  numeric ID (one rate-limited `resolve_channel_identity` call per invocation, same
+  flexible-identifier convention already used by every other tool).
+- **B3** (`625d1f5`) — `#[schemars(inline)]` on `MediaFilter`; new
+  `src/mcp/tests/schema_integrity.rs` asserts no tool schema contains an unresolvable `$ref`.
+
+### Lessons (non-obvious)
+
+- **B1's root cause was in the SDK's wrapping, not this codebase's `None` handling.**
+  `get_message_by_id_impl` already errored correctly when grammers returned `None`; the bug was
+  that grammers instead wraps a deleted or never-existed message id in a `MessageEmpty`-backed
+  message object rather than surfacing `None`, and `convert_message` mapped that object blindly —
+  producing the epoch-timestamp fabrication. The fix is a guard at the grammers boundary
+  (`src/telegram/client/guard.rs`: `is_empty_variant` + `require_found`), not a change to the
+  already-correct `None` branch — and every direct-fetch path (`get_message_media`,
+  `transcribe_voice_message`) needed the same guard since each does its own raw fetch.
+- **Never build links from `Channel.username` (or any `fallback_username`-style helper) — it lies
+  by sentinel.** Existing peer-identity helpers substitute a `"group"`/`"unknown"` sentinel string
+  when a channel has no public username (fine for display, wrong for link building), so code that
+  naively reused `Channel::username` to decide "does this channel have a public link" would treat
+  every non-public channel as if `"group"` were a real, resolvable username. `ChannelIdentity {
+  username: Option<String> }` exists specifically to make "no username" an explicit `None` with no
+  sentinel path — link-building code must go through `resolve_channel_identity`, never through
+  `Channel::username` directly.
+- **A `$ref` can resolve within the full schemars-generated document and still be dead in the
+  schema a client actually receives.** `every_tool_schema_ref_resolves_locally` passed even before
+  the B3 fix — `#/$defs/MediaFilter` had a resolvable target somewhere in the generator's full
+  output — but rmcp publishes each tool's `inputSchema` without an accompanying `$defs` block, so
+  the ref was orphaned in what schema-following clients actually see, making `media_filter`
+  uncallable. Lesson: assert schema *self-containment* per published tool schema, not just
+  ref-resolvability against the generator's full output; `#[schemars(inline)]` on enums referenced
+  from request structs sidesteps the whole bug class by never emitting a `$ref` there in the first
+  place.

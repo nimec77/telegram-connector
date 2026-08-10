@@ -4,7 +4,7 @@
 
 use crate::error::Error;
 use crate::telegram::types::{
-    Channel, HistoryParams, MediaDownload, Message, SearchParams, SearchResult,
+    Channel, ChannelIdentity, HistoryParams, MediaDownload, Message, SearchParams, SearchResult,
     TranscriptionOutcome,
 };
 
@@ -53,6 +53,12 @@ pub trait TelegramClientTrait: Send + Sync {
     /// Uses grammers' `get_messages_by_id` under the hood.
     async fn get_message_by_id(&self, channel_ref: &str, message_id: i32)
     -> Result<Message, Error>;
+
+    /// Resolve a channel reference (username or numeric-ID string) to its
+    /// canonical numeric ID and public username, if any (`None` = no public
+    /// username). One peer resolution, no full-info RPC — used by link
+    /// generation so public channels get `t.me/<username>` links.
+    async fn resolve_channel_identity(&self, channel_ref: &str) -> Result<ChannelIdentity, Error>;
 
     /// Download the visual media of a message: the photo itself, or the
     /// server-side thumbnail for video-like media (video, animation, video note).

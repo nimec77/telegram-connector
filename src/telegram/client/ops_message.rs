@@ -2,6 +2,7 @@
 //!
 //! Unit of `client` (LM-2).
 
+use super::guard::require_found;
 use super::*;
 
 impl TelegramClient {
@@ -41,18 +42,13 @@ impl TelegramClient {
         })
         .await?;
 
-        // get_messages_by_id returns Vec<Option<Message>> — extract the single result
-        let grammers_msg = messages.into_iter().next().flatten().ok_or_else(|| {
-            tracing::warn!(
-                channel_ref = %channel_ref,
-                message_id,
-                "Message not found"
-            );
-            Error::InvalidInput(format!(
-                "Message {} not found in channel {}",
-                message_id, channel_ref
-            ))
-        })?;
+        // get_messages_by_id returns Vec<Option<Message>>; deleted ids come
+        // back as a wrapped MessageEmpty, not None (work-order B1).
+        let grammers_msg = require_found(
+            messages.into_iter().next().flatten(),
+            channel_ref,
+            message_id,
+        )?;
 
         // Convert to our domain type
         convert_message(&grammers_msg, &peer).ok_or_else(|| {

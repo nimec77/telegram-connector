@@ -49,7 +49,7 @@ pub struct SearchPublicChannelsRequest {
 /// Request for generate_message_link tool
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct GenerateLinkRequest {
-    #[schemars(description = "Numeric channel ID")]
+    #[schemars(description = "Channel ID or username (e.g. @channelname or 1234567890)")]
     #[serde(deserialize_with = "flexible_string")]
     pub channel_id: String,
 
@@ -65,7 +65,7 @@ pub struct GenerateLinkRequest {
 /// Request for open_message_in_telegram tool
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct OpenMessageRequest {
-    #[schemars(description = "Numeric channel ID")]
+    #[schemars(description = "Channel ID or username (e.g. @channelname or 1234567890)")]
     #[serde(deserialize_with = "flexible_string")]
     pub channel_id: String,
 
