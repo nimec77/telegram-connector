@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `search_messages` and `get_recent_messages` now accept optional `from_date`/`to_date` (RFC 3339 UTC) to filter by a fixed time window instead of a rolling `hours_back` lookback. `from_date`, when set, overrides `hours_back` as the window start and — unlike `hours_back` — is not clamped, so it can reach arbitrarily far into the past. `to_date` excludes messages newer than the given instant.
 - `get_channel_info` now accepts optional `include_full` (default `false`); when `true`, it performs one extra `channels.getFullChannel` RPC to populate `description` and `member_count`, which are otherwise always `null`. Channel-kind peers only (broadcasts and megagroups); other peer kinds (small groups, communities) silently fall back to basic info.
 - New tool `search_public_channels` (tool 12): keyword search over Telegram's public directory (`contacts.search`), returning the same `Channel` shape as `get_subscribed_channels` with `is_subscribed: false`. Closes the "find sources" gap — previously the connector could only work with channels the user already knew about.
+- `tools/list` now carries SEP-2549 cache hints (`ttlMs`/`cacheScope`) per MCP 2026-07-28: a 1-hour `ttlMs` (the tool list is static per build) and `cacheScope: private` (single-user server).
 
 ### Fixed
 - `search_messages`'s `hours_back` parameter description advertised "max: 168"; the actual enforced cap (`SearchParams::MAX_HOURS_BACK`) is 72. The schema now matches the enforced limit.

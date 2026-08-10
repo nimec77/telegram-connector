@@ -19,8 +19,10 @@ use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
-    CallToolResult, ContentBlock, Implementation, InitializeResult, ServerCapabilities,
+    CacheScope, CallToolResult, ContentBlock, Implementation, InitializeResult, ListToolsResult,
+    PaginatedRequestParams, ServerCapabilities,
 };
+use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ServerHandler, ServiceExt, tool, tool_handler, tool_router};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -36,7 +38,6 @@ pub struct McpServer<T: TelegramClientTrait, R: RateLimiterTrait> {
     transcription_cost: u32,
     transcription_default_timeout_secs: u32,
     transcription_max_timeout_secs: u32,
-    #[allow(dead_code)]
     tool_router: ToolRouter<Self>,
 }
 
@@ -100,6 +101,15 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     /// Response ring buffer handle (shared with the transport; used in tests).
     pub fn response_buffer(&self) -> Arc<ResponseBuffer> {
         Arc::clone(&self.response_buffer)
+    }
+
+    /// `tools/list` payload with SEP-2549 cache hints. The tool list is static
+    /// per build, so clients may cache it for an hour; Private scope because
+    /// this is a single-user (per-session-file) server.
+    pub(crate) fn tools_list_result(&self) -> ListToolsResult {
+        ListToolsResult::with_all_items(self.tool_router.list_all())
+            .with_ttl_ms(3_600_000)
+            .with_cache_scope(CacheScope::Private)
     }
 
     pub async fn run_stdio(self) -> anyhow::Result<()> {
@@ -368,8 +378,10 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 }
 
-// Implement ServerHandler trait with tool capabilities
-// The #[tool_handler] macro automatically implements list_tools and call_tool
+// Implement ServerHandler trait with tool capabilities.
+// The #[tool_handler] macro fills in any of call_tool/list_tools/get_tool
+// not already defined below; list_tools is defined manually here to attach
+// SEP-2549 cache hints (ttlMs/cacheScope), so the macro leaves it alone.
 #[tool_handler]
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> ServerHandler
     for McpServer<T, R>
@@ -381,6 +393,18 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> ServerHand
         InitializeResult::new(capabilities)
             .with_server_info(server_info)
             .with_instructions("Telegram MCP Connector - Search Russian Telegram channels")
+    }
+
+    // Defining list_tools here (instead of relying on #[tool_handler]'s default)
+    // lets us attach SEP-2549 cache hints; the macro skips generating a method
+    // that's already present on the impl block, so call_tool/get_tool are
+    // still macro-generated as usual.
+    async fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, rmcp::ErrorData> {
+        Ok(self.tools_list_result())
     }
 }
 

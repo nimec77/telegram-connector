@@ -55,3 +55,30 @@ fn server_handler_provides_server_info() {
             .contains("Telegram MCP Connector")
     );
 }
+
+#[test]
+fn tools_list_carries_cache_hints_and_stable_order() {
+    // Given: Server instance with mocks
+    let mock_client = MockTelegramClientTrait::new();
+    let mock_limiter = MockRateLimiterTrait::new();
+
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    // When: Build the tools/list payload via the pure helper
+    let result = server.tools_list_result();
+
+    // Then: All 12 tools are present, with SEP-2549 cache hints attached
+    assert_eq!(result.tools.len(), 12);
+    assert_eq!(result.ttl_ms, Some(3_600_000));
+    assert!(result.cache_scope.is_some());
+
+    // And: Ordering is deterministic across calls
+    let names: Vec<_> = result.tools.iter().map(|t| t.name.clone()).collect();
+    let again: Vec<_> = server
+        .tools_list_result()
+        .tools
+        .iter()
+        .map(|t| t.name.clone())
+        .collect();
+    assert_eq!(names, again);
+}
