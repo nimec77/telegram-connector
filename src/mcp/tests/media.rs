@@ -11,7 +11,7 @@ use base64::Engine as _;
 use mockall::predicate::eq;
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::{NumberOrString, RawContent};
+use rmcp::model::{ContentBlock, NumberOrString};
 use std::sync::Arc;
 
 fn photo_download(width: u32, height: u32) -> MediaDownload {
@@ -62,7 +62,7 @@ async fn photo_returns_image_and_metadata_blocks() {
     let call_result = result.expect("tool should succeed");
     assert_eq!(call_result.content.len(), 2);
 
-    let RawContent::Image(img) = &call_result.content[0].raw else {
+    let ContentBlock::Image(img) = &call_result.content[0] else {
         panic!("first content block must be an image");
     };
     assert_eq!(img.mime_type, "image/jpeg");
@@ -72,7 +72,7 @@ async fn photo_returns_image_and_metadata_blocks() {
     let decoded = image::load_from_memory(&jpeg).expect("must be a decodable JPEG");
     assert_eq!(decoded.width(), 200); // source smaller than max_dimension: no upscale
 
-    let RawContent::Text(text) = &call_result.content[1].raw else {
+    let ContentBlock::Text(text) = &call_result.content[1] else {
         panic!("second content block must be text");
     };
     let metadata: GetMessageMediaResponse = serde_json::from_str(&text.text).unwrap();
@@ -117,7 +117,7 @@ async fn video_thumbnail_sets_is_thumbnail() {
         .await;
 
     let call_result = result.expect("tool should succeed");
-    let RawContent::Text(text) = &call_result.content[1].raw else {
+    let ContentBlock::Text(text) = &call_result.content[1] else {
         panic!("second content block must be text");
     };
     let metadata: GetMessageMediaResponse = serde_json::from_str(&text.text).unwrap();
@@ -168,7 +168,7 @@ async fn video_metadata_included_in_response() {
         .await;
 
     let call_result = result.expect("tool should succeed");
-    let RawContent::Text(text) = &call_result.content[1].raw else {
+    let ContentBlock::Text(text) = &call_result.content[1] else {
         panic!("second content block must be text");
     };
     let metadata: GetMessageMediaResponse = serde_json::from_str(&text.text).unwrap();

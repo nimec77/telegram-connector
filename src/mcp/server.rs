@@ -17,7 +17,9 @@ use crate::telegram::types::{HistoryParams, SearchParams};
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::{CallToolResult, Content, Implementation, InitializeResult, ServerCapabilities};
+use rmcp::model::{
+    CallToolResult, ContentBlock, Implementation, InitializeResult, ServerCapabilities,
+};
 use rmcp::{ServerHandler, ServiceExt, tool, tool_handler, tool_router};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
