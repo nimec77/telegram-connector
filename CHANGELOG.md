@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-08-10
+
 ### Added
 - `search_messages` and `get_recent_messages` now accept optional `from_date`/`to_date` (RFC 3339 UTC) to filter by a fixed time window instead of a rolling `hours_back` lookback. `from_date`, when set, overrides `hours_back` as the window start and — unlike `hours_back` — is not clamped, so it can reach back beyond the `hours_back` cap; how far is practical depends on channel traffic, since deep windows are paged client-side and may time out on busy channels. `to_date` excludes messages newer than the given instant; set without `from_date` it must fall inside the `hours_back` window, otherwise the window is empty and the call is rejected with a message pointing at `from_date`. Both bounds are inclusive, so `from_date == to_date` is a valid single-instant window; a present-but-blank date is rejected rather than silently ignored.
 - `get_channel_info` now accepts optional `include_full` (default `false`); when `true`, it performs one extra `channels.getFullChannel` RPC to populate `description` and `member_count`, which are otherwise always `null`. Channel-kind peers only (broadcasts and megagroups); other peer kinds (small groups, communities) silently fall back to basic info, as does a channel whose full-info RPC fails. The extra RPC costs one rate-limiter token on top of the basic lookup. `last_message_date` is not populated by either path.
