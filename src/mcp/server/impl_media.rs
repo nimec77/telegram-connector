@@ -62,8 +62,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         let metadata_json = json_response(&metadata)?;
 
         Ok(CallToolResult::success(vec![
-            Content::image(processed.base64_jpeg, "image/jpeg"),
-            Content::text(metadata_json),
+            ContentBlock::image(processed.base64_jpeg, "image/jpeg"),
+            ContentBlock::text(metadata_json),
         ]))
     }
 
