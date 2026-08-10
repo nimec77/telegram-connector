@@ -77,6 +77,7 @@ pub enum AudioKind {
 /// - No OCR, no speech-to-text, no image recognition
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
+#[schemars(inline)]
 pub enum MediaFilter {
     /// Photos only (inputMessagesFilterPhotos)
     Photo,

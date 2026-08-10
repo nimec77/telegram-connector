@@ -17,6 +17,8 @@ mod links;
 mod media;
 #[path = "tests/message_by_link.rs"]
 mod message_by_link;
+#[path = "tests/schema_integrity.rs"]
+mod schema_integrity;
 #[path = "tests/search.rs"]
 mod search;
 #[path = "tests/server_core.rs"]
