@@ -38,11 +38,11 @@ async fn generate_message_link_returns_both_formats() {
     let response: MessageLinkResponse = serde_json::from_str(&result.unwrap()).unwrap();
     assert_eq!(response.channel_id, "123456789");
     assert_eq!(response.message_id, 42);
-    assert_eq!(response.https_link, "https://t.me/c/123456789/42?single");
+    assert_eq!(response.https_link, "https://t.me/c/123456789/42");
     assert!(response.tg_protocol_link.is_some());
     assert_eq!(
         response.tg_protocol_link.unwrap(),
-        "tg://privatepost?channel=123456789&post=42&single"
+        "tg://privatepost?channel=123456789&post=42"
     );
 }
 
@@ -67,7 +67,7 @@ async fn generate_message_link_without_tg_protocol() {
     // Then: Returns only HTTPS link (tg_protocol_link is None)
     assert!(result.is_ok());
     let response: MessageLinkResponse = serde_json::from_str(&result.unwrap()).unwrap();
-    assert_eq!(response.https_link, "https://t.me/c/999/111?single");
+    assert_eq!(response.https_link, "https://t.me/c/999/111");
     assert!(response.tg_protocol_link.is_none());
 }
 

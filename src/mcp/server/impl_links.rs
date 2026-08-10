@@ -15,7 +15,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         let message_id = parse_message_id(request.message_id)?;
 
         // Generate links using existing MessageLink from link.rs
-        let link = MessageLink::new(channel_id, message_id);
+        let link = MessageLink::new(channel_id, message_id, None);
 
         // Build response based on include_tg_protocol flag (defaults to true)
         let include_tg = request.include_tg_protocol.unwrap_or(true);
@@ -43,7 +43,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         let message_id = parse_message_id(request.message_id)?;
 
         // Generate links
-        let link = MessageLink::new(channel_id, message_id);
+        let link = MessageLink::new(channel_id, message_id, None);
 
         // Choose link type (defaults to tg:// protocol)
         let use_tg = request.use_tg_protocol.unwrap_or(true);

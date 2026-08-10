@@ -66,29 +66,53 @@ pub fn parse_telegram_link(link: &str) -> Result<(ChannelRef, MessageId), Error>
     }
 }
 
-/// Generated deep links for a Telegram message
+/// Generated deep links for a Telegram message.
+///
+/// Public channels (with a username) get shareable `t.me/<username>` /
+/// `tg://resolve` forms; private chats fall back to the members-only
+/// `t.me/c/…` / `tg://privatepost` forms. `internal_link` always carries the
+/// members-only https form. Single shared builder for `generate_message_link`
+/// and `open_message_in_telegram` (work-order B2).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MessageLink {
     pub channel_id: ChannelId,
     pub message_id: MessageId,
     pub https_link: String,
     pub tg_protocol_link: String,
+    pub internal_link: String,
+    pub is_public: bool,
 }
 
 impl MessageLink {
-    /// Create links for a specific message in a channel
-    pub fn new(channel_id: ChannelId, message_id: MessageId) -> Self {
-        let https_link = format!("https://t.me/c/{}/{}?single", channel_id, message_id);
-        let tg_protocol_link = format!(
-            "tg://privatepost?channel={}&post={}&single",
-            channel_id, message_id
-        );
+    /// Create links for a specific message in a channel.
+    ///
+    /// `username` is the channel's public username, if any — pass `None` for
+    /// private chats (never pass sentinel strings like `"unknown"`).
+    pub fn new(channel_id: ChannelId, message_id: MessageId, username: Option<&str>) -> Self {
+        let internal_link = format!("https://t.me/c/{}/{}", channel_id, message_id);
+        let (https_link, tg_protocol_link, is_public) = match username {
+            Some(u) => (
+                format!("https://t.me/{}/{}", u, message_id),
+                format!("tg://resolve?domain={}&post={}", u, message_id),
+                true,
+            ),
+            None => (
+                internal_link.clone(),
+                format!(
+                    "tg://privatepost?channel={}&post={}",
+                    channel_id, message_id
+                ),
+                false,
+            ),
+        };
 
         Self {
             channel_id,
             message_id,
             https_link,
             tg_protocol_link,
+            internal_link,
+            is_public,
         }
     }
 }
@@ -102,55 +126,77 @@ mod tests {
     use super::*;
 
     #[test]
-    fn message_link_https_format() {
-        let channel_id = ChannelId::new(123456789).unwrap();
-        let message_id = MessageId::new(42).unwrap();
-        let link = MessageLink::new(channel_id, message_id);
+    fn message_link_public_channel_uses_username_forms() {
+        let link = MessageLink::new(
+            ChannelId::new(1144180066).unwrap(),
+            MessageId::new(610121).unwrap(),
+            Some("swodki"),
+        );
 
-        assert_eq!(link.https_link, "https://t.me/c/123456789/42?single");
+        assert_eq!(link.https_link, "https://t.me/swodki/610121");
+        assert_eq!(
+            link.tg_protocol_link,
+            "tg://resolve?domain=swodki&post=610121"
+        );
+        assert_eq!(link.internal_link, "https://t.me/c/1144180066/610121");
+        assert!(link.is_public);
     }
 
     #[test]
-    fn message_link_tg_protocol_format() {
-        let channel_id = ChannelId::new(123456789).unwrap();
-        let message_id = MessageId::new(42).unwrap();
-        let link = MessageLink::new(channel_id, message_id);
+    fn message_link_private_channel_uses_internal_forms() {
+        let link = MessageLink::new(
+            ChannelId::new(123456789).unwrap(),
+            MessageId::new(42).unwrap(),
+            None,
+        );
 
+        assert_eq!(link.https_link, "https://t.me/c/123456789/42");
         assert_eq!(
             link.tg_protocol_link,
-            "tg://privatepost?channel=123456789&post=42&single"
+            "tg://privatepost?channel=123456789&post=42"
         );
+        assert_eq!(link.internal_link, "https://t.me/c/123456789/42");
+        assert!(!link.is_public);
+    }
+
+    #[test]
+    fn message_link_never_emits_single_suffix() {
+        for username in [Some("swodki"), None] {
+            let link = MessageLink::new(
+                ChannelId::new(9).unwrap(),
+                MessageId::new(1).unwrap(),
+                username,
+            );
+            assert!(!link.https_link.contains("single"));
+            assert!(!link.tg_protocol_link.contains("single"));
+            assert!(!link.internal_link.contains("single"));
+        }
     }
 
     #[test]
     fn message_link_stores_ids() {
-        let channel_id = ChannelId::new(999).unwrap();
-        let message_id = MessageId::new(111).unwrap();
-        let link = MessageLink::new(channel_id, message_id);
+        let link = MessageLink::new(
+            ChannelId::new(111).unwrap(),
+            MessageId::new(222).unwrap(),
+            None,
+        );
 
-        assert_eq!(link.channel_id, channel_id);
-        assert_eq!(link.message_id, message_id);
+        assert_eq!(link.channel_id.get(), 111);
+        assert_eq!(link.message_id.get(), 222);
     }
 
     #[test]
     fn message_link_serialization() {
-        let link = MessageLink::new(ChannelId::new(100).unwrap(), MessageId::new(200).unwrap());
+        let link = MessageLink::new(
+            ChannelId::new(123).unwrap(),
+            MessageId::new(456).unwrap(),
+            Some("testchan"),
+        );
 
-        let json = serde_json::to_string(&link).unwrap();
-        let deserialized: MessageLink = serde_json::from_str(&json).unwrap();
-
-        assert_eq!(deserialized.https_link, link.https_link);
-        assert_eq!(deserialized.tg_protocol_link, link.tg_protocol_link);
-    }
-
-    #[test]
-    fn message_link_different_ids() {
-        let link1 = MessageLink::new(ChannelId::new(100).unwrap(), MessageId::new(1).unwrap());
-        let link2 = MessageLink::new(ChannelId::new(200).unwrap(), MessageId::new(2).unwrap());
-
-        assert_eq!(link1.https_link, "https://t.me/c/100/1?single");
-        assert_eq!(link2.https_link, "https://t.me/c/200/2?single");
-        assert_ne!(link1.https_link, link2.https_link);
+        let json = serde_json::to_string(&link).expect("serializes");
+        assert!(json.contains("\"https_link\":\"https://t.me/testchan/456\""));
+        assert!(json.contains("\"internal_link\":\"https://t.me/c/123/456\""));
+        assert!(json.contains("\"is_public\":true"));
     }
 
     // =========================================================================
