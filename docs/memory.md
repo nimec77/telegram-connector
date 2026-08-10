@@ -3108,7 +3108,7 @@ user-facing gaps found during dogfooding — no way to bound `search_messages`/`
 by an explicit date range, no way to pull full channel metadata (`description`/`member_count`)
 without a second manual lookup, and no discovery path for public channels the user doesn't already
 know about — plus one protocol-hygiene addition and this docs sweep. TDD throughout, gate green
-per task, one commit per task (Task 4 got a second, review-driven commit). Tests 449 → 456 across
+per task, one commit per task (Task 4 got a second, review-driven commit). Tests 443 → 456 across
 the four feature tasks (`+6` T1, `+2` T2, `+3` T3, `+2` T4 across its two commits).
 
 - **Task 1** (`631b8dd`) — optional `from_date`/`to_date` (RFC 3339 UTC) on both
