@@ -54,6 +54,23 @@ pub fn parse_optional_channel_id(id_str: &Option<String>) -> Result<Option<Chann
     }
 }
 
+/// Parse an optional RFC 3339 datetime request field into UTC.
+pub(crate) fn parse_optional_utc(
+    field: &str,
+    value: &Option<String>,
+) -> Result<Option<chrono::DateTime<chrono::Utc>>, String> {
+    value
+        .as_deref()
+        .map(|s| {
+            chrono::DateTime::parse_from_rfc3339(s)
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+                .map_err(|e| {
+                    format!("Invalid {field}: {e} (expected RFC 3339, e.g. 2026-08-01T00:00:00Z)")
+                })
+        })
+        .transpose()
+}
+
 /// Serialize a value to a JSON string for an MCP tool response.
 ///
 /// Centralizes the `serde_json::to_string(..).map_err(|e| e.to_string())` tail

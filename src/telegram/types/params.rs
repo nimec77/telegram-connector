@@ -3,6 +3,7 @@
 use super::entities::Message;
 use super::ids::ChannelId;
 use super::media::MediaFilter;
+use chrono::{DateTime, Duration, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -17,6 +18,11 @@ pub struct SearchParams {
     /// When set, only messages with the specified media type are returned.
     /// The text query still applies to message text/caption.
     pub media_filter: Option<MediaFilter>,
+    /// Inclusive lower bound. When set, overrides `hours_back` as the window
+    /// start (and is deliberately NOT clamped by `MAX_HOURS_BACK`).
+    pub from_date: Option<DateTime<Utc>>,
+    /// Inclusive upper bound. Messages newer than this are skipped.
+    pub to_date: Option<DateTime<Utc>>,
 }
 
 impl SearchParams {
@@ -32,7 +38,15 @@ impl SearchParams {
             hours_back: Self::DEFAULT_HOURS_BACK,
             limit: Self::DEFAULT_LIMIT,
             media_filter: None,
+            from_date: None,
+            to_date: None,
         }
+    }
+
+    /// Effective window start: `from_date` if set, else `now - hours_back`.
+    pub fn window_start(&self) -> DateTime<Utc> {
+        self.from_date
+            .unwrap_or_else(|| Utc::now() - Duration::hours(self.hours_back as i64))
     }
 }
 
@@ -62,6 +76,11 @@ pub struct HistoryParams {
     pub limit: u32,
     /// Optional media filter (applied client-side since iter_messages doesn't support server-side filtering)
     pub media_filter: Option<MediaFilter>,
+    /// Inclusive lower bound. When set, overrides `hours_back` as the window
+    /// start (and is deliberately NOT clamped by `MAX_HOURS_BACK`).
+    pub from_date: Option<DateTime<Utc>>,
+    /// Inclusive upper bound. Messages newer than this are skipped.
+    pub to_date: Option<DateTime<Utc>>,
 }
 
 impl HistoryParams {
@@ -77,7 +96,15 @@ impl HistoryParams {
             hours_back: Self::DEFAULT_HOURS_BACK,
             limit: Self::DEFAULT_LIMIT,
             media_filter: None,
+            from_date: None,
+            to_date: None,
         }
+    }
+
+    /// Effective window start: `from_date` if set, else `now - hours_back`.
+    pub fn window_start(&self) -> DateTime<Utc> {
+        self.from_date
+            .unwrap_or_else(|| Utc::now() - Duration::hours(self.hours_back as i64))
     }
 
     /// Builder method to set hours_back
@@ -165,6 +192,8 @@ mod tests {
             hours_back: 48,
             limit: 20,
             media_filter: Some(MediaFilter::Photo),
+            from_date: None,
+            to_date: None,
         };
         assert_eq!(params.media_filter, Some(MediaFilter::Photo));
     }
@@ -224,6 +253,22 @@ mod tests {
     // =========================================================================
     // SearchResult Tests
     // =========================================================================
+
+    #[test]
+    fn window_start_defaults_to_hours_back() {
+        let params = SearchParams::new("q"); // hours_back = 48 default
+        let expected = Utc::now() - Duration::hours(48);
+        let diff = (params.window_start() - expected).num_seconds().abs();
+        assert!(diff <= 1, "window_start should be ~now - hours_back");
+    }
+
+    #[test]
+    fn window_start_prefers_from_date() {
+        let mut params = SearchParams::new("q");
+        let from = Utc::now() - Duration::days(30);
+        params.from_date = Some(from);
+        assert_eq!(params.window_start(), from);
+    }
 
     #[test]
     fn search_result_serialization() {

@@ -9,7 +9,7 @@ use crate::mcp::tools::{
     GetMessageMediaResponse, GetRecentMessagesRequest, LastResponsesResponse, MessageLinkResponse,
     MessageResponse, OpenMessageRequest, OpenMessageResponse, SearchRequest, SearchResponse,
     StatusResponse, TranscribeVoiceMessageRequest, TranscribeVoiceMessageResponse, json_response,
-    parse_channel_id, parse_message_id, parse_optional_channel_id,
+    parse_channel_id, parse_message_id, parse_optional_channel_id, parse_optional_utc,
 };
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;

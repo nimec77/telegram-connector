@@ -8,6 +8,7 @@ use crate::telegram::types::{
     ChannelId, ChannelName, MediaFilter, MediaType, Message, MessageId, QueryMetadata,
     SearchResult, Username,
 };
+use crate::test_helpers::create_test_search_result;
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::NumberOrString;
@@ -69,6 +70,8 @@ async fn get_recent_messages_returns_results() {
         hours_back: None,
         limit: None,
         media_filter: None,
+        from_date: None,
+        to_date: None,
     };
 
     let result = server
@@ -94,6 +97,8 @@ async fn get_recent_messages_empty_channel_id_fails() {
         hours_back: None,
         limit: None,
         media_filter: None,
+        from_date: None,
+        to_date: None,
     };
 
     // When: Get recent messages
@@ -139,6 +144,8 @@ async fn get_recent_messages_with_media_filter() {
         hours_back: Some(24),
         limit: None,
         media_filter: Some(MediaFilter::Photo),
+        from_date: None,
+        to_date: None,
     };
 
     let result = server
@@ -187,6 +194,8 @@ async fn get_recent_messages_applies_limits() {
         hours_back: Some(72),
         limit: Some(3),
         media_filter: None,
+        from_date: None,
+        to_date: None,
     };
 
     let result = server
@@ -238,6 +247,8 @@ async fn get_recent_messages_with_username_passes_identifier_without_pre_resolvi
         hours_back: None,
         limit: None,
         media_filter: None,
+        from_date: None,
+        to_date: None,
     };
 
     let result = server
@@ -268,6 +279,8 @@ async fn get_recent_messages_rate_limited() {
         hours_back: None,
         limit: None,
         media_filter: None,
+        from_date: None,
+        to_date: None,
     };
 
     // When: Get recent messages when rate limited
@@ -279,4 +292,40 @@ async fn get_recent_messages_rate_limited() {
     assert!(result.is_err());
     let error = result.err().unwrap();
     assert!(error.contains("rate limit"));
+}
+
+#[tokio::test]
+async fn get_recent_messages_passes_date_range_to_client() {
+    // Given: Mock client that verifies from_date/to_date are parsed and passed through
+    let mut mock_client = MockTelegramClientTrait::new();
+
+    mock_client
+        .expect_get_recent_messages()
+        .withf(|p| {
+            p.from_date == Some("2026-08-01T00:00:00Z".parse().unwrap())
+                && p.to_date == Some("2026-08-05T00:00:00Z".parse().unwrap())
+        })
+        .returning(move |_| Ok(create_test_search_result(vec![], "", 1)));
+
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
+
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    // When: Get recent messages with an explicit date range
+    let request = GetRecentMessagesRequest {
+        channel_id: "123".to_string(),
+        hours_back: None,
+        limit: None,
+        media_filter: None,
+        from_date: Some("2026-08-01T00:00:00Z".to_string()),
+        to_date: Some("2026-08-05T00:00:00Z".to_string()),
+    };
+
+    let result = server
+        .get_recent_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
+
+    // Then: Success, and the client received the parsed date range
+    assert!(result.is_ok());
 }

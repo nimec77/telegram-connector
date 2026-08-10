@@ -8,6 +8,7 @@ use crate::telegram::types::{
     ChannelId, ChannelName, MediaFilter, MediaType, Message, MessageId, QueryMetadata,
     SearchResult, Username,
 };
+use crate::test_helpers::create_test_search_result;
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::NumberOrString;
@@ -63,6 +64,8 @@ async fn search_messages_returns_results() {
         hours_back: None,
         limit: None,
         media_filter: None,
+        from_date: None,
+        to_date: None,
     };
 
     let result = server
@@ -90,6 +93,8 @@ async fn search_messages_empty_query_fails() {
         hours_back: None,
         limit: None,
         media_filter: None, // no filter either = error
+        from_date: None,
+        to_date: None,
     };
 
     // When: Search messages
@@ -126,6 +131,8 @@ async fn search_messages_rate_limited() {
         hours_back: None,
         limit: None,
         media_filter: None,
+        from_date: None,
+        to_date: None,
     };
 
     // When: Search messages
@@ -177,6 +184,8 @@ async fn search_messages_with_channel_filter() {
         hours_back: Some(24),
         limit: Some(50),
         media_filter: None,
+        from_date: None,
+        to_date: None,
     };
 
     let result = server
@@ -224,6 +233,8 @@ async fn search_messages_applies_limits() {
         hours_back: Some(1000), // exceeds MAX_HOURS_BACK (72)
         limit: Some(500),       // exceeds MAX_LIMIT (100)
         media_filter: None,
+        from_date: None,
+        to_date: None,
     };
 
     let result = server
@@ -284,6 +295,8 @@ async fn search_allows_empty_query_with_media_filter() {
         hours_back: None,
         limit: None,
         media_filter: Some(MediaFilter::Document), // filter by documents
+        from_date: None,
+        to_date: None,
     };
 
     let result = server
@@ -332,6 +345,8 @@ async fn search_passes_media_filter_to_params() {
         hours_back: None,
         limit: None,
         media_filter: Some(MediaFilter::Photo),
+        from_date: None,
+        to_date: None,
     };
 
     let result = server
@@ -403,6 +418,8 @@ async fn search_messages_serializes_enrichment_fields() {
         hours_back: None,
         limit: None,
         media_filter: None,
+        from_date: None,
+        to_date: None,
     };
 
     let result = server
@@ -420,4 +437,99 @@ async fn search_messages_serializes_enrichment_fields() {
     assert_eq!(msg["link_preview"]["url"], "https://example.com");
     // Plain-message backward compat: sender_id still present as null.
     assert!(msg["sender_id"].is_null());
+}
+
+#[tokio::test]
+async fn search_passes_date_range_to_client() {
+    // Given: Mock client that verifies from_date/to_date are parsed and passed through
+    let mut mock_client = MockTelegramClientTrait::new();
+
+    mock_client
+        .expect_search_messages()
+        .withf(|p| {
+            p.from_date == Some("2026-08-01T00:00:00Z".parse().unwrap())
+                && p.to_date == Some("2026-08-05T00:00:00Z".parse().unwrap())
+        })
+        .returning(move |_| Ok(create_test_search_result(vec![], "q", 0)));
+
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
+
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    // When: Search with an explicit date range
+    let request = SearchRequest {
+        query: "q".to_string(),
+        channel_id: None,
+        hours_back: None,
+        limit: None,
+        media_filter: None,
+        from_date: Some("2026-08-01T00:00:00Z".to_string()),
+        to_date: Some("2026-08-05T00:00:00Z".to_string()),
+    };
+
+    let result = server
+        .search_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
+
+    // Then: Success, and the client received the parsed date range
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn search_rejects_invalid_from_date() {
+    // Given: Server (no client call is expected - parsing fails before dispatch)
+    let mock_client = MockTelegramClientTrait::new();
+    let mock_limiter = MockRateLimiterTrait::new();
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = SearchRequest {
+        query: "q".to_string(),
+        channel_id: None,
+        hours_back: None,
+        limit: None,
+        media_filter: None,
+        from_date: Some("not-a-date".to_string()),
+        to_date: None,
+    };
+
+    // When: Search with a malformed from_date
+    let result = server
+        .search_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
+
+    // Then: Returns a parse error
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("Invalid from_date"));
+}
+
+#[tokio::test]
+async fn search_rejects_inverted_range() {
+    // Given: Server (no client call is expected - validation fails before dispatch)
+    let mock_client = MockTelegramClientTrait::new();
+    let mock_limiter = MockRateLimiterTrait::new();
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = SearchRequest {
+        query: "q".to_string(),
+        channel_id: None,
+        hours_back: None,
+        limit: None,
+        media_filter: None,
+        from_date: Some("2026-08-05T00:00:00Z".to_string()),
+        to_date: Some("2026-08-01T00:00:00Z".to_string()),
+    };
+
+    // When: Search with from_date after to_date
+    let result = server
+        .search_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
+
+    // Then: Returns an inverted-range error
+    assert!(result.is_err());
+    assert!(
+        result
+            .unwrap_err()
+            .contains("from_date must be earlier than to_date")
+    );
 }

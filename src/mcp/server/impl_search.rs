@@ -37,6 +37,15 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             return Err("Search limit must be greater than 0".to_string());
         }
 
+        // Parse and validate the optional date range
+        let from_date = parse_optional_utc("from_date", &request.from_date)?;
+        let to_date = parse_optional_utc("to_date", &request.to_date)?;
+        if let (Some(f), Some(t)) = (from_date, to_date)
+            && f >= t
+        {
+            return Err("from_date must be earlier than to_date".to_string());
+        }
+
         // Acquire rate limiter tokens (1 token per search)
         self.rate_limiter
             .acquire(1)
@@ -50,6 +59,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             hours_back,
             limit,
             media_filter: request.media_filter,
+            from_date,
+            to_date,
         };
 
         // Execute search
@@ -117,6 +128,15 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             return Err("Limit must be greater than 0".to_string());
         }
 
+        // Parse and validate the optional date range
+        let from_date = parse_optional_utc("from_date", &request.from_date)?;
+        let to_date = parse_optional_utc("to_date", &request.to_date)?;
+        if let (Some(f), Some(t)) = (from_date, to_date)
+            && f >= t
+        {
+            return Err("from_date must be earlier than to_date".to_string());
+        }
+
         // Acquire rate limiter tokens (1 token per request)
         self.rate_limiter
             .acquire(1)
@@ -130,6 +150,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             hours_back,
             limit,
             media_filter: request.media_filter,
+            from_date,
+            to_date,
         };
 
         // Execute history retrieval

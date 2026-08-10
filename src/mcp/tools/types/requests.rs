@@ -73,7 +73,7 @@ pub struct SearchRequest {
     #[serde(default, deserialize_with = "flexible_opt_string")]
     pub channel_id: Option<String>,
 
-    #[schemars(description = "How many hours back to search (default: 48, max: 168)")]
+    #[schemars(description = "How many hours back to search (default: 48, max: 72)")]
     #[serde(default, deserialize_with = "flexible_opt_u32")]
     pub hours_back: Option<u32>,
 
@@ -86,6 +86,18 @@ pub struct SearchRequest {
     )]
     #[serde(default, deserialize_with = "deserialize_optional_media_filter")]
     pub media_filter: Option<MediaFilter>,
+
+    #[schemars(
+        description = "Optional: inclusive start of the time window as RFC 3339 UTC, e.g. \"2026-08-01T00:00:00Z\". Overrides hours_back and may reach arbitrarily far back."
+    )]
+    #[serde(default, deserialize_with = "flexible_opt_string")]
+    pub from_date: Option<String>,
+
+    #[schemars(
+        description = "Optional: inclusive end of the time window as RFC 3339 UTC. Messages newer than this are excluded."
+    )]
+    #[serde(default, deserialize_with = "flexible_opt_string")]
+    pub to_date: Option<String>,
 }
 
 /// Request for get_recent_messages tool
@@ -108,6 +120,18 @@ pub struct GetRecentMessagesRequest {
     )]
     #[serde(default, deserialize_with = "deserialize_optional_media_filter")]
     pub media_filter: Option<MediaFilter>,
+
+    #[schemars(
+        description = "Optional: inclusive start of the time window as RFC 3339 UTC, e.g. \"2026-08-01T00:00:00Z\". Overrides hours_back and may reach arbitrarily far back."
+    )]
+    #[serde(default, deserialize_with = "flexible_opt_string")]
+    pub from_date: Option<String>,
+
+    #[schemars(
+        description = "Optional: inclusive end of the time window as RFC 3339 UTC. Messages newer than this are excluded."
+    )]
+    #[serde(default, deserialize_with = "flexible_opt_string")]
+    pub to_date: Option<String>,
 }
 
 /// Request for get_message_by_link tool

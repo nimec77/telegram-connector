@@ -24,7 +24,7 @@ impl TelegramClient {
         }
 
         let start_time = Instant::now();
-        let cutoff_time = Utc::now() - Duration::hours(params.hours_back as i64);
+        let cutoff_time = params.window_start();
 
         // If channel_id is specified, search only that channel
         let (mut messages, channels_searched) = if let Some(channel_id) = &params.channel_id {
@@ -60,6 +60,11 @@ impl TelegramClient {
                                 .await
                                 .map_err(|e| Error::TelegramApi(format!("Search failed: {}", e)))?
                             {
+                                if let Some(to) = params.to_date
+                                    && message_timestamp(&msg).is_some_and(|t| t > to)
+                                {
+                                    continue; // newer than the requested window; keep iterating toward it
+                                }
                                 if message_timestamp(&msg).is_none_or(|t| t < cutoff_time) {
                                     break; // reverse chronological order
                                 }
@@ -92,6 +97,11 @@ impl TelegramClient {
                     .await
                     .map_err(|e| Error::TelegramApi(format!("Search failed: {}", e)))?
                 {
+                    if let Some(to) = params.to_date
+                        && message_timestamp(&msg).is_some_and(|t| t > to)
+                    {
+                        continue; // newer than the requested window; keep iterating toward it
+                    }
                     if message_timestamp(&msg).is_none_or(|t| t < cutoff_time) {
                         continue; // Skip old messages but keep searching
                     }

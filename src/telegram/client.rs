@@ -18,7 +18,6 @@ use crate::telegram::types::{
     HistoryParams, MediaDownload, MediaType, QueryMetadata, SearchParams, SearchResult,
     TranscriptionOutcome, TranscriptionState,
 };
-use chrono::{Duration, Utc};
 use grammers_client::Client;
 use grammers_client::media::Media;
 use grammers_client::tl;

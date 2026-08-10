@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `search_messages` and `get_recent_messages` now accept optional `from_date`/`to_date` (RFC 3339 UTC) to filter by a fixed time window instead of a rolling `hours_back` lookback. `from_date`, when set, overrides `hours_back` as the window start and — unlike `hours_back` — is not clamped, so it can reach arbitrarily far into the past. `to_date` excludes messages newer than the given instant.
+
+### Fixed
+- `search_messages`'s `hours_back` parameter description advertised "max: 168"; the actual enforced cap (`SearchParams::MAX_HOURS_BACK`) is 72. The schema now matches the enforced limit.
+
 ## [0.12.0] - 2026-08-10
 
 ### Changed

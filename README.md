@@ -399,6 +399,8 @@ Search for messages across channels with optional media type filtering.
 | `hours_back` | integer | No | 48 | How many hours back to search (max: 72) |
 | `limit` | integer | No | 20 | Maximum results to return (max: 100) |
 | `media_filter` | string | No | - | Filter by media type (see below) |
+| `from_date` | string | No | - | Inclusive start of the time window as RFC 3339 UTC (e.g. `2026-08-01T00:00:00Z`). Overrides `hours_back` and may reach arbitrarily far back |
+| `to_date` | string | No | - | Inclusive end of the time window as RFC 3339 UTC. Messages newer than this are excluded |
 
 **Media Filter Options:**
 | Value | Description |
@@ -506,6 +508,12 @@ omitted when the message has no video/audio media.
 | `""` (empty) | `document` | All documents (no text filtering) |
 | `""` (empty) | (none) | ❌ Error (too broad) |
 
+**Date-range example:** search a fixed window instead of a rolling `hours_back` lookback,
+reaching arbitrarily far into the past:
+```json
+{"query": "AI news", "from_date": "2026-07-01T00:00:00Z", "to_date": "2026-07-31T23:59:59Z"}
+```
+
 **Usage:** Search for specific topics across your subscribed channels, optionally filtering by media type.
 
 ---
@@ -521,6 +529,8 @@ Get recent messages from a channel by time window, without requiring a search qu
 | `hours_back` | integer | No | 48 | Hours of history to retrieve (max: 168) |
 | `limit` | integer | No | 20 | Maximum messages to return (max: 100) |
 | `media_filter` | string | No | - | Filter by media type (same options as `search_messages`) |
+| `from_date` | string | No | - | Inclusive start of the time window as RFC 3339 UTC (e.g. `2026-08-01T00:00:00Z`). Overrides `hours_back` and may reach arbitrarily far back |
+| `to_date` | string | No | - | Inclusive end of the time window as RFC 3339 UTC. Messages newer than this are excluded |
 
 **Key Difference from `search_messages`:**
 
@@ -557,6 +567,11 @@ Get recent messages from a channel by time window, without requiring a search qu
     "channels_searched": 1
   }
 }
+```
+
+**Date-range example:** fetch a fixed window instead of a rolling `hours_back` lookback:
+```json
+{"channel_id": "durov", "from_date": "2026-07-01T00:00:00Z", "to_date": "2026-07-31T23:59:59Z"}
 ```
 
 **Usage:** Get all recent activity from a channel without needing a search query. Ideal for monitoring or catching up on channel content.
