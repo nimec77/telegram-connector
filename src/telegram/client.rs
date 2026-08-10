@@ -83,6 +83,13 @@ impl TelegramClientTrait for TelegramClient {
         self.get_channel_info_impl(identifier).await
     }
 
+    async fn get_full_channel_info(
+        &self,
+        identifier: &str,
+    ) -> Result<crate::telegram::Channel, Error> {
+        self.get_full_channel_info_impl(identifier).await
+    }
+
     async fn get_subscribed_channels(
         &self,
         limit: u32,

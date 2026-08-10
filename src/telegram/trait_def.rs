@@ -24,6 +24,12 @@ pub trait TelegramClientTrait: Send + Sync {
     /// Get information about a specific channel by username or ID
     async fn get_channel_info(&self, identifier: &str) -> Result<Channel, Error>;
 
+    /// Like [`Self::get_channel_info`], but additionally fetches
+    /// `channels.GetFullChannel` to fill `description` and `member_count`.
+    /// Falls back to basic info for non-channel peers (small groups,
+    /// communities), whose full-info RPC differs.
+    async fn get_full_channel_info(&self, identifier: &str) -> Result<Channel, Error>;
+
     /// Get list of subscribed channels with pagination
     async fn get_subscribed_channels(&self, limit: u32, offset: u32)
     -> Result<Vec<Channel>, Error>;

@@ -26,6 +26,12 @@ pub struct GetChannelInfoRequest {
     #[schemars(description = "Channel username (@channel) or numeric ID")]
     #[serde(deserialize_with = "flexible_string")]
     pub channel_identifier: String,
+
+    #[schemars(
+        description = "Optional: fetch full channel info (description, member_count) with one extra Telegram RPC. Default false."
+    )]
+    #[serde(default, deserialize_with = "flexible_opt_bool")]
+    pub include_full: Option<bool>,
 }
 
 /// Request for generate_message_link tool

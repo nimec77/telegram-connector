@@ -66,4 +66,39 @@ impl TelegramClient {
             Error::InvalidInput("Not a channel or group".to_string())
         })
     }
+
+    pub(super) async fn get_full_channel_info_impl(
+        &self,
+        identifier: &str,
+    ) -> Result<crate::telegram::Channel, Error> {
+        let peer = self.resolve_peer(identifier).await?;
+        let mut channel = convert_peer_to_channel(&peer)
+            .ok_or_else(|| Error::InvalidInput("Not a channel or group".to_string()))?;
+
+        // channels.GetFullChannel only exists for channel-kind peers
+        // (broadcasts + megagroups). Others keep basic info.
+        if matches!(peer, grammers_client::peer::Peer::Channel(_)) {
+            let peer_ref = peer_to_ref(&peer).await?;
+            let request = tl::functions::channels::GetFullChannel {
+                channel: (&peer_ref).into(),
+            };
+            let full = with_timeout("get_full_channel", self.timeouts.resolve_secs, async {
+                self.client
+                    .invoke(&request)
+                    .await
+                    .map_err(|e| Error::TelegramApi(format!("GetFullChannel failed: {e}")))
+            })
+            .await?;
+
+            let tl::enums::messages::ChatFull::Full(chat_full) = full;
+            if let tl::enums::ChatFull::ChannelFull(cf) = chat_full.full_chat {
+                if !cf.about.is_empty() {
+                    channel.description = Some(cf.about);
+                }
+                channel.member_count = cf.participants_count.and_then(|c| u64::try_from(c).ok());
+            }
+        }
+
+        Ok(channel)
+    }
 }

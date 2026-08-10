@@ -303,11 +303,12 @@ List all Telegram channels you're subscribed to.
 Get detailed information about a specific channel.
 
 **Parameters:**
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| `channel_identifier` | string | Yes | Channel username (e.g., `technews`) or numeric ID |
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `channel_identifier` | string | Yes | — | Channel username (e.g., `technews`) or numeric ID |
+| `include_full` | boolean | No | `false` | Fetch full channel info (`description`, `member_count`) with one extra Telegram RPC (`channels.getFullChannel`). Channel-kind peers only (broadcasts and megagroups); other peer kinds (small groups, communities) silently fall back to basic info. |
 
-**Response:**
+**Response (default, `include_full: false`):**
 ```json
 {
   "id": 1234567890,
@@ -322,12 +323,27 @@ Get detailed information about a specific channel.
 }
 ```
 
-> **Note:** `description` and `member_count` are currently `null` —
+> **Note:** `description` and `member_count` are `null` by default —
 > `get_channel_info` resolves the channel from basic peer info and does not perform
 > a full-channel fetch, so it reports `null` ("not fetched") rather than a
-> misleading `0` / empty description.
+> misleading `0` / empty description. Pass `include_full: true` (below) to fetch them.
 
-**Usage:** Verify channel details or get the numeric ID for other operations.
+**Response (`include_full: true`):**
+```json
+{
+  "id": 1234567890,
+  "name": "Tech News",
+  "username": "technews",
+  "description": "Daily technology news and analysis.",
+  "member_count": 48213,
+  "is_verified": true,
+  "is_public": true,
+  "is_subscribed": true,
+  "last_message_date": "2025-12-28T10:30:00Z"
+}
+```
+
+**Usage:** Verify channel details or get the numeric ID for other operations. Use `include_full: true` when you specifically need the description or member count — it costs one extra Telegram RPC round-trip.
 
 ---
 

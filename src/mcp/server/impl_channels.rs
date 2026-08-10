@@ -40,11 +40,16 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         request: GetChannelInfoRequest,
     ) -> Result<String, String> {
-        let channel = self
-            .telegram_client
-            .get_channel_info(&request.channel_identifier)
-            .await
-            .map_err(|e| e.to_string())?;
+        let channel = if request.include_full.unwrap_or(false) {
+            self.telegram_client
+                .get_full_channel_info(&request.channel_identifier)
+                .await
+        } else {
+            self.telegram_client
+                .get_channel_info(&request.channel_identifier)
+                .await
+        }
+        .map_err(|e| e.to_string())?;
 
         json_response(&channel)
     }
