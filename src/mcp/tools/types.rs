@@ -13,7 +13,7 @@ pub mod serde_helpers;
 pub use requests::{
     GenerateLinkRequest, GetChannelInfoRequest, GetChannelsRequest, GetLastResponsesRequest,
     GetMessageByLinkRequest, GetMessageMediaRequest, GetRecentMessagesRequest, OpenMessageRequest,
-    SearchRequest, TranscribeVoiceMessageRequest,
+    SearchPublicChannelsRequest, SearchRequest, TranscribeVoiceMessageRequest,
 };
 pub use responses::{
     BufferedResponseEntry, ChannelsResponse, GetMessageMediaResponse, LastResponsesResponse,

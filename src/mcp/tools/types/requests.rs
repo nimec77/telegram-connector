@@ -26,6 +26,24 @@ pub struct GetChannelInfoRequest {
     #[schemars(description = "Channel username (@channel) or numeric ID")]
     #[serde(deserialize_with = "flexible_string")]
     pub channel_identifier: String,
+
+    #[schemars(
+        description = "Optional: fetch full channel info (description, member_count) with one extra Telegram RPC. Default false."
+    )]
+    #[serde(default, deserialize_with = "flexible_opt_bool")]
+    pub include_full: Option<bool>,
+}
+
+/// Request for search_public_channels tool
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct SearchPublicChannelsRequest {
+    #[schemars(description = "Keyword or name to search Telegram's public directory for")]
+    #[serde(deserialize_with = "flexible_string")]
+    pub query: String,
+
+    #[schemars(description = "Maximum results to return (default: 10, max: 50)")]
+    #[serde(default, deserialize_with = "flexible_opt_u32")]
+    pub limit: Option<u32>,
 }
 
 /// Request for generate_message_link tool
@@ -73,7 +91,7 @@ pub struct SearchRequest {
     #[serde(default, deserialize_with = "flexible_opt_string")]
     pub channel_id: Option<String>,
 
-    #[schemars(description = "How many hours back to search (default: 48, max: 168)")]
+    #[schemars(description = "How many hours back to search (default: 48, max: 72)")]
     #[serde(default, deserialize_with = "flexible_opt_u32")]
     pub hours_back: Option<u32>,
 
@@ -86,6 +104,22 @@ pub struct SearchRequest {
     )]
     #[serde(default, deserialize_with = "deserialize_optional_media_filter")]
     pub media_filter: Option<MediaFilter>,
+
+    #[schemars(
+        description = "Optional: inclusive start of the time window as RFC 3339 UTC, e.g. \"2026-08-01T00:00:00Z\". Overrides hours_back. Reaching far back works best on low-traffic channels; on active channels prefer a narrower recent window, since deep windows are paged client-side and may time out."
+    )]
+    // Deliberately NOT `flexible_opt_string`: that helper folds a blank string to
+    // `None`, which would silently drop the caller's window instead of reporting a
+    // bad date. Cross-type number coercion was never advertised for dates.
+    #[serde(default)]
+    pub from_date: Option<String>,
+
+    #[schemars(
+        description = "Optional: inclusive end of the time window as RFC 3339 UTC. Messages newer than this are excluded. When set without from_date it must fall inside the hours_back window."
+    )]
+    // Blank-preserving for the same reason as `from_date` above.
+    #[serde(default)]
+    pub to_date: Option<String>,
 }
 
 /// Request for get_recent_messages tool
@@ -108,6 +142,22 @@ pub struct GetRecentMessagesRequest {
     )]
     #[serde(default, deserialize_with = "deserialize_optional_media_filter")]
     pub media_filter: Option<MediaFilter>,
+
+    #[schemars(
+        description = "Optional: inclusive start of the time window as RFC 3339 UTC, e.g. \"2026-08-01T00:00:00Z\". Overrides hours_back. Reaching far back works best on low-traffic channels; on active channels prefer a narrower recent window, since deep windows are paged client-side and may time out."
+    )]
+    // Deliberately NOT `flexible_opt_string`: that helper folds a blank string to
+    // `None`, which would silently drop the caller's window instead of reporting a
+    // bad date. Cross-type number coercion was never advertised for dates.
+    #[serde(default)]
+    pub from_date: Option<String>,
+
+    #[schemars(
+        description = "Optional: inclusive end of the time window as RFC 3339 UTC. Messages newer than this are excluded. When set without from_date it must fall inside the hours_back window."
+    )]
+    // Blank-preserving for the same reason as `from_date` above.
+    #[serde(default)]
+    pub to_date: Option<String>,
 }
 
 /// Request for get_message_by_link tool

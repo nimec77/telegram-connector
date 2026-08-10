@@ -59,8 +59,24 @@ pub(crate) fn peer_identity(
     Some(triple)
 }
 
-/// Convert grammers Peer to our Channel type
+/// Convert grammers Peer to our Channel type (dialog-list path: subscribed).
 pub fn convert_peer_to_channel(peer: &grammers_client::peer::Peer) -> Option<Channel> {
+    convert_peer_with_subscription(peer, true)
+}
+
+/// Same conversion for peers found via public search (`contacts.Search`) — the
+/// caller isn't necessarily subscribed to these, so `is_subscribed` is false.
+pub fn convert_discovered_peer(peer: &grammers_client::peer::Peer) -> Option<Channel> {
+    convert_peer_with_subscription(peer, false)
+}
+
+/// Shared conversion body for [`convert_peer_to_channel`] and
+/// [`convert_discovered_peer`] — the two entry points differ only in whether
+/// the resulting `Channel` is marked as subscribed.
+fn convert_peer_with_subscription(
+    peer: &grammers_client::peer::Peer,
+    is_subscribed: bool,
+) -> Option<Channel> {
     use grammers_client::peer::Peer;
 
     // Channels, groups, and communities convert; a User peer is not a channel.
@@ -91,7 +107,7 @@ pub fn convert_peer_to_channel(peer: &grammers_client::peer::Peer) -> Option<Cha
         member_count: None, // Not fetched from basic chat info; None ≠ a real zero (CQ-4)
         is_verified,
         is_public,
-        is_subscribed: true, // We're iterating our dialogs, so we're subscribed
+        is_subscribed,
         last_message_date: None,
     })
 }
@@ -156,5 +172,20 @@ mod tests {
         assert!(!channel.is_public);
         assert!(!channel.is_verified);
         assert!(channel.is_subscribed);
+    }
+
+    #[test]
+    fn discovered_peer_is_not_subscribed() {
+        let peer = community_peer(555, "Discovered");
+
+        let channel = convert_discovered_peer(&peer).expect("must convert");
+        assert!(!channel.is_subscribed);
+
+        // and the existing path still reports subscribed:
+        assert!(
+            convert_peer_to_channel(&peer)
+                .expect("must convert")
+                .is_subscribed
+        );
     }
 }

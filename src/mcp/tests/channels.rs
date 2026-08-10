@@ -136,6 +136,7 @@ async fn get_channel_info_returns_channel_details() {
     // When: Call get_channel_info
     let request = GetChannelInfoRequest {
         channel_identifier: "testchannel".to_string(),
+        include_full: None,
     };
 
     let result = server
@@ -168,6 +169,7 @@ async fn get_channel_info_handles_error() {
     // When: Call get_channel_info with nonexistent channel
     let request = GetChannelInfoRequest {
         channel_identifier: "nonexistent".to_string(),
+        include_full: None,
     };
 
     let result = server
@@ -208,6 +210,7 @@ async fn get_channel_info_unfetched_member_count_serializes_as_null() {
 
     let request = GetChannelInfoRequest {
         channel_identifier: "unfetched".to_string(),
+        include_full: None,
     };
 
     let result = server
@@ -221,6 +224,66 @@ async fn get_channel_info_unfetched_member_count_serializes_as_null() {
         "unfetched member_count must cross the MCP boundary as null, got {}",
         json["member_count"]
     );
+}
+
+#[tokio::test]
+async fn include_full_routes_to_full_channel_info() {
+    // include_full: true must route to get_full_channel_info (the extra RPC),
+    // not the basic get_channel_info path.
+    let mut mock_client = MockTelegramClientTrait::new();
+    mock_client
+        .expect_get_full_channel_info()
+        .with(mockall::predicate::eq("@news"))
+        .return_once(|_| {
+            let mut channel = create_test_channel(42, "News Channel");
+            channel.description = Some("full description".to_string());
+            channel.member_count = Some(12345);
+            Ok(channel)
+        });
+
+    // The full path meters its extra RPC.
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = GetChannelInfoRequest {
+        channel_identifier: "@news".to_string(),
+        include_full: Some(true),
+    };
+
+    let result = server
+        .get_channel_info(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await
+        .expect("tool call should succeed");
+
+    let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert_eq!(json["description"], "full description");
+    assert_eq!(json["member_count"], 12345);
+}
+
+#[tokio::test]
+async fn include_full_absent_keeps_basic_path() {
+    // include_full: None must keep using the cheap basic-info path
+    // (get_channel_info), not the extra-RPC full path.
+    let mut mock_client = MockTelegramClientTrait::new();
+    mock_client
+        .expect_get_channel_info()
+        .with(mockall::predicate::eq("@news"))
+        .return_once(|_| Ok(create_test_channel(42, "News Channel")));
+
+    let mock_limiter = MockRateLimiterTrait::new();
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = GetChannelInfoRequest {
+        channel_identifier: "@news".to_string(),
+        include_full: None,
+    };
+
+    let result = server
+        .get_channel_info(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
+
+    assert!(result.is_ok());
 }
 
 #[tokio::test]
@@ -288,4 +351,61 @@ async fn get_subscribed_channels_reports_has_more_when_more_exist() {
     assert_eq!(response.channels.len(), 3, "page truncated to limit");
     assert_eq!(response.total, 3);
     assert!(response.has_more, "more than `limit` channels exist");
+}
+
+#[tokio::test]
+async fn include_full_meters_the_extra_rpc() {
+    // The include_full path performs an extra Telegram RPC (channels.getFullChannel),
+    // so it must acquire a rate-limiter token like every other RPC-issuing tool.
+    let mut mock_client = MockTelegramClientTrait::new();
+    mock_client
+        .expect_get_full_channel_info()
+        .with(mockall::predicate::eq("@news"))
+        .return_once(|_| Ok(create_test_channel(42, "News Channel")));
+
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter
+        .expect_acquire()
+        .with(mockall::predicate::eq(1))
+        .times(1)
+        .returning(|_| Ok(()));
+
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = GetChannelInfoRequest {
+        channel_identifier: "@news".to_string(),
+        include_full: Some(true),
+    };
+
+    let result = server
+        .get_channel_info(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
+
+    assert!(result.is_ok(), "got {:?}", result.err());
+}
+
+#[tokio::test]
+async fn include_full_propagates_rate_limit_error() {
+    // A denied token must stop the request before the extra RPC is issued.
+    let mock_client = MockTelegramClientTrait::new(); // no client call expected
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| {
+        Err(crate::error::Error::RateLimit {
+            retry_after_seconds: 5,
+        })
+    });
+
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = GetChannelInfoRequest {
+        channel_identifier: "@news".to_string(),
+        include_full: Some(true),
+    };
+
+    let result = server
+        .get_channel_info(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
+
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("rate limit"));
 }

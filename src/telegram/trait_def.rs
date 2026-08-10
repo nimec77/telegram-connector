@@ -24,9 +24,25 @@ pub trait TelegramClientTrait: Send + Sync {
     /// Get information about a specific channel by username or ID
     async fn get_channel_info(&self, identifier: &str) -> Result<Channel, Error>;
 
+    /// Like [`Self::get_channel_info`], but additionally fetches
+    /// `channels.GetFullChannel` to fill `description` and `member_count`.
+    /// Falls back to basic info for non-channel peers (small groups,
+    /// communities), whose full-info RPC differs.
+    async fn get_full_channel_info(&self, identifier: &str) -> Result<Channel, Error>;
+
     /// Get list of subscribed channels with pagination
     async fn get_subscribed_channels(&self, limit: u32, offset: u32)
     -> Result<Vec<Channel>, Error>;
+
+    /// Search Telegram's public directory for channels/groups by keyword.
+    ///
+    /// `contacts.search` returns matches from the public directory *and* from the
+    /// caller's own dialogs in one result set, so each result's `is_subscribed`
+    /// reflects whether it appeared among the caller's own matches. That makes
+    /// `is_subscribed: true` reliable but `false` best-effort: the dialog-side
+    /// matches are server-capped and prefix-matched, so an actually-subscribed
+    /// channel can still come back as `false`.
+    async fn search_public_channels(&self, query: &str, limit: u32) -> Result<Vec<Channel>, Error>;
 
     /// Check if client is connected and authorized
     async fn is_connected(&self) -> bool;

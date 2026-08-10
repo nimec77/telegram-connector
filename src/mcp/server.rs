@@ -7,9 +7,10 @@ use crate::mcp::tools::{
     BufferedResponseEntry, ChannelsResponse, GenerateLinkRequest, GetChannelInfoRequest,
     GetChannelsRequest, GetLastResponsesRequest, GetMessageByLinkRequest, GetMessageMediaRequest,
     GetMessageMediaResponse, GetRecentMessagesRequest, LastResponsesResponse, MessageLinkResponse,
-    MessageResponse, OpenMessageRequest, OpenMessageResponse, SearchRequest, SearchResponse,
-    StatusResponse, TranscribeVoiceMessageRequest, TranscribeVoiceMessageResponse, json_response,
-    parse_channel_id, parse_message_id, parse_optional_channel_id,
+    MessageResponse, OpenMessageRequest, OpenMessageResponse, SearchPublicChannelsRequest,
+    SearchRequest, SearchResponse, StatusResponse, TranscribeVoiceMessageRequest,
+    TranscribeVoiceMessageResponse, json_response, parse_channel_id, parse_message_id,
+    parse_optional_channel_id, parse_optional_utc, validate_date_window,
 };
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
@@ -18,8 +19,10 @@ use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
-    CallToolResult, ContentBlock, Implementation, InitializeResult, ServerCapabilities,
+    CacheScope, CallToolResult, ContentBlock, Implementation, InitializeResult, ListToolsResult,
+    PaginatedRequestParams, ServerCapabilities,
 };
+use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ServerHandler, ServiceExt, tool, tool_handler, tool_router};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -35,7 +38,6 @@ pub struct McpServer<T: TelegramClientTrait, R: RateLimiterTrait> {
     transcription_cost: u32,
     transcription_default_timeout_secs: u32,
     transcription_max_timeout_secs: u32,
-    #[allow(dead_code)]
     tool_router: ToolRouter<Self>,
 }
 
@@ -101,6 +103,40 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         Arc::clone(&self.response_buffer)
     }
 
+    /// `tools/list` payload with SEP-2549 cache hints. The tool list is static
+    /// per build, so clients may cache it for an hour; Private scope because
+    /// this is a single-user (per-session-file) server.
+    pub(crate) fn tools_list_result(&self) -> ListToolsResult {
+        ListToolsResult::with_all_items(self.tool_router.list_all())
+            .with_ttl_ms(3_600_000)
+            .with_cache_scope(CacheScope::Private)
+    }
+
+    /// `tools_list_result()`, with the SEP-2549 cache hints stripped for
+    /// clients that didn't negotiate MCP 2026-07-28 or later. Mirrors the
+    /// `supports_cache_hints` gate in `#[tool_handler]`'s own default
+    /// `list_tools` (rmcp-macros' `tool_handler.rs`): legacy-handshake and
+    /// pre-2026-07-28 clients don't know `ttlMs`/`cacheScope` exist, so the
+    /// reference behavior withholds them rather than sending fields the
+    /// client can't interpret.
+    pub(crate) fn tools_list_result_for(
+        &self,
+        protocol_version: Option<rmcp::model::ProtocolVersion>,
+    ) -> ListToolsResult {
+        let result = self.tools_list_result();
+        let supports_cache_hints = protocol_version
+            .is_some_and(|version| version >= rmcp::model::ProtocolVersion::V_2026_07_28);
+        if supports_cache_hints {
+            result
+        } else {
+            ListToolsResult {
+                ttl_ms: None,
+                cache_scope: None,
+                ..result
+            }
+        }
+    }
+
     pub async fn run_stdio(self) -> anyhow::Result<()> {
         use rmcp::transport::async_rw::AsyncRwTransport;
         use tokio::io::{stdin, stdout};
@@ -124,6 +160,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 // to them. Kept out of this file so it stays focused on the macro-bound
 // router + handler (LM-3).
 mod impl_channels;
+mod impl_discovery;
 mod impl_links;
 mod impl_media;
 mod impl_search;
@@ -344,10 +381,32 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         );
         inv.finish(self.transcribe_voice_message_impl(request).await)
     }
+
+    /// Tool 12: search_public_channels - Discover public channels/groups by keyword
+    #[tool(
+        description = "Search Telegram's public directory for channels and groups by keyword (not limited to your subscriptions). is_subscribed: true is reliable; false is best-effort (the already-subscribed side of the result set is server-capped and prefix-matched). To go deeper on a result that has a real @username, call get_channel_info with that username."
+    )]
+    pub async fn search_public_channels(
+        &self,
+        Parameters(request): Parameters<SearchPublicChannelsRequest>,
+        id: RequestId,
+    ) -> Result<String, String> {
+        let inv = ToolInvocation::start("search_public_channels", id);
+        tracing::info!(
+            tool = inv.tool,
+            request_id = %inv.request_id,
+            query = %request.query,
+            limit = ?request.limit,
+            "Tool invocation started"
+        );
+        inv.finish(self.search_public_channels_impl(request).await)
+    }
 }
 
-// Implement ServerHandler trait with tool capabilities
-// The #[tool_handler] macro automatically implements list_tools and call_tool
+// Implement ServerHandler trait with tool capabilities.
+// The #[tool_handler] macro fills in any of call_tool/list_tools/get_tool
+// not already defined below; list_tools is defined manually here to attach
+// SEP-2549 cache hints (ttlMs/cacheScope), so the macro leaves it alone.
 #[tool_handler]
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> ServerHandler
     for McpServer<T, R>
@@ -359,6 +418,20 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> ServerHand
         InitializeResult::new(capabilities)
             .with_server_info(server_info)
             .with_instructions("Telegram MCP Connector - Search Russian Telegram channels")
+    }
+
+    // Defining list_tools here (instead of relying on #[tool_handler]'s default)
+    // lets us attach SEP-2549 cache hints; the macro skips generating a method
+    // that's already present on the impl block, so call_tool/get_tool are
+    // still macro-generated as usual. The hints are gated on the negotiated
+    // protocol version (tools_list_result_for), matching the macro's own
+    // default list_tools.
+    async fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, rmcp::ErrorData> {
+        Ok(self.tools_list_result_for(context.protocol_version()))
     }
 }
 

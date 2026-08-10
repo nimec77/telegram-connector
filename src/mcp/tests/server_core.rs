@@ -55,3 +55,59 @@ fn server_handler_provides_server_info() {
             .contains("Telegram MCP Connector")
     );
 }
+
+#[test]
+fn tools_list_carries_cache_hints_and_stable_order() {
+    // Given: Server instance with mocks
+    let mock_client = MockTelegramClientTrait::new();
+    let mock_limiter = MockRateLimiterTrait::new();
+
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    // When: Build the tools/list payload via the pure helper
+    let result = server.tools_list_result();
+
+    // Then: All 12 tools are present, with SEP-2549 cache hints attached
+    assert_eq!(result.tools.len(), 12);
+    assert_eq!(result.ttl_ms, Some(3_600_000));
+    assert_eq!(result.cache_scope, Some(rmcp::model::CacheScope::Private));
+
+    // And: Ordering is deterministic across calls
+    let names: Vec<_> = result.tools.iter().map(|t| t.name.clone()).collect();
+    let again: Vec<_> = server
+        .tools_list_result()
+        .tools
+        .iter()
+        .map(|t| t.name.clone())
+        .collect();
+    assert_eq!(names, again);
+}
+
+#[test]
+fn tools_list_hints_gated_on_protocol_version() {
+    // Given: Server instance with mocks
+    let mock_client = MockTelegramClientTrait::new();
+    let mock_limiter = MockRateLimiterTrait::new();
+
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    // When/Then: A client that negotiated 2026-07-28 (SEP-2549's home version)
+    // gets the cache hints...
+    let current = server.tools_list_result_for(Some(rmcp::model::ProtocolVersion::V_2026_07_28));
+    assert_eq!(current.ttl_ms, Some(3_600_000));
+    assert_eq!(current.cache_scope, Some(rmcp::model::CacheScope::Private));
+    assert_eq!(current.tools.len(), 12);
+
+    // ...but a client on an older negotiated version does not, mirroring the
+    // #[tool_handler] macro's own default list_tools gating...
+    let legacy = server.tools_list_result_for(Some(rmcp::model::ProtocolVersion::V_2025_11_25));
+    assert_eq!(legacy.ttl_ms, None);
+    assert!(legacy.cache_scope.is_none());
+    assert_eq!(legacy.tools.len(), 12); // tool list itself is unaffected
+
+    // ...and neither does a client that never negotiated a protocol version at
+    // all (the legacy `initialize`-handshake fallback CLAUDE.md documents).
+    let unversioned = server.tools_list_result_for(None);
+    assert_eq!(unversioned.ttl_ms, None);
+    assert!(unversioned.cache_scope.is_none());
+}

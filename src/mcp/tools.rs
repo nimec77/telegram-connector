@@ -1,6 +1,6 @@
 //! MCP tool implementations
 //!
-//! This module contains all 11 MCP tools.
+//! This module contains all 12 MCP tools.
 //! Tools are organized in subdirectory for better maintainability.
 
 pub mod helpers;
@@ -11,3 +11,4 @@ pub mod types;
 pub use types::*;
 // Re-export helpers for convenience
 pub use helpers::{json_response, parse_channel_id, parse_message_id, parse_optional_channel_id};
+pub(crate) use helpers::{parse_optional_utc, validate_date_window};

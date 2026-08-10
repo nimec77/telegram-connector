@@ -17,7 +17,7 @@ impl TelegramClient {
         }
 
         let start_time = Instant::now();
-        let cutoff_time = Utc::now() - Duration::hours(params.hours_back as i64);
+        let cutoff_time = params.window_start();
 
         // Resolve the channel: prefer a best-effort username lookup (doesn't require
         // subscription), then fall back to a dialog walk by the known numeric id. A
@@ -85,6 +85,12 @@ impl TelegramClient {
                 .await
                 .map_err(|e| Error::TelegramApi(format!("Failed to iterate messages: {}", e)))?
             {
+                if let Some(to) = params.to_date
+                    && message_timestamp(&msg).is_some_and(|t| t > to)
+                {
+                    continue; // newer than the requested window; keep iterating toward it
+                }
+
                 // Check time filter - messages are in reverse chronological order
                 if message_timestamp(&msg).is_none_or(|t| t < cutoff_time) {
                     break;
