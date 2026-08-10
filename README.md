@@ -45,6 +45,9 @@ A Model Context Protocol (MCP) service that enables Claude to search and interac
 │  ┌─────────────────────────┐ ┌───────────────────────────┐   │
 │  │get_last_responses       │ │get_message_media          │   │
 │  └─────────────────────────┘ └───────────────────────────┘   │
+│  ┌─────────────────────────┐ ┌───────────────────────────┐   │
+│  │search_public_channels   │ │transcribe_voice_message   │   │
+│  └─────────────────────────┘ └───────────────────────────┘   │
 └──────────────────────────┬──────────────────────────────────┘
                            │
 ┌──────────────────────────▼──────────────────────────────────┐
@@ -692,7 +695,7 @@ Search Telegram's public directory (`contacts.search`) for channels and groups b
 | `query` | string | Yes | - | Keyword or name to search Telegram's public directory for |
 | `limit` | integer | No | 10 | Maximum results to return (max: 50) |
 
-**Response:** Same `ChannelsResponse` shape as `get_subscribed_channels`, with `has_more` always `false` (this is a single search call, not a paginated listing) and every returned channel's `is_subscribed` set to `false`:
+**Response:** Same `ChannelsResponse` shape as `get_subscribed_channels`, with `has_more` always `false` (this is a single search call, not a paginated listing). Each returned channel's `is_subscribed` reflects whether you're already subscribed to it — Telegram's `contacts.search` returns matches from both the public directory and your own dialogs in the same result set, so a search can surface a mix of new and already-subscribed channels:
 
 ```json
 {
