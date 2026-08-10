@@ -3100,3 +3100,81 @@ especially with rebase-merges; (2) "PR shows Merged" ≠ "change is on
 master" — verify with `git log origin/master` after stacked merges;
 (3) deleted local branch tips survive in the object store — `git branch
 <name> <sha>` / cherry-pick recovers them until GC.
+
+## Local MCP improvements (Tasks 1–5) — 2026-08-10
+
+Five-task plan (`docs/superpowers/plans/2026-08-10-local-mcp-improvements.md`) closing three
+user-facing gaps found during dogfooding — no way to bound `search_messages`/`get_recent_messages`
+by an explicit date range, no way to pull full channel metadata (`description`/`member_count`)
+without a second manual lookup, and no discovery path for public channels the user doesn't already
+know about — plus one protocol-hygiene addition and this docs sweep. TDD throughout, gate green
+per task, one commit per task (Task 4 got a second, review-driven commit). Tests 449 → 456 across
+the four feature tasks (`+6` T1, `+2` T2, `+3` T3, `+2` T4 across its two commits).
+
+- **Task 1** (`631b8dd`) — optional `from_date`/`to_date` (RFC 3339 UTC) on both
+  `search_messages` and `get_recent_messages`. `window_start()` on `SearchParams`/`HistoryParams`:
+  `from_date` if set (deliberately **not** clamped by `MAX_HOURS_BACK` — reaching further back than
+  the normal cap is the point), else `now - hours_back`. Upper-bound checks use `continue`, never
+  `break`, in all three message loops (history + channel-search + global-search) — iteration is
+  reverse-chronological, so a too-new message precedes the window and more in-window messages may
+  still follow. Also fixed a pre-existing schema-description bug: `SearchRequest.hours_back` claimed
+  "max: 168" but `SearchParams::MAX_HOURS_BACK` is actually 72.
+- **Task 2** (`66389f2`) — opt-in `include_full: bool` on `get_channel_info`. When true, one extra
+  `channels.GetFullChannel` RPC fills `description`/`member_count`, but only for channel-kind peers
+  (broadcasts/megagroups); other peer kinds (small groups, communities) silently keep the existing
+  `null`/`null` — their full-info RPC is a different method, out of scope by design.
+- **Task 3** (`2e1616a`) — new `search_public_channels` tool (#12) over `contacts.Search`, closing
+  the "find sources" gap (previously the connector could only work with channels the user already
+  knew). Converter split: `convert_peer_to_channel`/`convert_discovered_peer` both delegate to a
+  shared private `convert_peer_with_subscription(peer, is_subscribed)`.
+- **Task 4** (`bb151d3`, gated in `8a6f4ef`) — `tools/list` now carries SEP-2549 cache hints
+  (`ttlMs: 3_600_000`, `cacheScope: Private`). First cut attached the hints unconditionally; code
+  review caught that this ignored the negotiated protocol version, so legacy/pre-2026-07-28 clients
+  (which CLAUDE.md documents this server still falls back to) would receive fields the reference
+  implementation deliberately withholds from them. Fixed with a second pure helper,
+  `tools_list_result_for(Option<ProtocolVersion>)`, mirroring rmcp's own `>= V_2026_07_28` gate.
+
+### Lessons (non-obvious)
+
+- **The plan's Task 3 snippet would have shipped a production panic.** It hand-matched
+  `tl::enums::Chat` variants and called `Channel::from_raw`/`Group::from_raw`/`Community::from_raw`
+  directly, routing every `Chat::Channel`/`ChannelForbidden` to `Channel::from_raw` regardless of
+  the `broadcast` flag — but `grammers_client::peer::channel::Channel::from_raw` **panics**
+  ("tried to create broadcast channel from megagroup") whenever `chat.broadcast == false`, which is
+  the common case for supergroups, something `contacts.search` routinely returns alongside
+  broadcast channels. `grammers_client::peer::Peer::from_raw` already does the same three-way
+  dispatch correctly (inspects `broadcast` itself) — using it instead of hand-rolling was both
+  simpler and correct. Lesson for future briefs that hand-roll `Peer` construction: check whether
+  `Peer::from_raw` already does it safely before reinventing the per-variant match.
+- **Generated TL structs must be checked against the *freshest* build-hash dir, not
+  `find … | head -1`.** `target/debug/build/grammers-tl-types/` accumulates stale hash directories
+  across pin bumps (8 different dirs were present, 2 stale from a much older grammers pin);
+  directory-listing order is not freshest-first, so `head -1` can silently return a stale
+  `generated_*.rs`. Both Task 2 and Task 3 picked the right file by `mtime` (`stat -f '%m' … | sort
+  -rn | head -1`) instead. Payoff: Task 2 found `tl::enums::ChatFull` had grown a third variant,
+  `CommunityFull`, that the plan didn't anticipate (grammers 0.10's `Peer::Community`, harmless here
+  since the calling code's match is refutable); Task 3 found `tl::functions::contacts::Search`
+  actually requires 4 fields (`broadcasts`, `bots`, `q`, `limit`), not the 2 the plan assumed — no
+  `Default` impl, so the omission would not have compiled.
+- **`rmcp-macros`' `#[tool_handler]` skips codegen per-method via `has_method()`** (`common.rs`:
+  scans the annotated `impl` block for an existing fn with the same name) — independently for
+  `call_tool`, `list_tools`, `get_tool`, and `get_info`. This codebase's pre-existing manual
+  `get_info` was already proof the mechanism works; Task 4 added a manual `list_tools` to the same
+  block without removing `#[tool_handler]`, so `call_tool`/`get_tool` stayed macro-generated —
+  cheaper than the brief's documented fallback (manually reimplementing all three).
+- **A manual override of a macro-generated method silently drops whatever gating the macro was
+  doing**, and that's easy to miss until reviewed. The macro's own default `list_tools` gates
+  `ttlMs`/`cacheScope` behind the negotiated protocol version; a naive manual replacement doesn't
+  inherit that for free. Related constructibility note: `RequestContext<RoleServer>` can't be built
+  in a unit test (`Peer<RoleServer>::new` is `pub(crate)` in rmcp), so the gating logic had to be
+  factored to take the already-decoded `Option<ProtocolVersion>` rather than the context itself —
+  that's what stayed unit-testable; only the one-line `context.protocol_version()` call is
+  unverified by our tests (it's rmcp's own code).
+- **Fixture reuse over fresh scaffolding, but only where it already fits.** Task 1's new MCP-layer
+  tests reused `create_test_search_result` from `src/test_helpers.rs` instead of the older
+  inline-`SearchResult`-construction style already in those test files. Task 2 used the local,
+  parameterized `create_test_channel(id, name)` helper already in `mcp/tests/channels.rs` rather
+  than `test_helpers`'s parameterless one, matching that file's own convention. Task 3 explicitly
+  declined to extract a generic `inert_client()` out of the existing `community_peer()` fixture
+  helper — the new test only needed `community_peer()` as-is, and there was no second call site to
+  justify the indirection (YAGNI over premature reuse).

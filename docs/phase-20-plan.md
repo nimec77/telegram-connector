@@ -1,6 +1,6 @@
 # Phase 20: Hang Diagnostics & Grammers Call Timeouts
 
-**Status:** Proposed, awaiting implementation
+**Status:** Implemented (see CLAUDE.md "Timeout budgets")
 **Trigger:** Recurring MCP request timeouts since 2026-05-20 — server stops responding for 5–10 min, then resumes
 **Root cause:** Grammers calls (`resolve_username`, `iter_messages.next()`, `search_messages(...).next()`) are awaited without any timeout. A stalled Telegram response hangs the MCP request indefinitely. Cancellation only arrives when the Claude.ai client hits its own 5-min timeout. Today's tool handlers also only log on completion, so we cannot see which tool or args caused the hang.
 

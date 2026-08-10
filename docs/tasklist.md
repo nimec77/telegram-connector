@@ -34,11 +34,11 @@
 | 24 | Refactor: hygiene & test extraction | ✅ Complete | 437 | LM-1 test extraction; CQ-1/2/3/6 + AD-5 (see `docs/refactoring/04-roadmap.md`) |
 | 25 | Refactor: module splits & dedup | ✅ Complete | 437 | LM-2…6 splits; AD-1…4 peer-resolution/identity consolidation |
 | 26 | Channel data & config refinements | ✅ Complete | 441 | AD-6 (configurable limits) + CQ-4 (Optional `member_count`) + CQ-5 (`has_more` over-fetch) — refactoring roadmap complete |
-| 27 | Local MCP improvements (Tasks 1-3 of 5) | 🔄 In Progress | 454 | Task 1: `from_date`/`to_date` range filters on search/history. Task 2: opt-in `include_full` on `get_channel_info`. Task 3: new `search_public_channels` tool (12th MCP tool) — `contacts.search` discovery, `is_subscribed: false`. Tasks 4 (tools/list cache hints) and 5 (docs sweep) pending — see `docs/superpowers/plans/2026-08-10-local-mcp-improvements.md` |
+| 27 | Local MCP improvements (Tasks 1-5) | ✅ Complete | 456 | Task 1: `from_date`/`to_date` range filters on search/history. Task 2: opt-in `include_full` on `get_channel_info`. Task 3: new `search_public_channels` tool (12th MCP tool) — `contacts.search` discovery, `is_subscribed: false`. Task 4: `tools/list` SEP-2549 cache hints (`ttlMs`/`cacheScope`), gated on negotiated protocol version ≥ 2026-07-28. Task 5: docs alignment sweep — see `docs/superpowers/plans/2026-08-10-local-mcp-improvements.md` |
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
-**Overall Progress:** 26/27 phases complete (Phase 27 in progress)
+**Overall Progress:** 27/27 phases complete
 
 ---
 
