@@ -2,6 +2,7 @@
 //!
 //! Unit of `client` (LM-2).
 
+use super::guard::require_found;
 use super::*;
 
 impl TelegramClient {
@@ -40,12 +41,11 @@ impl TelegramClient {
         })
         .await?;
 
-        let msg = messages.into_iter().next().flatten().ok_or_else(|| {
-            Error::InvalidInput(format!(
-                "Message {} not found in channel {}",
-                message_id, channel_ref
-            ))
-        })?;
+        let msg = require_found(
+            messages.into_iter().next().flatten(),
+            channel_ref,
+            message_id,
+        )?;
 
         let media = msg.media().ok_or_else(|| Error::NoVisualMedia {
             media_type: "none".to_string(),

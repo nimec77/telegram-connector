@@ -8,7 +8,6 @@
 use super::*;
 
 /// True when the raw TL message is the `MessageEmpty` placeholder.
-#[allow(dead_code)]
 pub(super) fn is_empty_variant(raw: &tl::enums::Message) -> bool {
     matches!(raw, tl::enums::Message::Empty(_))
 }
@@ -17,7 +16,6 @@ pub(super) fn is_empty_variant(raw: &tl::enums::Message) -> bool {
 ///
 /// Both an absent slot and the `MessageEmpty` placeholder mean the id does not
 /// exist in this channel (deleted, or never existed).
-#[allow(dead_code)]
 pub(super) fn require_found(
     fetched: Option<grammers_client::message::Message>,
     channel_ref: &str,
