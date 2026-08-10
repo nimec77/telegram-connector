@@ -3059,3 +3059,29 @@ Gate green, tests 441 (no count change — pure dependency/boundary work).
   cache-miss in logs), and `message_timestamp` (converters/message.rs) is the
   single jiff→chrono site — cutoff comparisons are back to full-precision
   chrono ordering, undoing the ≤1 s window widening the first pass introduced.
+
+## rmcp 1.8 → 3.1 (MCP 2026-07-28) — 2026-08-10
+
+The two-major rmcp jump cost one type rename. Full analysis of the 2026-07-28
+protocol revision (stateless core, `server/discover`, MRTR, deprecations) is
+in this repo's PR/CHANGELOG for the change; lessons only here.
+
+- **The entire code impact was `Content` → `ContentBlock`**: rmcp 3 dropped the
+  `Annotated<RawContent>` wrapper, so tests match `ContentBlock::Image(x)`
+  directly instead of `RawContent::Image(x) = &block.raw`. Everything else —
+  `#[tool_router]`/`#[tool_handler]` macros, `InstrumentedTransport`'s
+  `Transport<RoleServer>` impl, `InitializeResult` builder, `ServerInfo` alias,
+  `AsyncRwTransport`, `Parameters`/`RequestId` — was source-compatible across
+  1.8 → 3.1.2, exactly as the rmcp 3.0 migration guide promised for macro users.
+- **No opt-in needed for the new protocol**: `serve()` handles both lifecycles;
+  rmcp emits `resultType`/`server/discover` for 2026-07-28 peers and the legacy
+  `initialize` shape for older clients per-connection. Don't add
+  `serve_with_lifecycle` plumbing until a concrete client needs pinning.
+- **MRTR is now available if ever wanted** (tools returning `input_required` to
+  ask the client for mid-call input, e.g. confirming an expensive
+  transcription) — deliberate non-goal for now; the 11 tools' `Result<String,
+  String>` shape is untouched.
+- **Verify-before-migrate paid off**: downloading the target crate's source
+  (`static.crates.io/crates/<name>/<v>.crate`) and grepping the exact API
+  surface used took minutes and turned "two majors, unknown risk" into a
+  one-rename plan before touching Cargo.toml.
