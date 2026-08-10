@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `generate_message_link` and `open_message_in_telegram` now emit shareable public links for public channels: when the channel has a username, `https_link` is `https://t.me/<username>/<id>` and `tg_protocol_link` is `tg://resolve?domain=<username>&post=<id>`; chats without a username keep the members-only `https://t.me/c/<channel_id>/<id>` / `tg://privatepost` forms (previously every channel got the members-only forms, which don't resolve for non-members). Two additive fields on the link response: `internal_link` (always the members-only `t.me/c/` https form) and `is_public`. The stray `?single`/`&single` suffix — a media-group hint, not part of a canonical message link — is no longer appended. To learn the username, both tools now resolve the peer once through a shared link builder, so they are no longer offline: each call charges 1 rate-limiter token and requires a connected session, and the response's `channel_id` now carries the canonical numeric id rather than echoing the raw input.
+- `generate_message_link` accepts a channel username (`"swodki"`, `"@swodki"`) as well as a numeric id in `channel_id` — it was previously the only tool restricted to strictly numeric ids.
+
+### Fixed
+- Deleted or never-existent message ids no longer yield fabricated success responses (empty `text`, epoch `"1970-01-01T00:00:00Z"` timestamp, missing `views`/`forwards`). Telegram returns a `MessageEmpty` placeholder for such ids, which was previously converted as if it were a real message; `get_message_by_link`, `get_message_media`, and `transcribe_voice_message` now fail with `Message {id} not found or deleted in channel {channel}`, and the iteration paths (`search_messages`, `get_recent_messages`) skip the placeholder instead of emitting it.
+- The published `inputSchema` for `search_messages` and `get_recent_messages` referenced `#/$defs/MediaFilter` without emitting a `$defs` block, so schema-following clients could not construct a valid `media_filter` value — the feature was unusable. The enum is now inlined into both schemas, and a new schema-walk test asserts that every `$ref` in every published tool schema has a resolvable target, so the pre-merge gate catches any future dangling reference.
+- `open_message_in_telegram` on non-macOS platforms now returns a proper tool error (`open_message_in_telegram is only supported on macOS`) without charging a rate-limiter token, instead of a success-shaped response with `success: false` buried inside.
+
 ## [0.13.0] - 2026-08-10
 
 ### Added
