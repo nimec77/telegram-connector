@@ -27,7 +27,7 @@ impl TelegramClient {
         let cutoff_time = params.window_start();
 
         // If channel_id is specified, search only that channel
-        let (mut messages, channels_searched) = if let Some(channel_id) = &params.channel_id {
+        let (mut messages, channels_scanned) = if let Some(channel_id) = &params.channel_id {
             with_timeout(
                 "search_messages_channel",
                 self.timeouts.search_secs,
@@ -81,7 +81,8 @@ impl TelegramClient {
                     Ok((messages, channels_searched))
                 },
             )
-            .await?
+            .await
+            .map(|(messages, channels_searched)| (messages, Some(channels_searched)))?
         } else {
             // Search all channels using global search
             let collected = with_timeout("search_all_messages", self.timeouts.search_secs, async {
@@ -118,36 +119,41 @@ impl TelegramClient {
             })
             .await?;
 
-            // Count unique channels in results
-            let unique_channels: std::collections::HashSet<_> =
-                collected.iter().map(|m| m.channel_id.get()).collect();
-            (collected, unique_channels.len() as u32)
+            (collected, None) // server-side global search: scan scope unknowable
         };
 
         // Sort by timestamp (newest first)
         messages.sort_by_key(|b| std::cmp::Reverse(b.timestamp));
 
+        let channels_in_results = {
+            let unique: std::collections::HashSet<_> =
+                messages.iter().map(|m| m.channel_id.get()).collect();
+            unique.len() as u32
+        };
         let search_time_ms = start_time.elapsed().as_millis() as u64;
-        let total_found = messages.len() as u64;
+        let returned = messages.len() as u64;
 
         tracing::info!(
             query = %params.query,
             media_filter = ?params.media_filter,
-            results = total_found,
-            channels = channels_searched,
+            results = returned,
+            channels_scanned = ?channels_scanned,
+            channels_in_results,
             duration_ms = search_time_ms,
             "Search completed"
         );
 
         Ok(SearchResult {
-            messages,
-            total_found,
+            returned,
             search_time_ms,
             query_metadata: QueryMetadata {
                 query: params.query.clone(),
-                hours_back: params.hours_back,
-                channels_searched,
+                window_from: cutoff_time,
+                window_to: params.to_date,
+                channels_scanned,
+                channels_in_results,
             },
+            messages,
         })
     }
 }

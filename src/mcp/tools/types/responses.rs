@@ -258,7 +258,7 @@ impl From<Message> for MessageResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SearchResponse {
     pub messages: Vec<MessageResponse>,
-    pub total_found: u64,
+    pub returned: u64,
     pub search_time_ms: u64,
     pub query_metadata: QueryMetadata,
 }
@@ -267,7 +267,7 @@ impl From<SearchResult> for SearchResponse {
     fn from(r: SearchResult) -> Self {
         Self {
             messages: r.messages.into_iter().map(MessageResponse::from).collect(),
-            total_found: r.total_found,
+            returned: r.returned,
             search_time_ms: r.search_time_ms,
             query_metadata: r.query_metadata,
         }

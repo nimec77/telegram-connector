@@ -548,15 +548,26 @@ Search for messages across channels with optional media type filtering.
       }
     }
   ],
-  "total_found": 15,
+  "returned": 15,
   "search_time_ms": 250,
   "query_metadata": {
     "query": "AI model",
-    "hours_back": 48,
-    "channels_searched": 10
+    "window_from": "2025-12-26T10:30:00Z",
+    "channels_scanned": 10,
+    "channels_in_results": 6
   }
 }
 ```
+
+**Response fields:** `returned` is the number of messages in this response (the
+page size — not a total-match count; there may be more matches beyond it).
+`query_metadata.window_from` is the effective window start actually applied
+(`from_date`, or `now - hours_back`); `window_to` is the effective upper bound
+and is omitted entirely when the window is open-ended. `channels_scanned` is
+the number of channels the search actually scanned — `null` for a global
+search (server-side, scan scope is unknowable) and a concrete count when
+`channel_id` is set. `channels_in_results` is the number of distinct channels
+present in `messages`, always a number.
 
 **Forward attribution & link previews:** Messages carry optional enrichment derived
 from the same Telegram response — no extra API calls. `forwarded_from` attributes a
@@ -643,12 +654,13 @@ Get recent messages from a channel by time window, without requiring a search qu
       "media_type": "none"
     }
   ],
-  "total_found": 5,
+  "returned": 5,
   "search_time_ms": 150,
   "query_metadata": {
     "query": "",
-    "hours_back": 24,
-    "channels_searched": 1
+    "window_from": "2025-12-27T10:30:00Z",
+    "channels_scanned": 1,
+    "channels_in_results": 1
   }
 }
 ```

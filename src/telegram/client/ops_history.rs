@@ -117,27 +117,30 @@ impl TelegramClient {
         .await?;
 
         let search_time_ms = start_time.elapsed().as_millis() as u64;
-        let total_found = messages.len() as u64;
+        let returned = messages.len() as u64;
+        let channels_in_results = if messages.is_empty() { 0 } else { 1 };
 
         tracing::info!(
             channel_id = resolved_channel_id,
             identifier = ?params.channel_identifier,
             media_filter = ?params.media_filter,
-            results = total_found,
+            results = returned,
             hours_back = params.hours_back,
             duration_ms = search_time_ms,
             "Get recent messages completed"
         );
 
         Ok(SearchResult {
-            messages,
-            total_found,
+            returned,
             search_time_ms,
             query_metadata: QueryMetadata {
                 query: String::new(), // No query for history retrieval
-                hours_back: params.hours_back,
-                channels_searched: 1,
+                window_from: cutoff_time,
+                window_to: params.to_date,
+                channels_scanned: Some(1),
+                channels_in_results,
             },
+            messages,
         })
     }
 }

@@ -176,17 +176,19 @@ pub fn create_test_channel_detailed(
 pub fn create_test_search_result(
     messages: Vec<Message>,
     query: &str,
-    channels_searched: u32,
+    channels_in_results: u32,
 ) -> SearchResult {
     SearchResult {
-        total_found: messages.len() as u64,
+        returned: messages.len() as u64,
         search_time_ms: 100,
-        messages,
         query_metadata: QueryMetadata {
             query: query.to_string(),
-            hours_back: 48,
-            channels_searched,
+            window_from: Utc::now() - chrono::Duration::hours(48),
+            window_to: None,
+            channels_scanned: Some(channels_in_results),
+            channels_in_results,
         },
+        messages,
     }
 }
 
@@ -280,15 +282,16 @@ mod tests {
     fn create_test_search_result_works() {
         let msg = create_test_message(1, "Test", 100);
         let result = create_test_search_result(vec![msg], "test query", 5);
-        assert_eq!(result.total_found, 1);
+        assert_eq!(result.returned, 1);
         assert_eq!(result.query_metadata.query, "test query");
-        assert_eq!(result.query_metadata.channels_searched, 5);
+        assert_eq!(result.query_metadata.channels_scanned, Some(5));
+        assert_eq!(result.query_metadata.channels_in_results, 5);
     }
 
     #[test]
     fn create_empty_search_result_works() {
         let result = create_empty_search_result("empty");
-        assert_eq!(result.total_found, 0);
+        assert_eq!(result.returned, 0);
         assert!(result.messages.is_empty());
     }
 }

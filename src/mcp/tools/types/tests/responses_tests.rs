@@ -179,18 +179,20 @@ fn search_response_maps_from_search_result() {
             video_info: None,
             audio_info: None,
         }],
-        total_found: 1,
+        returned: 1,
         search_time_ms: 5,
         query_metadata: QueryMetadata {
             query: "x".to_string(),
-            hours_back: 48,
-            channels_searched: 1,
+            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
         },
     };
 
     let dto = SearchResponse::from(result);
     assert_eq!(dto.messages.len(), 1);
-    assert_eq!(dto.total_found, 1);
+    assert_eq!(dto.returned, 1);
     let json = serde_json::to_value(&dto).unwrap();
     assert_eq!(json["query_metadata"]["query"], "x");
 }

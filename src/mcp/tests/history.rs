@@ -45,12 +45,14 @@ async fn get_recent_messages_returns_results() {
             create_test_message(1, "Recent message 1", 123),
             create_test_message(2, "Recent message 2", 123),
         ],
-        total_found: 2,
+        returned: 2,
         search_time_ms: 50,
         query_metadata: QueryMetadata {
             query: String::new(),
-            hours_back: 48,
-            channels_searched: 1,
+            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
         },
     };
     let expected = expected_result.clone();
@@ -81,7 +83,7 @@ async fn get_recent_messages_returns_results() {
     // Then: Returns messages
     assert!(result.is_ok());
     let response: SearchResult = serde_json::from_str(&result.unwrap()).unwrap();
-    assert_eq!(response.total_found, 2);
+    assert_eq!(response.returned, 2);
     assert_eq!(response.messages.len(), 2);
 }
 
@@ -118,12 +120,14 @@ async fn get_recent_messages_with_media_filter() {
     let mut mock_client = MockTelegramClientTrait::new();
     let expected_result = SearchResult {
         messages: vec![create_test_message(1, "Photo message", 123)],
-        total_found: 1,
+        returned: 1,
         search_time_ms: 30,
         query_metadata: QueryMetadata {
             query: String::new(),
-            hours_back: 24,
-            channels_searched: 1,
+            window_from: chrono::Utc::now() - chrono::Duration::hours(24),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
         },
     };
     let expected = expected_result.clone();
@@ -168,12 +172,14 @@ async fn get_recent_messages_applies_limits() {
             create_test_message(2, "Message 2", 123),
             create_test_message(3, "Message 3", 123),
         ],
-        total_found: 3,
+        returned: 3,
         search_time_ms: 40,
         query_metadata: QueryMetadata {
             query: String::new(),
-            hours_back: 72,
-            channels_searched: 1,
+            window_from: chrono::Utc::now() - chrono::Duration::hours(72),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
         },
     };
     let expected = expected_result.clone();
@@ -219,12 +225,14 @@ async fn get_recent_messages_with_username_passes_identifier_without_pre_resolvi
     // numeric channel_id (the client resolves and derives the id from the peer).
     let expected_result = SearchResult {
         messages: vec![create_test_message(1, "News update", 456)],
-        total_found: 1,
+        returned: 1,
         search_time_ms: 60,
         query_metadata: QueryMetadata {
             query: String::new(),
-            hours_back: 48,
-            channels_searched: 1,
+            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
         },
     };
     let expected = expected_result.clone();
