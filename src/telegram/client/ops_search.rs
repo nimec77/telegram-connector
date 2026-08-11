@@ -3,7 +3,7 @@
 //! Unit of `client` (LM-2).
 
 use super::*;
-use crate::telegram::albums::{PostCounter, collapse_albums};
+use crate::telegram::albums::{PostCounter, album_key, collapse_albums};
 
 impl TelegramClient {
     pub(super) async fn search_messages_impl(
@@ -76,7 +76,7 @@ impl TelegramClient {
                                         // would overflow; trailing siblings of admitted
                                         // albums pass.
                                         if !counter
-                                            .admit(converted.grouped_id, params.limit as usize)
+                                            .admit(album_key(&converted), params.limit as usize)
                                         {
                                             break;
                                         }
@@ -127,7 +127,7 @@ impl TelegramClient {
                         if params.collapse_albums {
                             // Post-level limit: stop only when a NEW post would
                             // overflow; trailing siblings of admitted albums pass.
-                            if !counter.admit(converted.grouped_id, params.limit as usize) {
+                            if !counter.admit(album_key(&converted), params.limit as usize) {
                                 break;
                             }
                             messages.push(converted);

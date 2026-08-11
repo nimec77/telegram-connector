@@ -3,10 +3,17 @@
 use crate::telegram::types::{AlbumInfo, Message};
 use std::collections::{HashMap, HashSet};
 
+/// Channel-scoped album key: `grouped_id` alone can collide across channels
+/// in global-search results (e.g. a forwarded album), so grouping always
+/// pairs it with the channel id.
+pub(crate) fn album_key(msg: &Message) -> Option<(i64, i64)> {
+    msg.grouped_id.map(|gid| (msg.channel_id.get(), gid))
+}
+
 /// Counts posts (albums count once) while a fetch loop admits messages.
 #[derive(Debug, Default)]
 pub(crate) struct PostCounter {
-    seen_groups: HashSet<i64>,
+    seen_groups: HashSet<(i64, i64)>,
     posts: usize,
 }
 
@@ -15,9 +22,9 @@ impl PostCounter {
     /// when the message would START a post beyond the limit — the caller
     /// stops fetching. Siblings of an already-admitted album are always
     /// admitted, so an album is never cut at the limit boundary (A2).
-    pub(crate) fn admit(&mut self, grouped_id: Option<i64>, limit: usize) -> bool {
-        if let Some(gid) = grouped_id
-            && self.seen_groups.contains(&gid)
+    pub(crate) fn admit(&mut self, group_key: Option<(i64, i64)>, limit: usize) -> bool {
+        if let Some(key) = group_key
+            && self.seen_groups.contains(&key)
         {
             return true;
         }
@@ -25,8 +32,8 @@ impl PostCounter {
             return false;
         }
         self.posts += 1;
-        if let Some(gid) = grouped_id {
-            self.seen_groups.insert(gid);
+        if let Some(key) = group_key {
+            self.seen_groups.insert(key);
         }
         true
     }
@@ -39,17 +46,17 @@ impl PostCounter {
 pub(crate) fn collapse_albums(messages: Vec<Message>) -> Vec<Message> {
     enum Slot {
         Single(Box<Message>),
-        Group(i64),
+        Group((i64, i64)),
     }
 
     let mut slots = Vec::new();
-    let mut buckets: HashMap<i64, Vec<Message>> = HashMap::new();
+    let mut buckets: HashMap<(i64, i64), Vec<Message>> = HashMap::new();
     for msg in messages {
-        match msg.grouped_id {
-            Some(gid) => {
-                let bucket = buckets.entry(gid).or_default();
+        match album_key(&msg) {
+            Some(key) => {
+                let bucket = buckets.entry(key).or_default();
                 if bucket.is_empty() {
-                    slots.push(Slot::Group(gid));
+                    slots.push(Slot::Group(key));
                 }
                 bucket.push(msg);
             }
@@ -61,8 +68,8 @@ pub(crate) fn collapse_albums(messages: Vec<Message>) -> Vec<Message> {
         .into_iter()
         .filter_map(|slot| match slot {
             Slot::Single(msg) => Some(*msg),
-            Slot::Group(gid) => {
-                let mut siblings = buckets.remove(&gid)?;
+            Slot::Group(key) => {
+                let mut siblings = buckets.remove(&key)?;
                 siblings.sort_by_key(|m| m.id.get());
                 if siblings.len() == 1 {
                     return siblings.pop();
@@ -144,11 +151,14 @@ mod tests {
     #[test]
     fn post_counter_admits_siblings_beyond_limit() {
         let mut c = PostCounter::default();
-        assert!(c.admit(Some(7), 1), "first sibling starts post 1");
-        assert!(c.admit(Some(7), 1), "sibling of an admitted album is free");
+        assert!(c.admit(Some((100, 7)), 1), "first sibling starts post 1");
+        assert!(
+            c.admit(Some((100, 7)), 1),
+            "sibling of an admitted album is free"
+        );
         assert!(!c.admit(None, 1), "a single would start post 2 — stop");
         assert!(
-            !c.admit(Some(8), 1),
+            !c.admit(Some((100, 8)), 1),
             "a new album would start post 2 — stop"
         );
     }
@@ -159,5 +169,25 @@ mod tests {
         assert!(c.admit(None, 2));
         assert!(c.admit(None, 2));
         assert!(!c.admit(None, 2));
+    }
+
+    #[test]
+    fn same_grouped_id_in_different_channels_stays_separate_posts() {
+        let mut a = create_test_message(10, "from channel A", 100);
+        a.grouped_id = Some(777);
+        let mut b = create_test_message(11, "from channel B", 200);
+        b.grouped_id = Some(777);
+
+        let collapsed = collapse_albums(vec![a, b]);
+
+        assert_eq!(
+            collapsed.len(),
+            2,
+            "same gid across channels must not merge"
+        );
+        assert!(
+            collapsed.iter().all(|m| m.album.is_none()),
+            "each is a lone member, stays plain"
+        );
     }
 }
