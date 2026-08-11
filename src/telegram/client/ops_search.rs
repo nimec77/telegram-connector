@@ -33,7 +33,7 @@ impl TelegramClient {
                 self.timeouts.search_secs,
                 async {
                     let mut messages = Vec::new();
-                    let mut channels_searched = 0u32;
+                    let mut channels_scanned = 0u32;
                     // Find the channel in our dialogs
                     let mut dialogs = self.client.iter_dialogs();
 
@@ -42,7 +42,7 @@ impl TelegramClient {
                     })? {
                         let peer = dialog.peer();
                         if peer.id().bare_id() == Some(channel_id.get()) {
-                            channels_searched += 1;
+                            channels_scanned += 1;
 
                             // Search in this specific channel
                             let peer_ref = peer_to_ref(peer).await?;
@@ -78,11 +78,11 @@ impl TelegramClient {
                             break;
                         }
                     }
-                    Ok((messages, channels_searched))
+                    Ok((messages, channels_scanned))
                 },
             )
             .await
-            .map(|(messages, channels_searched)| (messages, Some(channels_searched)))?
+            .map(|(messages, channels_scanned)| (messages, Some(channels_scanned)))?
         } else {
             // Search all channels using global search
             let collected = with_timeout("search_all_messages", self.timeouts.search_secs, async {
