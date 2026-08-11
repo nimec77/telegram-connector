@@ -65,7 +65,8 @@ Covers **B5+A2, B6, B7, B8, B9, B10, D1, D2, D3, D10**.
 
   ```
   { query, window_from, window_to,           // RFC 3339; the window actually run
-    channels_scanned: Option<u32>,           // 1 for single-channel; real count for global
+    channels_scanned: Option<u32>,           // 1 for single-channel; null for global
+                                             // (server-side search — scope unknowable)
     channels_in_results: u32 }
   ```
 
