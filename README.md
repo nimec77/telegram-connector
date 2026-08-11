@@ -318,7 +318,7 @@ Get detailed information about a specific channel.
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
 | `channel_identifier` | string | Yes | — | Channel username (e.g., `technews`) or numeric ID |
-| `include_full` | boolean | No | `false` | Fetch full channel info (`description`, `member_count`) with one extra Telegram RPC (`channels.getFullChannel`). Channel-kind peers only (broadcasts and megagroups); other peer kinds (small groups, communities) silently fall back to basic info. |
+| `include_full` | boolean | No | `false` | Fetch full channel info (`description`, `member_count`, `last_message_date`) with extra Telegram RPCs. `description` and `member_count` come from `channels.getFullChannel` (channel-kind peers only: broadcasts and megagroups); `last_message_date` comes from a one-message history peek (any peer kind). Other peer kinds silently fall back to basic info for the RPC-dependent fields. |
 
 **Response (default, `include_full: false`):**
 ```json
@@ -357,12 +357,12 @@ Get detailed information about a specific channel.
 }
 ```
 
-> **Note:** `include_full` fills in `description`, `member_count`, and
-> `last_message_date`. The extra RPC applies to channel-kind peers (broadcasts
-> and megagroups); if it fails (e.g. a private or forbidden channel) the basic
-> channel info is still returned, with `description`/`member_count`/`last_message_date`
-> left as `null`. It costs one rate-limiter
-> token on top of the basic lookup.
+> **Note:** `include_full` populates `description` and `member_count` via
+> `channels.GetFullChannel` (channel-kind peers — broadcasts and megagroups — only;
+> other peer kinds report these as `null`), and `last_message_date` via a one-message
+> history peek (any peer kind with readable history). If either fetch fails, the
+> affected field(s) stay `null` and the call still succeeds. It costs one to two
+> rate-limiter tokens on top of the basic lookup.
 
 **Response (private group, no public username):**
 ```json
