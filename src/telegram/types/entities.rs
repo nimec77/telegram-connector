@@ -107,13 +107,20 @@ pub struct MessageReaction {
 }
 
 /// Post-level album summary on a collapsed message (work-order B5/A2).
+///
+/// Describes only the siblings present in this result set: an album that
+/// straddles the fetched window (cut off by `limit`, `media_filter`, a
+/// `from_date`/`to_date` bound, or global-search adjacency) is partially
+/// represented here, not the full album Telegram holds. A lone surviving
+/// sibling is indistinguishable from a genuine non-album post and appears as
+/// a plain message with no `album` field at all.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct AlbumInfo {
-    /// Number of sibling messages in the album.
+    /// Number of sibling messages in the album present in this result set.
     pub media_count: u32,
-    /// Media type of each sibling, in ascending id order.
+    /// Media type of each sibling present in this result set, in ascending id order.
     pub media_types: Vec<MediaType>,
-    /// All sibling message ids, ascending — every part stays reachable.
+    /// Sibling message ids present in this result set, ascending.
     pub message_ids: Vec<MessageId>,
 }
 

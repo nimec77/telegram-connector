@@ -3237,3 +3237,91 @@ before tagging — changelog entries belong in the feature PR itself.
   ref-resolvability against the generator's full output; `#[schemars(inline)]` on enums referenced
   from request structs sidesteps the whole bug class by never emitting a `$ref` there in the first
   place.
+
+## Post shape (B5-B10, D1-D3, D10, A2) — 2026-08-11
+
+Nine-task plan (`docs/superpowers/plans/2026-08-11-post-shape.md`) addressing the second batch of
+findings from the v0.13.0 black-box audit (`docs/telegram-mcp-0.13.0-work-order.md`) — the
+message/channel "shape" issues (misleading field names, fabricated sentinels, uncounted albums,
+ambiguous nulls) rather than the correctness-core batch's outright fabrications. TDD throughout,
+gate green per task, one commit per task (Task 2 and Task 4 each got a small review-driven
+follow-up commit). Tests 499 → 518 across eight feature/fix tasks plus this docs-only Task 9.
+
+- **Task 1 / B9** (`c9966c9`) — `Channel.username`/`Message.channel_username` become
+  `Option<Username>` (`null` replaces the `"unknown"`/`"group"` sentinel strings, which were both
+  syntactically valid usernames that could collide with a real channel); new `Channel.chat_type`
+  (`channel`/`supergroup`/`group`) reports chat kind without inferring it from username presence.
+- **Task 2 / B6+B7** (`4a90f73`, follow-up `4e13647`) — `SearchResult.total_found` renamed to
+  `returned` (it was always the page size); `QueryMetadata` replaces the requested `hours_back` and
+  the overloaded `channels_searched` with `window_from`/`window_to` (the window actually executed)
+  and `channels_scanned`/`channels_in_results` (the scope actually executed). Follow-up commit
+  renamed a local variable left over from the old field name that clippy/review caught.
+- **Task 3 / B6a+D10** (`ed7f9c8`) — new `ChannelPage { channels, total }` domain type;
+  `get_subscribed_channels` now walks its *entire* dialog list every call instead of stopping at
+  the requested page, so `total` is a genuine subscription count and `has_more` is always a known
+  `Some(...)`. `search_public_channels`'s `total`/`has_more` become `Option`, `null` when
+  `contacts.search` genuinely cannot know the answer.
+- **Task 4 / B8** (`682b423`, follow-up `8fee322`) — `Channel.last_message_date` populated from the
+  dialog's top message on `get_subscribed_channels`, and via a one-message history peek on
+  `get_channel_info` when `include_full: true`; follow-up commit corrected the doc scoping of which
+  path the peek applies to.
+- **Task 5 / D1+D2** (`02f2cf9`) — every message gains `link` (same permalink
+  `generate_message_link` computes), `reactions`/`reactions_total`, and `grouped_id` (Telegram's
+  album/media-group id) — all zero-extra-RPC, derived from data already in the message response.
+- **Task 6 / B5+A2** (`aafacac`) — `collapse_albums` (default `true`) collapses `grouped_id`
+  siblings into one post-level result with a new `album` object, using a `PostCounter` that counts
+  **posts**, not raw messages, against `limit`.
+- **Task 7 / D3** (`b416c4d`) — `get_message_media` metadata renames `original_width/height/
+  size_bytes` to `source_variant_*` (the fields describe the *selected variant*, not the original
+  file) and adds `largest_available_width/height` so clients can detect a higher-resolution variant
+  exists.
+- **Task 8 / B10** (`bfc014d`) — investigated whether forward-source names could be filled from
+  data already on the message (the audit's claim); verified against the pinned grammers rev.
+- **Task 9** (this entry) — guard-coverage grep confirmed `ops_media.rs`, `ops_transcribe.rs`, and
+  `ops_message.rs` already all route their fetched message through `require_found`
+  (`src/telegram/client/guard.rs`) — no wiring gap, no code change needed. Docs consistency pass
+  over README/CHANGELOG/tasklist, plus fixing two review findings: `AlbumInfo`'s doc comments and
+  the README's album prose overstated completeness ("every sibling", "no part is unreachable") —
+  softened everywhere to "siblings present in this result set," since `media_filter`, a date bound,
+  or global-search adjacency can drop siblings the fetched window never saw; and the README's
+  `search_messages` example was internally incoherent (`"id": 42` next to
+  `album.message_ids: [610047..610054]`, and `"has_media": false` beside an 8-photo album) — fixed
+  to `id: 610047` (= `message_ids[0]`), `has_media: true`, `media_type: "photo"`.
+
+### Decisions worth remembering
+
+- **Post-counting admit rule.** `PostCounter::admit(grouped_id, limit)` counts *posts* against
+  `limit`, not raw messages: the first sibling of a new album (or a lone single) consumes one slot
+  and can be refused once `limit` posts are already admitted, but every subsequent sibling of an
+  *already-admitted* album is free — an album is never split across the `limit` boundary once its
+  first sibling got in. This is why a page can return more than `limit` raw messages when its last
+  post is an album.
+- **A lone album member stays a plain message.** If only one sibling of a `grouped_id` group
+  survives collapsing (because it's genuinely a group of one, or because the fetched window/filter
+  dropped every other sibling), `collapse_albums` leaves it with `album: None` rather than
+  synthesizing a one-item album object — a real single message and a filtered-down album are
+  indistinguishable on the wire, by design (see also the Task 9 doc-wording fix above: this means
+  `album.media_count`/`message_ids` describe only the result-set-local sibling count, never a
+  server-side total).
+- **`channels_scanned: null` means "global search," not "unknown due to an error."** A
+  `channel_id`-scoped search always reports a concrete `channels_scanned` count; the field is
+  `null` specifically and only for a global (no-`channel_id`) search, where the server has no
+  fixed scan scope to report — it is a structural "not applicable," not a failure signal.
+  `channels_in_results` (distinct channels actually present in `messages`) is always a number,
+  including for global searches, so a null-`channels_scanned` response is never missing scope
+  information entirely.
+- **`ChannelPage`'s full-walk costs nothing extra.** `get_subscribed_channels` switched from
+  stopping `iter_dialogs()` at the requested page to walking the entire dialog list every call —
+  this sounds like new cost, but `iter_dialogs()` has no server-side offset/skip, so every previous
+  call already walked from the beginning to reach an offset page; continuing the same walk to
+  completion to compute a genuine `total` is free relative to what offset pagination was already
+  paying, not a new O(dialogs) cost.
+- **B10 outcome: forward names stay id-only.** Investigated against the pinned grammers rev
+  (`~/.cargo/git/checkouts/grammers-8937e3b5288aa015/9fef0ba`): the message's peer map
+  (`grammers_client::message::Message.peers: PeerMap`) is `pub(crate)`, and no public accessor
+  resolves arbitrary forward-source peers beyond `sender()`/`peer()`. Filling
+  `forwarded_from.channel_name`/`channel_username` would require an extra RPC per message, which
+  the zero-extra-call enrichment invariant forbids — so they stay `null`, `channel_id` and
+  `original_message_id` stay populated. Batch attribution (resolving many channel ids in one call)
+  is the planned `resolve_channels` tool for v0.18 (roadmap A7); revisit this decision if that tool
+  bumps the pinned grammers rev and a public peer-resolution accessor appears.

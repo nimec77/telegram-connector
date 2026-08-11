@@ -514,7 +514,7 @@ Search for messages across channels with optional media type filtering.
 {
   "messages": [
     {
-      "id": 42,
+      "id": 610047,
       "channel_id": 1234567890,
       "channel_name": "Tech News",
       "channel_username": "technews",
@@ -522,9 +522,9 @@ Search for messages across channels with optional media type filtering.
       "timestamp": "2025-12-28T10:30:00Z",
       "sender_id": 987654321,
       "sender_name": "John Doe",
-      "has_media": false,
-      "media_type": "none",
-      "link": "https://t.me/technews/42",
+      "has_media": true,
+      "media_type": "photo",
+      "link": "https://t.me/technews/610047",
       "views": 15000,
       "forwards": 230,
       "forwarded_from": {
@@ -538,7 +538,7 @@ Search for messages across channels with optional media type filtering.
         "title": "New AI model released",
         "description": "A short summary pulled from Telegram's server-side preview..."
       },
-      "reply_to_message_id": 41,
+      "reply_to_message_id": 610046,
       "video_info": {
         "duration_seconds": 95,
         "width": 1280,
@@ -618,9 +618,13 @@ its lowest-id sibling; `text` is taken from whichever sibling actually carries a
 caption (Telegram puts the caption on an arbitrary member of the group, not always the
 first). The post carries an `album` object: `media_count` (sibling count),
 `media_types` (one entry per sibling, ascending id order), and `message_ids` (every
-sibling's id, ascending, so no part of the album is unreachable even though only the
-representative appears in `messages`). An "album" of exactly one message in the
-returned window is not collapsed — no `album` object, same as any plain message. Pass
+sibling's id, ascending) — but these three fields describe only the siblings **present
+in this result set**, not necessarily the whole album Telegram holds: a `media_filter`,
+a `from_date`/`to_date` bound, or global-search adjacency can drop siblings that fall
+outside the fetched window, so an album straddling that boundary is partially
+represented. If only one sibling of an album survives into the result set, it is
+indistinguishable from a genuine non-album post: it is returned as a plain message with
+no `album` object at all, same as an "album" that was genuinely just one message. Pass
 `"collapse_albums": false` to get the pre-0.15 behavior: every sibling returned as its
 own message (all sharing `grouped_id`, none carrying `album`), and `limit` counting
 raw messages again.
