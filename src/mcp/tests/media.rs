@@ -26,6 +26,8 @@ fn photo_download(width: u32, height: u32) -> MediaDownload {
         height: Some(height),
         source_size_bytes,
         video_info: None,
+        largest_width: None,
+        largest_height: None,
     }
 }
 
@@ -102,6 +104,8 @@ async fn video_thumbnail_sets_is_thumbnail() {
                 height: Some(180),
                 source_size_bytes,
                 video_info: None,
+                largest_width: None,
+                largest_height: None,
             })
         });
 
@@ -153,6 +157,8 @@ async fn video_metadata_included_in_response() {
                     has_thumbnail: true,
                     mime_type: Some("video/mp4".to_string()),
                 }),
+                largest_width: None,
+                largest_height: None,
             })
         });
 
@@ -339,6 +345,8 @@ async fn corrupt_image_bytes_return_decode_error() {
                 height: None,
                 source_size_bytes: 32,
                 video_info: None,
+                largest_width: None,
+                largest_height: None,
             })
         });
 
@@ -355,4 +363,60 @@ async fn corrupt_image_bytes_return_decode_error() {
 
     let error = result.expect_err("must fail to decode");
     assert!(error.contains("decode"));
+}
+
+#[tokio::test]
+async fn media_metadata_uses_variant_naming_and_reports_largest() {
+    let mut mock_client = MockTelegramClientTrait::new();
+    mock_client
+        .expect_download_message_media()
+        .return_once(|_, _, _| {
+            let bytes = create_test_jpeg(320, 180);
+            let source_size_bytes = bytes.len() as u64;
+            Ok(MediaDownload {
+                bytes,
+                media_type: MediaType::Photo,
+                is_thumbnail: false,
+                caption: Some("test image".to_string()),
+                width: Some(320),
+                height: Some(180),
+                source_size_bytes,
+                video_info: None,
+                largest_width: Some(1280),
+                largest_height: Some(720),
+            })
+        });
+
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
+
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+    let result = server
+        .get_message_media(
+            Parameters(request("news", 15, None)),
+            RequestId(NumberOrString::Number(1)),
+        )
+        .await;
+
+    let call_result = result.expect("tool should succeed");
+    let ContentBlock::Text(text) = &call_result.content[1] else {
+        panic!("second content block must be text");
+    };
+    let json: serde_json::Value = serde_json::from_str(&text.text).unwrap();
+    assert_eq!(json["source_variant_width"], 320);
+    assert_eq!(json["source_variant_height"], 180);
+    assert_eq!(json["largest_available_width"], 1280);
+    assert_eq!(json["largest_available_height"], 720);
+    assert!(
+        json.get("original_width").is_none(),
+        "original_width should be renamed to source_variant_width (D3)"
+    );
+    assert!(
+        json.get("original_height").is_none(),
+        "original_height should be renamed to source_variant_height (D3)"
+    );
+    assert!(
+        json.get("original_size_bytes").is_none(),
+        "original_size_bytes should be renamed to source_variant_size_bytes (D3)"
+    );
 }

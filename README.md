@@ -725,7 +725,7 @@ Get recent messages from a channel by time window, without requiring a search qu
 Retrieve the visual media from a Telegram message as an MCP **image content block** (base64-encoded JPEG, quality 80) plus a JSON metadata text block. Useful for reading photos posted in channels without leaving the conversation.
 
 **What it returns:**
-- **Photos:** the photo is downscaled so its longest side fits `max_dimension`, re-encoded as JPEG, and returned as an MCP image block. The metadata block contains `media_type`, `is_thumbnail` (always `false` for photos), `caption`, original dimensions and byte size, and the returned dimensions and byte size.
+- **Photos:** the photo is downscaled so its longest side fits `max_dimension`, re-encoded as JPEG, and returned as an MCP image block. The metadata block contains `media_type`, `is_thumbnail` (always `false` for photos), `caption`, source variant dimensions (what was actually fetched) and byte size, largest available variant dimensions (if better exists), and the returned dimensions and byte size.
 - **Videos, animations, video notes:** only the server-side thumbnail is available; it is returned as an image block with `is_thumbnail: true` and a `video_info` object (duration, dimensions, kind) in the metadata.
 - **Messages without visual media:** a structured error is returned (no image block).
 - **Photos whose selected size variant exceeds 20 MB:** refused with an error.
@@ -752,9 +752,11 @@ Retrieve the visual media from a Telegram message as an MCP **image content bloc
   "media_type": "video",
   "is_thumbnail": true,
   "caption": "Optional caption text",
-  "original_width": 2560,
-  "original_height": 1440,
-  "original_size_bytes": 400000,
+  "source_variant_width": 2560,
+  "source_variant_height": 1440,
+  "source_variant_size_bytes": 400000,
+  "largest_available_width": 3840,
+  "largest_available_height": 2160,
   "returned_width": 1280,
   "returned_height": 720,
   "returned_size_bytes": 98304,

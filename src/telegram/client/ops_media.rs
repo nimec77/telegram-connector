@@ -72,6 +72,9 @@ impl TelegramClient {
         };
 
         let candidates = size_candidates(&thumbs);
+        let largest = candidates
+            .iter()
+            .max_by_key(|c| u64::from(c.width) * u64::from(c.height));
         let selected = select_size_candidate(&candidates, max_dimension).ok_or_else(|| {
             Error::DownloadFailed("no downloadable size variant available".to_string())
         })?;
@@ -145,6 +148,8 @@ impl TelegramClient {
             height: Some(selected.height),
             source_size_bytes: selected.size_bytes,
             video_info: extract_video_info(&media),
+            largest_width: largest.map(|c| c.width),
+            largest_height: largest.map(|c| c.height),
         })
     }
 }

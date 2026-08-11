@@ -172,14 +172,24 @@ pub struct GetMessageMediaResponse {
     #[schemars(description = "Message caption, if any")]
     pub caption: Option<String>,
 
-    #[schemars(description = "Pixel width of the downloaded source variant")]
-    pub original_width: Option<u32>,
+    #[schemars(
+        description = "Pixel width of the downloaded source variant (the variant actually fetched, not necessarily the original)"
+    )]
+    pub source_variant_width: Option<u32>,
 
-    #[schemars(description = "Pixel height of the downloaded source variant")]
-    pub original_height: Option<u32>,
+    #[schemars(
+        description = "Pixel height of the downloaded source variant (the variant actually fetched, not necessarily the original)"
+    )]
+    pub source_variant_height: Option<u32>,
 
     #[schemars(description = "Byte size of the downloaded source variant")]
-    pub original_size_bytes: u64,
+    pub source_variant_size_bytes: u64,
+
+    #[schemars(description = "Pixel width of the largest variant Telegram offers")]
+    pub largest_available_width: Option<u32>,
+
+    #[schemars(description = "Pixel height of the largest variant Telegram offers")]
+    pub largest_available_height: Option<u32>,
 
     #[schemars(description = "Pixel width of the returned image")]
     pub returned_width: u32,
