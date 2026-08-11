@@ -23,6 +23,8 @@ pub struct SearchParams {
     pub from_date: Option<DateTime<Utc>>,
     /// Inclusive upper bound. Messages newer than this are skipped.
     pub to_date: Option<DateTime<Utc>>,
+    /// Collapse album siblings into one post-level result; limit counts posts (B5+A2).
+    pub collapse_albums: bool,
 }
 
 impl SearchParams {
@@ -40,6 +42,7 @@ impl SearchParams {
             media_filter: None,
             from_date: None,
             to_date: None,
+            collapse_albums: true,
         }
     }
 
@@ -81,6 +84,8 @@ pub struct HistoryParams {
     pub from_date: Option<DateTime<Utc>>,
     /// Inclusive upper bound. Messages newer than this are skipped.
     pub to_date: Option<DateTime<Utc>>,
+    /// Collapse album siblings into one post-level result; limit counts posts (B5+A2).
+    pub collapse_albums: bool,
 }
 
 impl HistoryParams {
@@ -98,6 +103,7 @@ impl HistoryParams {
             media_filter: None,
             from_date: None,
             to_date: None,
+            collapse_albums: true,
         }
     }
 
@@ -203,6 +209,7 @@ mod tests {
             media_filter: Some(MediaFilter::Photo),
             from_date: None,
             to_date: None,
+            collapse_albums: true,
         };
         assert_eq!(params.media_filter, Some(MediaFilter::Photo));
     }

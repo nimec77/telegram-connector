@@ -189,6 +189,7 @@ pub fn convert_message(
         link,
         reactions,
         reactions_total,
+        album: None,
     })
 }
 

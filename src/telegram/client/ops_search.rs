@@ -3,6 +3,7 @@
 //! Unit of `client` (LM-2).
 
 use super::*;
+use crate::telegram::albums::{PostCounter, collapse_albums};
 
 impl TelegramClient {
     pub(super) async fn search_messages_impl(
@@ -27,13 +28,14 @@ impl TelegramClient {
         let cutoff_time = params.window_start();
 
         // If channel_id is specified, search only that channel
-        let (mut messages, channels_scanned) = if let Some(channel_id) = &params.channel_id {
+        let (messages, channels_scanned) = if let Some(channel_id) = &params.channel_id {
             with_timeout(
                 "search_messages_channel",
                 self.timeouts.search_secs,
                 async {
                     let mut messages = Vec::new();
                     let mut channels_scanned = 0u32;
+                    let mut counter = PostCounter::default();
                     // Find the channel in our dialogs
                     let mut dialogs = self.client.iter_dialogs();
 
@@ -69,9 +71,21 @@ impl TelegramClient {
                                     break; // reverse chronological order
                                 }
                                 if let Some(converted) = convert_message(&msg, peer) {
-                                    messages.push(converted);
-                                    if messages.len() >= params.limit as usize {
-                                        break;
+                                    if params.collapse_albums {
+                                        // Post-level limit: stop only when a NEW post
+                                        // would overflow; trailing siblings of admitted
+                                        // albums pass.
+                                        if !counter
+                                            .admit(converted.grouped_id, params.limit as usize)
+                                        {
+                                            break;
+                                        }
+                                        messages.push(converted);
+                                    } else {
+                                        messages.push(converted);
+                                        if messages.len() >= params.limit as usize {
+                                            break;
+                                        }
                                     }
                                 }
                             }
@@ -87,6 +101,7 @@ impl TelegramClient {
             // Search all channels using global search
             let collected = with_timeout("search_all_messages", self.timeouts.search_secs, async {
                 let mut messages = Vec::new();
+                let mut counter = PostCounter::default();
                 let mut search_iter = self.client.search_all_messages().query(&params.query);
 
                 if let Some(ref media_filter) = params.media_filter {
@@ -109,9 +124,18 @@ impl TelegramClient {
                     if let Some(peer) = msg.peer()
                         && let Some(converted) = convert_message(&msg, peer)
                     {
-                        messages.push(converted);
-                        if messages.len() >= params.limit as usize {
-                            break;
+                        if params.collapse_albums {
+                            // Post-level limit: stop only when a NEW post would
+                            // overflow; trailing siblings of admitted albums pass.
+                            if !counter.admit(converted.grouped_id, params.limit as usize) {
+                                break;
+                            }
+                            messages.push(converted);
+                        } else {
+                            messages.push(converted);
+                            if messages.len() >= params.limit as usize {
+                                break;
+                            }
                         }
                     }
                 }
@@ -120,6 +144,12 @@ impl TelegramClient {
             .await?;
 
             (collected, None) // server-side global search: scan scope unknowable
+        };
+
+        let mut messages = if params.collapse_albums {
+            collapse_albums(messages)
+        } else {
+            messages
         };
 
         // Sort by timestamp (newest first)

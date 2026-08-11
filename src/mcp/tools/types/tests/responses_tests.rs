@@ -103,6 +103,7 @@ fn message_response_maps_and_omits_absent_fields() {
         link: "https://t.me/testchan/1".to_string(),
         reactions: None,
         reactions_total: None,
+        album: None,
     };
 
     let dto = MessageResponse::from(msg);
@@ -151,6 +152,7 @@ fn message_response_maps_video_info() {
         link: "https://t.me/testchan/1".to_string(),
         reactions: None,
         reactions_total: None,
+        album: None,
     };
 
     let dto = MessageResponse::from(msg);
@@ -190,6 +192,7 @@ fn search_response_maps_from_search_result() {
             link: "https://t.me/testchan/1".to_string(),
             reactions: None,
             reactions_total: None,
+            album: None,
         }],
         returned: 1,
         search_time_ms: 5,

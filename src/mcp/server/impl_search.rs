@@ -50,6 +50,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             media_filter: request.media_filter,
             from_date,
             to_date,
+            collapse_albums: request.collapse_albums.unwrap_or(true),
         };
 
         // Reject an empty window before spending a token or a network round-trip.
@@ -144,6 +145,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             media_filter: request.media_filter,
             from_date,
             to_date,
+            collapse_albums: request.collapse_albums.unwrap_or(true),
         };
 
         // Reject an empty window before spending a token or a network round-trip.

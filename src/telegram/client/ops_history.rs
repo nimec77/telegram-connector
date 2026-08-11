@@ -3,6 +3,7 @@
 //! Unit of `client` (LM-2).
 
 use super::*;
+use crate::telegram::albums::{PostCounter, collapse_albums};
 
 impl TelegramClient {
     pub(super) async fn get_recent_messages_impl(
@@ -78,6 +79,7 @@ impl TelegramClient {
 
         let messages = with_timeout("iter_messages", self.timeouts.history_secs, async {
             let mut messages = Vec::new();
+            let mut counter = PostCounter::default();
             let mut messages_iter = self.client.iter_messages(peer_ref);
 
             while let Some(msg) = messages_iter
@@ -106,15 +108,30 @@ impl TelegramClient {
                 }
 
                 if let Some(converted) = convert_message(&msg, &peer) {
-                    messages.push(converted);
-                    if messages.len() >= params.limit as usize {
-                        break;
+                    if params.collapse_albums {
+                        // Post-level limit: stop only when a NEW post would
+                        // overflow; trailing siblings of admitted albums pass.
+                        if !counter.admit(converted.grouped_id, params.limit as usize) {
+                            break;
+                        }
+                        messages.push(converted);
+                    } else {
+                        messages.push(converted);
+                        if messages.len() >= params.limit as usize {
+                            break;
+                        }
                     }
                 }
             }
             Ok(messages)
         })
         .await?;
+
+        let messages = if params.collapse_albums {
+            collapse_albums(messages)
+        } else {
+            messages
+        };
 
         let search_time_ms = start_time.elapsed().as_millis() as u64;
         let returned = messages.len() as u64;

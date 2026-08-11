@@ -41,6 +41,7 @@ async fn search_messages_returns_results() {
             link: "https://t.me/testchannel/1".to_string(),
             reactions: None,
             reactions_total: None,
+            album: None,
         }],
         returned: 1,
         search_time_ms: 100,
@@ -72,6 +73,7 @@ async fn search_messages_returns_results() {
         media_filter: None,
         from_date: None,
         to_date: None,
+        collapse_albums: None,
     };
 
     let result = server
@@ -101,6 +103,7 @@ async fn search_messages_empty_query_fails() {
         media_filter: None, // no filter either = error
         from_date: None,
         to_date: None,
+        collapse_albums: None,
     };
 
     // When: Search messages
@@ -139,6 +142,7 @@ async fn search_messages_rate_limited() {
         media_filter: None,
         from_date: None,
         to_date: None,
+        collapse_albums: None,
     };
 
     // When: Search messages
@@ -194,6 +198,7 @@ async fn search_messages_with_channel_filter() {
         media_filter: None,
         from_date: None,
         to_date: None,
+        collapse_albums: None,
     };
 
     let result = server
@@ -245,6 +250,7 @@ async fn search_messages_applies_limits() {
         media_filter: None,
         from_date: None,
         to_date: None,
+        collapse_albums: None,
     };
 
     let result = server
@@ -282,6 +288,7 @@ async fn search_allows_empty_query_with_media_filter() {
             link: "https://t.me/testchannel/1".to_string(),
             reactions: None,
             reactions_total: None,
+            album: None,
         }],
         returned: 1,
         search_time_ms: 100,
@@ -313,6 +320,7 @@ async fn search_allows_empty_query_with_media_filter() {
         media_filter: Some(MediaFilter::Document), // filter by documents
         from_date: None,
         to_date: None,
+        collapse_albums: None,
     };
 
     let result = server
@@ -365,6 +373,7 @@ async fn search_passes_media_filter_to_params() {
         media_filter: Some(MediaFilter::Photo),
         from_date: None,
         to_date: None,
+        collapse_albums: None,
     };
 
     let result = server
@@ -415,6 +424,7 @@ async fn search_messages_serializes_enrichment_fields() {
             link: "https://t.me/testchannel/1".to_string(),
             reactions: None,
             reactions_total: None,
+            album: None,
         }],
         returned: 1,
         search_time_ms: 10,
@@ -444,6 +454,7 @@ async fn search_messages_serializes_enrichment_fields() {
         media_filter: None,
         from_date: None,
         to_date: None,
+        collapse_albums: None,
     };
 
     let result = server
@@ -490,6 +501,7 @@ async fn search_passes_date_range_to_client() {
         media_filter: None,
         from_date: Some("2026-08-01T00:00:00Z".to_string()),
         to_date: Some("2026-08-05T00:00:00Z".to_string()),
+        collapse_albums: None,
     };
 
     let result = server
@@ -515,6 +527,7 @@ async fn search_rejects_invalid_from_date() {
         media_filter: None,
         from_date: Some("not-a-date".to_string()),
         to_date: None,
+        collapse_albums: None,
     };
 
     // When: Search with a malformed from_date
@@ -542,6 +555,7 @@ async fn search_rejects_inverted_range() {
         media_filter: None,
         from_date: Some("2026-08-05T00:00:00Z".to_string()),
         to_date: Some("2026-08-01T00:00:00Z".to_string()),
+        collapse_albums: None,
     };
 
     // When: Search with from_date after to_date
@@ -584,6 +598,7 @@ async fn search_accepts_equal_from_and_to_date() {
         media_filter: None,
         from_date: Some("2026-08-01T00:00:00Z".to_string()),
         to_date: Some("2026-08-01T00:00:00Z".to_string()),
+        collapse_albums: None,
     };
 
     let result = server
@@ -616,6 +631,7 @@ async fn search_rejects_to_date_older_than_hours_back_window() {
         media_filter: None,
         from_date: None,
         to_date: Some(long_ago.to_rfc3339()),
+        collapse_albums: None,
     };
 
     let result = server
@@ -653,6 +669,7 @@ async fn search_accepts_to_date_inside_hours_back_window() {
         media_filter: None,
         from_date: None,
         to_date: Some(recent.to_rfc3339()),
+        collapse_albums: None,
     };
 
     let result = server
@@ -678,6 +695,7 @@ async fn search_rejects_blank_from_date() {
         media_filter: None,
         from_date: Some("   ".to_string()),
         to_date: None,
+        collapse_albums: None,
     };
 
     let result = server
@@ -710,6 +728,7 @@ async fn search_accepts_padded_from_date() {
         media_filter: None,
         from_date: Some(" 2026-08-01T00:00:00Z ".to_string()),
         to_date: None,
+        collapse_albums: None,
     };
 
     let result = server
@@ -742,6 +761,7 @@ async fn search_response_reports_window_and_returned() {
         media_filter: None,
         from_date: None,
         to_date: None,
+        collapse_albums: None,
     };
 
     let result_string = server

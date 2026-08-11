@@ -44,6 +44,7 @@ pub fn create_test_message(id: i64, text: &str, channel_id: i64) -> Message {
         link: format!("https://t.me/testchannel/{}", id),
         reactions: None,
         reactions_total: None,
+        album: None,
     }
 }
 

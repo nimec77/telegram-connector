@@ -45,6 +45,9 @@ pub struct Message {
     /// Total reactions of every kind, including custom/paid (D2).
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub reactions_total: Option<u64>,
+    /// Post-level album summary, present only on a collapsed post (B5/A2).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub album: Option<AlbumInfo>,
 }
 
 impl Message {
@@ -100,6 +103,17 @@ pub struct LinkPreview {
 pub struct MessageReaction {
     pub emoji: String,
     pub count: u64,
+}
+
+/// Post-level album summary on a collapsed message (work-order B5/A2).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AlbumInfo {
+    /// Number of sibling messages in the album.
+    pub media_count: u32,
+    /// Media type of each sibling, in ascending id order.
+    pub media_types: Vec<MediaType>,
+    /// All sibling message ids, ascending — every part stays reachable.
+    pub message_ids: Vec<MessageId>,
 }
 
 /// Kind of chat a `Channel` object describes (work-order B9).
@@ -178,6 +192,7 @@ mod tests {
             link: "https://t.me/testchan/1".to_string(),
             reactions: None,
             reactions_total: None,
+            album: None,
         }
     }
 

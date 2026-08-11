@@ -8,13 +8,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed (breaking)
+- `search_messages` and `get_recent_messages` now collapse album (grouped-media)
+  siblings into a single post-level result by default (new `collapse_albums`
+  parameter, default `true`, work-orders B5/A2): `limit` counts **posts**, not raw
+  messages, and an album is never split across the limit boundary (once a post's
+  first sibling is admitted, the rest of that album is always admitted too, even
+  past `limit`). The collapsed post is represented by its lowest-id sibling and
+  carries a new `album` object (`media_count`, `media_types`, `message_ids` — every
+  sibling id stays reachable even though only the representative appears in
+  `messages`); `text` is taken from whichever sibling actually carries the caption.
+  This changes result shapes on album-heavy channels: a page that previously
+  returned N raw sibling messages for one album now returns 1 collapsed post plus
+  whatever else fit under `limit`. Pass `"collapse_albums": false` to get the exact
+  pre-0.15 behavior — every sibling returned as its own message, `limit` counting
+  raw messages again.
 - `SearchResult.total_found` (surfaced on the wire as `SearchResponse.total_found`) is renamed to `returned`: the field was always the page size (`messages.len()`), never a true match count, and the old name invited callers to read it as "total matches available." `QueryMetadata` no longer echoes the requested `hours_back` or an ambiguous `channels_searched` count; it now reports the window and scope a query actually executed with: `window_from` (effective window start — `from_date`, or `now - hours_back`) and `window_to` (effective upper bound, omitted entirely when the window is open-ended) replace `hours_back`; `channels_scanned` (the number of channels actually scanned — `null` for a global search, where the scan scope is unknowable server-side) and `channels_in_results` (distinct channels present in `messages`, always a number) replace the single overloaded `channels_searched`. Affects `search_messages` and `get_recent_messages` responses.
 - `Channel.username` and `Message.channel_username` are now `Option<Username>`, serialized as `null` when the chat has no public username — the `"unknown"`/`"group"` sentinel strings are gone. Both were syntactically valid Telegram usernames that could collide with a real channel (`@premium` exists in the wild). Clients matching on the literal sentinel strings must switch to checking for `null`. New field `chat_type` (`"channel"` | `"supergroup"` | `"group"`) on every `Channel` object identifies the kind of chat (broadcast channel, megagroup, or basic group/community) without inferring it from `username`'s presence.
 - `ChannelsResponse` (`get_subscribed_channels` and `search_public_channels`) gains `returned` (the page size, `channels.len()`); `total` is now `Option<usize>` and `has_more` is now `Option<bool>`, both `null` when the source cannot know the answer, rather than a value that looked authoritative but wasn't. `get_subscribed_channels` now walks its entire dialog list on every call (not just the requested page) so `total` is a genuine subscription count instead of the page size, and the previous over-fetch-one-row trick for detecting a next page is gone — `has_more` is derived straight from the true total and is always `Some(...)` for this tool. `search_public_channels`'s `contacts.search` has no global match count, so its `total` is always `null`; its `has_more` is `null` when the page came back full (`returned == limit`, work-order D10 — a full page says nothing about what lies beyond it) and `Some(false)` when it came back short of `limit`.
 
 ### Added
 - `Channel.last_message_date` is now populated on `get_subscribed_channels` (from the dialog's top message, work-order B8) and on `get_channel_info` when `include_full: true` (via a one-message history peek; if the peek fails, the field is left `null` and the call still succeeds). Everywhere else it remains `null`. When a channel has no messages, `last_message_date` is `null`.
-- Every message now carries a `link` (the same permalink `generate_message_link` returns, public `t.me/<username>/<id>` form when the channel has a username, members-only `t.me/c/<channel_id>/<id>` otherwise), `reactions` (itemized standard-emoji reactions as `{emoji, count}`, omitted when the message has none), `reactions_total` (count across every reaction kind including custom-emoji and paid, which aren't individually itemized), and `grouped_id` (Telegram's album/media-group id, shared by sibling messages posted as an album, `null` otherwise). All four are zero-extra-RPC — derived from data already present in the message the server returned (work-orders D1, D2).
+- Every message now carries a `link` (the same permalink `generate_message_link` returns, public `t.me/<username>/<id>` form when the channel has a username, members-only `t.me/c/<channel_id>/<id>` otherwise), `reactions` (itemized standard-emoji reactions as `{emoji, count}`, omitted when the message has none), `reactions_total` (count across every reaction kind including custom-emoji and paid, which aren't individually itemized), and `grouped_id` (Telegram's album/media-group id, shared by sibling messages posted as an album, `null` otherwise). All four are zero-extra-RPC — derived from data already present in the message the server returned (work-orders D1, D2). `grouped_id` is also what the new `collapse_albums` post-collapsing feature (above) groups siblings by.
+- `search_messages` and `get_recent_messages` accept a new optional `collapse_albums` boolean (default `true`, see Changed above) and, when a post is a collapsed album, its `album` object (`media_count: u32`, `media_types: Vec<MediaType>`, `message_ids: Vec<MessageId>`), work-orders B5/A2.
 
 ## [0.14.0] - 2026-08-10
 

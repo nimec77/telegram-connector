@@ -491,6 +491,7 @@ Search for messages across channels with optional media type filtering.
 | `media_filter` | string | No | - | Filter by media type (see below) |
 | `from_date` | string | No | - | Inclusive start of the time window as RFC 3339 UTC (e.g. `2026-08-01T00:00:00Z`). Overrides `hours_back`. Reaching far back works best on low-traffic channels; on active channels prefer a narrower recent window, since deep windows are paged client-side and may time out |
 | `to_date` | string | No | - | Inclusive end of the time window as RFC 3339 UTC. Messages newer than this are excluded. Set without `from_date`, it must fall inside the `hours_back` window — otherwise the window is empty and the call is rejected |
+| `collapse_albums` | boolean | No | `true` | Collapse album (grouped media) siblings into one post-level result. When `true`, `limit` counts posts (not raw messages) and each collapsed post carries an `album` object. When `false`, every sibling is returned as its own message and `limit` counts raw messages, matching pre-0.15 behavior |
 
 **Media Filter Options:**
 | Value | Description |
@@ -558,7 +559,12 @@ Search for messages across channels with optional media type filtering.
         { "emoji": "🔥", "count": 41 },
         { "emoji": "👍", "count": 12 }
       ],
-      "reactions_total": 55
+      "reactions_total": 55,
+      "album": {
+        "media_count": 8,
+        "media_types": ["photo", "photo", "photo", "photo", "photo", "photo", "photo", "photo"],
+        "message_ids": [610047, 610048, 610049, 610050, 610051, 610052, 610053, 610054]
+      }
     }
   ],
   "returned": 15,
@@ -602,6 +608,22 @@ the list, but `reactions_total` always counts every reaction of every kind. Both
 omitted when the message has no reactions. `grouped_id` is Telegram's album (media
 group) id — present and identical across sibling messages that were posted together
 as an album, `null`/omitted otherwise.
+
+**Album collapsing (`collapse_albums`, default `true`):** by default, sibling messages
+that share a `grouped_id` (an album/media group posted together) are collapsed into a
+single post-level result before `limit` is applied — so `limit` counts **posts**, not
+raw messages, and an album is never cut in half at the boundary (its trailing siblings
+are always admitted once the album has started). The collapsed post is represented by
+its lowest-id sibling; `text` is taken from whichever sibling actually carries a
+caption (Telegram puts the caption on an arbitrary member of the group, not always the
+first). The post carries an `album` object: `media_count` (sibling count),
+`media_types` (one entry per sibling, ascending id order), and `message_ids` (every
+sibling's id, ascending, so no part of the album is unreachable even though only the
+representative appears in `messages`). An "album" of exactly one message in the
+returned window is not collapsed — no `album` object, same as any plain message. Pass
+`"collapse_albums": false` to get the pre-0.15 behavior: every sibling returned as its
+own message (all sharing `grouped_id`, none carrying `album`), and `limit` counting
+raw messages again.
 
 **Video & audio metadata:** Messages with video-class media carry an optional
 `video_info` object — `duration_seconds`, `width`, `height`, `file_size_bytes`,
@@ -649,6 +671,7 @@ Get recent messages from a channel by time window, without requiring a search qu
 | `media_filter` | string | No | - | Filter by media type (same options as `search_messages`) |
 | `from_date` | string | No | - | Inclusive start of the time window as RFC 3339 UTC (e.g. `2026-08-01T00:00:00Z`). Overrides `hours_back`. Reaching far back works best on low-traffic channels; on active channels prefer a narrower recent window, since deep windows are paged client-side and may time out |
 | `to_date` | string | No | - | Inclusive end of the time window as RFC 3339 UTC. Messages newer than this are excluded. Set without `from_date`, it must fall inside the `hours_back` window — otherwise the window is empty and the call is rejected |
+| `collapse_albums` | boolean | No | `true` | Collapse album (grouped media) siblings into one post-level result. When `true`, `limit` counts posts (not raw messages) and each collapsed post carries an `album` object. When `false`, every sibling is returned as its own message and `limit` counts raw messages, matching pre-0.15 behavior. See `search_messages` above for the full behavior description |
 
 **Key Difference from `search_messages`:**
 
