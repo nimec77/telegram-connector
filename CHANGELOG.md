@@ -32,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Every message now carries a `link` (the same permalink `generate_message_link` returns, public `t.me/<username>/<id>` form when the channel has a username, members-only `t.me/c/<channel_id>/<id>` otherwise), `reactions` (itemized standard-emoji reactions as `{emoji, count}`, omitted when the message has none), `reactions_total` (count across every reaction kind including custom-emoji and paid, which aren't individually itemized), and `grouped_id` (Telegram's album/media-group id, shared by sibling messages posted as an album, `null` otherwise). All four are zero-extra-RPC — derived from data already present in the message the server returned (work-orders D1, D2). `grouped_id` is also what the new `collapse_albums` post-collapsing feature (above) groups siblings by.
 - `search_messages` and `get_recent_messages` accept a new optional `collapse_albums` boolean (default `true`, see Changed above) and, when a post is a collapsed album, its `album` object (`media_count: u32`, `media_types: Vec<MediaType>`, `message_ids: Vec<MessageId>`), work-orders B5/A2.
 
+### Known limitations
+- Forward attribution (`forwarded_from.channel_name` and `forwarded_from.channel_username`) stays id-only: `channel_id` and `original_message_id` are populated, but `channel_name` and `channel_username` remain `null` (resolving them would require an extra RPC per message, breaking the zero-extra-call invariant). Batch attribution — resolving multiple channel ids in one call — is the planned `resolve_channels` tool for v0.18 (roadmap A7).
+
 ## [0.14.0] - 2026-08-10
 
 ### Added

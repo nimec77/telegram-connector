@@ -28,7 +28,9 @@ pub(crate) fn message_timestamp(msg: &grammers_client::message::Message) -> Opti
 /// Drops down to the raw TL `MessageFwdHeader` because grammers' high-level API
 /// exposes only `forward_header()` (the raw enum). `channel_name`/`channel_username`
 /// are left `None`: `from_id` is an ID-only TL `Peer`, and the resolved
-/// title/username are not available without an extra resolve call.
+/// title/username are not available without an extra resolve call per message, which
+/// the zero-extra-call enrichment invariant forbids; batch attribution is the
+/// `resolve_channels` tool planned for v0.18 (roadmap A7).
 pub(crate) fn extract_forward_info(header: &tl::types::MessageFwdHeader) -> ForwardInfo {
     let channel_id = match &header.from_id {
         Some(tl::enums::Peer::Channel(ch)) => ChannelId::new(ch.channel_id).ok(),

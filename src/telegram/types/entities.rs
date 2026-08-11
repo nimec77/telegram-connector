@@ -68,8 +68,9 @@ impl Message {
 /// `channel_name` / `channel_username` are intentionally never populated: the
 /// grammers forward header carries only the source's numeric `from_id`, and the
 /// resolved title/username live in the response's peer map (not exposed per
-/// message). Filling them would require an extra resolve call, which the
-/// zero-extra-call enrichment path must avoid.
+/// message). Filling them would require an extra resolve call per message, which the
+/// zero-extra-call enrichment invariant forbids; batch attribution is the
+/// `resolve_channels` tool planned for v0.18 (roadmap A7).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ForwardInfo {
     #[serde(skip_serializing_if = "Option::is_none", default)]
