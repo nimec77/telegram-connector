@@ -15,12 +15,24 @@ use grammers_client::tl;
 
 /// A message's date at the grammers boundary as the domain's `DateTime<Utc>`.
 ///
-/// grammers 0.10 reports dates as jiff `Timestamp`s; the domain model stays on
-/// chrono. Telegram dates are whole-second `i32`s, so converting via seconds
-/// loses nothing, and `None` is unreachable for any date Telegram can send.
-/// Single owner of the jiff→chrono conversion — date-type churn lands here.
+/// Telegram dates are whole-second `i32`s on the raw TL variants, so reading
+/// them directly loses nothing (grammers' own `date()` reads the same field).
+/// `MessageEmpty` placeholders have no real date and yield `None` — never an
+/// epoch-0 fabrication (work-order B1/B8). Single owner of the raw→chrono
+/// conversion — date-type churn lands here.
 pub(crate) fn message_timestamp(msg: &grammers_client::message::Message) -> Option<DateTime<Utc>> {
-    DateTime::from_timestamp(msg.date().as_second(), 0)
+    timestamp_from_raw(&msg.raw)
+}
+
+/// Raw-enum seam for [`message_timestamp`] — constructible offline, so the
+/// Empty-refusal is directly testable (same pattern as `client/guard.rs`).
+fn timestamp_from_raw(raw: &tl::enums::Message) -> Option<DateTime<Utc>> {
+    let secs = match raw {
+        tl::enums::Message::Message(m) => m.date,
+        tl::enums::Message::Service(m) => m.date,
+        tl::enums::Message::Empty(_) => return None,
+    };
+    DateTime::from_timestamp(secs as i64, 0)
 }
 
 /// Extract forward attribution from a raw forward header.
@@ -341,5 +353,42 @@ mod tests {
     #[test]
     fn extract_reactions_none_when_absent() {
         assert_eq!(extract_reactions(None), (None, None));
+    }
+
+    #[test]
+    fn timestamp_from_raw_refuses_empty_placeholder() {
+        let raw = tl::enums::Message::Empty(tl::types::MessageEmpty {
+            id: 609784,
+            peer_id: None,
+        });
+        assert_eq!(
+            timestamp_from_raw(&raw),
+            None,
+            "Empty must never yield a date (B1/B8)"
+        );
+    }
+
+    #[test]
+    fn timestamp_from_raw_converts_service_date() {
+        let raw = tl::enums::Message::Service(tl::types::MessageService {
+            out: false,
+            mentioned: false,
+            media_unread: false,
+            reactions_are_possible: false,
+            silent: false,
+            post: true,
+            legacy: false,
+            id: 610119,
+            from_id: None,
+            peer_id: tl::enums::Peer::Channel(tl::types::PeerChannel { channel_id: 1 }),
+            saved_peer_id: None,
+            reply_to: None,
+            date: 1_700_000_000,
+            action: tl::enums::MessageAction::Empty,
+            reactions: None,
+            ttl_period: None,
+        });
+        let ts = timestamp_from_raw(&raw).expect("real date converts");
+        assert_eq!(ts.timestamp(), 1_700_000_000);
     }
 }

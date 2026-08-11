@@ -361,8 +361,9 @@ Get detailed information about a specific channel.
 > `channels.GetFullChannel` (channel-kind peers — broadcasts and megagroups — only;
 > other peer kinds report these as `null`), and `last_message_date` via a one-message
 > history peek (any peer kind with readable history). If either fetch fails, the
-> affected field(s) stay `null` and the call still succeeds. It costs one to two
-> rate-limiter tokens on top of the basic lookup.
+> affected field(s) stay `null` and the call still succeeds. It costs exactly one
+> rate-limiter token (on top of the basic lookup), regardless of how many of the
+> up to two extra Telegram RPCs it issues.
 
 **Response (private group, no public username):**
 ```json
@@ -385,7 +386,7 @@ Get detailed information about a specific channel.
 > is fabricated. `chat_type` distinguishes `channel` (broadcast), `supergroup`,
 > and `group` (basic group, including Telegram's `Community` peer kind).
 
-**Usage:** Verify channel details or get the numeric ID for other operations. Use `include_full: true` when you specifically need the description or member count — it costs one extra Telegram RPC round-trip.
+**Usage:** Verify channel details or get the numeric ID for other operations. Use `include_full: true` when you specifically need the description or member count — it costs 1 rate-limiter token, and up to two extra Telegram RPC round-trips.
 
 ---
 
@@ -627,7 +628,10 @@ indistinguishable from a genuine non-album post: it is returned as a plain messa
 no `album` object at all, same as an "album" that was genuinely just one message. Pass
 `"collapse_albums": false` to get the pre-0.15 behavior: every sibling returned as its
 own message (all sharing `grouped_id`, none carrying `album`), and `limit` counting
-raw messages again.
+raw messages again. Because `limit` counts posts, on very album-heavy channels
+reaching a high `limit` may require walking up to ~10x as many raw messages within the
+same timeout budget, so the call may hit the timeout sooner than expected — lower
+`limit` or pass `"collapse_albums": false` if that happens.
 
 **Video & audio metadata:** Messages with video-class media carry an optional
 `video_info` object — `duration_seconds`, `width`, `height`, `file_size_bytes`,
@@ -701,7 +705,8 @@ Get recent messages from a channel by time window, without requiring a search qu
       "sender_id": 0,
       "sender_name": "Tech News",
       "has_media": false,
-      "media_type": "none"
+      "media_type": "none",
+      "link": "https://t.me/technews/99"
     }
   ],
   "returned": 5,
