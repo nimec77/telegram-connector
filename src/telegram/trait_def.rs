@@ -4,8 +4,8 @@
 
 use crate::error::Error;
 use crate::telegram::types::{
-    Channel, ChannelIdentity, HistoryParams, MediaDownload, Message, SearchParams, SearchResult,
-    TranscriptionOutcome,
+    Channel, ChannelIdentity, ChannelPage, HistoryParams, MediaDownload, Message, SearchParams,
+    SearchResult, TranscriptionOutcome,
 };
 
 /// Trait for Telegram client operations (allows mocking in tests)
@@ -30,9 +30,12 @@ pub trait TelegramClientTrait: Send + Sync {
     /// communities), whose full-info RPC differs.
     async fn get_full_channel_info(&self, identifier: &str) -> Result<Channel, Error>;
 
-    /// Get list of subscribed channels with pagination
-    async fn get_subscribed_channels(&self, limit: u32, offset: u32)
-    -> Result<Vec<Channel>, Error>;
+    /// Get one page of subscribed channels plus the full subscription count.
+    ///
+    /// The dialog walk always runs to completion regardless of `limit`/`offset`,
+    /// so `ChannelPage::total` is the genuine subscription count, not the page
+    /// size (work-order B6a).
+    async fn get_subscribed_channels(&self, limit: u32, offset: u32) -> Result<ChannelPage, Error>;
 
     /// Search Telegram's public directory for channels/groups by keyword.
     ///

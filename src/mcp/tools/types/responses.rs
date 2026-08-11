@@ -63,17 +63,20 @@ pub struct TranscribeVoiceMessageResponse {
     pub media_type: MediaType,
 }
 
-/// Response for get_subscribed_channels tool
+/// Response for channel-returning tools (subscriptions and discovery).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ChannelsResponse {
-    #[schemars(description = "List of subscribed channels")]
+    #[schemars(description = "Channels in this page")]
     pub channels: Vec<Channel>,
 
-    #[schemars(description = "Total number of channels (for pagination)")]
-    pub total: usize,
+    #[schemars(description = "Number of channels in this response")]
+    pub returned: usize,
 
-    #[schemars(description = "Whether there are more channels available")]
-    pub has_more: bool,
+    #[schemars(description = "Genuine total matches; null when the source cannot know it")]
+    pub total: Option<usize>,
+
+    #[schemars(description = "Whether more results exist; null when unknown (D10)")]
+    pub has_more: Option<bool>,
 }
 
 /// Response for generate_message_link tool

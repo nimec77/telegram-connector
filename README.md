@@ -287,18 +287,22 @@ List all Telegram channels you're subscribed to.
       "last_message_date": "2025-12-28T10:30:00Z"
     }
   ],
+  "returned": 1,
   "total": 25,
-  "has_more": false
+  "has_more": true
 }
 ```
 
 > **Note:** `description` and `member_count` are `null` from this endpoint — the
 > channel list is built from basic dialog info and does not fetch them. `null`
-> means "not fetched", not "no description" / "empty channel". `has_more` reflects
-> whether a further page exists (the server over-fetches one row to avoid a false
-> positive at an exact page boundary). `username` is `null` when the chat has no
-> public username (never a fabricated placeholder); `chat_type` is one of
-> `channel` (broadcast), `supergroup`, or `group` (basic group).
+> means "not fetched", not "no description" / "empty channel". `username` is
+> `null` when the chat has no public username (never a fabricated placeholder);
+> `chat_type` is one of `channel` (broadcast), `supergroup`, or `group` (basic
+> group). `returned` is the page size (`channels.len()`); `total` is the genuine
+> subscription count across your whole dialog list, not the page size — the
+> server walks the full list on every call to compute it (work-order B6a).
+> `has_more` is derived straight from that true total (`offset + returned <
+> total`) and is always a known `true`/`false`, never `null`, for this tool.
 
 **Usage:** Get a list of available channels before searching or filtering.
 
@@ -772,7 +776,7 @@ Search Telegram's public directory (`contacts.search`) for channels and groups b
 | `query` | string | Yes | - | Keyword or name to search Telegram's public directory for |
 | `limit` | integer | No | 10 | Maximum results to return (max: 50) |
 
-**Response:** Same `ChannelsResponse` shape as `get_subscribed_channels`, with `has_more` always `false` (this is a single search call, not a paginated listing) and at most `limit` entries. Each returned channel's `is_subscribed` reflects whether you're already subscribed to it — Telegram's `contacts.search` returns matches from both the public directory and your own dialogs in the same result set, so a search can surface a mix of new and already-subscribed channels. `is_subscribed: true` is reliable; `is_subscribed: false` is best-effort, because the already-subscribed side of the result set is server-capped and prefix-matched:
+**Response:** Same `ChannelsResponse` shape as `get_subscribed_channels`, with at most `limit` entries. Each returned channel's `is_subscribed` reflects whether you're already subscribed to it — Telegram's `contacts.search` returns matches from both the public directory and your own dialogs in the same result set, so a search can surface a mix of new and already-subscribed channels. `is_subscribed: true` is reliable; `is_subscribed: false` is best-effort, because the already-subscribed side of the result set is server-capped and prefix-matched. Unlike `get_subscribed_channels`, `contacts.search` reports no global match count, so `total` is always `null` here; `has_more` is `null` too when the page came back full (`returned == limit`) — a full page says nothing about what lies beyond it (work-order D10) — and a known `false` when fewer than `limit` results came back:
 
 ```json
 {
@@ -790,7 +794,8 @@ Search Telegram's public directory (`contacts.search`) for channels and groups b
       "last_message_date": null
     }
   ],
-  "total": 1,
+  "returned": 1,
+  "total": null,
   "has_more": false
 }
 ```

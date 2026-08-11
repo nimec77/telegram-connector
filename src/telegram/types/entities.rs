@@ -113,6 +113,15 @@ pub struct Channel {
     pub last_message_date: Option<DateTime<Utc>>,
 }
 
+/// One page of the subscribed-channel list plus the genuine full count.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ChannelPage {
+    pub channels: Vec<Channel>,
+    /// Total subscribed channels/groups across the entire dialog list —
+    /// a real total, not the page size (work-order B6).
+    pub total: usize,
+}
+
 /// A channel's canonical numeric ID plus its public username, if any.
 ///
 /// Unlike [`Channel::username`], there are no fallback sentinels here — `None`

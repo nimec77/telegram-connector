@@ -95,7 +95,7 @@ impl TelegramClientTrait for TelegramClient {
         &self,
         limit: u32,
         offset: u32,
-    ) -> Result<Vec<crate::telegram::Channel>, Error> {
+    ) -> Result<crate::telegram::ChannelPage, Error> {
         self.get_subscribed_channels_impl(limit, offset).await
     }
 

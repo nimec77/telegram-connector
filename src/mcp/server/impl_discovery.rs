@@ -29,11 +29,17 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         // the converted list can overshoot. The client truncates too; this keeps
         // the MCP contract ("at most `limit` results") true for any client impl.
         channels.truncate(limit as usize);
-        let total = channels.len();
+        let returned = channels.len();
         let response = ChannelsResponse {
             channels,
-            total,
-            has_more: false,
+            returned,
+            total: None, // contacts.Search reports no global match count
+            // A full page says nothing about what lies beyond it (D10).
+            has_more: if returned as u32 == limit {
+                None
+            } else {
+                Some(false)
+            },
         };
         json_response(&response)
     }

@@ -3,8 +3,8 @@
 use crate::error::Error;
 use crate::telegram::trait_def::{MockTelegramClientTrait, TelegramClientTrait};
 use crate::telegram::types::{
-    Channel, ChannelId, ChannelName, ChatType, MediaType, Message, MessageId, QueryMetadata,
-    SearchParams, SearchResult, UserId, Username,
+    Channel, ChannelId, ChannelName, ChannelPage, ChatType, MediaType, Message, MessageId,
+    QueryMetadata, SearchParams, SearchResult, UserId, Username,
 };
 
 // Helper to create test channel
@@ -79,13 +79,19 @@ async fn mock_get_subscribed_channels_returns_list() {
     mock.expect_get_subscribed_channels()
         .with(mockall::predicate::eq(10), mockall::predicate::eq(0))
         .times(1)
-        .returning(move |_, _| Ok(expected_clone.clone()));
+        .returning(move |_, _| {
+            Ok(ChannelPage {
+                channels: expected_clone.clone(),
+                total: 2,
+            })
+        });
 
     let result = mock.get_subscribed_channels(10, 0).await;
     assert!(result.is_ok());
-    let channels = result.unwrap();
-    assert_eq!(channels.len(), 2);
-    assert_eq!(channels[0].name.as_str(), "Channel1");
+    let page = result.unwrap();
+    assert_eq!(page.channels.len(), 2);
+    assert_eq!(page.total, 2);
+    assert_eq!(page.channels[0].name.as_str(), "Channel1");
 }
 
 #[tokio::test]
@@ -97,23 +103,33 @@ async fn mock_get_subscribed_channels_respects_pagination() {
         .with(mockall::predicate::eq(2), mockall::predicate::eq(0))
         .times(1)
         .returning(|_, _| {
-            Ok(vec![
-                create_test_channel(1, "Channel1"),
-                create_test_channel(2, "Channel2"),
-            ])
+            Ok(ChannelPage {
+                channels: vec![
+                    create_test_channel(1, "Channel1"),
+                    create_test_channel(2, "Channel2"),
+                ],
+                total: 3,
+            })
         });
 
     // Second page
     mock.expect_get_subscribed_channels()
         .with(mockall::predicate::eq(2), mockall::predicate::eq(2))
         .times(1)
-        .returning(|_, _| Ok(vec![create_test_channel(3, "Channel3")]));
+        .returning(|_, _| {
+            Ok(ChannelPage {
+                channels: vec![create_test_channel(3, "Channel3")],
+                total: 3,
+            })
+        });
 
     let page1 = mock.get_subscribed_channels(2, 0).await.unwrap();
-    assert_eq!(page1.len(), 2);
+    assert_eq!(page1.channels.len(), 2);
+    assert_eq!(page1.total, 3);
 
     let page2 = mock.get_subscribed_channels(2, 2).await.unwrap();
-    assert_eq!(page2.len(), 1);
+    assert_eq!(page2.channels.len(), 1);
+    assert_eq!(page2.total, 3);
 }
 
 #[tokio::test]
