@@ -13,7 +13,7 @@ pub struct Message {
     pub id: MessageId,
     pub channel_id: ChannelId,
     pub channel_name: ChannelName,
-    pub channel_username: Username,
+    pub channel_username: Option<Username>,
     pub text: String,
     pub timestamp: DateTime<Utc>,
     pub sender_id: Option<UserId>,
@@ -84,12 +84,25 @@ pub struct LinkPreview {
     pub description: Option<String>,
 }
 
+/// Kind of chat a `Channel` object describes (work-order B9).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ChatType {
+    /// Broadcast channel.
+    Channel,
+    /// Small (basic) group, incl. grammers `Community` peers.
+    Group,
+    /// Megagroup.
+    Supergroup,
+}
+
 /// A Telegram channel or group.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Channel {
     pub id: ChannelId,
     pub name: ChannelName,
-    pub username: Username,
+    pub username: Option<Username>,
+    pub chat_type: ChatType,
     pub description: Option<String>,
     /// Number of members/subscribers. `None` means the count was not fetched
     /// (distinct from a real zero); the cheap list/lookup paths leave it unset.
@@ -120,7 +133,7 @@ mod tests {
             id: MessageId::new(1).unwrap(),
             channel_id: ChannelId::new(100).unwrap(),
             channel_name: ChannelName::new("Test").unwrap(),
-            channel_username: Username::new("testchan").unwrap(),
+            channel_username: Some(Username::new("testchan").unwrap()),
             text: "test".to_string(),
             timestamp: Utc::now(),
             sender_id: None,
@@ -256,7 +269,8 @@ mod tests {
         let channel = Channel {
             id: ChannelId::new(200).unwrap(),
             name: ChannelName::new("Tech News").unwrap(),
-            username: Username::new("technews").unwrap(),
+            username: Some(Username::new("technews").unwrap()),
+            chat_type: ChatType::Channel,
             description: Some("Latest tech updates".to_string()),
             member_count: Some(5000),
             is_verified: true,
@@ -280,7 +294,8 @@ mod tests {
         let channel = Channel {
             id: ChannelId::new(201).unwrap(),
             name: ChannelName::new("No Count").unwrap(),
-            username: Username::new("nocount").unwrap(),
+            username: Some(Username::new("nocount").unwrap()),
+            chat_type: ChatType::Channel,
             description: None,
             member_count: None,
             is_verified: false,

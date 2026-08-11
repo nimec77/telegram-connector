@@ -278,6 +278,7 @@ List all Telegram channels you're subscribed to.
       "id": 1234567890,
       "name": "Tech News",
       "username": "technews",
+      "chat_type": "channel",
       "description": null,
       "member_count": null,
       "is_verified": true,
@@ -295,7 +296,9 @@ List all Telegram channels you're subscribed to.
 > channel list is built from basic dialog info and does not fetch them. `null`
 > means "not fetched", not "no description" / "empty channel". `has_more` reflects
 > whether a further page exists (the server over-fetches one row to avoid a false
-> positive at an exact page boundary).
+> positive at an exact page boundary). `username` is `null` when the chat has no
+> public username (never a fabricated placeholder); `chat_type` is one of
+> `channel` (broadcast), `supergroup`, or `group` (basic group).
 
 **Usage:** Get a list of available channels before searching or filtering.
 
@@ -314,9 +317,10 @@ Get detailed information about a specific channel.
 **Response (default, `include_full: false`):**
 ```json
 {
-  "id": 1234567890,
-  "name": "Tech News",
-  "username": "technews",
+  "id": 1144180066,
+  "name": "Сводки",
+  "username": "swodki",
+  "chat_type": "channel",
   "description": null,
   "member_count": null,
   "is_verified": true,
@@ -334,9 +338,10 @@ Get detailed information about a specific channel.
 **Response (`include_full: true`):**
 ```json
 {
-  "id": 1234567890,
-  "name": "Tech News",
-  "username": "technews",
+  "id": 1144180066,
+  "name": "Сводки",
+  "username": "swodki",
+  "chat_type": "channel",
   "description": "Daily technology news and analysis.",
   "member_count": 48213,
   "is_verified": true,
@@ -352,6 +357,27 @@ Get detailed information about a specific channel.
 > (e.g. a private or forbidden channel) the basic channel info is still returned,
 > with `description`/`member_count` left as `null`. It costs one rate-limiter
 > token on top of the basic lookup.
+
+**Response (private group, no public username):**
+```json
+{
+  "id": 521440428,
+  "name": "Семейный чатик",
+  "username": null,
+  "chat_type": "group",
+  "description": null,
+  "member_count": null,
+  "is_verified": false,
+  "is_public": false,
+  "is_subscribed": true,
+  "last_message_date": null
+}
+```
+
+> **Note:** `username` is `null` for chats with no public username — private
+> groups and basic (non-mega) groups typically have none. No placeholder value
+> is fabricated. `chat_type` distinguishes `channel` (broadcast), `supergroup`,
+> and `group` (basic group, including Telegram's `Community` peer kind).
 
 **Usage:** Verify channel details or get the numeric ID for other operations. Use `include_full: true` when you specifically need the description or member count — it costs one extra Telegram RPC round-trip.
 
@@ -743,6 +769,7 @@ Search Telegram's public directory (`contacts.search`) for channels and groups b
       "id": 987654321,
       "name": "Rust Programming News",
       "username": "rustnews",
+      "chat_type": "channel",
       "description": null,
       "member_count": null,
       "is_verified": false,
@@ -764,8 +791,8 @@ Search Telegram's public directory (`contacts.search`) for channels and groups b
 > an unsubscribed result: following up by the returned numeric `id` (id lookups
 > walk your dialog list, and `contacts.search` does not add its results to the
 > peer cache), and `search_messages`, whose `channel_id` is numeric-only. A result
-> with no public username reports the `unknown`/`group` placeholder and cannot be
-> drilled into at all. To keyword-search a newly discovered channel, join it first.
+> with no public username reports `username: null` and cannot be drilled into at
+> all. To keyword-search a newly discovered channel, join it first.
 
 ## Manual Testing Guide
 

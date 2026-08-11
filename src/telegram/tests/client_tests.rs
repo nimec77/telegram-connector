@@ -3,8 +3,8 @@
 use crate::error::Error;
 use crate::telegram::trait_def::{MockTelegramClientTrait, TelegramClientTrait};
 use crate::telegram::types::{
-    Channel, ChannelId, ChannelName, MediaType, Message, MessageId, QueryMetadata, SearchParams,
-    SearchResult, UserId, Username,
+    Channel, ChannelId, ChannelName, ChatType, MediaType, Message, MessageId, QueryMetadata,
+    SearchParams, SearchResult, UserId, Username,
 };
 
 // Helper to create test channel
@@ -12,7 +12,8 @@ fn create_test_channel(id: i64, name: &str) -> Channel {
     Channel {
         id: ChannelId::new(id).unwrap(),
         name: ChannelName::new(name).unwrap(),
-        username: Username::new("testchannel").unwrap(),
+        username: Some(Username::new("testchannel").unwrap()),
+        chat_type: ChatType::Channel,
         description: Some("Test channel".to_string()),
         member_count: Some(1000),
         is_verified: false,
@@ -28,7 +29,7 @@ fn create_test_message(id: i32, text: &str, channel_id: i64) -> Message {
         id: MessageId::new(id as i64).unwrap(),
         channel_id: ChannelId::new(channel_id).unwrap(),
         channel_name: ChannelName::new("TestChannel").unwrap(),
-        channel_username: Username::new("testchannel").unwrap(),
+        channel_username: Some(Username::new("testchannel").unwrap()),
         text: text.to_string(),
         timestamp: chrono::Utc::now(),
         sender_id: Some(UserId::new(123).unwrap()),

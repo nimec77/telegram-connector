@@ -207,7 +207,7 @@ pub struct MessageResponse {
     pub id: MessageId,
     pub channel_id: ChannelId,
     pub channel_name: ChannelName,
-    pub channel_username: Username,
+    pub channel_username: Option<Username>,
     pub text: String,
     pub timestamp: DateTime<Utc>,
     pub sender_id: Option<UserId>,

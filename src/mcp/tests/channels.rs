@@ -5,7 +5,7 @@ use crate::mcp::tools::{ChannelsResponse, GetChannelInfoRequest, GetChannelsRequ
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::Username;
-use crate::telegram::{Channel, ChannelId, ChannelName};
+use crate::telegram::{Channel, ChannelId, ChannelName, ChatType};
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::NumberOrString;
@@ -16,7 +16,8 @@ fn create_test_channel(id: i64, name: &str) -> Channel {
     Channel {
         id: ChannelId::new(id).unwrap(),
         name: ChannelName::new(name).unwrap(),
-        username: Username::new("testchannel").unwrap(),
+        username: Some(Username::new("testchannel").unwrap()),
+        chat_type: ChatType::Channel,
         description: Some("Test channel".to_string()),
         member_count: Some(1000),
         is_verified: false,
@@ -115,7 +116,8 @@ async fn get_channel_info_returns_channel_details() {
     let test_channel = Channel {
         id: ChannelId::new(12345).unwrap(),
         name: ChannelName::new("Test Channel").unwrap(),
-        username: Username::new("testchannel").unwrap(),
+        username: Some(Username::new("testchannel").unwrap()),
+        chat_type: ChatType::Channel,
         description: Some("A test channel".to_string()),
         member_count: Some(5000),
         is_verified: true,
@@ -191,7 +193,8 @@ async fn get_channel_info_unfetched_member_count_serializes_as_null() {
     let test_channel = Channel {
         id: ChannelId::new(777).unwrap(),
         name: ChannelName::new("Unfetched").unwrap(),
-        username: Username::new("unfetched").unwrap(),
+        username: Some(Username::new("unfetched").unwrap()),
+        chat_type: ChatType::Channel,
         description: None,
         member_count: None,
         is_verified: false,

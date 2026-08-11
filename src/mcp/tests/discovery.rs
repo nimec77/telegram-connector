@@ -5,7 +5,7 @@ use crate::mcp::tools::{ChannelsResponse, SearchPublicChannelsRequest};
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::Username;
-use crate::telegram::{Channel, ChannelId, ChannelName};
+use crate::telegram::{Channel, ChannelId, ChannelName, ChatType};
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::NumberOrString;
@@ -16,7 +16,8 @@ fn create_test_channel(id: i64, name: &str) -> Channel {
     Channel {
         id: ChannelId::new(id).unwrap(),
         name: ChannelName::new(name).unwrap(),
-        username: Username::new("testchannel").unwrap(),
+        username: Some(Username::new("testchannel").unwrap()),
+        chat_type: ChatType::Channel,
         description: Some("Test channel".to_string()),
         member_count: Some(1000),
         is_verified: false,

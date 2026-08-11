@@ -19,7 +19,7 @@ fn create_test_message(id: i64, text: &str, channel_id: i64) -> Message {
         id: MessageId::new(id).unwrap(),
         channel_id: ChannelId::new(channel_id).unwrap(),
         channel_name: ChannelName::new("Test Channel").unwrap(),
-        channel_username: Username::new("testchannel").unwrap(),
+        channel_username: Some(Username::new("testchannel").unwrap()),
         text: text.to_string(),
         timestamp: chrono::Utc::now(),
         sender_id: None,

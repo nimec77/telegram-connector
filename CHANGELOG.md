@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (breaking)
+- `Channel.username` and `Message.channel_username` are now `Option<Username>`, serialized as `null` when the chat has no public username — the `"unknown"`/`"group"` sentinel strings are gone. Both were syntactically valid Telegram usernames that could collide with a real channel (`@premium` exists in the wild). Clients matching on the literal sentinel strings must switch to checking for `null`. New field `chat_type` (`"channel"` | `"supergroup"` | `"group"`) on every `Channel` object identifies the kind of chat (broadcast channel, megagroup, or basic group/community) without inferring it from `username`'s presence.
+
 ## [0.14.0] - 2026-08-10
 
 ### Added
