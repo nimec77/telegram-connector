@@ -124,6 +124,10 @@ pub struct MediaDownload {
     pub source_size_bytes: u64,
     /// Zero-cost video metadata for video-class media (`None` for photos).
     pub video_info: Option<VideoInfo>,
+    /// Largest variant Telegram offers — lets callers detect a better re-fetch (D3).
+    pub largest_width: Option<u32>,
+    /// Largest variant Telegram offers — lets callers detect a better re-fetch (D3).
+    pub largest_height: Option<u32>,
 }
 
 /// A downloadable size variant of a photo or thumbnail, decoupled from
@@ -244,6 +248,8 @@ mod tests {
             height: Some(720),
             source_size_bytes: 2,
             video_info: None,
+            largest_width: Some(1920),
+            largest_height: Some(1080),
         };
         assert_eq!(download.media_type, MediaType::Photo);
         assert!(!download.is_thumbnail);

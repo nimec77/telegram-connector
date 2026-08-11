@@ -23,7 +23,7 @@ async fn search_messages_returns_results() {
             id: MessageId::new(1).unwrap(),
             channel_id: ChannelId::new(123).unwrap(),
             channel_name: ChannelName::new("Test Channel").unwrap(),
-            channel_username: Username::new("testchannel").unwrap(),
+            channel_username: Some(Username::new("testchannel").unwrap()),
             text: "Test message about AI".to_string(),
             timestamp: chrono::Utc::now(),
             sender_id: None,
@@ -37,13 +37,20 @@ async fn search_messages_returns_results() {
             reply_to_message_id: None,
             video_info: None,
             audio_info: None,
+            grouped_id: None,
+            link: "https://t.me/testchannel/1".to_string(),
+            reactions: None,
+            reactions_total: None,
+            album: None,
         }],
-        total_found: 1,
+        returned: 1,
         search_time_ms: 100,
         query_metadata: QueryMetadata {
             query: "AI".to_string(),
-            hours_back: 48,
-            channels_searched: 1,
+            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
         },
     };
     let expected = expected_result.clone();
@@ -66,6 +73,7 @@ async fn search_messages_returns_results() {
         media_filter: None,
         from_date: None,
         to_date: None,
+        collapse_albums: None,
     };
 
     let result = server
@@ -75,7 +83,7 @@ async fn search_messages_returns_results() {
     // Then: Returns search results
     assert!(result.is_ok());
     let response: SearchResult = serde_json::from_str(&result.unwrap()).unwrap();
-    assert_eq!(response.total_found, 1);
+    assert_eq!(response.returned, 1);
     assert_eq!(response.messages.len(), 1);
     assert!(response.messages[0].text.contains("AI"));
 }
@@ -95,6 +103,7 @@ async fn search_messages_empty_query_fails() {
         media_filter: None, // no filter either = error
         from_date: None,
         to_date: None,
+        collapse_albums: None,
     };
 
     // When: Search messages
@@ -133,6 +142,7 @@ async fn search_messages_rate_limited() {
         media_filter: None,
         from_date: None,
         to_date: None,
+        collapse_albums: None,
     };
 
     // When: Search messages
@@ -153,12 +163,14 @@ async fn search_messages_with_channel_filter() {
     let mut mock_client = MockTelegramClientTrait::new();
     let expected_result = SearchResult {
         messages: vec![],
-        total_found: 0,
+        returned: 0,
         search_time_ms: 50,
         query_metadata: QueryMetadata {
             query: "test".to_string(),
-            hours_back: 24,
-            channels_searched: 1,
+            window_from: chrono::Utc::now() - chrono::Duration::hours(24),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
         },
     };
     let expected = expected_result.clone();
@@ -186,6 +198,7 @@ async fn search_messages_with_channel_filter() {
         media_filter: None,
         from_date: None,
         to_date: None,
+        collapse_albums: None,
     };
 
     let result = server
@@ -202,12 +215,14 @@ async fn search_messages_applies_limits() {
     let mut mock_client = MockTelegramClientTrait::new();
     let expected_result = SearchResult {
         messages: vec![],
-        total_found: 0,
+        returned: 0,
         search_time_ms: 50,
         query_metadata: QueryMetadata {
             query: "test".to_string(),
-            hours_back: 72, // should be capped to MAX_HOURS_BACK
-            channels_searched: 0,
+            window_from: chrono::Utc::now() - chrono::Duration::hours(72), // capped to MAX_HOURS_BACK
+            window_to: None,
+            channels_scanned: Some(0),
+            channels_in_results: 0,
         },
     };
     let expected = expected_result.clone();
@@ -235,6 +250,7 @@ async fn search_messages_applies_limits() {
         media_filter: None,
         from_date: None,
         to_date: None,
+        collapse_albums: None,
     };
 
     let result = server
@@ -254,7 +270,7 @@ async fn search_allows_empty_query_with_media_filter() {
             id: MessageId::new(1).unwrap(),
             channel_id: ChannelId::new(123).unwrap(),
             channel_name: ChannelName::new("Test Channel").unwrap(),
-            channel_username: Username::new("testchannel").unwrap(),
+            channel_username: Some(Username::new("testchannel").unwrap()),
             text: "".to_string(), // document with no caption
             timestamp: chrono::Utc::now(),
             sender_id: None,
@@ -268,13 +284,20 @@ async fn search_allows_empty_query_with_media_filter() {
             reply_to_message_id: None,
             video_info: None,
             audio_info: None,
+            grouped_id: None,
+            link: "https://t.me/testchannel/1".to_string(),
+            reactions: None,
+            reactions_total: None,
+            album: None,
         }],
-        total_found: 1,
+        returned: 1,
         search_time_ms: 100,
         query_metadata: QueryMetadata {
             query: "".to_string(),
-            hours_back: 48,
-            channels_searched: 1,
+            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
         },
     };
     let expected = expected_result.clone();
@@ -297,6 +320,7 @@ async fn search_allows_empty_query_with_media_filter() {
         media_filter: Some(MediaFilter::Document), // filter by documents
         from_date: None,
         to_date: None,
+        collapse_albums: None,
     };
 
     let result = server
@@ -306,7 +330,7 @@ async fn search_allows_empty_query_with_media_filter() {
     // Then: Success (empty query allowed with media_filter)
     assert!(result.is_ok());
     let response: SearchResult = serde_json::from_str(&result.unwrap()).unwrap();
-    assert_eq!(response.total_found, 1);
+    assert_eq!(response.returned, 1);
 }
 
 #[tokio::test]
@@ -315,12 +339,14 @@ async fn search_passes_media_filter_to_params() {
     let mut mock_client = MockTelegramClientTrait::new();
     let expected_result = SearchResult {
         messages: vec![],
-        total_found: 0,
+        returned: 0,
         search_time_ms: 50,
         query_metadata: QueryMetadata {
             query: "AI news".to_string(),
-            hours_back: 48,
-            channels_searched: 1,
+            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
         },
     };
     let expected = expected_result.clone();
@@ -347,6 +373,7 @@ async fn search_passes_media_filter_to_params() {
         media_filter: Some(MediaFilter::Photo),
         from_date: None,
         to_date: None,
+        collapse_albums: None,
     };
 
     let result = server
@@ -367,7 +394,7 @@ async fn search_messages_serializes_enrichment_fields() {
             id: MessageId::new(1).unwrap(),
             channel_id: ChannelId::new(123).unwrap(),
             channel_name: ChannelName::new("Test Channel").unwrap(),
-            channel_username: Username::new("testchannel").unwrap(),
+            channel_username: Some(Username::new("testchannel").unwrap()),
             text: "forwarded post".to_string(),
             timestamp: chrono::Utc::now(),
             sender_id: None,
@@ -393,13 +420,20 @@ async fn search_messages_serializes_enrichment_fields() {
             reply_to_message_id: None,
             video_info: None,
             audio_info: None,
+            grouped_id: None,
+            link: "https://t.me/testchannel/1".to_string(),
+            reactions: None,
+            reactions_total: None,
+            album: None,
         }],
-        total_found: 1,
+        returned: 1,
         search_time_ms: 10,
         query_metadata: QueryMetadata {
             query: "x".to_string(),
-            hours_back: 48,
-            channels_searched: 1,
+            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
         },
     };
 
@@ -420,6 +454,7 @@ async fn search_messages_serializes_enrichment_fields() {
         media_filter: None,
         from_date: None,
         to_date: None,
+        collapse_albums: None,
     };
 
     let result = server
@@ -466,6 +501,7 @@ async fn search_passes_date_range_to_client() {
         media_filter: None,
         from_date: Some("2026-08-01T00:00:00Z".to_string()),
         to_date: Some("2026-08-05T00:00:00Z".to_string()),
+        collapse_albums: None,
     };
 
     let result = server
@@ -491,6 +527,7 @@ async fn search_rejects_invalid_from_date() {
         media_filter: None,
         from_date: Some("not-a-date".to_string()),
         to_date: None,
+        collapse_albums: None,
     };
 
     // When: Search with a malformed from_date
@@ -518,6 +555,7 @@ async fn search_rejects_inverted_range() {
         media_filter: None,
         from_date: Some("2026-08-05T00:00:00Z".to_string()),
         to_date: Some("2026-08-01T00:00:00Z".to_string()),
+        collapse_albums: None,
     };
 
     // When: Search with from_date after to_date
@@ -560,6 +598,7 @@ async fn search_accepts_equal_from_and_to_date() {
         media_filter: None,
         from_date: Some("2026-08-01T00:00:00Z".to_string()),
         to_date: Some("2026-08-01T00:00:00Z".to_string()),
+        collapse_albums: None,
     };
 
     let result = server
@@ -592,6 +631,7 @@ async fn search_rejects_to_date_older_than_hours_back_window() {
         media_filter: None,
         from_date: None,
         to_date: Some(long_ago.to_rfc3339()),
+        collapse_albums: None,
     };
 
     let result = server
@@ -629,6 +669,7 @@ async fn search_accepts_to_date_inside_hours_back_window() {
         media_filter: None,
         from_date: None,
         to_date: Some(recent.to_rfc3339()),
+        collapse_albums: None,
     };
 
     let result = server
@@ -654,6 +695,7 @@ async fn search_rejects_blank_from_date() {
         media_filter: None,
         from_date: Some("   ".to_string()),
         to_date: None,
+        collapse_albums: None,
     };
 
     let result = server
@@ -686,6 +728,7 @@ async fn search_accepts_padded_from_date() {
         media_filter: None,
         from_date: Some(" 2026-08-01T00:00:00Z ".to_string()),
         to_date: None,
+        collapse_albums: None,
     };
 
     let result = server
@@ -693,4 +736,53 @@ async fn search_accepts_padded_from_date() {
         .await;
 
     assert!(result.is_ok(), "got {:?}", result.err());
+}
+
+#[tokio::test]
+async fn search_response_reports_window_and_returned() {
+    // The response must report the executed window and an honest "returned"
+    // count (page size), not an overloaded total-match count (B6/B7).
+    let mut mock_client = MockTelegramClientTrait::new();
+    let msg = crate::test_helpers::create_test_message(1, "hi", 123);
+    mock_client
+        .expect_search_messages()
+        .returning(move |_| Ok(create_test_search_result(vec![msg.clone()], "q", 1)));
+
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
+
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = SearchRequest {
+        query: "q".to_string(),
+        channel_id: None,
+        hours_back: None,
+        limit: None,
+        media_filter: None,
+        from_date: None,
+        to_date: None,
+        collapse_albums: None,
+    };
+
+    let result_string = server
+        .search_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await
+        .unwrap();
+
+    let json: serde_json::Value = serde_json::from_str(&result_string).expect("valid JSON");
+    assert_eq!(json["returned"], 1);
+    assert!(
+        json.get("total_found").is_none(),
+        "total_found must be renamed"
+    );
+    let meta = &json["query_metadata"];
+    assert!(
+        meta.get("hours_back").is_none(),
+        "hours_back echo removed (B7)"
+    );
+    assert!(
+        meta["window_from"].is_string(),
+        "executed window start present"
+    );
+    assert_eq!(meta["channels_in_results"], 1);
 }

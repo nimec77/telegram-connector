@@ -2,61 +2,63 @@
 //!
 //! Sub-domain of `converters` (LM-4).
 
-use crate::telegram::types::{Channel, ChannelId, ChannelIdentity, ChannelName, Username};
+use crate::telegram::types::{
+    Channel, ChannelId, ChannelIdentity, ChannelName, ChatType, Username,
+};
 
-/// Build the sentinel `Username` used when a peer exposes no public username.
-///
-/// The `kind` literal (`unknown`/`group`/`user`) is statically valid, so
-/// construction is infallible — `expect` replaces the bare `.unwrap()` (CQ-1)
-/// and gives the single fallback site shared by both converters (AD-4).
-pub(crate) fn fallback_username(kind: &'static str) -> Username {
-    Username::new(kind).expect("static fallback username is always valid")
-}
-
-/// Extract the `(id, display name, username-or-fallback)` triple shared by
+/// Extract the `(id, display name, username)` triple shared by
 /// `convert_peer_to_channel` and `convert_message` (AD-4).
 ///
 /// Returns `None` only when the peer's id or display name cannot form a valid
-/// newtype. Each peer kind keeps its own username fallback sentinel.
+/// newtype. `username` is `None` when the peer has no public username — no
+/// fallback sentinel is fabricated (work-order B9).
 pub(crate) fn peer_identity(
     peer: &grammers_client::peer::Peer,
-) -> Option<(ChannelId, ChannelName, Username)> {
+) -> Option<(ChannelId, ChannelName, Option<Username>)> {
     use grammers_client::peer::Peer;
 
     let triple = match peer {
         Peer::Channel(ch) => (
             ChannelId::new(ch.id().bare_id()?).ok()?,
             ChannelName::new(ch.title()).ok()?,
-            ch.username()
-                .and_then(|u| Username::new(u).ok())
-                .unwrap_or_else(|| fallback_username("unknown")),
+            ch.username().and_then(|u| Username::new(u).ok()),
         ),
         Peer::Group(g) => (
             ChannelId::new(g.id().bare_id()?).ok()?,
             ChannelName::new(g.title().unwrap_or("Unknown")).ok()?,
-            g.username()
-                .and_then(|u| Username::new(u).ok())
-                .unwrap_or_else(|| fallback_username("group")),
+            g.username().and_then(|u| Username::new(u).ok()),
         ),
-        // grammers 0.10 peer kind; exposes no username accessor, so it always
-        // uses the group fallback sentinel.
         Peer::Community(c) => (
             ChannelId::new(c.id().bare_id()?).ok()?,
             ChannelName::new(c.title()).ok()?,
-            fallback_username("group"),
+            None, // Community exposes no username accessor in grammers 0.10
         ),
         Peer::User(u) => (
             ChannelId::new(u.id().bare_id()?).ok()?,
             ChannelName::new(u.first_name().unwrap_or("User")).ok()?,
-            u.username()
-                .and_then(|un| Username::new(un).ok())
-                // "user" is < 5 chars and fails Username validation, so a user
-                // with no public username reuses the "unknown" sentinel (the
-                // original `Username::new("user").unwrap()` panicked here).
-                .unwrap_or_else(|| fallback_username("unknown")),
+            u.username().and_then(|un| Username::new(un).ok()),
         ),
     };
     Some(triple)
+}
+
+/// The `chat_type` a peer maps to; `None` for user peers, which are not
+/// channel objects. grammers routes megagroups to `Peer::Group`, so
+/// `Peer::Channel` is always a broadcast (same routing fact
+/// `supports_full_channel_rpc` relies on).
+pub(crate) fn peer_chat_type(peer: &grammers_client::peer::Peer) -> Option<ChatType> {
+    use grammers_client::peer::Peer;
+
+    match peer {
+        Peer::Channel(_) => Some(ChatType::Channel),
+        Peer::Group(g) => Some(if g.is_megagroup() {
+            ChatType::Supergroup
+        } else {
+            ChatType::Group
+        }),
+        Peer::Community(_) => Some(ChatType::Group),
+        Peer::User(_) => None,
+    }
 }
 
 /// Convert grammers Peer to our Channel type (dialog-list path: subscribed).
@@ -103,6 +105,7 @@ fn convert_peer_with_subscription(
         id,
         name,
         username,
+        chat_type: peer_chat_type(peer)?,
         description: None,  // Not available from basic chat info
         member_count: None, // Not fetched from basic chat info; None ≠ a real zero (CQ-4)
         is_verified,
@@ -142,16 +145,16 @@ mod tests {
 
     /// Offline `Peer::Channel` fixture, mirroring `community_peer` — grammers'
     /// `Channel::from_raw` is public and needs only an inert client.
-    fn channel_peer(id: i64, title: &str, username: Option<&str>) -> Peer {
+    fn channel_peer(id: i64, title: &str, username: Option<&str>, broadcast: bool) -> Peer {
         let session = Arc::new(MemorySession::default());
         let SenderPool { handle, .. } = SenderPool::new(session, 1);
         let client = Client::new(handle);
         let raw = tl::types::Channel {
             creator: false,
             left: false,
-            broadcast: true,
+            broadcast,
             verified: false,
-            megagroup: false,
+            megagroup: !broadcast,
             restricted: false,
             signatures: false,
             min: false,
@@ -198,10 +201,7 @@ mod tests {
             linked_monoforum_id: None,
             linked_community_id: None,
         };
-        Peer::Channel(grammers_client::peer::Channel::from_raw(
-            &client,
-            tl::enums::Chat::Channel(raw),
-        ))
+        Peer::from_raw(&client, tl::enums::Chat::Channel(raw))
     }
 
     /// Build a `Peer::Community` without any I/O: the `SenderPool` runner is
@@ -232,14 +232,46 @@ mod tests {
     }
 
     #[test]
-    fn peer_identity_maps_community_with_group_fallback_username() {
+    fn peer_identity_maps_community_without_username() {
         let peer = community_peer(1234, "Test Community");
 
         let (id, name, username) = peer_identity(&peer).expect("community must yield an identity");
 
         assert_eq!(Some(id.get()), peer.id().bare_id());
         assert_eq!(name.as_str(), "Test Community");
-        assert_eq!(username.as_str(), "group");
+        assert_eq!(username, None);
+    }
+
+    #[test]
+    fn peer_without_username_yields_none_not_sentinel() {
+        let peer = community_peer(521440428, "Семейный чатик");
+        let (_, _, username) = peer_identity(&peer).expect("community yields an identity");
+        assert_eq!(username, None);
+    }
+
+    #[test]
+    fn peer_chat_type_maps_all_kinds() {
+        assert_eq!(
+            peer_chat_type(&channel_peer(1, "News", Some("newschan"), true)),
+            Some(ChatType::Channel)
+        );
+        assert_eq!(
+            peer_chat_type(&channel_peer(2, "Chatty", None, false)),
+            Some(ChatType::Supergroup)
+        );
+        assert_eq!(
+            peer_chat_type(&community_peer(3, "Comm")),
+            Some(ChatType::Group)
+        );
+    }
+
+    #[test]
+    fn channel_json_has_null_username_and_chat_type() {
+        let channel = convert_peer_to_channel(&community_peer(4, "Private Group"))
+            .expect("community converts");
+        let json = serde_json::to_value(&channel).expect("serializes");
+        assert!(json["username"].is_null(), "sentinel must be gone");
+        assert_eq!(json["chat_type"], "group");
     }
 
     #[test]
@@ -274,7 +306,7 @@ mod tests {
 
     #[test]
     fn channel_identity_public_channel_carries_username() {
-        let peer = channel_peer(1144180066, "Сводки", Some("swodki"));
+        let peer = channel_peer(1144180066, "Сводки", Some("swodki"), true);
 
         let identity = channel_identity(&peer).expect("channel must yield an identity");
 

@@ -19,7 +19,7 @@ fn create_test_message(id: i64, text: &str, channel_id: i64) -> Message {
         id: MessageId::new(id).unwrap(),
         channel_id: ChannelId::new(channel_id).unwrap(),
         channel_name: ChannelName::new("Test Channel").unwrap(),
-        channel_username: Username::new("testchannel").unwrap(),
+        channel_username: Some(Username::new("testchannel").unwrap()),
         text: text.to_string(),
         timestamp: chrono::Utc::now(),
         sender_id: None,
@@ -33,6 +33,11 @@ fn create_test_message(id: i64, text: &str, channel_id: i64) -> Message {
         reply_to_message_id: None,
         video_info: None,
         audio_info: None,
+        grouped_id: None,
+        link: format!("https://t.me/testchannel/{}", id),
+        reactions: None,
+        reactions_total: None,
+        album: None,
     }
 }
 
@@ -45,12 +50,14 @@ async fn get_recent_messages_returns_results() {
             create_test_message(1, "Recent message 1", 123),
             create_test_message(2, "Recent message 2", 123),
         ],
-        total_found: 2,
+        returned: 2,
         search_time_ms: 50,
         query_metadata: QueryMetadata {
             query: String::new(),
-            hours_back: 48,
-            channels_searched: 1,
+            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
         },
     };
     let expected = expected_result.clone();
@@ -72,6 +79,7 @@ async fn get_recent_messages_returns_results() {
         media_filter: None,
         from_date: None,
         to_date: None,
+        collapse_albums: None,
     };
 
     let result = server
@@ -81,7 +89,7 @@ async fn get_recent_messages_returns_results() {
     // Then: Returns messages
     assert!(result.is_ok());
     let response: SearchResult = serde_json::from_str(&result.unwrap()).unwrap();
-    assert_eq!(response.total_found, 2);
+    assert_eq!(response.returned, 2);
     assert_eq!(response.messages.len(), 2);
 }
 
@@ -99,6 +107,7 @@ async fn get_recent_messages_empty_channel_id_fails() {
         media_filter: None,
         from_date: None,
         to_date: None,
+        collapse_albums: None,
     };
 
     // When: Get recent messages
@@ -118,12 +127,14 @@ async fn get_recent_messages_with_media_filter() {
     let mut mock_client = MockTelegramClientTrait::new();
     let expected_result = SearchResult {
         messages: vec![create_test_message(1, "Photo message", 123)],
-        total_found: 1,
+        returned: 1,
         search_time_ms: 30,
         query_metadata: QueryMetadata {
             query: String::new(),
-            hours_back: 24,
-            channels_searched: 1,
+            window_from: chrono::Utc::now() - chrono::Duration::hours(24),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
         },
     };
     let expected = expected_result.clone();
@@ -146,6 +157,7 @@ async fn get_recent_messages_with_media_filter() {
         media_filter: Some(MediaFilter::Photo),
         from_date: None,
         to_date: None,
+        collapse_albums: None,
     };
 
     let result = server
@@ -168,12 +180,14 @@ async fn get_recent_messages_applies_limits() {
             create_test_message(2, "Message 2", 123),
             create_test_message(3, "Message 3", 123),
         ],
-        total_found: 3,
+        returned: 3,
         search_time_ms: 40,
         query_metadata: QueryMetadata {
             query: String::new(),
-            hours_back: 72,
-            channels_searched: 1,
+            window_from: chrono::Utc::now() - chrono::Duration::hours(72),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
         },
     };
     let expected = expected_result.clone();
@@ -196,6 +210,7 @@ async fn get_recent_messages_applies_limits() {
         media_filter: None,
         from_date: None,
         to_date: None,
+        collapse_albums: None,
     };
 
     let result = server
@@ -219,12 +234,14 @@ async fn get_recent_messages_with_username_passes_identifier_without_pre_resolvi
     // numeric channel_id (the client resolves and derives the id from the peer).
     let expected_result = SearchResult {
         messages: vec![create_test_message(1, "News update", 456)],
-        total_found: 1,
+        returned: 1,
         search_time_ms: 60,
         query_metadata: QueryMetadata {
             query: String::new(),
-            hours_back: 48,
-            channels_searched: 1,
+            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
         },
     };
     let expected = expected_result.clone();
@@ -249,6 +266,7 @@ async fn get_recent_messages_with_username_passes_identifier_without_pre_resolvi
         media_filter: None,
         from_date: None,
         to_date: None,
+        collapse_albums: None,
     };
 
     let result = server
@@ -281,6 +299,7 @@ async fn get_recent_messages_rate_limited() {
         media_filter: None,
         from_date: None,
         to_date: None,
+        collapse_albums: None,
     };
 
     // When: Get recent messages when rate limited
@@ -320,6 +339,7 @@ async fn get_recent_messages_passes_date_range_to_client() {
         media_filter: None,
         from_date: Some("2026-08-01T00:00:00Z".to_string()),
         to_date: Some("2026-08-05T00:00:00Z".to_string()),
+        collapse_albums: None,
     };
 
     let result = server
@@ -355,6 +375,7 @@ async fn get_recent_messages_accepts_equal_from_and_to_date() {
         media_filter: None,
         from_date: Some("2026-08-01T00:00:00Z".to_string()),
         to_date: Some("2026-08-01T00:00:00Z".to_string()),
+        collapse_albums: None,
     };
 
     let result = server
@@ -381,6 +402,7 @@ async fn get_recent_messages_rejects_inverted_range() {
         media_filter: None,
         from_date: Some("2026-08-05T00:00:00Z".to_string()),
         to_date: Some("2026-08-01T00:00:00Z".to_string()),
+        collapse_albums: None,
     };
 
     let result = server
@@ -413,6 +435,7 @@ async fn get_recent_messages_rejects_to_date_older_than_hours_back_window() {
         media_filter: None,
         from_date: None,
         to_date: Some(long_ago.to_rfc3339()),
+        collapse_albums: None,
     };
 
     let result = server
@@ -448,6 +471,7 @@ async fn get_recent_messages_accepts_to_date_inside_hours_back_window() {
         media_filter: None,
         from_date: None,
         to_date: Some(recent.to_rfc3339()),
+        collapse_albums: None,
     };
 
     let result = server
@@ -470,6 +494,7 @@ async fn get_recent_messages_rejects_blank_to_date() {
         media_filter: None,
         from_date: None,
         to_date: Some("".to_string()),
+        collapse_albums: None,
     };
 
     let result = server
@@ -478,4 +503,66 @@ async fn get_recent_messages_rejects_blank_to_date() {
 
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Invalid to_date"));
+}
+
+#[tokio::test]
+async fn collapse_albums_flag_reaches_params() {
+    // collapse_albums: Some(false) must reach HistoryParams.collapse_albums == false.
+    let mut mock_client = MockTelegramClientTrait::new();
+    mock_client
+        .expect_get_recent_messages()
+        .withf(|p| !p.collapse_albums)
+        .returning(move |_| Ok(create_test_search_result(vec![], "", 0)));
+
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
+
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = GetRecentMessagesRequest {
+        channel_id: "123".to_string(),
+        hours_back: None,
+        limit: None,
+        media_filter: None,
+        from_date: None,
+        to_date: None,
+        collapse_albums: Some(false),
+    };
+
+    let result = server
+        .get_recent_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
+
+    assert!(result.is_ok(), "got {:?}", result.err());
+}
+
+#[tokio::test]
+async fn collapse_albums_defaults_to_true() {
+    // Field left None: HistoryParams.collapse_albums must default true.
+    let mut mock_client = MockTelegramClientTrait::new();
+    mock_client
+        .expect_get_recent_messages()
+        .withf(|p| p.collapse_albums)
+        .returning(move |_| Ok(create_test_search_result(vec![], "", 0)));
+
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
+
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = GetRecentMessagesRequest {
+        channel_id: "123".to_string(),
+        hours_back: None,
+        limit: None,
+        media_filter: None,
+        from_date: None,
+        to_date: None,
+        collapse_albums: None,
+    };
+
+    let result = server
+        .get_recent_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
+
+    assert!(result.is_ok(), "got {:?}", result.err());
 }

@@ -3,8 +3,8 @@
 use crate::error::Error;
 use crate::telegram::trait_def::{MockTelegramClientTrait, TelegramClientTrait};
 use crate::telegram::types::{
-    Channel, ChannelId, ChannelName, MediaType, Message, MessageId, QueryMetadata, SearchParams,
-    SearchResult, UserId, Username,
+    Channel, ChannelId, ChannelName, ChannelPage, ChatType, MediaType, Message, MessageId,
+    QueryMetadata, SearchParams, SearchResult, UserId, Username,
 };
 
 // Helper to create test channel
@@ -12,7 +12,8 @@ fn create_test_channel(id: i64, name: &str) -> Channel {
     Channel {
         id: ChannelId::new(id).unwrap(),
         name: ChannelName::new(name).unwrap(),
-        username: Username::new("testchannel").unwrap(),
+        username: Some(Username::new("testchannel").unwrap()),
+        chat_type: ChatType::Channel,
         description: Some("Test channel".to_string()),
         member_count: Some(1000),
         is_verified: false,
@@ -28,7 +29,7 @@ fn create_test_message(id: i32, text: &str, channel_id: i64) -> Message {
         id: MessageId::new(id as i64).unwrap(),
         channel_id: ChannelId::new(channel_id).unwrap(),
         channel_name: ChannelName::new("TestChannel").unwrap(),
-        channel_username: Username::new("testchannel").unwrap(),
+        channel_username: Some(Username::new("testchannel").unwrap()),
         text: text.to_string(),
         timestamp: chrono::Utc::now(),
         sender_id: Some(UserId::new(123).unwrap()),
@@ -42,6 +43,11 @@ fn create_test_message(id: i32, text: &str, channel_id: i64) -> Message {
         reply_to_message_id: None,
         video_info: None,
         audio_info: None,
+        grouped_id: None,
+        link: format!("https://t.me/testchannel/{}", id),
+        reactions: None,
+        reactions_total: None,
+        album: None,
     }
 }
 
@@ -78,13 +84,19 @@ async fn mock_get_subscribed_channels_returns_list() {
     mock.expect_get_subscribed_channels()
         .with(mockall::predicate::eq(10), mockall::predicate::eq(0))
         .times(1)
-        .returning(move |_, _| Ok(expected_clone.clone()));
+        .returning(move |_, _| {
+            Ok(ChannelPage {
+                channels: expected_clone.clone(),
+                total: 2,
+            })
+        });
 
     let result = mock.get_subscribed_channels(10, 0).await;
     assert!(result.is_ok());
-    let channels = result.unwrap();
-    assert_eq!(channels.len(), 2);
-    assert_eq!(channels[0].name.as_str(), "Channel1");
+    let page = result.unwrap();
+    assert_eq!(page.channels.len(), 2);
+    assert_eq!(page.total, 2);
+    assert_eq!(page.channels[0].name.as_str(), "Channel1");
 }
 
 #[tokio::test]
@@ -96,23 +108,33 @@ async fn mock_get_subscribed_channels_respects_pagination() {
         .with(mockall::predicate::eq(2), mockall::predicate::eq(0))
         .times(1)
         .returning(|_, _| {
-            Ok(vec![
-                create_test_channel(1, "Channel1"),
-                create_test_channel(2, "Channel2"),
-            ])
+            Ok(ChannelPage {
+                channels: vec![
+                    create_test_channel(1, "Channel1"),
+                    create_test_channel(2, "Channel2"),
+                ],
+                total: 3,
+            })
         });
 
     // Second page
     mock.expect_get_subscribed_channels()
         .with(mockall::predicate::eq(2), mockall::predicate::eq(2))
         .times(1)
-        .returning(|_, _| Ok(vec![create_test_channel(3, "Channel3")]));
+        .returning(|_, _| {
+            Ok(ChannelPage {
+                channels: vec![create_test_channel(3, "Channel3")],
+                total: 3,
+            })
+        });
 
     let page1 = mock.get_subscribed_channels(2, 0).await.unwrap();
-    assert_eq!(page1.len(), 2);
+    assert_eq!(page1.channels.len(), 2);
+    assert_eq!(page1.total, 3);
 
     let page2 = mock.get_subscribed_channels(2, 2).await.unwrap();
-    assert_eq!(page2.len(), 1);
+    assert_eq!(page2.channels.len(), 1);
+    assert_eq!(page2.total, 3);
 }
 
 #[tokio::test]
@@ -176,12 +198,14 @@ async fn mock_search_messages_returns_results() {
 
     let expected_result = SearchResult {
         messages: expected_messages.clone(),
-        total_found: 2,
+        returned: 2,
         search_time_ms: 100,
         query_metadata: QueryMetadata {
             query: "test".to_string(),
-            hours_back: 24,
-            channels_searched: 1,
+            window_from: chrono::Utc::now() - chrono::Duration::hours(24),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
         },
     };
     let expected_clone = expected_result.clone();
@@ -196,7 +220,7 @@ async fn mock_search_messages_returns_results() {
     assert!(result.is_ok());
     let search_result = result.unwrap();
     assert_eq!(search_result.messages.len(), 2);
-    assert_eq!(search_result.total_found, 2);
+    assert_eq!(search_result.returned, 2);
 }
 
 #[tokio::test]
@@ -229,12 +253,14 @@ async fn mock_search_messages_respects_limit() {
 
     let expected_result = SearchResult {
         messages: all_messages.clone(),
-        total_found: 3,
+        returned: 3,
         search_time_ms: 100,
         query_metadata: QueryMetadata {
             query: "test".to_string(),
-            hours_back: 24,
-            channels_searched: 1,
+            window_from: chrono::Utc::now() - chrono::Duration::hours(24),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
         },
     };
     let expected_clone = expected_result.clone();
@@ -263,12 +289,14 @@ async fn mock_search_messages_with_channel_filter() {
 
     let expected_result = SearchResult {
         messages: expected_messages.clone(),
-        total_found: 1,
+        returned: 1,
         search_time_ms: 100,
         query_metadata: QueryMetadata {
             query: "test".to_string(),
-            hours_back: 24,
-            channels_searched: 1,
+            window_from: chrono::Utc::now() - chrono::Duration::hours(24),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
         },
     };
     let expected_clone = expected_result.clone();
@@ -286,7 +314,7 @@ async fn mock_search_messages_with_channel_filter() {
     let result = mock.search_messages(&params).await;
     assert!(result.is_ok());
     let search_result = result.unwrap();
-    assert_eq!(search_result.query_metadata.channels_searched, 1);
+    assert_eq!(search_result.query_metadata.channels_scanned, Some(1));
 }
 
 #[tokio::test]
@@ -299,12 +327,14 @@ async fn mock_search_messages_with_media_filter_photo() {
 
     let expected_result = SearchResult {
         messages: expected_messages.clone(),
-        total_found: 1,
+        returned: 1,
         search_time_ms: 50,
         query_metadata: QueryMetadata {
             query: "".to_string(),
-            hours_back: 48,
-            channels_searched: 1,
+            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
         },
     };
     let expected_clone = expected_result.clone();
@@ -340,12 +370,14 @@ async fn mock_search_messages_with_media_filter_document() {
 
     let expected_result = SearchResult {
         messages: expected_messages.clone(),
-        total_found: 2,
+        returned: 2,
         search_time_ms: 75,
         query_metadata: QueryMetadata {
             query: "report".to_string(),
-            hours_back: 24,
-            channels_searched: 3,
+            window_from: chrono::Utc::now() - chrono::Duration::hours(24),
+            window_to: None,
+            channels_scanned: Some(3),
+            channels_in_results: 3,
         },
     };
     let expected_clone = expected_result.clone();
@@ -371,7 +403,7 @@ async fn mock_search_messages_with_media_filter_document() {
     assert!(result.is_ok());
     let search_result = result.unwrap();
     assert_eq!(search_result.messages.len(), 2);
-    assert_eq!(search_result.query_metadata.channels_searched, 3);
+    assert_eq!(search_result.query_metadata.channels_scanned, Some(3));
 }
 
 // =============================================================================
@@ -392,12 +424,14 @@ async fn mock_get_recent_messages_returns_results() {
 
     let expected_result = SearchResult {
         messages: expected_messages.clone(),
-        total_found: 3,
+        returned: 3,
         search_time_ms: 50,
         query_metadata: QueryMetadata {
             query: String::new(),
-            hours_back: 48,
-            channels_searched: 1,
+            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
         },
     };
     let expected_clone = expected_result.clone();
@@ -413,7 +447,7 @@ async fn mock_get_recent_messages_returns_results() {
     assert!(result.is_ok());
     let history_result = result.unwrap();
     assert_eq!(history_result.messages.len(), 3);
-    assert_eq!(history_result.query_metadata.channels_searched, 1);
+    assert_eq!(history_result.query_metadata.channels_scanned, Some(1));
     assert!(history_result.query_metadata.query.is_empty());
 }
 
@@ -427,12 +461,14 @@ async fn mock_get_recent_messages_with_media_filter() {
 
     let expected_result = SearchResult {
         messages: expected_messages.clone(),
-        total_found: 1,
+        returned: 1,
         search_time_ms: 30,
         query_metadata: QueryMetadata {
             query: String::new(),
-            hours_back: 24,
-            channels_searched: 1,
+            window_from: chrono::Utc::now() - chrono::Duration::hours(24),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
         },
     };
     let expected_clone = expected_result.clone();
@@ -469,12 +505,14 @@ async fn mock_get_recent_messages_respects_limit() {
 
     let expected_result = SearchResult {
         messages: expected_messages.clone(),
-        total_found: 5,
+        returned: 5,
         search_time_ms: 40,
         query_metadata: QueryMetadata {
             query: String::new(),
-            hours_back: 48,
-            channels_searched: 1,
+            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
         },
     };
     let expected_clone = expected_result.clone();
@@ -525,12 +563,14 @@ async fn mock_get_recent_messages_empty_result() {
 
     let expected_result = SearchResult {
         messages: vec![],
-        total_found: 0,
+        returned: 0,
         search_time_ms: 10,
         query_metadata: QueryMetadata {
             query: String::new(),
-            hours_back: 1, // Very short time window
-            channels_searched: 1,
+            window_from: chrono::Utc::now() - chrono::Duration::hours(1), // Very short time window
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
         },
     };
     let expected_clone = expected_result.clone();
@@ -547,7 +587,7 @@ async fn mock_get_recent_messages_empty_result() {
     assert!(result.is_ok());
     let history_result = result.unwrap();
     assert!(history_result.messages.is_empty());
-    assert_eq!(history_result.total_found, 0);
+    assert_eq!(history_result.returned, 0);
 }
 
 #[tokio::test]
@@ -569,6 +609,8 @@ async fn mock_download_message_media_returns_media_download() {
                 height: Some(720),
                 source_size_bytes: 3,
                 video_info: None,
+                largest_width: Some(1920),
+                largest_height: Some(1080),
             })
         });
 

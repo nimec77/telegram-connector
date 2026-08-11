@@ -13,7 +13,7 @@ pub struct Message {
     pub id: MessageId,
     pub channel_id: ChannelId,
     pub channel_name: ChannelName,
-    pub channel_username: Username,
+    pub channel_username: Option<Username>,
     pub text: String,
     pub timestamp: DateTime<Utc>,
     pub sender_id: Option<UserId>,
@@ -34,6 +34,20 @@ pub struct Message {
     pub video_info: Option<VideoInfo>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub audio_info: Option<AudioInfo>,
+    /// Telegram album (media group) id shared by sibling messages (B5).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub grouped_id: Option<i64>,
+    /// Permalink: public t.me form when the channel has a username (D1).
+    pub link: String,
+    /// Standard-emoji reactions, when any (D2).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub reactions: Option<Vec<MessageReaction>>,
+    /// Total reactions of every kind, including custom/paid (D2).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub reactions_total: Option<u64>,
+    /// Post-level album summary, present only on a collapsed post (B5/A2).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub album: Option<AlbumInfo>,
 }
 
 impl Message {
@@ -54,8 +68,9 @@ impl Message {
 /// `channel_name` / `channel_username` are intentionally never populated: the
 /// grammers forward header carries only the source's numeric `from_id`, and the
 /// resolved title/username live in the response's peer map (not exposed per
-/// message). Filling them would require an extra resolve call, which the
-/// zero-extra-call enrichment path must avoid.
+/// message). Filling them would require an extra resolve call per message, which the
+/// zero-extra-call enrichment invariant forbids; batch attribution is the
+/// `resolve_channels` tool planned for v0.18 (roadmap A7).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ForwardInfo {
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -84,12 +99,50 @@ pub struct LinkPreview {
     pub description: Option<String>,
 }
 
+/// One standard-emoji reaction with its count (work-order D2).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct MessageReaction {
+    pub emoji: String,
+    pub count: u64,
+}
+
+/// Post-level album summary on a collapsed message (work-order B5/A2).
+///
+/// Describes only the siblings present in this result set: an album that
+/// straddles the fetched window (cut off by `limit`, `media_filter`, a
+/// `from_date`/`to_date` bound, or global-search adjacency) is partially
+/// represented here, not the full album Telegram holds. A lone surviving
+/// sibling is indistinguishable from a genuine non-album post and appears as
+/// a plain message with no `album` field at all.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AlbumInfo {
+    /// Number of sibling messages in the album present in this result set.
+    pub media_count: u32,
+    /// Media type of each sibling present in this result set, in ascending id order.
+    pub media_types: Vec<MediaType>,
+    /// Sibling message ids present in this result set, ascending.
+    pub message_ids: Vec<MessageId>,
+}
+
+/// Kind of chat a `Channel` object describes (work-order B9).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ChatType {
+    /// Broadcast channel.
+    Channel,
+    /// Small (basic) group, incl. grammers `Community` peers.
+    Group,
+    /// Megagroup.
+    Supergroup,
+}
+
 /// A Telegram channel or group.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Channel {
     pub id: ChannelId,
     pub name: ChannelName,
-    pub username: Username,
+    pub username: Option<Username>,
+    pub chat_type: ChatType,
     pub description: Option<String>,
     /// Number of members/subscribers. `None` means the count was not fetched
     /// (distinct from a real zero); the cheap list/lookup paths leave it unset.
@@ -98,6 +151,15 @@ pub struct Channel {
     pub is_public: bool,
     pub is_subscribed: bool,
     pub last_message_date: Option<DateTime<Utc>>,
+}
+
+/// One page of the subscribed-channel list plus the genuine full count.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ChannelPage {
+    pub channels: Vec<Channel>,
+    /// Total subscribed channels/groups across the entire dialog list —
+    /// a real total, not the page size (work-order B6).
+    pub total: usize,
 }
 
 /// A channel's canonical numeric ID plus its public username, if any.
@@ -120,7 +182,7 @@ mod tests {
             id: MessageId::new(1).unwrap(),
             channel_id: ChannelId::new(100).unwrap(),
             channel_name: ChannelName::new("Test").unwrap(),
-            channel_username: Username::new("testchan").unwrap(),
+            channel_username: Some(Username::new("testchan").unwrap()),
             text: "test".to_string(),
             timestamp: Utc::now(),
             sender_id: None,
@@ -134,6 +196,11 @@ mod tests {
             reply_to_message_id: None,
             video_info: None,
             audio_info: None,
+            grouped_id: None,
+            link: "https://t.me/testchan/1".to_string(),
+            reactions: None,
+            reactions_total: None,
+            album: None,
         }
     }
 
@@ -256,7 +323,8 @@ mod tests {
         let channel = Channel {
             id: ChannelId::new(200).unwrap(),
             name: ChannelName::new("Tech News").unwrap(),
-            username: Username::new("technews").unwrap(),
+            username: Some(Username::new("technews").unwrap()),
+            chat_type: ChatType::Channel,
             description: Some("Latest tech updates".to_string()),
             member_count: Some(5000),
             is_verified: true,
@@ -280,7 +348,8 @@ mod tests {
         let channel = Channel {
             id: ChannelId::new(201).unwrap(),
             name: ChannelName::new("No Count").unwrap(),
-            username: Username::new("nocount").unwrap(),
+            username: Some(Username::new("nocount").unwrap()),
+            chat_type: ChatType::Channel,
             description: None,
             member_count: None,
             is_verified: false,

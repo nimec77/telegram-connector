@@ -23,6 +23,8 @@ pub struct SearchParams {
     pub from_date: Option<DateTime<Utc>>,
     /// Inclusive upper bound. Messages newer than this are skipped.
     pub to_date: Option<DateTime<Utc>>,
+    /// Collapse album siblings into one post-level result; limit counts posts (B5+A2).
+    pub collapse_albums: bool,
 }
 
 impl SearchParams {
@@ -40,6 +42,7 @@ impl SearchParams {
             media_filter: None,
             from_date: None,
             to_date: None,
+            collapse_albums: true,
         }
     }
 
@@ -81,6 +84,8 @@ pub struct HistoryParams {
     pub from_date: Option<DateTime<Utc>>,
     /// Inclusive upper bound. Messages newer than this are skipped.
     pub to_date: Option<DateTime<Utc>>,
+    /// Collapse album siblings into one post-level result; limit counts posts (B5+A2).
+    pub collapse_albums: bool,
 }
 
 impl HistoryParams {
@@ -98,6 +103,7 @@ impl HistoryParams {
             media_filter: None,
             from_date: None,
             to_date: None,
+            collapse_albums: true,
         }
     }
 
@@ -136,17 +142,26 @@ impl HistoryParams {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SearchResult {
     pub messages: Vec<Message>,
-    pub total_found: u64,
+    /// Number of messages in this response (page size, not a match count — B6).
+    pub returned: u64,
     pub search_time_ms: u64,
     pub query_metadata: QueryMetadata,
 }
 
-/// Query metadata for search results.
+/// The window and scope a query actually executed with (work-order B6/B7).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct QueryMetadata {
     pub query: String,
-    pub hours_back: u32,
-    pub channels_searched: u32,
+    /// Effective window start actually applied (from_date, or now - hours_back).
+    pub window_from: DateTime<Utc>,
+    /// Effective upper bound; omitted when the window is open-ended.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub window_to: Option<DateTime<Utc>>,
+    /// Channels the search actually scanned; `null` when unknowable
+    /// (server-side global search).
+    pub channels_scanned: Option<u32>,
+    /// Distinct channels present in `messages`.
+    pub channels_in_results: u32,
 }
 
 #[cfg(test)]
@@ -194,6 +209,7 @@ mod tests {
             media_filter: Some(MediaFilter::Photo),
             from_date: None,
             to_date: None,
+            collapse_albums: true,
         };
         assert_eq!(params.media_filter, Some(MediaFilter::Photo));
     }
@@ -272,22 +288,33 @@ mod tests {
 
     #[test]
     fn search_result_serialization() {
+        let window_from = "2026-08-01T00:00:00Z".parse().unwrap();
         let result = SearchResult {
             messages: vec![],
-            total_found: 42,
+            returned: 42,
             search_time_ms: 150,
             query_metadata: QueryMetadata {
                 query: "test".to_string(),
-                hours_back: 48,
-                channels_searched: 5,
+                window_from,
+                window_to: None,
+                channels_scanned: Some(5),
+                channels_in_results: 5,
             },
         };
 
         let json = serde_json::to_string(&result).unwrap();
         let deserialized: SearchResult = serde_json::from_str(&json).unwrap();
 
-        assert_eq!(deserialized.total_found, 42);
+        assert_eq!(deserialized.returned, 42);
         assert_eq!(deserialized.search_time_ms, 150);
         assert_eq!(deserialized.query_metadata.query, "test");
+        assert_eq!(deserialized.query_metadata.window_from, window_from);
+        assert_eq!(deserialized.query_metadata.window_to, None);
+        assert_eq!(deserialized.query_metadata.channels_scanned, Some(5));
+        assert_eq!(deserialized.query_metadata.channels_in_results, 5);
+        assert!(
+            !json.contains("window_to"),
+            "window_to must be omitted when None"
+        );
     }
 }

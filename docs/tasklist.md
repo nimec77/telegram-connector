@@ -36,10 +36,11 @@
 | 26 | Channel data & config refinements | ✅ Complete | 441 | AD-6 (configurable limits) + CQ-4 (Optional `member_count`) + CQ-5 (`has_more` over-fetch) — refactoring roadmap complete |
 | 27 | Local MCP improvements (Tasks 1-5) | ✅ Complete | 456 | Task 1: `from_date`/`to_date` range filters on search/history. Task 2: opt-in `include_full` on `get_channel_info`. Task 3: new `search_public_channels` tool (12th MCP tool) — `contacts.search` discovery; `is_subscribed` is recomputed from the call's own `my_results` (reliable when `true`, best-effort when `false`). Task 4: `tools/list` SEP-2549 cache hints (`ttlMs`/`cacheScope`), gated on negotiated protocol version ≥ 2026-07-28. Task 5: docs alignment sweep — see `docs/superpowers/plans/2026-08-10-local-mcp-improvements.md` |
 | 28 | Correctness core (work-order B1/B2/B3/D9) | ✅ Complete | 499 | MessageEmpty → not-found across all fetch paths; shared link builder emits public t.me/username + internal_link/is_public; media_filter enum inlined + $ref schema guard. **Released as v0.14.0** (2026-08-10, PR #32) |
+| 29 | Post shape (work-order B5-B10, D1-D3, D10, A2) | ✅ Complete | 518 | Nullable `username`/`chat_type` (B9); `SearchResult.total_found`→`returned` + reworked `QueryMetadata` (B6/B7); `ChannelPage` genuine `total` + nullable `has_more` (B6a/D10); `Channel.last_message_date` (B8); message `link`/`reactions`/`reactions_total`/`grouped_id` (D1/D2); default-on album collapsing with post-counting limit (B5/A2); `get_message_media` `source_variant_*`/`largest_available_*` rename (D3); forward-attribution names verified id-only pending v0.18 `resolve_channels` (B10) |
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
-**Overall Progress:** 28/28 phases complete
+**Overall Progress:** 29/29 phases complete
 
 ---
 

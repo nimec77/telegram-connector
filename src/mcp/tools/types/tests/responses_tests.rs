@@ -61,9 +61,11 @@ fn get_message_media_response_serializes() {
         media_type: MediaType::Photo,
         is_thumbnail: false,
         caption: Some("benchmark table".to_string()),
-        original_width: Some(2560),
-        original_height: Some(1440),
-        original_size_bytes: 400_000,
+        source_variant_width: Some(2560),
+        source_variant_height: Some(1440),
+        source_variant_size_bytes: 400_000,
+        largest_available_width: Some(4096),
+        largest_available_height: Some(2160),
         returned_width: 1280,
         returned_height: 720,
         returned_size_bytes: 150_000,
@@ -85,7 +87,7 @@ fn message_response_maps_and_omits_absent_fields() {
         id: MessageId::new(1).unwrap(),
         channel_id: ChannelId::new(100).unwrap(),
         channel_name: ChannelName::new("Test").unwrap(),
-        channel_username: Username::new("testchan").unwrap(),
+        channel_username: Some(Username::new("testchan").unwrap()),
         text: "hi".to_string(),
         timestamp: chrono::Utc::now(),
         sender_id: None,
@@ -99,6 +101,11 @@ fn message_response_maps_and_omits_absent_fields() {
         reply_to_message_id: None,
         video_info: None,
         audio_info: None,
+        grouped_id: None,
+        link: "https://t.me/testchan/1".to_string(),
+        reactions: None,
+        reactions_total: None,
+        album: None,
     };
 
     let dto = MessageResponse::from(msg);
@@ -121,7 +128,7 @@ fn message_response_maps_video_info() {
         id: MessageId::new(1).unwrap(),
         channel_id: ChannelId::new(100).unwrap(),
         channel_name: ChannelName::new("Test").unwrap(),
-        channel_username: Username::new("testchan").unwrap(),
+        channel_username: Some(Username::new("testchan").unwrap()),
         text: String::new(),
         timestamp: chrono::Utc::now(),
         sender_id: None,
@@ -143,6 +150,11 @@ fn message_response_maps_video_info() {
             mime_type: Some("video/mp4".to_string()),
         }),
         audio_info: None,
+        grouped_id: None,
+        link: "https://t.me/testchan/1".to_string(),
+        reactions: None,
+        reactions_total: None,
+        album: None,
     };
 
     let dto = MessageResponse::from(msg);
@@ -164,7 +176,7 @@ fn search_response_maps_from_search_result() {
             id: MessageId::new(1).unwrap(),
             channel_id: ChannelId::new(100).unwrap(),
             channel_name: ChannelName::new("Test").unwrap(),
-            channel_username: Username::new("testchan").unwrap(),
+            channel_username: Some(Username::new("testchan").unwrap()),
             text: "hi".to_string(),
             timestamp: chrono::Utc::now(),
             sender_id: None,
@@ -178,19 +190,26 @@ fn search_response_maps_from_search_result() {
             reply_to_message_id: None,
             video_info: None,
             audio_info: None,
+            grouped_id: None,
+            link: "https://t.me/testchan/1".to_string(),
+            reactions: None,
+            reactions_total: None,
+            album: None,
         }],
-        total_found: 1,
+        returned: 1,
         search_time_ms: 5,
         query_metadata: QueryMetadata {
             query: "x".to_string(),
-            hours_back: 48,
-            channels_searched: 1,
+            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
         },
     };
 
     let dto = SearchResponse::from(result);
     assert_eq!(dto.messages.len(), 1);
-    assert_eq!(dto.total_found, 1);
+    assert_eq!(dto.returned, 1);
     let json = serde_json::to_value(&dto).unwrap();
     assert_eq!(json["query_metadata"]["query"], "x");
 }

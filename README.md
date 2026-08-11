@@ -278,6 +278,7 @@ List all Telegram channels you're subscribed to.
       "id": 1234567890,
       "name": "Tech News",
       "username": "technews",
+      "chat_type": "channel",
       "description": null,
       "member_count": null,
       "is_verified": true,
@@ -286,16 +287,24 @@ List all Telegram channels you're subscribed to.
       "last_message_date": "2025-12-28T10:30:00Z"
     }
   ],
+  "returned": 1,
   "total": 25,
-  "has_more": false
+  "has_more": true
 }
 ```
 
 > **Note:** `description` and `member_count` are `null` from this endpoint — the
 > channel list is built from basic dialog info and does not fetch them. `null`
-> means "not fetched", not "no description" / "empty channel". `has_more` reflects
-> whether a further page exists (the server over-fetches one row to avoid a false
-> positive at an exact page boundary).
+> means "not fetched", not "no description" / "empty channel". `username` is
+> `null` when the chat has no public username (never a fabricated placeholder);
+> `chat_type` is one of `channel` (broadcast), `supergroup`, or `group` (basic
+> group). `returned` is the page size (`channels.len()`); `total` is the genuine
+> subscription count across your whole dialog list, not the page size — the
+> server walks the full list on every call to compute it (work-order B6a).
+> `has_more` is derived straight from that true total (`offset + returned <
+> total`) and is always a known `true`/`false`, never `null`, for this tool.
+> `last_message_date` is populated from the dialog's top message (work-order B8)
+> — when a channel has no messages, it is `null`.
 
 **Usage:** Get a list of available channels before searching or filtering.
 
@@ -309,14 +318,15 @@ Get detailed information about a specific channel.
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
 | `channel_identifier` | string | Yes | — | Channel username (e.g., `technews`) or numeric ID |
-| `include_full` | boolean | No | `false` | Fetch full channel info (`description`, `member_count`) with one extra Telegram RPC (`channels.getFullChannel`). Channel-kind peers only (broadcasts and megagroups); other peer kinds (small groups, communities) silently fall back to basic info. |
+| `include_full` | boolean | No | `false` | Fetch full channel info (`description`, `member_count`, `last_message_date`) with extra Telegram RPCs. `description` and `member_count` come from `channels.getFullChannel` (channel-kind peers only: broadcasts and megagroups); `last_message_date` comes from a one-message history peek (any peer kind). Other peer kinds silently fall back to basic info for the RPC-dependent fields. |
 
 **Response (default, `include_full: false`):**
 ```json
 {
-  "id": 1234567890,
-  "name": "Tech News",
-  "username": "technews",
+  "id": 1144180066,
+  "name": "Сводки",
+  "username": "swodki",
+  "chat_type": "channel",
   "description": null,
   "member_count": null,
   "is_verified": true,
@@ -334,26 +344,49 @@ Get detailed information about a specific channel.
 **Response (`include_full: true`):**
 ```json
 {
-  "id": 1234567890,
-  "name": "Tech News",
-  "username": "technews",
+  "id": 1144180066,
+  "name": "Сводки",
+  "username": "swodki",
+  "chat_type": "channel",
   "description": "Daily technology news and analysis.",
   "member_count": 48213,
   "is_verified": true,
   "is_public": true,
   "is_subscribed": true,
+  "last_message_date": "2026-08-10T05:55:12Z"
+}
+```
+
+> **Note:** `include_full` populates `description` and `member_count` via
+> `channels.GetFullChannel` (channel-kind peers — broadcasts and megagroups — only;
+> other peer kinds report these as `null`), and `last_message_date` via a one-message
+> history peek (any peer kind with readable history). If either fetch fails, the
+> affected field(s) stay `null` and the call still succeeds. It costs exactly one
+> rate-limiter token (on top of the basic lookup), regardless of how many of the
+> up to two extra Telegram RPCs it issues.
+
+**Response (private group, no public username):**
+```json
+{
+  "id": 521440428,
+  "name": "Семейный чатик",
+  "username": null,
+  "chat_type": "group",
+  "description": null,
+  "member_count": null,
+  "is_verified": false,
+  "is_public": false,
+  "is_subscribed": true,
   "last_message_date": null
 }
 ```
 
-> **Note:** `include_full` fills in `description` and `member_count` only —
-> `last_message_date` is not populated by any `get_channel_info` path. The extra
-> RPC applies to channel-kind peers (broadcasts and megagroups); if it fails
-> (e.g. a private or forbidden channel) the basic channel info is still returned,
-> with `description`/`member_count` left as `null`. It costs one rate-limiter
-> token on top of the basic lookup.
+> **Note:** `username` is `null` for chats with no public username — private
+> groups and basic (non-mega) groups typically have none. No placeholder value
+> is fabricated. `chat_type` distinguishes `channel` (broadcast), `supergroup`,
+> and `group` (basic group, including Telegram's `Community` peer kind).
 
-**Usage:** Verify channel details or get the numeric ID for other operations. Use `include_full: true` when you specifically need the description or member count — it costs one extra Telegram RPC round-trip.
+**Usage:** Verify channel details or get the numeric ID for other operations. Use `include_full: true` when you specifically need the description or member count — it costs 1 rate-limiter token, and up to two extra Telegram RPC round-trips.
 
 ---
 
@@ -459,6 +492,7 @@ Search for messages across channels with optional media type filtering.
 | `media_filter` | string | No | - | Filter by media type (see below) |
 | `from_date` | string | No | - | Inclusive start of the time window as RFC 3339 UTC (e.g. `2026-08-01T00:00:00Z`). Overrides `hours_back`. Reaching far back works best on low-traffic channels; on active channels prefer a narrower recent window, since deep windows are paged client-side and may time out |
 | `to_date` | string | No | - | Inclusive end of the time window as RFC 3339 UTC. Messages newer than this are excluded. Set without `from_date`, it must fall inside the `hours_back` window — otherwise the window is empty and the call is rejected |
+| `collapse_albums` | boolean | No | `true` | Collapse album (grouped media) siblings into one post-level result. When `true`, `limit` counts posts (not raw messages) and each collapsed post carries an `album` object. When `false`, every sibling is returned as its own message and `limit` counts raw messages, matching pre-0.15 behavior |
 
 **Media Filter Options:**
 | Value | Description |
@@ -481,7 +515,7 @@ Search for messages across channels with optional media type filtering.
 {
   "messages": [
     {
-      "id": 42,
+      "id": 610047,
       "channel_id": 1234567890,
       "channel_name": "Tech News",
       "channel_username": "technews",
@@ -489,8 +523,9 @@ Search for messages across channels with optional media type filtering.
       "timestamp": "2025-12-28T10:30:00Z",
       "sender_id": 987654321,
       "sender_name": "John Doe",
-      "has_media": false,
-      "media_type": "none",
+      "has_media": true,
+      "media_type": "photo",
+      "link": "https://t.me/technews/610047",
       "views": 15000,
       "forwards": 230,
       "forwarded_from": {
@@ -504,7 +539,7 @@ Search for messages across channels with optional media type filtering.
         "title": "New AI model released",
         "description": "A short summary pulled from Telegram's server-side preview..."
       },
-      "reply_to_message_id": 41,
+      "reply_to_message_id": 610046,
       "video_info": {
         "duration_seconds": 95,
         "width": 1280,
@@ -519,18 +554,40 @@ Search for messages across channels with optional media type filtering.
         "file_size_bytes": 41200,
         "kind": "voice",
         "mime_type": "audio/ogg"
+      },
+      "grouped_id": 13579246801357,
+      "reactions": [
+        { "emoji": "🔥", "count": 41 },
+        { "emoji": "👍", "count": 12 }
+      ],
+      "reactions_total": 55,
+      "album": {
+        "media_count": 8,
+        "media_types": ["photo", "photo", "photo", "photo", "photo", "photo", "photo", "photo"],
+        "message_ids": [610047, 610048, 610049, 610050, 610051, 610052, 610053, 610054]
       }
     }
   ],
-  "total_found": 15,
+  "returned": 15,
   "search_time_ms": 250,
   "query_metadata": {
     "query": "AI model",
-    "hours_back": 48,
-    "channels_searched": 10
+    "window_from": "2025-12-26T10:30:00Z",
+    "channels_scanned": 10,
+    "channels_in_results": 6
   }
 }
 ```
+
+**Response fields:** `returned` is the number of messages in this response (the
+page size — not a total-match count; there may be more matches beyond it).
+`query_metadata.window_from` is the effective window start actually applied
+(`from_date`, or `now - hours_back`); `window_to` is the effective upper bound
+and is omitted entirely when the window is open-ended. `channels_scanned` is
+the number of channels the search actually scanned — `null` for a global
+search (server-side, scan scope is unknowable) and a concrete count when
+`channel_id` is set. `channels_in_results` is the number of distinct channels
+present in `messages`, always a number.
 
 **Forward attribution & link previews:** Messages carry optional enrichment derived
 from the same Telegram response — no extra API calls. `forwarded_from` attributes a
@@ -542,6 +599,39 @@ so pair `channel_id` with `generate_message_link` if you need to reach the sourc
 `title`, `description`, truncated to 500 characters). `views`, `forwards`, and
 `reply_to_message_id` are included when present. All of these fields are omitted
 entirely when absent, so existing consumers are unaffected.
+
+**Permalink, reactions, and album id:** every message carries a `link` — the same
+public `t.me/<username>/<id>` or members-only `t.me/c/<channel_id>/<id>` permalink
+`generate_message_link` returns — computed with **no extra API call**. `reactions`
+itemizes standard-emoji reactions (`emoji`, `count`) sorted as Telegram returns them;
+custom-emoji and paid reactions are not individually renderable and are omitted from
+the list, but `reactions_total` always counts every reaction of every kind. Both are
+omitted when the message has no reactions. `grouped_id` is Telegram's album (media
+group) id — present and identical across sibling messages that were posted together
+as an album, `null`/omitted otherwise.
+
+**Album collapsing (`collapse_albums`, default `true`):** by default, sibling messages
+that share a `grouped_id` (an album/media group posted together) are collapsed into a
+single post-level result before `limit` is applied — so `limit` counts **posts**, not
+raw messages, and an album is never cut in half at the boundary (its trailing siblings
+are always admitted once the album has started). The collapsed post is represented by
+its lowest-id sibling; `text` is taken from whichever sibling actually carries a
+caption (Telegram puts the caption on an arbitrary member of the group, not always the
+first). The post carries an `album` object: `media_count` (sibling count),
+`media_types` (one entry per sibling, ascending id order), and `message_ids` (every
+sibling's id, ascending) — but these three fields describe only the siblings **present
+in this result set**, not necessarily the whole album Telegram holds: a `media_filter`,
+a `from_date`/`to_date` bound, or global-search adjacency can drop siblings that fall
+outside the fetched window, so an album straddling that boundary is partially
+represented. If only one sibling of an album survives into the result set, it is
+indistinguishable from a genuine non-album post: it is returned as a plain message with
+no `album` object at all, same as an "album" that was genuinely just one message. Pass
+`"collapse_albums": false` to get the pre-0.15 behavior: every sibling returned as its
+own message (all sharing `grouped_id`, none carrying `album`), and `limit` counting
+raw messages again. Because `limit` counts posts, on very album-heavy channels
+reaching a high `limit` may require walking up to ~10x as many raw messages within the
+same timeout budget, so the call may hit the timeout sooner than expected — lower
+`limit` or pass `"collapse_albums": false` if that happens.
 
 **Video & audio metadata:** Messages with video-class media carry an optional
 `video_info` object — `duration_seconds`, `width`, `height`, `file_size_bytes`,
@@ -589,6 +679,7 @@ Get recent messages from a channel by time window, without requiring a search qu
 | `media_filter` | string | No | - | Filter by media type (same options as `search_messages`) |
 | `from_date` | string | No | - | Inclusive start of the time window as RFC 3339 UTC (e.g. `2026-08-01T00:00:00Z`). Overrides `hours_back`. Reaching far back works best on low-traffic channels; on active channels prefer a narrower recent window, since deep windows are paged client-side and may time out |
 | `to_date` | string | No | - | Inclusive end of the time window as RFC 3339 UTC. Messages newer than this are excluded. Set without `from_date`, it must fall inside the `hours_back` window — otherwise the window is empty and the call is rejected |
+| `collapse_albums` | boolean | No | `true` | Collapse album (grouped media) siblings into one post-level result. When `true`, `limit` counts posts (not raw messages) and each collapsed post carries an `album` object. When `false`, every sibling is returned as its own message and `limit` counts raw messages, matching pre-0.15 behavior. See `search_messages` above for the full behavior description |
 
 **Key Difference from `search_messages`:**
 
@@ -614,15 +705,17 @@ Get recent messages from a channel by time window, without requiring a search qu
       "sender_id": 0,
       "sender_name": "Tech News",
       "has_media": false,
-      "media_type": "none"
+      "media_type": "none",
+      "link": "https://t.me/technews/99"
     }
   ],
-  "total_found": 5,
+  "returned": 5,
   "search_time_ms": 150,
   "query_metadata": {
     "query": "",
-    "hours_back": 24,
-    "channels_searched": 1
+    "window_from": "2025-12-27T10:30:00Z",
+    "channels_scanned": 1,
+    "channels_in_results": 1
   }
 }
 ```
@@ -641,7 +734,7 @@ Get recent messages from a channel by time window, without requiring a search qu
 Retrieve the visual media from a Telegram message as an MCP **image content block** (base64-encoded JPEG, quality 80) plus a JSON metadata text block. Useful for reading photos posted in channels without leaving the conversation.
 
 **What it returns:**
-- **Photos:** the photo is downscaled so its longest side fits `max_dimension`, re-encoded as JPEG, and returned as an MCP image block. The metadata block contains `media_type`, `is_thumbnail` (always `false` for photos), `caption`, original dimensions and byte size, and the returned dimensions and byte size.
+- **Photos:** the photo is downscaled so its longest side fits `max_dimension`, re-encoded as JPEG, and returned as an MCP image block. The metadata block contains `media_type`, `is_thumbnail` (always `false` for photos), `caption`, source variant dimensions (what was actually fetched) and byte size, largest available variant dimensions (if better exists), and the returned dimensions and byte size.
 - **Videos, animations, video notes:** only the server-side thumbnail is available; it is returned as an image block with `is_thumbnail: true` and a `video_info` object (duration, dimensions, kind) in the metadata.
 - **Messages without visual media:** a structured error is returned (no image block).
 - **Photos whose selected size variant exceeds 20 MB:** refused with an error.
@@ -668,9 +761,11 @@ Retrieve the visual media from a Telegram message as an MCP **image content bloc
   "media_type": "video",
   "is_thumbnail": true,
   "caption": "Optional caption text",
-  "original_width": 2560,
-  "original_height": 1440,
-  "original_size_bytes": 400000,
+  "source_variant_width": 2560,
+  "source_variant_height": 1440,
+  "source_variant_size_bytes": 400000,
+  "largest_available_width": 3840,
+  "largest_available_height": 2160,
   "returned_width": 1280,
   "returned_height": 720,
   "returned_size_bytes": 98304,
@@ -734,7 +829,7 @@ Search Telegram's public directory (`contacts.search`) for channels and groups b
 | `query` | string | Yes | - | Keyword or name to search Telegram's public directory for |
 | `limit` | integer | No | 10 | Maximum results to return (max: 50) |
 
-**Response:** Same `ChannelsResponse` shape as `get_subscribed_channels`, with `has_more` always `false` (this is a single search call, not a paginated listing) and at most `limit` entries. Each returned channel's `is_subscribed` reflects whether you're already subscribed to it — Telegram's `contacts.search` returns matches from both the public directory and your own dialogs in the same result set, so a search can surface a mix of new and already-subscribed channels. `is_subscribed: true` is reliable; `is_subscribed: false` is best-effort, because the already-subscribed side of the result set is server-capped and prefix-matched:
+**Response:** Same `ChannelsResponse` shape as `get_subscribed_channels`, with at most `limit` entries. Each returned channel's `is_subscribed` reflects whether you're already subscribed to it — Telegram's `contacts.search` returns matches from both the public directory and your own dialogs in the same result set, so a search can surface a mix of new and already-subscribed channels. `is_subscribed: true` is reliable; `is_subscribed: false` is best-effort, because the already-subscribed side of the result set is server-capped and prefix-matched. Unlike `get_subscribed_channels`, `contacts.search` reports no global match count, so `total` is always `null` here; `has_more` is `null` too when the page came back full (`returned == limit`) — a full page says nothing about what lies beyond it (work-order D10) — and a known `false` when fewer than `limit` results came back:
 
 ```json
 {
@@ -743,6 +838,7 @@ Search Telegram's public directory (`contacts.search`) for channels and groups b
       "id": 987654321,
       "name": "Rust Programming News",
       "username": "rustnews",
+      "chat_type": "channel",
       "description": null,
       "member_count": null,
       "is_verified": false,
@@ -751,7 +847,8 @@ Search Telegram's public directory (`contacts.search`) for channels and groups b
       "last_message_date": null
     }
   ],
-  "total": 1,
+  "returned": 1,
+  "total": null,
   "has_more": false
 }
 ```
@@ -764,8 +861,8 @@ Search Telegram's public directory (`contacts.search`) for channels and groups b
 > an unsubscribed result: following up by the returned numeric `id` (id lookups
 > walk your dialog list, and `contacts.search` does not add its results to the
 > peer cache), and `search_messages`, whose `channel_id` is numeric-only. A result
-> with no public username reports the `unknown`/`group` placeholder and cannot be
-> drilled into at all. To keyword-search a newly discovered channel, join it first.
+> with no public username reports `username: null` and cannot be drilled into at
+> all. To keyword-search a newly discovered channel, join it first.
 
 ## Manual Testing Guide
 

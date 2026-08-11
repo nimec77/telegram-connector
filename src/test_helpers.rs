@@ -4,8 +4,8 @@
 //! reducing duplication across test files.
 
 use crate::telegram::types::{
-    Channel, ChannelId, ChannelName, ForwardInfo, LinkPreview, MediaType, Message, MessageId,
-    QueryMetadata, SearchResult, UserId, Username,
+    Channel, ChannelId, ChannelName, ChatType, ForwardInfo, LinkPreview, MediaType, Message,
+    MessageId, QueryMetadata, SearchResult, UserId, Username,
 };
 use chrono::{DateTime, Utc};
 
@@ -26,7 +26,7 @@ pub fn create_test_message(id: i64, text: &str, channel_id: i64) -> Message {
         id: MessageId::new(id).expect("Test message ID must be positive"),
         channel_id: ChannelId::new(channel_id).expect("Test channel ID must be positive"),
         channel_name: ChannelName::new("Test Channel").expect("Valid channel name"),
-        channel_username: Username::new("testchannel").expect("Valid username"),
+        channel_username: Some(Username::new("testchannel").expect("Valid username")),
         text: text.to_string(),
         timestamp: Utc::now(),
         sender_id: None,
@@ -40,6 +40,11 @@ pub fn create_test_message(id: i64, text: &str, channel_id: i64) -> Message {
         reply_to_message_id: None,
         video_info: None,
         audio_info: None,
+        grouped_id: None,
+        link: format!("https://t.me/testchannel/{}", id),
+        reactions: None,
+        reactions_total: None,
+        album: None,
     }
 }
 
@@ -133,13 +138,14 @@ pub fn create_test_message_with_link_preview(
 /// # Example
 /// ```ignore
 /// let channel = create_test_channel(100, "technews");
-/// assert_eq!(channel.username.as_str(), "technews");
+/// assert_eq!(channel.username.as_ref().unwrap().as_str(), "technews");
 /// ```
 pub fn create_test_channel(id: i64, username: &str) -> Channel {
     Channel {
         id: ChannelId::new(id).expect("Test channel ID must be positive"),
         name: ChannelName::new(format!("Channel {}", username)).expect("Valid channel name"),
-        username: Username::new(username).expect("Valid username"),
+        username: Some(Username::new(username).expect("Valid username")),
+        chat_type: ChatType::Channel,
         description: Some(format!("Description for {}", username)),
         member_count: Some(1000),
         is_verified: false,
@@ -160,7 +166,8 @@ pub fn create_test_channel_detailed(
     Channel {
         id: ChannelId::new(id).expect("Test channel ID must be positive"),
         name: ChannelName::new(name).expect("Valid channel name"),
-        username: Username::new(username).expect("Valid username"),
+        username: Some(Username::new(username).expect("Valid username")),
+        chat_type: ChatType::Channel,
         description: None,
         member_count: Some(member_count),
         is_verified,
@@ -174,17 +181,19 @@ pub fn create_test_channel_detailed(
 pub fn create_test_search_result(
     messages: Vec<Message>,
     query: &str,
-    channels_searched: u32,
+    channels_in_results: u32,
 ) -> SearchResult {
     SearchResult {
-        total_found: messages.len() as u64,
+        returned: messages.len() as u64,
         search_time_ms: 100,
-        messages,
         query_metadata: QueryMetadata {
             query: query.to_string(),
-            hours_back: 48,
-            channels_searched,
+            window_from: Utc::now() - chrono::Duration::hours(48),
+            window_to: None,
+            channels_scanned: Some(channels_in_results),
+            channels_in_results,
         },
+        messages,
     }
 }
 
@@ -261,7 +270,7 @@ mod tests {
     fn create_test_channel_works() {
         let channel = create_test_channel(100, "technews");
         assert_eq!(channel.id.get(), 100);
-        assert_eq!(channel.username.as_str(), "technews");
+        assert_eq!(channel.username.as_ref().unwrap().as_str(), "technews");
         assert!(channel.is_subscribed);
     }
 
@@ -278,15 +287,16 @@ mod tests {
     fn create_test_search_result_works() {
         let msg = create_test_message(1, "Test", 100);
         let result = create_test_search_result(vec![msg], "test query", 5);
-        assert_eq!(result.total_found, 1);
+        assert_eq!(result.returned, 1);
         assert_eq!(result.query_metadata.query, "test query");
-        assert_eq!(result.query_metadata.channels_searched, 5);
+        assert_eq!(result.query_metadata.channels_scanned, Some(5));
+        assert_eq!(result.query_metadata.channels_in_results, 5);
     }
 
     #[test]
     fn create_empty_search_result_works() {
         let result = create_empty_search_result("empty");
-        assert_eq!(result.total_found, 0);
+        assert_eq!(result.returned, 0);
         assert!(result.messages.is_empty());
     }
 }

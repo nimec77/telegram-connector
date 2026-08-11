@@ -3,6 +3,7 @@
 //! Unit of `client` (LM-2).
 
 use super::*;
+use crate::telegram::albums::{PostCounter, album_key, collapse_albums};
 
 impl TelegramClient {
     pub(super) async fn get_recent_messages_impl(
@@ -78,6 +79,7 @@ impl TelegramClient {
 
         let messages = with_timeout("iter_messages", self.timeouts.history_secs, async {
             let mut messages = Vec::new();
+            let mut counter = PostCounter::default();
             let mut messages_iter = self.client.iter_messages(peer_ref);
 
             while let Some(msg) = messages_iter
@@ -106,9 +108,18 @@ impl TelegramClient {
                 }
 
                 if let Some(converted) = convert_message(&msg, &peer) {
-                    messages.push(converted);
-                    if messages.len() >= params.limit as usize {
-                        break;
+                    if params.collapse_albums {
+                        // Post-level limit: stop only when a NEW post would
+                        // overflow; trailing siblings of admitted albums pass.
+                        if !counter.admit(album_key(&converted), params.limit as usize) {
+                            break;
+                        }
+                        messages.push(converted);
+                    } else {
+                        messages.push(converted);
+                        if messages.len() >= params.limit as usize {
+                            break;
+                        }
                     }
                 }
             }
@@ -116,28 +127,37 @@ impl TelegramClient {
         })
         .await?;
 
+        let messages = if params.collapse_albums {
+            collapse_albums(messages)
+        } else {
+            messages
+        };
+
         let search_time_ms = start_time.elapsed().as_millis() as u64;
-        let total_found = messages.len() as u64;
+        let returned = messages.len() as u64;
+        let channels_in_results = if messages.is_empty() { 0 } else { 1 };
 
         tracing::info!(
             channel_id = resolved_channel_id,
             identifier = ?params.channel_identifier,
             media_filter = ?params.media_filter,
-            results = total_found,
+            results = returned,
             hours_back = params.hours_back,
             duration_ms = search_time_ms,
             "Get recent messages completed"
         );
 
         Ok(SearchResult {
-            messages,
-            total_found,
+            returned,
             search_time_ms,
             query_metadata: QueryMetadata {
                 query: String::new(), // No query for history retrieval
-                hours_back: params.hours_back,
-                channels_searched: 1,
+                window_from: cutoff_time,
+                window_to: params.to_date,
+                channels_scanned: Some(1),
+                channels_in_results,
             },
+            messages,
         })
     }
 }

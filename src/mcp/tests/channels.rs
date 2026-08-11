@@ -5,7 +5,7 @@ use crate::mcp::tools::{ChannelsResponse, GetChannelInfoRequest, GetChannelsRequ
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::Username;
-use crate::telegram::{Channel, ChannelId, ChannelName};
+use crate::telegram::{Channel, ChannelId, ChannelName, ChannelPage, ChatType};
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::NumberOrString;
@@ -16,7 +16,8 @@ fn create_test_channel(id: i64, name: &str) -> Channel {
     Channel {
         id: ChannelId::new(id).unwrap(),
         name: ChannelName::new(name).unwrap(),
-        username: Username::new("testchannel").unwrap(),
+        username: Some(Username::new("testchannel").unwrap()),
+        chat_type: ChatType::Channel,
         description: Some("Test channel".to_string()),
         member_count: Some(1000),
         is_verified: false,
@@ -46,10 +47,15 @@ async fn get_subscribed_channels_returns_list() {
     mock_client
         .expect_get_subscribed_channels()
         .with(
-            mockall::predicate::eq(21), // default limit (20) + 1 over-fetch (CQ-5)
+            mockall::predicate::eq(20), // default limit; no over-fetch (CQ-5 removed)
             mockall::predicate::eq(0),  // default offset
         )
-        .return_once(move |_, _| Ok(expected));
+        .return_once(move |_, _| {
+            Ok(ChannelPage {
+                channels: expected,
+                total: 2,
+            })
+        });
 
     let mock_limiter = MockRateLimiterTrait::new();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
@@ -68,8 +74,9 @@ async fn get_subscribed_channels_returns_list() {
     assert!(result.is_ok());
     let response: ChannelsResponse = serde_json::from_str(&result.unwrap()).unwrap();
     assert_eq!(response.channels.len(), 2);
-    assert_eq!(response.total, 2);
-    assert!(!response.has_more); // 2 channels < 20 limit
+    assert_eq!(response.returned, 2);
+    assert_eq!(response.total, Some(2));
+    assert_eq!(response.has_more, Some(false)); // 0 + 2 is not < the genuine total of 2
 }
 
 #[tokio::test]
@@ -82,10 +89,15 @@ async fn get_subscribed_channels_respects_pagination() {
     mock_client
         .expect_get_subscribed_channels()
         .with(
-            mockall::predicate::eq(11), // custom limit (10) + 1 over-fetch (CQ-5)
+            mockall::predicate::eq(10), // custom limit; no over-fetch (CQ-5 removed)
             mockall::predicate::eq(5),  // custom offset
         )
-        .return_once(move |_, _| Ok(expected));
+        .return_once(move |_, _| {
+            Ok(ChannelPage {
+                channels: expected,
+                total: 1,
+            })
+        });
 
     let mock_limiter = MockRateLimiterTrait::new();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
@@ -104,8 +116,43 @@ async fn get_subscribed_channels_respects_pagination() {
     assert!(result.is_ok());
     let response: ChannelsResponse = serde_json::from_str(&result.unwrap()).unwrap();
     assert_eq!(response.channels.len(), 1);
-    assert_eq!(response.total, 1);
-    assert!(!response.has_more); // 1 channel < 10 limit
+    assert_eq!(response.returned, 1);
+    assert_eq!(response.total, Some(1));
+    assert_eq!(response.has_more, Some(false)); // offset 5 + returned 1 is not < total 1
+}
+
+#[tokio::test]
+async fn subscribed_channels_report_true_total_and_has_more() {
+    // The dialog walk covers the whole subscription list even for a small page,
+    // so `total` is the genuine subscription count, not the page size (B6a).
+    let mut mock_client = MockTelegramClientTrait::new();
+    mock_client
+        .expect_get_subscribed_channels()
+        .withf(|l, o| *l == 3 && *o == 0)
+        .return_once(|_, _| {
+            Ok(ChannelPage {
+                channels: n_channels(3),
+                total: 186,
+            })
+        });
+
+    let mock_limiter = MockRateLimiterTrait::new();
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = GetChannelsRequest {
+        limit: Some(3),
+        offset: None,
+    };
+
+    let result = server
+        .get_subscribed_channels(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await
+        .expect("tool call should succeed");
+
+    let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert_eq!(json["returned"], 3);
+    assert_eq!(json["total"], 186);
+    assert_eq!(json["has_more"], true);
 }
 
 #[tokio::test]
@@ -115,7 +162,8 @@ async fn get_channel_info_returns_channel_details() {
     let test_channel = Channel {
         id: ChannelId::new(12345).unwrap(),
         name: ChannelName::new("Test Channel").unwrap(),
-        username: Username::new("testchannel").unwrap(),
+        username: Some(Username::new("testchannel").unwrap()),
+        chat_type: ChatType::Channel,
         description: Some("A test channel".to_string()),
         member_count: Some(5000),
         is_verified: true,
@@ -191,7 +239,8 @@ async fn get_channel_info_unfetched_member_count_serializes_as_null() {
     let test_channel = Channel {
         id: ChannelId::new(777).unwrap(),
         name: ChannelName::new("Unfetched").unwrap(),
-        username: Username::new("unfetched").unwrap(),
+        username: Some(Username::new("unfetched").unwrap()),
+        chat_type: ChatType::Channel,
         description: None,
         member_count: None,
         is_verified: false,
@@ -288,17 +337,21 @@ async fn include_full_absent_keeps_basic_path() {
 
 #[tokio::test]
 async fn get_subscribed_channels_no_false_has_more_at_exact_boundary() {
-    // Exactly `limit` channels exist, so the next page is empty and has_more
-    // must be false. Pre-CQ-5 the server fetched exactly `limit` and reported
-    // has_more = (len >= limit) = true — a misleading wasted round-trip. The mock
-    // returns min(available, requested) so it models a finite dialog list.
-    let available = 3usize;
+    // Exactly `limit` channels exist in total (the dialog walk covers the whole
+    // list, so `total` is genuine — B6a), so the next page is empty and has_more
+    // must be false.
+    let total = 3usize;
     let limit = 3u32;
 
     let mut mock_client = MockTelegramClientTrait::new();
     mock_client
         .expect_get_subscribed_channels()
-        .returning(move |requested, _offset| Ok(n_channels((requested as usize).min(available))));
+        .returning(move |requested, _offset| {
+            Ok(ChannelPage {
+                channels: n_channels((requested as usize).min(total)),
+                total,
+            })
+        });
 
     let mock_limiter = MockRateLimiterTrait::new();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
@@ -315,24 +368,31 @@ async fn get_subscribed_channels_no_false_has_more_at_exact_boundary() {
     let response: ChannelsResponse = serde_json::from_str(&result).unwrap();
 
     assert_eq!(response.channels.len(), 3);
-    assert_eq!(response.total, 3);
-    assert!(
-        !response.has_more,
+    assert_eq!(response.returned, 3);
+    assert_eq!(response.total, Some(3));
+    assert_eq!(
+        response.has_more,
+        Some(false),
         "exactly `limit` channels exist; has_more must be false"
     );
 }
 
 #[tokio::test]
 async fn get_subscribed_channels_reports_has_more_when_more_exist() {
-    // More than `limit` channels exist: the server over-fetches one extra to
-    // detect the next page, reports has_more = true, and truncates to `limit`.
-    let available = 5usize;
+    // The genuine total (from the full dialog walk, B6a) exceeds the page: the
+    // server derives has_more straight from it, no over-fetch heuristic needed.
+    let total = 5usize;
     let limit = 3u32;
 
     let mut mock_client = MockTelegramClientTrait::new();
     mock_client
         .expect_get_subscribed_channels()
-        .returning(move |requested, _offset| Ok(n_channels((requested as usize).min(available))));
+        .returning(move |requested, _offset| {
+            Ok(ChannelPage {
+                channels: n_channels((requested as usize).min(total)),
+                total,
+            })
+        });
 
     let mock_limiter = MockRateLimiterTrait::new();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
@@ -349,8 +409,13 @@ async fn get_subscribed_channels_reports_has_more_when_more_exist() {
     let response: ChannelsResponse = serde_json::from_str(&result).unwrap();
 
     assert_eq!(response.channels.len(), 3, "page truncated to limit");
-    assert_eq!(response.total, 3);
-    assert!(response.has_more, "more than `limit` channels exist");
+    assert_eq!(response.returned, 3);
+    assert_eq!(response.total, Some(5));
+    assert_eq!(
+        response.has_more,
+        Some(true),
+        "more than `limit` channels exist"
+    );
 }
 
 #[tokio::test]
@@ -408,4 +473,38 @@ async fn include_full_propagates_rate_limit_error() {
 
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("rate limit"));
+}
+
+#[tokio::test]
+async fn include_full_passes_last_message_date_through() {
+    // Mock get_full_channel_info("@news") returning a channel with
+    // last_message_date populated; verify it passes through to the response.
+    let mut mock_client = MockTelegramClientTrait::new();
+    let mut channel = create_test_channel(42, "News Channel");
+    let expected_date = "2026-08-10T05:55:12Z"
+        .parse::<chrono::DateTime<chrono::Utc>>()
+        .unwrap();
+    channel.last_message_date = Some(expected_date);
+
+    mock_client
+        .expect_get_full_channel_info()
+        .with(mockall::predicate::eq("@news"))
+        .return_once(|_| Ok(channel));
+
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = GetChannelInfoRequest {
+        channel_identifier: "@news".to_string(),
+        include_full: Some(true),
+    };
+
+    let result = server
+        .get_channel_info(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await
+        .expect("tool call should succeed");
+
+    let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert_eq!(json["last_message_date"], "2026-08-10T05:55:12Z");
 }

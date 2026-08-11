@@ -1,8 +1,8 @@
 //! Response types for MCP tools.
 
 use crate::telegram::types::{
-    AudioInfo, Channel, ChannelId, ChannelName, ForwardInfo, LinkPreview, MediaType, Message,
-    MessageId, QueryMetadata, SearchResult, UserId, Username, VideoInfo,
+    AlbumInfo, AudioInfo, Channel, ChannelId, ChannelName, ForwardInfo, LinkPreview, MediaType,
+    Message, MessageId, MessageReaction, QueryMetadata, SearchResult, UserId, Username, VideoInfo,
 };
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
@@ -63,17 +63,20 @@ pub struct TranscribeVoiceMessageResponse {
     pub media_type: MediaType,
 }
 
-/// Response for get_subscribed_channels tool
+/// Response for channel-returning tools (subscriptions and discovery).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ChannelsResponse {
-    #[schemars(description = "List of subscribed channels")]
+    #[schemars(description = "Channels in this page")]
     pub channels: Vec<Channel>,
 
-    #[schemars(description = "Total number of channels (for pagination)")]
-    pub total: usize,
+    #[schemars(description = "Number of channels in this response")]
+    pub returned: usize,
 
-    #[schemars(description = "Whether there are more channels available")]
-    pub has_more: bool,
+    #[schemars(description = "Genuine total matches; null when the source cannot know it")]
+    pub total: Option<usize>,
+
+    #[schemars(description = "Whether more results exist; null when unknown (D10)")]
+    pub has_more: Option<bool>,
 }
 
 /// Response for generate_message_link tool
@@ -169,14 +172,24 @@ pub struct GetMessageMediaResponse {
     #[schemars(description = "Message caption, if any")]
     pub caption: Option<String>,
 
-    #[schemars(description = "Pixel width of the downloaded source variant")]
-    pub original_width: Option<u32>,
+    #[schemars(
+        description = "Pixel width of the downloaded source variant (the variant actually fetched, not necessarily the original)"
+    )]
+    pub source_variant_width: Option<u32>,
 
-    #[schemars(description = "Pixel height of the downloaded source variant")]
-    pub original_height: Option<u32>,
+    #[schemars(
+        description = "Pixel height of the downloaded source variant (the variant actually fetched, not necessarily the original)"
+    )]
+    pub source_variant_height: Option<u32>,
 
     #[schemars(description = "Byte size of the downloaded source variant")]
-    pub original_size_bytes: u64,
+    pub source_variant_size_bytes: u64,
+
+    #[schemars(description = "Pixel width of the largest variant Telegram offers")]
+    pub largest_available_width: Option<u32>,
+
+    #[schemars(description = "Pixel height of the largest variant Telegram offers")]
+    pub largest_available_height: Option<u32>,
 
     #[schemars(description = "Pixel width of the returned image")]
     pub returned_width: u32,
@@ -207,7 +220,7 @@ pub struct MessageResponse {
     pub id: MessageId,
     pub channel_id: ChannelId,
     pub channel_name: ChannelName,
-    pub channel_username: Username,
+    pub channel_username: Option<Username>,
     pub text: String,
     pub timestamp: DateTime<Utc>,
     pub sender_id: Option<UserId>,
@@ -228,6 +241,15 @@ pub struct MessageResponse {
     pub video_info: Option<VideoInfo>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub audio_info: Option<AudioInfo>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub grouped_id: Option<i64>,
+    pub link: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub reactions: Option<Vec<MessageReaction>>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub reactions_total: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub album: Option<AlbumInfo>,
 }
 
 impl From<Message> for MessageResponse {
@@ -250,6 +272,11 @@ impl From<Message> for MessageResponse {
             reply_to_message_id: m.reply_to_message_id,
             video_info: m.video_info,
             audio_info: m.audio_info,
+            grouped_id: m.grouped_id,
+            link: m.link,
+            reactions: m.reactions,
+            reactions_total: m.reactions_total,
+            album: m.album,
         }
     }
 }
@@ -258,7 +285,7 @@ impl From<Message> for MessageResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SearchResponse {
     pub messages: Vec<MessageResponse>,
-    pub total_found: u64,
+    pub returned: u64,
     pub search_time_ms: u64,
     pub query_metadata: QueryMetadata,
 }
@@ -267,7 +294,7 @@ impl From<SearchResult> for SearchResponse {
     fn from(r: SearchResult) -> Self {
         Self {
             messages: r.messages.into_iter().map(MessageResponse::from).collect(),
-            total_found: r.total_found,
+            returned: r.returned,
             search_time_ms: r.search_time_ms,
             query_metadata: r.query_metadata,
         }

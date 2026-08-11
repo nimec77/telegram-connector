@@ -50,6 +50,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             media_filter: request.media_filter,
             from_date,
             to_date,
+            collapse_albums: request.collapse_albums.unwrap_or(true),
         };
 
         // Reject an empty window before spending a token or a network round-trip.
@@ -81,11 +82,11 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             media_filter = ?params.media_filter,
             hours_back = params.hours_back,
             limit = params.limit,
-            total_found = result.total_found,
+            returned = result.returned,
             messages_returned = message_ids.len(),
             message_ids = ?message_ids,
             search_time_ms = result.search_time_ms,
-            channels_searched = result.query_metadata.channels_searched,
+            channels_in_results = result.query_metadata.channels_in_results,
             "Search results"
         );
 
@@ -144,6 +145,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             media_filter: request.media_filter,
             from_date,
             to_date,
+            collapse_albums: request.collapse_albums.unwrap_or(true),
         };
 
         // Reject an empty window before spending a token or a network round-trip.
@@ -174,7 +176,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             media_filter = ?params.media_filter,
             hours_back = params.hours_back,
             limit = params.limit,
-            total_found = result.total_found,
+            returned = result.returned,
             messages_returned = message_ids.len(),
             message_ids = ?message_ids,
             search_time_ms = result.search_time_ms,

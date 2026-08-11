@@ -9,37 +9,41 @@ impl TelegramClient {
         &self,
         limit: u32,
         offset: u32,
-    ) -> Result<Vec<crate::telegram::Channel>, Error> {
-        let mut channels = Vec::new();
+    ) -> Result<crate::telegram::ChannelPage, Error> {
+        let mut page = Vec::new();
+        let mut total = 0usize;
         let mut dialogs = self.client.iter_dialogs();
-        let mut count = 0u32;
 
+        // Walk the WHOLE dialog list: the page is cut out in passing, and the
+        // walk continues so `total` is the genuine subscription count (B6).
+        // Iteration always started from the beginning anyway — offset pages
+        // already paid the full walk.
         while let Some(dialog) = dialogs.next().await.map_err(|e| {
             tracing::error!(error = %e, "Failed to iterate dialogs in get_subscribed_channels");
             Error::TelegramApi(format!("Failed to iterate dialogs: {}", e))
         })? {
-            let peer = dialog.peer();
-
-            // Only include channels and groups
-            if let Some(channel) = convert_peer_to_channel(peer) {
-                if count >= offset {
-                    channels.push(channel);
-                    if channels.len() >= limit as usize {
-                        break;
-                    }
+            if let Some(mut channel) = convert_peer_to_channel(dialog.peer()) {
+                if total >= offset as usize && page.len() < limit as usize {
+                    // Free enrichment: the dialog already carries its top message (B8).
+                    channel.last_message_date =
+                        dialog.last_message.as_ref().and_then(message_timestamp);
+                    page.push(channel);
                 }
-                count += 1;
+                total += 1;
             }
         }
 
         tracing::debug!(
-            channels_found = channels.len(),
+            returned = page.len(),
+            total,
             offset,
             limit,
             "get_subscribed_channels completed"
         );
-
-        Ok(channels)
+        Ok(crate::telegram::ChannelPage {
+            channels: page,
+            total,
+        })
     }
 
     pub(super) async fn get_channel_info_impl(
@@ -97,6 +101,17 @@ impl TelegramClient {
             }
         }
 
+        // include_full already means "extra RPC accepted": peek the newest
+        // message for last_message_date. Degrade, never fail (same policy as
+        // the GetFullChannel enrichment above).
+        match self.fetch_last_message_date(&peer).await {
+            Ok(date) => channel.last_message_date = date,
+            Err(e) => {
+                tracing::warn!(error = %e, channel_id = channel.id.get(),
+                    "last-message peek failed; leaving last_message_date null");
+            }
+        }
+
         Ok(channel)
     }
 
@@ -129,6 +144,23 @@ impl TelegramClient {
         } else {
             Ok((None, None))
         }
+    }
+
+    /// Newest message's timestamp, via a single-message history peek.
+    async fn fetch_last_message_date(
+        &self,
+        peer: &grammers_client::peer::Peer,
+    ) -> Result<Option<chrono::DateTime<chrono::Utc>>, Error> {
+        let peer_ref = peer_to_ref(peer).await?;
+        with_timeout("last_message_peek", self.timeouts.history_secs, async {
+            let mut iter = self.client.iter_messages(peer_ref);
+            match iter.next().await {
+                Ok(Some(msg)) => Ok(message_timestamp(&msg)),
+                Ok(None) => Ok(None),
+                Err(e) => Err(Error::TelegramApi(format!("last-message peek failed: {e}"))),
+            }
+        })
+        .await
     }
 
     pub(super) async fn search_public_channels_impl(

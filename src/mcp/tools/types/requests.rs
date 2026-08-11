@@ -120,6 +120,12 @@ pub struct SearchRequest {
     // Blank-preserving for the same reason as `from_date` above.
     #[serde(default)]
     pub to_date: Option<String>,
+
+    #[schemars(
+        description = "Optional: collapse album (grouped media) siblings into one post-level result; when true, limit counts posts, and each collapsed post carries album.message_ids. Default: true."
+    )]
+    #[serde(default, deserialize_with = "flexible_opt_bool")]
+    pub collapse_albums: Option<bool>,
 }
 
 /// Request for get_recent_messages tool
@@ -158,6 +164,12 @@ pub struct GetRecentMessagesRequest {
     // Blank-preserving for the same reason as `from_date` above.
     #[serde(default)]
     pub to_date: Option<String>,
+
+    #[schemars(
+        description = "Optional: collapse album (grouped media) siblings into one post-level result; when true, limit counts posts, and each collapsed post carries album.message_ids. Default: true."
+    )]
+    #[serde(default, deserialize_with = "flexible_opt_bool")]
+    pub collapse_albums: Option<bool>,
 }
 
 /// Request for get_message_by_link tool
