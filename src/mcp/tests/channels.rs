@@ -474,3 +474,37 @@ async fn include_full_propagates_rate_limit_error() {
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("rate limit"));
 }
+
+#[tokio::test]
+async fn include_full_passes_last_message_date_through() {
+    // Mock get_full_channel_info("@news") returning a channel with
+    // last_message_date populated; verify it passes through to the response.
+    let mut mock_client = MockTelegramClientTrait::new();
+    let mut channel = create_test_channel(42, "News Channel");
+    let expected_date = "2026-08-10T05:55:12Z"
+        .parse::<chrono::DateTime<chrono::Utc>>()
+        .unwrap();
+    channel.last_message_date = Some(expected_date);
+
+    mock_client
+        .expect_get_full_channel_info()
+        .with(mockall::predicate::eq("@news"))
+        .return_once(|_| Ok(channel));
+
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = GetChannelInfoRequest {
+        channel_identifier: "@news".to_string(),
+        include_full: Some(true),
+    };
+
+    let result = server
+        .get_channel_info(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await
+        .expect("tool call should succeed");
+
+    let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert_eq!(json["last_message_date"], "2026-08-10T05:55:12Z");
+}

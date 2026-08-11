@@ -303,6 +303,8 @@ List all Telegram channels you're subscribed to.
 > server walks the full list on every call to compute it (work-order B6a).
 > `has_more` is derived straight from that true total (`offset + returned <
 > total`) and is always a known `true`/`false`, never `null`, for this tool.
+> `last_message_date` is populated from the dialog's top message (work-order B8)
+> — when a channel has no messages, it is `null`.
 
 **Usage:** Get a list of available channels before searching or filtering.
 
@@ -351,15 +353,15 @@ Get detailed information about a specific channel.
   "is_verified": true,
   "is_public": true,
   "is_subscribed": true,
-  "last_message_date": null
+  "last_message_date": "2026-08-10T05:55:12Z"
 }
 ```
 
-> **Note:** `include_full` fills in `description` and `member_count` only —
-> `last_message_date` is not populated by any `get_channel_info` path. The extra
-> RPC applies to channel-kind peers (broadcasts and megagroups); if it fails
-> (e.g. a private or forbidden channel) the basic channel info is still returned,
-> with `description`/`member_count` left as `null`. It costs one rate-limiter
+> **Note:** `include_full` fills in `description`, `member_count`, and
+> `last_message_date`. The extra RPC applies to channel-kind peers (broadcasts
+> and megagroups); if it fails (e.g. a private or forbidden channel) the basic
+> channel info is still returned, with `description`/`member_count`/`last_message_date`
+> left as `null`. It costs one rate-limiter
 > token on top of the basic lookup.
 
 **Response (private group, no public username):**
