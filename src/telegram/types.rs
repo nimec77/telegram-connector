@@ -20,6 +20,7 @@ pub mod transcription;
 // Re-export all public types for convenience
 pub use entities::{
     Channel, ChannelIdentity, ChannelPage, ChatType, ForwardInfo, LinkPreview, Message,
+    MessageReaction,
 };
 pub use ids::{ChannelId, MessageId, UserId};
 pub use media::{

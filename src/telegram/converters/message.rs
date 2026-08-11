@@ -3,10 +3,11 @@
 //! Sub-domain of `converters` (LM-4). Depends on `media` for media-type
 //! detection and video/audio info.
 
-use super::channel::peer_identity;
+use super::channel::{channel_identity, peer_identity};
 use super::media::{convert_media_to_type, extract_audio_info, extract_video_info};
+use crate::link::MessageLink;
 use crate::telegram::types::{
-    ChannelId, ForwardInfo, LinkPreview, MediaType, Message, MessageId, UserId,
+    ChannelId, ForwardInfo, LinkPreview, MediaType, Message, MessageId, MessageReaction, UserId,
 };
 use chrono::{DateTime, Utc};
 use grammers_client::media::Media;
@@ -71,6 +72,42 @@ pub(crate) fn extract_link_preview(media: &tl::types::MessageMediaWebPage) -> Op
     }
 }
 
+/// Permalink for a message, from data already in hand (work-order D1):
+/// public `t.me/<username>` form when the channel has one, members-only
+/// `t.me/c/…` otherwise. Same builder as generate_message_link (B2).
+pub(crate) fn build_message_link(
+    peer: &grammers_client::peer::Peer,
+    message_id: MessageId,
+) -> Option<String> {
+    let identity = channel_identity(peer)?;
+    Some(MessageLink::new(identity.id, message_id, identity.username.as_deref()).https_link)
+}
+
+/// Itemized standard-emoji reactions plus an all-kinds total (work-order D2).
+/// Custom-emoji and paid reactions count toward the total but are not
+/// itemized (no renderable emoji string).
+pub(crate) fn extract_reactions(
+    reactions: Option<&tl::enums::MessageReactions>,
+) -> (Option<Vec<MessageReaction>>, Option<u64>) {
+    let Some(tl::enums::MessageReactions::Reactions(r)) = reactions else {
+        return (None, None);
+    };
+    let mut itemized = Vec::new();
+    let mut total = 0u64;
+    for result in &r.results {
+        let tl::enums::ReactionCount::Count(rc) = result;
+        let count = u64::try_from(rc.count).unwrap_or(0);
+        total += count;
+        if let tl::enums::Reaction::Emoji(e) = &rc.reaction {
+            itemized.push(MessageReaction {
+                emoji: e.emoticon.clone(),
+                count,
+            });
+        }
+    }
+    (Some(itemized).filter(|v| !v.is_empty()), Some(total))
+}
+
 /// Convert grammers Message to our Message type
 pub fn convert_message(
     msg: &grammers_client::message::Message,
@@ -123,6 +160,13 @@ pub fn convert_message(
         .reply_to_message_id()
         .and_then(|id| MessageId::new(id as i64).ok());
 
+    let raw_reactions = match &msg.raw {
+        tl::enums::Message::Message(m) => m.reactions.as_ref(),
+        _ => None,
+    };
+    let (reactions, reactions_total) = extract_reactions(raw_reactions);
+    let link = build_message_link(peer, message_id)?;
+
     Some(Message {
         id: message_id,
         channel_id,
@@ -141,5 +185,158 @@ pub fn convert_message(
         reply_to_message_id,
         video_info,
         audio_info,
+        grouped_id: msg.grouped_id(),
+        link,
+        reactions,
+        reactions_total,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use grammers_client::Client;
+    use grammers_client::peer::{Community, Peer};
+    use grammers_mtsender::SenderPool;
+    use grammers_session::storages::MemorySession;
+    use std::sync::Arc;
+
+    /// Inert client for offline Peer construction (same trick as the
+    /// channel-converter tests).
+    fn inert_client() -> Client {
+        let session = Arc::new(MemorySession::default());
+        let SenderPool { handle, .. } = SenderPool::new(session, 1);
+        Client::new(handle)
+    }
+
+    fn public_channel_peer(id: i64, username: &str) -> Peer {
+        let client = inert_client();
+        let raw = tl::types::Channel {
+            creator: false,
+            left: false,
+            broadcast: true,
+            verified: false,
+            megagroup: false,
+            restricted: false,
+            signatures: false,
+            min: false,
+            scam: false,
+            has_link: false,
+            has_geo: false,
+            slowmode_enabled: false,
+            call_active: false,
+            call_not_empty: false,
+            fake: false,
+            gigagroup: false,
+            noforwards: false,
+            join_to_send: false,
+            join_request: false,
+            forum: false,
+            stories_hidden: false,
+            stories_hidden_min: false,
+            stories_unavailable: true,
+            signature_profiles: false,
+            autotranslation: false,
+            broadcast_messages_allowed: false,
+            monoforum: false,
+            forum_tabs: false,
+            id,
+            access_hash: Some(0),
+            title: "Test Channel".to_string(),
+            username: Some(username.to_string()),
+            photo: tl::enums::ChatPhoto::Empty,
+            date: 0,
+            restriction_reason: None,
+            admin_rights: None,
+            banned_rights: None,
+            default_banned_rights: None,
+            participants_count: None,
+            usernames: None,
+            stories_max_id: None,
+            color: None,
+            profile_color: None,
+            emoji_status: None,
+            level: None,
+            subscription_until_date: None,
+            bot_verification_icon: None,
+            send_paid_messages_stars: None,
+            linked_monoforum_id: None,
+            linked_community_id: None,
+        };
+        Peer::from_raw(&client, tl::enums::Chat::Channel(raw))
+    }
+
+    fn private_community_peer(id: i64) -> Peer {
+        let client = inert_client();
+        let raw = tl::types::Community {
+            creator: false,
+            left: false,
+            min: false,
+            collapsed_in_dialogs: false,
+            id,
+            access_hash: Some(0),
+            title: "Test Community".to_string(),
+            photo: tl::enums::ChatPhoto::Empty,
+            date: 0,
+            admin_rights: None,
+            default_banned_rights: None,
+        };
+        Peer::Community(Community::from_raw(
+            &client,
+            tl::enums::Chat::Community(raw),
+        ))
+    }
+
+    #[test]
+    fn build_message_link_uses_public_form_when_username_exists() {
+        let peer = public_channel_peer(1144180066, "swodki");
+        let link = build_message_link(&peer, MessageId::new(610121).expect("valid id"));
+        assert_eq!(link.as_deref(), Some("https://t.me/swodki/610121"));
+    }
+
+    #[test]
+    fn build_message_link_falls_back_to_internal_form() {
+        let peer = private_community_peer(521440428);
+        let link = build_message_link(&peer, MessageId::new(5).expect("valid id"));
+        assert_eq!(link.as_deref(), Some("https://t.me/c/521440428/5"));
+    }
+
+    #[test]
+    fn extract_reactions_itemizes_emoji_and_totals_everything() {
+        let raw = tl::enums::MessageReactions::Reactions(tl::types::MessageReactions {
+            min: false,
+            can_see_list: false,
+            reactions_as_tags: false,
+            results: vec![
+                tl::enums::ReactionCount::Count(tl::types::ReactionCount {
+                    chosen_order: None,
+                    reaction: tl::enums::Reaction::Emoji(tl::types::ReactionEmoji {
+                        emoticon: "🔥".to_string(),
+                    }),
+                    count: 41,
+                }),
+                tl::enums::ReactionCount::Count(tl::types::ReactionCount {
+                    chosen_order: None,
+                    reaction: tl::enums::Reaction::CustomEmoji(tl::types::ReactionCustomEmoji {
+                        document_id: 7,
+                    }),
+                    count: 2,
+                }),
+            ],
+            recent_reactions: None,
+            top_reactors: None,
+        });
+
+        let (itemized, total) = extract_reactions(Some(&raw));
+        let itemized = itemized.expect("emoji reactions present");
+        assert_eq!(itemized.len(), 1, "custom emoji is not itemized");
+        assert_eq!(itemized[0].emoji, "🔥");
+        assert_eq!(itemized[0].count, 41);
+        assert_eq!(total, Some(43), "total counts every reaction kind");
+    }
+
+    #[test]
+    fn extract_reactions_none_when_absent() {
+        assert_eq!(extract_reactions(None), (None, None));
+    }
 }

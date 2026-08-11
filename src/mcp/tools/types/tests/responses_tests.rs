@@ -99,6 +99,10 @@ fn message_response_maps_and_omits_absent_fields() {
         reply_to_message_id: None,
         video_info: None,
         audio_info: None,
+        grouped_id: None,
+        link: "https://t.me/testchan/1".to_string(),
+        reactions: None,
+        reactions_total: None,
     };
 
     let dto = MessageResponse::from(msg);
@@ -143,6 +147,10 @@ fn message_response_maps_video_info() {
             mime_type: Some("video/mp4".to_string()),
         }),
         audio_info: None,
+        grouped_id: None,
+        link: "https://t.me/testchan/1".to_string(),
+        reactions: None,
+        reactions_total: None,
     };
 
     let dto = MessageResponse::from(msg);
@@ -178,6 +186,10 @@ fn search_response_maps_from_search_result() {
             reply_to_message_id: None,
             video_info: None,
             audio_info: None,
+            grouped_id: None,
+            link: "https://t.me/testchan/1".to_string(),
+            reactions: None,
+            reactions_total: None,
         }],
         returned: 1,
         search_time_ms: 5,

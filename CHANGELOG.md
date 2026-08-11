@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `Channel.last_message_date` is now populated on `get_subscribed_channels` (from the dialog's top message, work-order B8) and on `get_channel_info` when `include_full: true` (via a one-message history peek; if the peek fails, the field is left `null` and the call still succeeds). Everywhere else it remains `null`. When a channel has no messages, `last_message_date` is `null`.
+- Every message now carries a `link` (the same permalink `generate_message_link` returns, public `t.me/<username>/<id>` form when the channel has a username, members-only `t.me/c/<channel_id>/<id>` otherwise), `reactions` (itemized standard-emoji reactions as `{emoji, count}`, omitted when the message has none), `reactions_total` (count across every reaction kind including custom-emoji and paid, which aren't individually itemized), and `grouped_id` (Telegram's album/media-group id, shared by sibling messages posted as an album, `null` otherwise). All four are zero-extra-RPC — derived from data already present in the message the server returned (work-orders D1, D2).
 
 ## [0.14.0] - 2026-08-10
 

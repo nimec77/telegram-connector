@@ -2,7 +2,7 @@
 
 use crate::telegram::types::{
     AudioInfo, Channel, ChannelId, ChannelName, ForwardInfo, LinkPreview, MediaType, Message,
-    MessageId, QueryMetadata, SearchResult, UserId, Username, VideoInfo,
+    MessageId, MessageReaction, QueryMetadata, SearchResult, UserId, Username, VideoInfo,
 };
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
@@ -231,6 +231,13 @@ pub struct MessageResponse {
     pub video_info: Option<VideoInfo>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub audio_info: Option<AudioInfo>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub grouped_id: Option<i64>,
+    pub link: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub reactions: Option<Vec<MessageReaction>>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub reactions_total: Option<u64>,
 }
 
 impl From<Message> for MessageResponse {
@@ -253,6 +260,10 @@ impl From<Message> for MessageResponse {
             reply_to_message_id: m.reply_to_message_id,
             video_info: m.video_info,
             audio_info: m.audio_info,
+            grouped_id: m.grouped_id,
+            link: m.link,
+            reactions: m.reactions,
+            reactions_total: m.reactions_total,
         }
     }
 }

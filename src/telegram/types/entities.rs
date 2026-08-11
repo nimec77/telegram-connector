@@ -34,6 +34,17 @@ pub struct Message {
     pub video_info: Option<VideoInfo>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub audio_info: Option<AudioInfo>,
+    /// Telegram album (media group) id shared by sibling messages (B5).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub grouped_id: Option<i64>,
+    /// Permalink: public t.me form when the channel has a username (D1).
+    pub link: String,
+    /// Standard-emoji reactions, when any (D2).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub reactions: Option<Vec<MessageReaction>>,
+    /// Total reactions of every kind, including custom/paid (D2).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub reactions_total: Option<u64>,
 }
 
 impl Message {
@@ -82,6 +93,13 @@ pub struct LinkPreview {
     pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub description: Option<String>,
+}
+
+/// One standard-emoji reaction with its count (work-order D2).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct MessageReaction {
+    pub emoji: String,
+    pub count: u64,
 }
 
 /// Kind of chat a `Channel` object describes (work-order B9).
@@ -156,6 +174,10 @@ mod tests {
             reply_to_message_id: None,
             video_info: None,
             audio_info: None,
+            grouped_id: None,
+            link: "https://t.me/testchan/1".to_string(),
+            reactions: None,
+            reactions_total: None,
         }
     }
 

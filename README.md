@@ -523,6 +523,7 @@ Search for messages across channels with optional media type filtering.
       "sender_name": "John Doe",
       "has_media": false,
       "media_type": "none",
+      "link": "https://t.me/technews/42",
       "views": 15000,
       "forwards": 230,
       "forwarded_from": {
@@ -551,7 +552,13 @@ Search for messages across channels with optional media type filtering.
         "file_size_bytes": 41200,
         "kind": "voice",
         "mime_type": "audio/ogg"
-      }
+      },
+      "grouped_id": 13579246801357,
+      "reactions": [
+        { "emoji": "🔥", "count": 41 },
+        { "emoji": "👍", "count": 12 }
+      ],
+      "reactions_total": 55
     }
   ],
   "returned": 15,
@@ -585,6 +592,16 @@ so pair `channel_id` with `generate_message_link` if you need to reach the sourc
 `title`, `description`, truncated to 500 characters). `views`, `forwards`, and
 `reply_to_message_id` are included when present. All of these fields are omitted
 entirely when absent, so existing consumers are unaffected.
+
+**Permalink, reactions, and album id:** every message carries a `link` — the same
+public `t.me/<username>/<id>` or members-only `t.me/c/<channel_id>/<id>` permalink
+`generate_message_link` returns — computed with **no extra API call**. `reactions`
+itemizes standard-emoji reactions (`emoji`, `count`) sorted as Telegram returns them;
+custom-emoji and paid reactions are not individually renderable and are omitted from
+the list, but `reactions_total` always counts every reaction of every kind. Both are
+omitted when the message has no reactions. `grouped_id` is Telegram's album (media
+group) id — present and identical across sibling messages that were posted together
+as an album, `null`/omitted otherwise.
 
 **Video & audio metadata:** Messages with video-class media carry an optional
 `video_info` object — `duration_seconds`, `width`, `height`, `file_size_bytes`,
