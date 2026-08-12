@@ -158,6 +158,10 @@ phone_number = "+1234567890"
 # refill_rate = 2.0
 # media_download_cost = 5                                       # Rate-limit tokens charged per get_message_media call (default: 5)
 
+[limits]
+# Optional: response size limits
+# response_byte_budget = 40000                                  # Byte cap on a serialized message-stream response (search_messages/get_recent_messages); over-budget pages drop trailing messages and set has_more/next_cursor
+
 [logging]
 # Optional: logging configuration
 # level = "info"                                        # trace, debug, info, warn, error
@@ -493,6 +497,10 @@ Search for messages across channels with optional media type filtering.
 | `from_date` | string | No | - | Inclusive start of the time window as RFC 3339 UTC (e.g. `2026-08-01T00:00:00Z`). Overrides `hours_back`. Reaching far back works best on low-traffic channels; on active channels prefer a narrower recent window, since deep windows are paged client-side and may time out |
 | `to_date` | string | No | - | Inclusive end of the time window as RFC 3339 UTC. Messages newer than this are excluded. Set without `from_date`, it must fall inside the `hours_back` window — otherwise the window is empty and the call is rejected |
 | `collapse_albums` | boolean | No | `true` | Collapse album (grouped media) siblings into one post-level result. When `true`, `limit` counts posts (not raw messages) and each collapsed post carries an `album` object. When `false`, every sibling is returned as its own message and `limit` counts raw messages, matching pre-0.15 behavior |
+| `before_id` | integer | No | - | Exclusive upper message-id bound: only messages with `id < before_id`. Pass `next_cursor.before_id` from the previous response to fetch the next (older) page without offset drift. `search_messages`: requires `channel_id` |
+| `after_id` | integer | No | - | Exclusive lower message-id bound: stops before messages with `id <= after_id`. `search_messages`: requires `channel_id` |
+| `max_text_length` | integer | No | 2000 | Maximum text length in characters per message. Longer texts are cut and flagged with `text_truncated: true` plus `text_full_length`; refetch the single message (e.g. `get_message_by_link`) for full text |
+| `format` | string | No | `full` | `full` repeats channel fields on every message; `compact` hoists them into one response-level `channel` header (single-channel scope only) |
 
 **Media Filter Options:**
 | Value | Description |
@@ -569,6 +577,7 @@ Search for messages across channels with optional media type filtering.
     }
   ],
   "returned": 15,
+  "has_more": false,
   "search_time_ms": 250,
   "query_metadata": {
     "query": "AI model",
@@ -588,6 +597,30 @@ the number of channels the search actually scanned — `null` for a global
 search (server-side, scan scope is unknowable) and a concrete count when
 `channel_id` is set. `channels_in_results` is the number of distinct channels
 present in `messages`, always a number.
+
+**Paging and size (`has_more`, `next_cursor`, byte budget):** every
+`search_messages` / `get_recent_messages` response carries `has_more`. It is
+`true` only when more qualifying messages exist in the requested window —
+because `limit` was reached with messages left over, or because the serialized
+response hit the `[limits] response_byte_budget` cap (default 40 000 bytes) and
+trailing messages were dropped. In single-channel scope the response then also
+carries `next_cursor: {"before_id": <oldest included id>}`; pass it as
+`before_id` on the next call to page strictly older messages with no overlap
+and no drift from new posts. Global search reports `has_more` without a cursor
+(message ids are per-channel). At least one message is always returned even if
+it alone exceeds the byte budget. Long texts are independently cut at
+`max_text_length` characters (default 2000) and flagged `text_truncated: true`
+with `text_full_length`.
+
+**Compact format (`format: "compact"`):** hoists `channel_id` /
+`channel_name` / `channel_username` into one response-level `channel` object
+and removes them from each message — at `limit: 100` this saves kilobytes of
+repetition. Single-channel scope only (`get_recent_messages`, or
+`search_messages` with `channel_id`); an empty result keeps `channel: null`.
+
+**Wire note:** `channel_username` is now omitted (rather than serialized as
+`null`) when a message's channel has no public username; full format is
+otherwise unchanged (`channel_id`/`channel_name` remain always-present).
 
 **Forward attribution & link previews:** Messages carry optional enrichment derived
 from the same Telegram response — no extra API calls. `forwarded_from` attributes a
@@ -680,6 +713,10 @@ Get recent messages from a channel by time window, without requiring a search qu
 | `from_date` | string | No | - | Inclusive start of the time window as RFC 3339 UTC (e.g. `2026-08-01T00:00:00Z`). Overrides `hours_back`. Reaching far back works best on low-traffic channels; on active channels prefer a narrower recent window, since deep windows are paged client-side and may time out |
 | `to_date` | string | No | - | Inclusive end of the time window as RFC 3339 UTC. Messages newer than this are excluded. Set without `from_date`, it must fall inside the `hours_back` window — otherwise the window is empty and the call is rejected |
 | `collapse_albums` | boolean | No | `true` | Collapse album (grouped media) siblings into one post-level result. When `true`, `limit` counts posts (not raw messages) and each collapsed post carries an `album` object. When `false`, every sibling is returned as its own message and `limit` counts raw messages, matching pre-0.15 behavior. See `search_messages` above for the full behavior description |
+| `before_id` | integer | No | - | Exclusive upper message-id bound: only messages with `id < before_id`. Pass `next_cursor.before_id` from the previous response to fetch the next (older) page without offset drift |
+| `after_id` | integer | No | - | Exclusive lower message-id bound: stops before messages with `id <= after_id` |
+| `max_text_length` | integer | No | 2000 | Maximum text length in characters per message. Longer texts are cut and flagged with `text_truncated: true` plus `text_full_length`; refetch the single message (e.g. `get_message_by_link`) for full text |
+| `format` | string | No | `full` | `full` repeats channel fields on every message; `compact` hoists them into one response-level `channel` header (single-channel scope only) |
 
 **Key Difference from `search_messages`:**
 
@@ -710,6 +747,7 @@ Get recent messages from a channel by time window, without requiring a search qu
     }
   ],
   "returned": 5,
+  "has_more": false,
   "search_time_ms": 150,
   "query_metadata": {
     "query": "",
