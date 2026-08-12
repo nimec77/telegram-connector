@@ -18,10 +18,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             );
         }
 
-        // Parse optional channel_id using helper
-        let channel_id = parse_optional_channel_id(&request.channel_id)?;
+        // `Some(list)` = fan-out; `None` covers both the single-channel_id path
+        // and, when channel_id is also absent, the global-search path (A6).
+        let scope = fanout::validate_channel_scope(&request.channel_id, &request.channel_ids)?;
+        let channel_scoped = request.channel_id.is_some() || scope.is_some();
 
-        if channel_id.is_none() && (request.before_id.is_some() || request.after_id.is_some()) {
+        if !channel_scoped && (request.before_id.is_some() || request.after_id.is_some()) {
             return Err(
                 "before_id/after_id require channel_id: cursor pagination is per-channel; \
                  global search cannot page by message id"
@@ -30,10 +32,10 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         }
 
         let format = request.format.unwrap_or_default();
-        if channel_id.is_none() && format == ResponseFormat::Compact {
+        if !channel_scoped && format == ResponseFormat::Compact {
             return Err(
-                "format=compact requires channel_id: the compact header describes one channel; \
-                 use full format for global search"
+                "format=compact requires channel_id or channel_ids: the compact header \
+                 describes channel scope; use full format for global search"
                     .to_string(),
             );
         }
@@ -87,10 +89,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             return Err("max_text_length must be greater than 0".to_string());
         }
 
-        // Build search params
-        let params = SearchParams {
-            query: request.query,
-            channel_id,
+        // Shared parameter template; the channel target (channel_id) is filled
+        // in per-path below: once for the single-channel/global path, once per
+        // entry for the fan-out path.
+        let params_template = SearchParams {
+            query: request.query.clone(),
+            channel_id: None,
             hours_back,
             limit,
             media_filter: request.media_filter,
@@ -102,12 +106,86 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         };
 
         // Reject an empty window before spending a token or a network round-trip.
+        let window_from = params_template.window_start();
         validate_date_window(
-            params.from_date,
-            params.to_date,
-            params.window_start(),
-            params.hours_back,
+            params_template.from_date,
+            params_template.to_date,
+            window_from,
+            params_template.hours_back,
         )?;
+
+        if let Some(list) = scope {
+            if before_id.is_some() || after_id.is_some() {
+                return Err(
+                    "before_id/after_id require a single channel_id: cursor pagination is \
+                     per-channel"
+                        .to_string(),
+                );
+            }
+
+            // Rate cost for fan-out: one atomic acquire for the deduped channel
+            // count, so the D5 deficit message stays accurate.
+            self.rate_limiter
+                .acquire(list.len() as u32)
+                .await
+                .map_err(|e| e.to_string())?;
+
+            let outcomes = futures::stream::iter(list.into_iter().map(|reference| {
+                let base = params_template.clone(); // SearchParams minus channel_id
+                async move {
+                    let result = match self.search_channel_id(&reference).await {
+                        Ok(channel_id) => {
+                            let params = SearchParams {
+                                channel_id: Some(channel_id),
+                                ..base
+                            };
+                            self.telegram_client
+                                .search_messages(&params)
+                                .await
+                                .map_err(|e| e.to_string())
+                        }
+                        Err(e) => Err(e),
+                    };
+                    fanout::ChannelFetchOutcome {
+                        channel: reference,
+                        result,
+                    }
+                }
+            }))
+            .buffered(fanout::FANOUT_CONCURRENCY)
+            .collect::<Vec<_>>()
+            .await;
+
+            let mut response = fanout::merge_results(
+                outcomes,
+                limit as usize,
+                request.query.clone(),
+                window_from,
+                to_date,
+            )?;
+            shaping::shape_response(
+                &mut response,
+                format,
+                max_text_length,
+                /* cursor_eligible */ false,
+                self.response_byte_budget,
+                shaping::CompactScope::Multi,
+            )?;
+            return json_response(&response);
+        }
+
+        // Single-channel/global path. Numeric refs parse locally; a username
+        // ref spends one resolve RPC before the search itself (§1.3).
+        let channel_id = match &request.channel_id {
+            Some(reference) => Some(self.search_channel_id(reference).await?),
+            None => None,
+        };
+
+        // Build search params
+        let params = SearchParams {
+            channel_id,
+            ..params_template
+        };
 
         // Acquire rate limiter tokens (1 token per search)
         self.rate_limiter
@@ -149,6 +227,19 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             shaping::CompactScope::Single,
         )?;
         json_response(&response)
+    }
+
+    /// Numeric refs parse locally; username refs spend one resolve RPC (§1.3).
+    async fn search_channel_id(&self, reference: &str) -> Result<ChannelId, String> {
+        if reference.chars().all(|c| c.is_ascii_digit()) {
+            parse_channel_id(reference)
+        } else {
+            self.telegram_client
+                .resolve_channel_identity(reference)
+                .await
+                .map(|identity| identity.id)
+                .map_err(|e| e.to_string())
+        }
     }
 
     pub(super) async fn get_recent_messages_impl(
