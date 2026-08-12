@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `get_messages_batch`: fetch up to 50 specific messages from one channel in a
+  single call (one `channels.GetMessages` RPC); deleted/missing ids are
+  reported per-id in `missing` instead of failing the whole batch; ids
+  dropped to fit the response byte budget are reported in `omitted_ids`,
+  distinct from `missing` — which means "does not exist" (A1)
+- `resolve_channels`: batch-resolve up to 20 identifiers (numeric ID,
+  `@username`, or the exact title of a subscribed chat) to full channel
+  entities in one call — one dialog walk plus at most one `resolve_username`
+  RPC per unmatched username-shaped identifier; per-identifier failures come
+  back as data (`error` on that entry) rather than failing the call (A7)
+- `get_channel_stats`: posting-rate and engagement statistics (`post_count`,
+  `posts_per_day`, `median_views`, `media_share`, `album_share`) over a
+  bounded, album-collapsed history sample (default 7 days, max 30, capped at
+  500 raw messages scanned); `sample.complete` reports whether the full
+  window was covered (A5)
+- `channel_ids` fan-out on `get_recent_messages` and `search_messages`:
+  fetch/search up to 20 channels in one call with bounded concurrency (4 in
+  flight), merged newest-first and truncated to `limit`; partial per-channel
+  failures land in `channel_errors` instead of failing the whole call.
+  `format: "compact"` now also supports multi-channel scope via a
+  response-level `channels` map keyed by decimal channel id, with each
+  message's own `channel_id` retained for attribution (A3, A6)
+
+### Changed
+- Validation order on `search_messages` shifted slightly: a username
+  `channel_id` is now resolved later in the request-validation sequence
+  (after limit/window/cursor checks, immediately before the rate-limiter
+  acquire) instead of right after the query check. A request that combines a
+  missing/invalid `channel_id` with another invalid field may now surface
+  the other field's error first, and an invalid numeric `channel_id` is
+  validated later than before. Behaviorally benign for any request with a
+  single problem, but error-string consumers that depend on which error
+  comes first for a multi-problem request should be aware of the reorder.
+
+### Fixed
+- `search_messages.channel_id` accepts `@username`/`username` again, not
+  just a numeric ID — restores work-order §1.3 identifier flexibility (a
+  username spends one extra `resolve_channel_identity` call; this had
+  regressed relative to the already-flexible `get_recent_messages` and
+  `get_channel_info`)
+
+### Removed (breaking)
+- `StatusResponse.rate_limiter_tokens` — the deprecated alias of
+  `rate_limiter.tokens` introduced in v0.17, kept for exactly one release
+  per its documented grace period (D5 grace period ended). Read
+  `rate_limiter.tokens` instead.
+
 ## [0.17.0] - 2026-08-12
 
 ### Added
