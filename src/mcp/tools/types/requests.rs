@@ -333,6 +333,20 @@ pub struct GetLastResponsesRequest {
     pub include_binary: Option<bool>,
 }
 
+/// Request for get_channel_stats tool
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct GetChannelStatsRequest {
+    #[schemars(description = "Channel ID or username (required)")]
+    #[serde(deserialize_with = "flexible_string")]
+    pub channel_id: String,
+
+    #[schemars(
+        description = "Days of history to sample (default: 7, max: 30). The sweep also caps at 500 raw messages; sample.complete reports whether the full window was covered."
+    )]
+    #[serde(default, deserialize_with = "flexible_opt_u32")]
+    pub days_back: Option<u32>,
+}
+
 #[cfg(test)]
 #[path = "tests/requests_tests.rs"]
 mod tests;

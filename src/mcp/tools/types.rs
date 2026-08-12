@@ -11,10 +11,10 @@ pub mod serde_helpers;
 
 // Re-export all types for convenience
 pub use requests::{
-    GenerateLinkRequest, GetChannelInfoRequest, GetChannelsRequest, GetLastResponsesRequest,
-    GetMessageByLinkRequest, GetMessageMediaRequest, GetMessagesBatchRequest,
-    GetRecentMessagesRequest, OpenMessageRequest, ResolveChannelsRequest, ResponseFormat,
-    SearchPublicChannelsRequest, SearchRequest, TranscribeVoiceMessageRequest,
+    GenerateLinkRequest, GetChannelInfoRequest, GetChannelStatsRequest, GetChannelsRequest,
+    GetLastResponsesRequest, GetMessageByLinkRequest, GetMessageMediaRequest,
+    GetMessagesBatchRequest, GetRecentMessagesRequest, OpenMessageRequest, ResolveChannelsRequest,
+    ResponseFormat, SearchPublicChannelsRequest, SearchRequest, TranscribeVoiceMessageRequest,
 };
 pub use responses::{
     BufferedResponseEntry, ChannelHeader, ChannelsResponse, GetMessageMediaResponse,

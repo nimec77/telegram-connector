@@ -29,6 +29,8 @@ mod schema_integrity;
 mod search;
 #[path = "tests/server_core.rs"]
 mod server_core;
+#[path = "tests/stats.rs"]
+mod stats;
 #[path = "tests/status.rs"]
 mod status;
 #[path = "tests/transcription.rs"]
