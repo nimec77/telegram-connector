@@ -311,6 +311,7 @@ async fn get_recent_messages_rate_limited() {
     mock_limiter.expect_acquire().returning(|_| {
         Err(crate::error::Error::RateLimit {
             retry_after_seconds: 5,
+            detail: String::new(),
         })
     });
 

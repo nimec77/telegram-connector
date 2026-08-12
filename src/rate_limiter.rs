@@ -30,8 +30,8 @@ impl TokenBucket {
         self.last_refill = now;
     }
 
-    /// Try to acquire tokens, return retry_after_seconds if insufficient
-    fn try_acquire(&mut self, tokens: u32) -> Result<(), u64> {
+    /// Try to acquire tokens; on failure returns (available, retry_after_seconds)
+    fn try_acquire(&mut self, tokens: u32) -> Result<(), (f64, u64)> {
         self.refill();
 
         let tokens_f64 = tokens as f64;
@@ -42,7 +42,7 @@ impl TokenBucket {
             // Calculate how long to wait for tokens to refill
             let tokens_needed = tokens_f64 - self.available_tokens;
             let retry_after = (tokens_needed / self.refill_rate).ceil() as u64;
-            Err(retry_after)
+            Err((self.available_tokens, retry_after))
         }
     }
 
@@ -100,8 +100,9 @@ impl RateLimiterTrait for RateLimiter {
         let mut bucket = self.bucket.lock().unwrap();
         bucket
             .try_acquire(tokens)
-            .map_err(|retry_after_seconds| Error::RateLimit {
+            .map_err(|(available, retry_after_seconds)| Error::RateLimit {
                 retry_after_seconds,
+                detail: format!(": requested {tokens} tokens, {available:.2} available"),
             })
     }
 
