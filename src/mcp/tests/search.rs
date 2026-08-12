@@ -1,7 +1,7 @@
 //! Tests for search_messages tool
 
 use crate::mcp::server::McpServer;
-use crate::mcp::tools::SearchRequest;
+use crate::mcp::tools::{SearchRequest, SearchResponse};
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::{
@@ -44,6 +44,7 @@ async fn search_messages_returns_results() {
             album: None,
         }],
         returned: 1,
+        has_more: false,
         search_time_ms: 100,
         query_metadata: QueryMetadata {
             query: "AI".to_string(),
@@ -82,7 +83,7 @@ async fn search_messages_returns_results() {
 
     // Then: Returns search results
     assert!(result.is_ok());
-    let response: SearchResult = serde_json::from_str(&result.unwrap()).unwrap();
+    let response: SearchResponse = serde_json::from_str(&result.unwrap()).unwrap();
     assert_eq!(response.returned, 1);
     assert_eq!(response.messages.len(), 1);
     assert!(response.messages[0].text.contains("AI"));
@@ -164,6 +165,7 @@ async fn search_messages_with_channel_filter() {
     let expected_result = SearchResult {
         messages: vec![],
         returned: 0,
+        has_more: false,
         search_time_ms: 50,
         query_metadata: QueryMetadata {
             query: "test".to_string(),
@@ -216,6 +218,7 @@ async fn search_messages_applies_limits() {
     let expected_result = SearchResult {
         messages: vec![],
         returned: 0,
+        has_more: false,
         search_time_ms: 50,
         query_metadata: QueryMetadata {
             query: "test".to_string(),
@@ -291,6 +294,7 @@ async fn search_allows_empty_query_with_media_filter() {
             album: None,
         }],
         returned: 1,
+        has_more: false,
         search_time_ms: 100,
         query_metadata: QueryMetadata {
             query: "".to_string(),
@@ -329,7 +333,7 @@ async fn search_allows_empty_query_with_media_filter() {
 
     // Then: Success (empty query allowed with media_filter)
     assert!(result.is_ok());
-    let response: SearchResult = serde_json::from_str(&result.unwrap()).unwrap();
+    let response: SearchResponse = serde_json::from_str(&result.unwrap()).unwrap();
     assert_eq!(response.returned, 1);
 }
 
@@ -340,6 +344,7 @@ async fn search_passes_media_filter_to_params() {
     let expected_result = SearchResult {
         messages: vec![],
         returned: 0,
+        has_more: false,
         search_time_ms: 50,
         query_metadata: QueryMetadata {
             query: "AI news".to_string(),
@@ -427,6 +432,7 @@ async fn search_messages_serializes_enrichment_fields() {
             album: None,
         }],
         returned: 1,
+        has_more: false,
         search_time_ms: 10,
         query_metadata: QueryMetadata {
             query: "x".to_string(),

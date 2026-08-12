@@ -28,13 +28,14 @@ impl TelegramClient {
         let cutoff_time = params.window_start();
 
         // If channel_id is specified, search only that channel
-        let (messages, channels_scanned) = if let Some(channel_id) = &params.channel_id {
+        let (messages, channels_scanned, has_more) = if let Some(channel_id) = &params.channel_id {
             with_timeout(
                 "search_messages_channel",
                 self.timeouts.search_secs,
                 async {
                     let mut messages = Vec::new();
                     let mut channels_scanned = 0u32;
+                    let mut has_more = false;
                     let mut counter = PostCounter::default();
                     // Find the channel in our dialogs
                     let mut dialogs = self.client.iter_dialogs();
@@ -78,72 +79,87 @@ impl TelegramClient {
                                         if !counter
                                             .admit(album_key(&converted), params.limit as usize)
                                         {
+                                            has_more = true;
                                             break;
                                         }
                                         messages.push(converted);
                                     } else {
-                                        messages.push(converted);
+                                        // Refuse the overflow message instead of pushing
+                                        // the limit-th and breaking blind: refusing
+                                        // proves a qualifying message exists beyond the
+                                        // page (A8).
                                         if messages.len() >= params.limit as usize {
+                                            has_more = true;
                                             break;
                                         }
+                                        messages.push(converted);
                                     }
                                 }
                             }
                             break;
                         }
                     }
-                    Ok((messages, channels_scanned))
+                    Ok((messages, channels_scanned, has_more))
                 },
             )
             .await
-            .map(|(messages, channels_scanned)| (messages, Some(channels_scanned)))?
+            .map(|(messages, channels_scanned, has_more)| {
+                (messages, Some(channels_scanned), has_more)
+            })?
         } else {
             // Search all channels using global search
-            let collected = with_timeout("search_all_messages", self.timeouts.search_secs, async {
-                let mut messages = Vec::new();
-                let mut counter = PostCounter::default();
-                let mut search_iter = self.client.search_all_messages().query(&params.query);
+            let (collected, has_more) =
+                with_timeout("search_all_messages", self.timeouts.search_secs, async {
+                    let mut messages = Vec::new();
+                    let mut has_more = false;
+                    let mut counter = PostCounter::default();
+                    let mut search_iter = self.client.search_all_messages().query(&params.query);
 
-                if let Some(ref media_filter) = params.media_filter {
-                    search_iter = search_iter.filter(convert_media_filter(media_filter));
-                }
+                    if let Some(ref media_filter) = params.media_filter {
+                        search_iter = search_iter.filter(convert_media_filter(media_filter));
+                    }
 
-                while let Some(msg) = search_iter
-                    .next()
-                    .await
-                    .map_err(|e| Error::TelegramApi(format!("Search failed: {}", e)))?
-                {
-                    if let Some(to) = params.to_date
-                        && message_timestamp(&msg).is_some_and(|t| t > to)
+                    while let Some(msg) = search_iter
+                        .next()
+                        .await
+                        .map_err(|e| Error::TelegramApi(format!("Search failed: {}", e)))?
                     {
-                        continue; // newer than the requested window; keep iterating toward it
-                    }
-                    if message_timestamp(&msg).is_none_or(|t| t < cutoff_time) {
-                        continue; // Skip old messages but keep searching
-                    }
-                    if let Some(peer) = msg.peer()
-                        && let Some(converted) = convert_message(&msg, peer)
-                    {
-                        if params.collapse_albums {
-                            // Post-level limit: stop only when a NEW post would
-                            // overflow; trailing siblings of admitted albums pass.
-                            if !counter.admit(album_key(&converted), params.limit as usize) {
-                                break;
-                            }
-                            messages.push(converted);
-                        } else {
-                            messages.push(converted);
-                            if messages.len() >= params.limit as usize {
-                                break;
+                        if let Some(to) = params.to_date
+                            && message_timestamp(&msg).is_some_and(|t| t > to)
+                        {
+                            continue; // newer than the requested window; keep iterating toward it
+                        }
+                        if message_timestamp(&msg).is_none_or(|t| t < cutoff_time) {
+                            continue; // Skip old messages but keep searching
+                        }
+                        if let Some(peer) = msg.peer()
+                            && let Some(converted) = convert_message(&msg, peer)
+                        {
+                            if params.collapse_albums {
+                                // Post-level limit: stop only when a NEW post would
+                                // overflow; trailing siblings of admitted albums pass.
+                                if !counter.admit(album_key(&converted), params.limit as usize) {
+                                    has_more = true;
+                                    break;
+                                }
+                                messages.push(converted);
+                            } else {
+                                // Refuse the overflow message instead of pushing the
+                                // limit-th and breaking blind: refusing proves a
+                                // qualifying message exists beyond the page (A8).
+                                if messages.len() >= params.limit as usize {
+                                    has_more = true;
+                                    break;
+                                }
+                                messages.push(converted);
                             }
                         }
                     }
-                }
-                Ok(messages)
-            })
-            .await?;
+                    Ok((messages, has_more))
+                })
+                .await?;
 
-            (collected, None) // server-side global search: scan scope unknowable
+            (collected, None, has_more) // server-side global search: scan scope unknowable
         };
 
         let mut messages = if params.collapse_albums {
@@ -175,6 +191,7 @@ impl TelegramClient {
 
         Ok(SearchResult {
             returned,
+            has_more,
             search_time_ms,
             query_metadata: QueryMetadata {
                 query: params.query.clone(),

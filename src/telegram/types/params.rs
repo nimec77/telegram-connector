@@ -144,6 +144,9 @@ pub struct SearchResult {
     pub messages: Vec<Message>,
     /// Number of messages in this response (page size, not a match count — B6).
     pub returned: u64,
+    /// More qualifying messages exist in the requested window beyond this
+    /// page (limit- or budget-truncated), so paging on can find them (A8).
+    pub has_more: bool,
     pub search_time_ms: u64,
     pub query_metadata: QueryMetadata,
 }
@@ -292,6 +295,7 @@ mod tests {
         let result = SearchResult {
             messages: vec![],
             returned: 42,
+            has_more: false,
             search_time_ms: 150,
             query_metadata: QueryMetadata {
                 query: "test".to_string(),
@@ -316,5 +320,24 @@ mod tests {
             !json.contains("window_to"),
             "window_to must be omitted when None"
         );
+    }
+
+    #[test]
+    fn search_result_serializes_has_more() {
+        let result = SearchResult {
+            messages: vec![],
+            returned: 0,
+            has_more: true,
+            search_time_ms: 1,
+            query_metadata: QueryMetadata {
+                query: String::new(),
+                window_from: Utc::now(),
+                window_to: None,
+                channels_scanned: Some(1),
+                channels_in_results: 0,
+            },
+        };
+        let json = serde_json::to_value(&result).expect("serialize");
+        assert_eq!(json["has_more"], serde_json::Value::Bool(true));
     }
 }

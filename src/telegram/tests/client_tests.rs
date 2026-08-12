@@ -199,6 +199,7 @@ async fn mock_search_messages_returns_results() {
     let expected_result = SearchResult {
         messages: expected_messages.clone(),
         returned: 2,
+        has_more: false,
         search_time_ms: 100,
         query_metadata: QueryMetadata {
             query: "test".to_string(),
@@ -254,6 +255,7 @@ async fn mock_search_messages_respects_limit() {
     let expected_result = SearchResult {
         messages: all_messages.clone(),
         returned: 3,
+        has_more: false,
         search_time_ms: 100,
         query_metadata: QueryMetadata {
             query: "test".to_string(),
@@ -290,6 +292,7 @@ async fn mock_search_messages_with_channel_filter() {
     let expected_result = SearchResult {
         messages: expected_messages.clone(),
         returned: 1,
+        has_more: false,
         search_time_ms: 100,
         query_metadata: QueryMetadata {
             query: "test".to_string(),
@@ -328,6 +331,7 @@ async fn mock_search_messages_with_media_filter_photo() {
     let expected_result = SearchResult {
         messages: expected_messages.clone(),
         returned: 1,
+        has_more: false,
         search_time_ms: 50,
         query_metadata: QueryMetadata {
             query: "".to_string(),
@@ -371,6 +375,7 @@ async fn mock_search_messages_with_media_filter_document() {
     let expected_result = SearchResult {
         messages: expected_messages.clone(),
         returned: 2,
+        has_more: false,
         search_time_ms: 75,
         query_metadata: QueryMetadata {
             query: "report".to_string(),
@@ -425,6 +430,7 @@ async fn mock_get_recent_messages_returns_results() {
     let expected_result = SearchResult {
         messages: expected_messages.clone(),
         returned: 3,
+        has_more: false,
         search_time_ms: 50,
         query_metadata: QueryMetadata {
             query: String::new(),
@@ -462,6 +468,7 @@ async fn mock_get_recent_messages_with_media_filter() {
     let expected_result = SearchResult {
         messages: expected_messages.clone(),
         returned: 1,
+        has_more: false,
         search_time_ms: 30,
         query_metadata: QueryMetadata {
             query: String::new(),
@@ -506,6 +513,7 @@ async fn mock_get_recent_messages_respects_limit() {
     let expected_result = SearchResult {
         messages: expected_messages.clone(),
         returned: 5,
+        has_more: false,
         search_time_ms: 40,
         query_metadata: QueryMetadata {
             query: String::new(),
@@ -564,6 +572,7 @@ async fn mock_get_recent_messages_empty_result() {
     let expected_result = SearchResult {
         messages: vec![],
         returned: 0,
+        has_more: false,
         search_time_ms: 10,
         query_metadata: QueryMetadata {
             query: String::new(),

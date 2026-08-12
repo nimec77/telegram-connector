@@ -15,6 +15,7 @@ pub(crate) fn album_key(msg: &Message) -> Option<(i64, i64)> {
 pub(crate) struct PostCounter {
     seen_groups: HashSet<(i64, i64)>,
     posts: usize,
+    overflowed: bool,
 }
 
 impl PostCounter {
@@ -29,6 +30,7 @@ impl PostCounter {
             return true;
         }
         if self.posts >= limit {
+            self.overflowed = true;
             return false;
         }
         self.posts += 1;
@@ -36,6 +38,18 @@ impl PostCounter {
             self.seen_groups.insert(key);
         }
         true
+    }
+
+    /// True iff `admit` ever refused a message — i.e. a qualifying post
+    /// existed beyond the limit, so the caller's result page is not the
+    /// end of the window (work-order A8 `has_more`). Fetch loops currently
+    /// capture the refusal inline at the `admit` call site instead of
+    /// polling this after the loop; kept as the documented accessor for
+    /// `overflowed` (exercised directly by tests) since callers outside
+    /// this crate never see `PostCounter`.
+    #[allow(dead_code)]
+    pub(crate) fn overflowed(&self) -> bool {
+        self.overflowed
     }
 }
 
@@ -169,6 +183,16 @@ mod tests {
         assert!(c.admit(None, 2));
         assert!(c.admit(None, 2));
         assert!(!c.admit(None, 2));
+    }
+
+    #[test]
+    fn post_counter_reports_overflow_only_after_refusal() {
+        let mut counter = PostCounter::default();
+        assert!(counter.admit(None, 2));
+        assert!(counter.admit(None, 2));
+        assert!(!counter.overflowed(), "no refusal yet");
+        assert!(!counter.admit(None, 2), "third post must be refused");
+        assert!(counter.overflowed());
     }
 
     #[test]

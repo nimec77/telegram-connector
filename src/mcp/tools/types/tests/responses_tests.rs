@@ -197,6 +197,7 @@ fn search_response_maps_from_search_result() {
             album: None,
         }],
         returned: 1,
+        has_more: false,
         search_time_ms: 5,
         query_metadata: QueryMetadata {
             query: "x".to_string(),

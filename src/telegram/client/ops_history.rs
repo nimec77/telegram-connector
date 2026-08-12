@@ -77,55 +77,62 @@ impl TelegramClient {
         // Use iter_messages to get message history (no search query)
         let peer_ref = peer_to_ref(&peer).await?;
 
-        let messages = with_timeout("iter_messages", self.timeouts.history_secs, async {
-            let mut messages = Vec::new();
-            let mut counter = PostCounter::default();
-            let mut messages_iter = self.client.iter_messages(peer_ref);
+        let (messages, has_more) =
+            with_timeout("iter_messages", self.timeouts.history_secs, async {
+                let mut messages = Vec::new();
+                let mut has_more = false;
+                let mut counter = PostCounter::default();
+                let mut messages_iter = self.client.iter_messages(peer_ref);
 
-            while let Some(msg) = messages_iter
-                .next()
-                .await
-                .map_err(|e| Error::TelegramApi(format!("Failed to iterate messages: {}", e)))?
-            {
-                if let Some(to) = params.to_date
-                    && message_timestamp(&msg).is_some_and(|t| t > to)
+                while let Some(msg) = messages_iter
+                    .next()
+                    .await
+                    .map_err(|e| Error::TelegramApi(format!("Failed to iterate messages: {}", e)))?
                 {
-                    continue; // newer than the requested window; keep iterating toward it
-                }
+                    if let Some(to) = params.to_date
+                        && message_timestamp(&msg).is_some_and(|t| t > to)
+                    {
+                        continue; // newer than the requested window; keep iterating toward it
+                    }
 
-                // Check time filter - messages are in reverse chronological order
-                if message_timestamp(&msg).is_none_or(|t| t < cutoff_time) {
-                    break;
-                }
+                    // Check time filter - messages are in reverse chronological order
+                    if message_timestamp(&msg).is_none_or(|t| t < cutoff_time) {
+                        break;
+                    }
 
-                // Apply media filter client-side (iter_messages doesn't support server-side filtering)
-                if params
-                    .media_filter
-                    .as_ref()
-                    .is_some_and(|filter| !matches_media_filter(&msg, filter))
-                {
-                    continue;
-                }
+                    // Apply media filter client-side (iter_messages doesn't support server-side filtering)
+                    if params
+                        .media_filter
+                        .as_ref()
+                        .is_some_and(|filter| !matches_media_filter(&msg, filter))
+                    {
+                        continue;
+                    }
 
-                if let Some(converted) = convert_message(&msg, &peer) {
-                    if params.collapse_albums {
-                        // Post-level limit: stop only when a NEW post would
-                        // overflow; trailing siblings of admitted albums pass.
-                        if !counter.admit(album_key(&converted), params.limit as usize) {
-                            break;
-                        }
-                        messages.push(converted);
-                    } else {
-                        messages.push(converted);
-                        if messages.len() >= params.limit as usize {
-                            break;
+                    if let Some(converted) = convert_message(&msg, &peer) {
+                        if params.collapse_albums {
+                            // Post-level limit: stop only when a NEW post would
+                            // overflow; trailing siblings of admitted albums pass.
+                            if !counter.admit(album_key(&converted), params.limit as usize) {
+                                has_more = true;
+                                break;
+                            }
+                            messages.push(converted);
+                        } else {
+                            // Refuse the overflow message instead of pushing the
+                            // limit-th and breaking blind: refusing proves a
+                            // qualifying message exists beyond the page (A8).
+                            if messages.len() >= params.limit as usize {
+                                has_more = true;
+                                break;
+                            }
+                            messages.push(converted);
                         }
                     }
                 }
-            }
-            Ok(messages)
-        })
-        .await?;
+                Ok((messages, has_more))
+            })
+            .await?;
 
         let messages = if params.collapse_albums {
             collapse_albums(messages)
@@ -149,6 +156,7 @@ impl TelegramClient {
 
         Ok(SearchResult {
             returned,
+            has_more,
             search_time_ms,
             query_metadata: QueryMetadata {
                 query: String::new(), // No query for history retrieval

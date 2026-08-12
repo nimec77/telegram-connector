@@ -1,7 +1,7 @@
 //! Tests for get_recent_messages tool
 
 use crate::mcp::server::McpServer;
-use crate::mcp::tools::GetRecentMessagesRequest;
+use crate::mcp::tools::{GetRecentMessagesRequest, SearchResponse};
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::{
@@ -51,6 +51,7 @@ async fn get_recent_messages_returns_results() {
             create_test_message(2, "Recent message 2", 123),
         ],
         returned: 2,
+        has_more: false,
         search_time_ms: 50,
         query_metadata: QueryMetadata {
             query: String::new(),
@@ -88,7 +89,7 @@ async fn get_recent_messages_returns_results() {
 
     // Then: Returns messages
     assert!(result.is_ok());
-    let response: SearchResult = serde_json::from_str(&result.unwrap()).unwrap();
+    let response: SearchResponse = serde_json::from_str(&result.unwrap()).unwrap();
     assert_eq!(response.returned, 2);
     assert_eq!(response.messages.len(), 2);
 }
@@ -128,6 +129,7 @@ async fn get_recent_messages_with_media_filter() {
     let expected_result = SearchResult {
         messages: vec![create_test_message(1, "Photo message", 123)],
         returned: 1,
+        has_more: false,
         search_time_ms: 30,
         query_metadata: QueryMetadata {
             query: String::new(),
@@ -166,7 +168,7 @@ async fn get_recent_messages_with_media_filter() {
 
     // Then: Returns filtered results
     assert!(result.is_ok());
-    let response: SearchResult = serde_json::from_str(&result.unwrap()).unwrap();
+    let response: SearchResponse = serde_json::from_str(&result.unwrap()).unwrap();
     assert_eq!(response.messages.len(), 1);
 }
 
@@ -181,6 +183,7 @@ async fn get_recent_messages_applies_limits() {
             create_test_message(3, "Message 3", 123),
         ],
         returned: 3,
+        has_more: false,
         search_time_ms: 40,
         query_metadata: QueryMetadata {
             query: String::new(),
@@ -219,7 +222,7 @@ async fn get_recent_messages_applies_limits() {
 
     // Then: Returns results with correct limits applied
     assert!(result.is_ok());
-    let response: SearchResult = serde_json::from_str(&result.unwrap()).unwrap();
+    let response: SearchResponse = serde_json::from_str(&result.unwrap()).unwrap();
     assert_eq!(response.messages.len(), 3);
 }
 
@@ -235,6 +238,7 @@ async fn get_recent_messages_with_username_passes_identifier_without_pre_resolvi
     let expected_result = SearchResult {
         messages: vec![create_test_message(1, "News update", 456)],
         returned: 1,
+        has_more: false,
         search_time_ms: 60,
         query_metadata: QueryMetadata {
             query: String::new(),
@@ -275,7 +279,7 @@ async fn get_recent_messages_with_username_passes_identifier_without_pre_resolvi
 
     // Then: Username is resolved and messages are returned
     assert!(result.is_ok());
-    let response: SearchResult = serde_json::from_str(&result.unwrap()).unwrap();
+    let response: SearchResponse = serde_json::from_str(&result.unwrap()).unwrap();
     assert_eq!(response.messages.len(), 1);
 }
 
