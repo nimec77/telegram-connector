@@ -2,6 +2,7 @@
 //!
 //! Unit of `client` (LM-2).
 
+use super::raw_pager::{RawChannelSearchPager, RawGlobalSearchPager};
 use super::*;
 use crate::telegram::albums::{PostCounter, album_key, collapse_albums};
 
@@ -68,41 +69,45 @@ impl TelegramClient {
                         if peer.id().bare_id() == Some(channel_id.get()) {
                             channels_scanned += 1;
 
-                            // Search in this specific channel
+                            // Search in this specific channel via the raw
+                            // messages.Search pager: same request as grammers'
+                            // search_messages, but the response envelope is
+                            // kept so forwards get attributed (zero extra calls).
                             let peer_ref = peer_to_ref(peer).await?;
-                            let mut search_iter =
-                                self.client.search_messages(peer_ref).query(&params.query);
+                            let mut pager = RawChannelSearchPager::new(&self.client, peer_ref)
+                                .query(&params.query);
                             if let Some(before) = before_offset {
-                                search_iter = search_iter.offset_id(before);
+                                pager = pager.offset_id(before);
                             }
 
                             // Apply media filter if specified
                             if let Some(ref media_filter) = params.media_filter {
-                                search_iter =
-                                    search_iter.filter(convert_media_filter(media_filter));
+                                pager = pager.filter(convert_media_filter(media_filter));
                             }
 
-                            while let Some(msg) = search_iter
+                            while let Some((raw_msg, entities)) = pager
                                 .next()
                                 .await
                                 .map_err(|e| Error::TelegramApi(format!("Search failed: {}", e)))?
                             {
                                 if let Some(to) = params.to_date
-                                    && message_timestamp(&msg).is_some_and(|t| t > to)
+                                    && timestamp_from_raw(&raw_msg).is_some_and(|t| t > to)
                                 {
                                     continue; // newer than the requested window; keep iterating toward it
                                 }
-                                if message_timestamp(&msg).is_none_or(|t| t < cutoff_time) {
+                                if timestamp_from_raw(&raw_msg).is_none_or(|t| t < cutoff_time) {
                                     break; // reverse chronological order
                                 }
                                 // Exclusive lower cursor bound: everything from here on
                                 // is older (reverse chronological), so stop (A8).
                                 if let Some(after) = after_bound
-                                    && msg.id() <= after
+                                    && raw_msg.id() <= after
                                 {
                                     break;
                                 }
-                                if let Some(converted) = convert_message(&msg, peer) {
+                                if let Some(converted) =
+                                    convert_raw_message(&raw_msg, peer, &entities)
+                                {
                                     if params.collapse_albums {
                                         // Post-level limit: stop only when a NEW post
                                         // would overflow; trailing siblings of admitted
@@ -154,27 +159,32 @@ impl TelegramClient {
                     let mut messages = Vec::new();
                     let mut has_more = false;
                     let mut counter = PostCounter::default();
-                    let mut search_iter = self.client.search_all_messages().query(&params.query);
+                    // Global search via the raw messages.SearchGlobal pager:
+                    // same request as grammers' search_all_messages, but the
+                    // response envelope is kept so forwards get attributed
+                    // (zero extra calls). The pager also yields each result's
+                    // own chat peer, built from that same envelope.
+                    let mut pager = RawGlobalSearchPager::new(&self.client).query(&params.query);
 
                     if let Some(ref media_filter) = params.media_filter {
-                        search_iter = search_iter.filter(convert_media_filter(media_filter));
+                        pager = pager.filter(convert_media_filter(media_filter));
                     }
 
-                    while let Some(msg) = search_iter
+                    while let Some((raw_msg, entities, chat_peer)) = pager
                         .next()
                         .await
                         .map_err(|e| Error::TelegramApi(format!("Search failed: {}", e)))?
                     {
                         if let Some(to) = params.to_date
-                            && message_timestamp(&msg).is_some_and(|t| t > to)
+                            && timestamp_from_raw(&raw_msg).is_some_and(|t| t > to)
                         {
                             continue; // newer than the requested window; keep iterating toward it
                         }
-                        if message_timestamp(&msg).is_none_or(|t| t < cutoff_time) {
+                        if timestamp_from_raw(&raw_msg).is_none_or(|t| t < cutoff_time) {
                             continue; // Skip old messages but keep searching
                         }
-                        if let Some(peer) = msg.peer()
-                            && let Some(converted) = convert_message(&msg, peer)
+                        if let Some(peer) = chat_peer.as_ref()
+                            && let Some(converted) = convert_raw_message(&raw_msg, peer, &entities)
                         {
                             if params.collapse_albums {
                                 // Post-level limit: stop only when a NEW post would

@@ -7,10 +7,6 @@
 //! resolve senders) with zero extra network calls. Required because the
 //! pinned grammers rev keeps `Message.peers` crate-private.
 
-// Wired into the converters in the very next task of this plan; the allow
-// only bridges the strict per-task clippy gate.
-#![allow(dead_code)]
-
 use grammers_client::tl;
 use grammers_session::types::PeerId;
 use std::collections::HashMap;

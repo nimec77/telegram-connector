@@ -7,10 +7,6 @@
 //! stop conditions — zero additional network calls; the envelope feeds
 //! forward attribution (see `telegram/envelope.rs`).
 
-// Wired into ops_history/ops_search in the next tasks of this plan; the
-// allow only bridges the strict per-task clippy gate.
-#![allow(dead_code)]
-
 use crate::telegram::envelope::EntityLookup;
 use grammers_client::Client;
 use grammers_client::tl;
