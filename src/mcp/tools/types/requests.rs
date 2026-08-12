@@ -285,6 +285,12 @@ pub struct GetLastResponsesRequest {
     #[schemars(description = "How many recent responses to return (default: all buffered)")]
     #[serde(default, deserialize_with = "flexible_opt_u32")]
     pub n: Option<u32>,
+
+    #[schemars(
+        description = "Include base64 binary payloads in replayed responses. Default false: image blocks are replaced with {omitted, mime_type, size_bytes} stubs"
+    )]
+    #[serde(default, deserialize_with = "flexible_opt_bool")]
+    pub include_binary: Option<bool>,
 }
 
 #[cfg(test)]

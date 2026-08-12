@@ -40,16 +40,25 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         request: GetLastResponsesRequest,
     ) -> Result<String, String> {
+        let include_binary = request.include_binary.unwrap_or(false);
         let entries = self.response_buffer.last(request.n.map(|n| n as usize));
         let responses: Vec<BufferedResponseEntry> = entries
             .into_iter()
-            .map(|entry| BufferedResponseEntry {
-                request_id: entry.request_id,
-                tool_name: entry.tool_name,
-                written_at: chrono::DateTime::<chrono::Utc>::from(entry.written_at).to_rfc3339(),
-                size_bytes: entry.size_bytes,
+            .map(|entry| {
                 // Payload was valid JSON when written; Null only on corruption.
-                response: serde_json::from_str(&entry.payload).unwrap_or(serde_json::Value::Null),
+                let mut response =
+                    serde_json::from_str(&entry.payload).unwrap_or(serde_json::Value::Null);
+                if !include_binary {
+                    omit_binary_blocks(&mut response);
+                }
+                BufferedResponseEntry {
+                    request_id: entry.request_id,
+                    tool_name: entry.tool_name,
+                    written_at: chrono::DateTime::<chrono::Utc>::from(entry.written_at)
+                        .to_rfc3339(),
+                    size_bytes: entry.size_bytes,
+                    response,
+                }
             })
             .collect();
 
@@ -59,5 +68,38 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         };
 
         json_response(&response)
+    }
+}
+
+/// Replace base64 image content blocks with size-annotated stubs (work-order
+/// D6): the replay tool exists for when context is already damaged, so binary
+/// payloads only replay on explicit request.
+fn omit_binary_blocks(response: &mut serde_json::Value) {
+    let Some(blocks) = response
+        .get_mut("result")
+        .and_then(|r| r.get_mut("content"))
+        .and_then(|c| c.as_array_mut())
+    else {
+        return;
+    };
+    for block in blocks {
+        if block.get("type").and_then(|t| t.as_str()) != Some("image") {
+            continue;
+        }
+        let Some(data) = block.get("data").and_then(|d| d.as_str()) else {
+            continue;
+        };
+        let padding = data.bytes().rev().take_while(|&b| b == b'=').count();
+        let size_bytes = data.len() / 4 * 3 - padding;
+        let mime_type = block
+            .get("mimeType")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+        *block = serde_json::json!({
+            "type": "image",
+            "omitted": true,
+            "mime_type": mime_type,
+            "size_bytes": size_bytes,
+        });
     }
 }
