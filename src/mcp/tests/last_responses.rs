@@ -6,9 +6,10 @@ use crate::mcp::server::McpServer;
 use crate::mcp::tools::{GetLastResponsesRequest, LastResponsesResponse};
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
+use base64::Engine as _;
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::NumberOrString;
+use rmcp::model::{CallToolResult, ContentBlock, NumberOrString};
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -34,7 +35,10 @@ async fn empty_buffer_returns_empty_list() {
     let server = make_server();
     let result = server
         .get_last_responses(
-            Parameters(GetLastResponsesRequest { n: None }),
+            Parameters(GetLastResponsesRequest {
+                n: None,
+                include_binary: None,
+            }),
             RequestId(NumberOrString::Number(1)),
         )
         .await
@@ -56,7 +60,10 @@ async fn returns_buffered_responses_newest_first_with_parsed_payload() {
 
     let result = server
         .get_last_responses(
-            Parameters(GetLastResponsesRequest { n: None }),
+            Parameters(GetLastResponsesRequest {
+                n: None,
+                include_binary: None,
+            }),
             RequestId(NumberOrString::Number(1)),
         )
         .await
@@ -83,7 +90,10 @@ async fn n_caps_returned_entries_but_reports_total_buffered() {
 
     let result = server
         .get_last_responses(
-            Parameters(GetLastResponsesRequest { n: Some(2) }),
+            Parameters(GetLastResponsesRequest {
+                n: Some(2),
+                include_binary: None,
+            }),
             RequestId(NumberOrString::Number(1)),
         )
         .await
@@ -123,7 +133,10 @@ async fn oversized_payload_is_returned_as_stub_with_real_size() {
 
     let result = server
         .get_last_responses(
-            Parameters(GetLastResponsesRequest { n: None }),
+            Parameters(GetLastResponsesRequest {
+                n: None,
+                include_binary: None,
+            }),
             RequestId(NumberOrString::Number(1)),
         )
         .await
@@ -140,4 +153,72 @@ async fn oversized_payload_is_returned_as_stub_with_real_size() {
         "expected stub with \"omitted\" key, got: {}",
         entry.response
     );
+}
+
+/// A buffered envelope built through real rmcp serialization, so the
+/// omit-transform is tested against the actual wire field names.
+fn image_envelope() -> String {
+    let data = base64::engine::general_purpose::STANDARD.encode([7u8; 300]);
+    let call_result = CallToolResult::success(vec![
+        ContentBlock::image(data, "image/jpeg"),
+        ContentBlock::text(r#"{"meta":1}"#),
+    ]);
+    serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 7,
+        "result": serde_json::to_value(&call_result).unwrap(),
+    })
+    .to_string()
+}
+
+#[tokio::test]
+async fn replay_stubs_image_blocks_by_default() {
+    let server = make_server();
+    server
+        .response_buffer()
+        .push(buffered("7", &image_envelope()));
+
+    let result = server
+        .get_last_responses(
+            Parameters(GetLastResponsesRequest {
+                n: None,
+                include_binary: None,
+            }),
+            RequestId(NumberOrString::Number(1)),
+        )
+        .await
+        .expect("tool ok");
+    let response: LastResponsesResponse = serde_json::from_str(&result).expect("valid JSON");
+
+    let blocks = &response.responses[0].response["result"]["content"];
+    assert_eq!(blocks[0]["type"], "image");
+    assert_eq!(blocks[0]["omitted"], true);
+    assert_eq!(blocks[0]["mime_type"], "image/jpeg");
+    assert_eq!(blocks[0]["size_bytes"], 300);
+    assert!(blocks[0].get("data").is_none(), "base64 must be stripped");
+    assert_eq!(blocks[1]["type"], "text", "non-image blocks untouched");
+}
+
+#[tokio::test]
+async fn replay_includes_binary_when_opted_in() {
+    let server = make_server();
+    server
+        .response_buffer()
+        .push(buffered("7", &image_envelope()));
+
+    let result = server
+        .get_last_responses(
+            Parameters(GetLastResponsesRequest {
+                n: None,
+                include_binary: Some(true),
+            }),
+            RequestId(NumberOrString::Number(1)),
+        )
+        .await
+        .expect("tool ok");
+    let response: LastResponsesResponse = serde_json::from_str(&result).expect("valid JSON");
+
+    let blocks = &response.responses[0].response["result"]["content"];
+    assert!(blocks[0].get("data").is_some(), "opt-in keeps the base64");
+    assert!(blocks[0].get("omitted").is_none());
 }
