@@ -1,7 +1,8 @@
+use super::media::matches_media_filter_raw;
 use super::message::{extract_forward_info, extract_link_preview};
 use super::*;
 use crate::telegram::envelope::EntityLookup;
-use crate::telegram::types::{AudioKind, SizeCandidate, VideoKind};
+use crate::telegram::types::{AudioKind, MediaFilter, SizeCandidate, VideoKind};
 use grammers_client::media::{Document, Media};
 use grammers_client::tl;
 
@@ -68,6 +69,86 @@ fn single_candidate_below_threshold_is_returned_via_fallback() {
     let candidates = vec![candidate(320, 180, 10_000, "m")];
     let selected = select_size_candidate(&candidates, 1280).unwrap();
     assert_eq!(selected.photo_type, "m");
+}
+
+/// Raw message with optional media for the raw filter tests. Flags false,
+/// unset options None.
+fn raw_message_with_media(
+    media: Option<tl::enums::MessageMedia>,
+    text: &str,
+) -> tl::enums::Message {
+    tl::enums::Message::Message(tl::types::Message {
+        out: false,
+        mentioned: false,
+        media_unread: false,
+        silent: false,
+        post: true,
+        from_scheduled: false,
+        legacy: false,
+        edit_hide: false,
+        pinned: false,
+        noforwards: false,
+        video_processing_pending: false,
+        paid_suggested_post_stars: false,
+        paid_suggested_post_ton: false,
+        invert_media: false,
+        offline: false,
+        id: 1,
+        from_id: None,
+        from_boosts_applied: None,
+        from_rank: None,
+        peer_id: tl::enums::Peer::Channel(tl::types::PeerChannel { channel_id: 1 }),
+        saved_peer_id: None,
+        fwd_from: None,
+        via_bot_id: None,
+        via_business_bot_id: None,
+        guestchat_via_from: None,
+        reply_to: None,
+        date: 1_700_000_000,
+        message: text.to_string(),
+        media,
+        reply_markup: None,
+        entities: None,
+        views: None,
+        forwards: None,
+        replies: None,
+        edit_date: None,
+        post_author: None,
+        grouped_id: None,
+        restriction_reason: None,
+        ttl_period: None,
+        reactions: None,
+        quick_reply_shortcut_id: None,
+        effect: None,
+        factcheck: None,
+        report_delivery_until_date: None,
+        paid_message_stars: None,
+        suggested_post: None,
+        schedule_repeat_period: None,
+        summary_from_language: None,
+        rich_message: None,
+    })
+}
+
+#[test]
+fn raw_filter_matches_photo_media() {
+    let media = tl::enums::MessageMedia::Photo(tl::types::MessageMediaPhoto {
+        spoiler: false,
+        photo: Some(tl::enums::Photo::Empty(tl::types::PhotoEmpty { id: 1 })),
+        ttl_seconds: None,
+        live_photo: false,
+        video: None,
+    });
+    let raw = raw_message_with_media(Some(media), "");
+    assert!(matches_media_filter_raw(&raw, &MediaFilter::Photo));
+    assert!(!matches_media_filter_raw(&raw, &MediaFilter::Video));
+}
+
+#[test]
+fn raw_filter_url_matches_text_without_media() {
+    let raw = raw_message_with_media(None, "see https://example.com");
+    assert!(matches_media_filter_raw(&raw, &MediaFilter::Url));
+    assert!(!matches_media_filter_raw(&raw, &MediaFilter::Photo));
 }
 
 fn fwd_header() -> tl::types::MessageFwdHeader {

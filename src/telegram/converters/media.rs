@@ -186,20 +186,23 @@ pub fn extract_audio_info(media: &Media) -> Option<AudioInfo> {
     })
 }
 
-/// Check if a message's media matches the given filter (for client-side filtering)
-///
-/// Used by `get_recent_messages` since `iter_messages` doesn't support server-side filtering.
-pub fn matches_media_filter(msg: &grammers_client::message::Message, filter: &MediaFilter) -> bool {
-    let Some(media) = msg.media() else {
+/// Shared core for the high-level and raw filter entry points.
+fn media_matches_filter(
+    media: Option<&Media>,
+    text: &str,
+    pinned: bool,
+    filter: &MediaFilter,
+) -> bool {
+    let Some(media) = media else {
         // No media - only match if filter is Url (check text for URLs) or Pinned
         return match filter {
-            MediaFilter::Url => msg.text().contains("http://") || msg.text().contains("https://"),
-            MediaFilter::Pinned => msg.pinned(),
+            MediaFilter::Url => text.contains("http://") || text.contains("https://"),
+            MediaFilter::Pinned => pinned,
             _ => false,
         };
     };
 
-    let media_type = convert_media_to_type(&media);
+    let media_type = convert_media_to_type(media);
 
     match filter {
         MediaFilter::Photo => media_type == MediaType::Photo,
@@ -212,10 +215,33 @@ pub fn matches_media_filter(msg: &grammers_client::message::Message, filter: &Me
         MediaFilter::Gif => media_type == MediaType::Animation,
         MediaFilter::Url => {
             // Message has media AND contains URL
-            msg.text().contains("http://") || msg.text().contains("https://")
+            text.contains("http://") || text.contains("https://")
         }
-        MediaFilter::Pinned => msg.pinned(),
+        MediaFilter::Pinned => pinned,
     }
+}
+
+/// Check if a message's media matches the given filter (for client-side filtering)
+///
+/// Used by `get_recent_messages` since `iter_messages` doesn't support server-side filtering.
+pub fn matches_media_filter(msg: &grammers_client::message::Message, filter: &MediaFilter) -> bool {
+    media_matches_filter(msg.media().as_ref(), msg.text(), msg.pinned(), filter)
+}
+
+/// Raw-message twin of [`matches_media_filter`], for the raw history pager path.
+// Wired into ops_history in the raw-pager task of this plan; the allow only
+// bridges the strict per-task clippy gate.
+#[allow(dead_code)]
+pub(crate) fn matches_media_filter_raw(raw: &tl::enums::Message, filter: &MediaFilter) -> bool {
+    let (media, text, pinned) = match raw {
+        tl::enums::Message::Message(m) => (
+            m.media.clone().and_then(Media::from_raw),
+            m.message.as_str(),
+            m.pinned,
+        ),
+        _ => (None, "", false),
+    };
+    media_matches_filter(media.as_ref(), text, pinned, filter)
 }
 
 /// Pick the size variant to download: the smallest whose longest side is at
