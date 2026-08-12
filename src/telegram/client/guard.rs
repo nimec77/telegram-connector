@@ -36,26 +36,6 @@ pub(super) fn require_found(
     }
 }
 
-/// Pair each requested id with its slot's "found" verdict; a slot is found
-/// when it is present AND not the MessageEmpty placeholder.
-///
-/// `found_flags[i]` is `None` for an absent slot, `Some(false)` for
-/// `MessageEmpty`, `Some(true)` for a real message.
-pub(super) fn partition_slot_ids(
-    requested: &[i32],
-    found_flags: &[Option<bool>],
-) -> (Vec<i32>, Vec<i32>) {
-    let mut found = Vec::new();
-    let mut missing = Vec::new();
-    for (id, flag) in requested.iter().zip(found_flags) {
-        match flag {
-            Some(true) => found.push(*id),
-            _ => missing.push(*id),
-        }
-    }
-    (found, missing)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -107,18 +87,5 @@ mod tests {
             err.to_string(),
             "invalid input: Message 999999999 not found or deleted in channel swodki"
         );
-    }
-
-    #[test]
-    fn partition_slots_separates_found_and_missing() {
-        // Slots come back in input order; None and Empty both mean "missing".
-        // found_flags[i] is None=absent, Some(false)=MessageEmpty, Some(true)=real.
-        let slots = vec![None, Some(false), Some(true), None];
-        //                ^absent  ^empty      ^real      ^absent
-        let requested = [10, 20, 30, 40];
-        let (found_ids, missing): (Vec<i32>, Vec<i32>) =
-            partition_slot_ids(&requested, &slots.iter().map(|s| *s).collect::<Vec<_>>());
-        assert_eq!(found_ids, vec![30]);
-        assert_eq!(missing, vec![10, 20, 40]);
     }
 }

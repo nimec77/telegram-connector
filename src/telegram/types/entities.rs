@@ -176,6 +176,14 @@ pub struct ChannelIdentity {
 /// Result of a batch message fetch: found messages plus the ids Telegram
 /// reported as deleted/never-existed (work-order A1). Order follows the
 /// request's id order in both vectors.
+///
+/// Invariant: every requested id ends up in exactly one of `messages` /
+/// `missing_ids` — never both, never neither. An id whose slot converts to a
+/// domain `Message` lands in `messages`; every other case (absent slot,
+/// `MessageEmpty` placeholder, or a present-but-unconvertible message) lands
+/// in `missing_ids`. The last case is logged as a warning when it happens,
+/// since it means Telegram returned a real message that this client could
+/// not represent domain-side.
 #[derive(Debug, Clone)]
 pub struct MessageBatch {
     pub messages: Vec<Message>,
