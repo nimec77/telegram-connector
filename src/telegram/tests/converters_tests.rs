@@ -1,5 +1,6 @@
 use super::message::{extract_forward_info, extract_link_preview};
 use super::*;
+use crate::telegram::envelope::EntityLookup;
 use crate::telegram::types::{AudioKind, SizeCandidate, VideoKind};
 use grammers_client::media::{Document, Media};
 use grammers_client::tl;
@@ -124,14 +125,14 @@ fn webpage_media(
 }
 
 #[test]
-fn forward_from_channel_extracts_ids_not_names() {
+fn forward_from_channel_without_envelope_extracts_ids_only() {
     let mut header = fwd_header();
     header.from_id = Some(tl::enums::Peer::Channel(tl::types::PeerChannel {
         channel_id: 555,
     }));
     header.channel_post = Some(42);
 
-    let info = extract_forward_info(&header);
+    let info = extract_forward_info(&header, &EntityLookup::empty());
     assert_eq!(info.channel_id.map(|c| c.get()), Some(555));
     assert_eq!(info.original_message_id.map(|m| m.get()), Some(42));
     assert_eq!(info.original_date.unwrap().timestamp(), 1_700_000_000);
@@ -145,7 +146,7 @@ fn forward_from_hidden_user_has_name_only() {
     let mut header = fwd_header();
     header.from_name = Some("Hidden User".to_string());
 
-    let info = extract_forward_info(&header);
+    let info = extract_forward_info(&header, &EntityLookup::empty());
     assert_eq!(info.sender_name.as_deref(), Some("Hidden User"));
     assert!(info.channel_id.is_none());
     assert!(info.original_message_id.is_none());
@@ -156,7 +157,7 @@ fn forward_with_zero_date_has_no_original_date() {
     let mut header = fwd_header();
     header.date = 0;
 
-    let info = extract_forward_info(&header);
+    let info = extract_forward_info(&header, &EntityLookup::empty());
     assert!(info.original_date.is_none());
 }
 

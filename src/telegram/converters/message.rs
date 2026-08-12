@@ -6,8 +6,10 @@
 use super::channel::{channel_identity, peer_identity};
 use super::media::{convert_media_to_type, extract_audio_info, extract_video_info};
 use crate::link::MessageLink;
+use crate::telegram::envelope::EntityLookup;
 use crate::telegram::types::{
-    ChannelId, ForwardInfo, LinkPreview, MediaType, Message, MessageId, MessageReaction, UserId,
+    ChannelId, ChannelName, ForwardInfo, LinkPreview, MediaType, Message, MessageId,
+    MessageReaction, UserId, Username,
 };
 use chrono::{DateTime, Utc};
 use grammers_client::media::Media;
@@ -35,26 +37,52 @@ fn timestamp_from_raw(raw: &tl::enums::Message) -> Option<DateTime<Utc>> {
     DateTime::from_timestamp(secs as i64, 0)
 }
 
-/// Extract forward attribution from a raw forward header.
+/// Extract forward attribution from a raw forward header, resolving the
+/// source's display data from the response envelope's entity map.
 ///
-/// Drops down to the raw TL `MessageFwdHeader` because grammers' high-level API
-/// exposes only `forward_header()` (the raw enum). `channel_name`/`channel_username`
-/// are left `None`: `from_id` is an ID-only TL `Peer`, and the resolved
-/// title/username are not available without an extra resolve call per message, which
-/// the zero-extra-call enrichment invariant forbids; batch attribution is the
-/// `resolve_channels` tool planned for v0.18 (roadmap A7).
-pub(crate) fn extract_forward_info(header: &tl::types::MessageFwdHeader) -> ForwardInfo {
-    let channel_id = match &header.from_id {
-        Some(tl::enums::Peer::Channel(ch)) => ChannelId::new(ch.channel_id).ok(),
-        _ => None,
+/// Zero network calls: `entities` is built from the same response the message
+/// arrived in. A map miss degrades to the ids-only form — nothing is
+/// fabricated and nothing is resolved on demand. Raw TL is required here
+/// because the pinned grammers rev keeps `Message.peers` crate-private (see
+/// `envelope.rs` module docs).
+pub(crate) fn extract_forward_info(
+    header: &tl::types::MessageFwdHeader,
+    entities: &EntityLookup,
+) -> ForwardInfo {
+    let info = header.from_id.as_ref().and_then(|peer| entities.get(peer));
+
+    let (channel_id, channel_name, channel_username, user_sender_name) = match &header.from_id {
+        Some(tl::enums::Peer::Channel(ch)) => (
+            ChannelId::new(ch.channel_id).ok(),
+            info.and_then(|i| i.display_name.as_deref())
+                .and_then(|n| ChannelName::new(n).ok()),
+            info.and_then(|i| i.username.as_deref())
+                .and_then(|u| Username::new(u).ok()),
+            None,
+        ),
+        // Legacy groups: chat-namespace ids were never emitted; keep that,
+        // but surface the title now that the envelope provides it.
+        Some(tl::enums::Peer::Chat(_)) => (
+            None,
+            info.and_then(|i| i.display_name.as_deref())
+                .and_then(|n| ChannelName::new(n).ok()),
+            None,
+            None,
+        ),
+        Some(tl::enums::Peer::User(_)) => {
+            (None, None, None, info.and_then(|i| i.display_name.clone()))
+        }
+        None => (None, None, None, None),
     };
 
     ForwardInfo {
         channel_id,
-        channel_name: None,
-        channel_username: None,
-        sender_name: header.from_name.clone(),
-        post_author: None,
+        channel_name,
+        channel_username,
+        // Hidden senders (`from_name`, no `from_id`) win, as they always have;
+        // otherwise a user-source forward carries the user's display name.
+        sender_name: header.from_name.clone().or(user_sender_name),
+        post_author: header.post_author.clone(),
         original_date: DateTime::<Utc>::from_timestamp(header.date as i64, 0)
             .filter(|dt| dt.timestamp() > 0),
         original_message_id: header
@@ -167,7 +195,11 @@ pub fn convert_message(
 
     let forwarded_from = msg
         .forward_header()
-        .map(|tl::enums::MessageFwdHeader::Header(header)| extract_forward_info(&header));
+        .map(|tl::enums::MessageFwdHeader::Header(header)| {
+            // Envelope is unreachable through the high-level Message; the
+            // raw-core split in the next plan task wires the real map.
+            extract_forward_info(&header, &EntityLookup::empty())
+        });
 
     let views = msg.view_count().and_then(|v| u64::try_from(v).ok());
     let forwards = msg.forward_count().and_then(|v| u64::try_from(v).ok());
@@ -211,11 +243,177 @@ pub fn convert_message(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::telegram::envelope::EntityLookup;
+    use crate::test_helpers::{raw_tl_channel, raw_tl_user};
     use grammers_client::Client;
     use grammers_client::peer::{Community, Peer};
     use grammers_mtsender::SenderPool;
     use grammers_session::storages::MemorySession;
     use std::sync::Arc;
+
+    /// Fwd header fixture: unset fields None/false, `date` fixed.
+    fn fwd_header(
+        from_id: Option<tl::enums::Peer>,
+        from_name: Option<&str>,
+        post_author: Option<&str>,
+    ) -> tl::types::MessageFwdHeader {
+        tl::types::MessageFwdHeader {
+            imported: false,
+            saved_out: false,
+            from_id,
+            from_name: from_name.map(|s| s.to_string()),
+            date: 1_700_000_000,
+            channel_post: Some(1863),
+            post_author: post_author.map(|s| s.to_string()),
+            saved_from_peer: None,
+            saved_from_msg_id: None,
+            saved_from_id: None,
+            saved_from_name: None,
+            saved_date: None,
+            psa_type: None,
+        }
+    }
+
+    fn channel_fwd_peer(id: i64) -> Option<tl::enums::Peer> {
+        Some(tl::enums::Peer::Channel(tl::types::PeerChannel {
+            channel_id: id,
+        }))
+    }
+
+    #[test]
+    fn forward_from_enveloped_channel_carries_name_and_username() {
+        let entities = EntityLookup::from_envelope(
+            &[tl::enums::Chat::Channel(raw_tl_channel(
+                1783384254,
+                "Военкор",
+                Some("voenkor_ru"),
+            ))],
+            &[],
+        );
+        let info = extract_forward_info(
+            &fwd_header(channel_fwd_peer(1783384254), None, None),
+            &entities,
+        );
+        assert_eq!(info.channel_id.map(|c| c.get()), Some(1783384254));
+        assert_eq!(
+            info.channel_name.as_ref().map(|n| n.as_str()),
+            Some("Военкор")
+        );
+        assert_eq!(
+            info.channel_username.as_ref().map(|u| u.as_str()),
+            Some("voenkor_ru")
+        );
+        assert_eq!(info.sender_name, None);
+        assert_eq!(info.original_message_id.map(|m| m.get()), Some(1863));
+    }
+
+    #[test]
+    fn forward_from_private_channel_carries_name_without_username() {
+        let entities = EntityLookup::from_envelope(
+            &[tl::enums::Chat::Channel(raw_tl_channel(
+                77,
+                "Приватный",
+                None,
+            ))],
+            &[],
+        );
+        let info = extract_forward_info(&fwd_header(channel_fwd_peer(77), None, None), &entities);
+        assert_eq!(
+            info.channel_name.as_ref().map(|n| n.as_str()),
+            Some("Приватный")
+        );
+        assert_eq!(info.channel_username, None);
+    }
+
+    #[test]
+    fn forward_from_user_populates_sender_name_only() {
+        let entities = EntityLookup::from_envelope(
+            &[],
+            &[tl::enums::User::User(raw_tl_user(
+                42,
+                Some("Иван"),
+                Some("Петров"),
+                None,
+            ))],
+        );
+        let from = Some(tl::enums::Peer::User(tl::types::PeerUser { user_id: 42 }));
+        let info = extract_forward_info(&fwd_header(from, None, None), &entities);
+        assert_eq!(info.sender_name.as_deref(), Some("Иван Петров"));
+        assert_eq!(info.channel_id, None);
+        assert!(info.channel_name.is_none());
+        assert!(info.channel_username.is_none());
+    }
+
+    #[test]
+    fn forward_from_hidden_sender_uses_from_name() {
+        let info = extract_forward_info(
+            &fwd_header(None, Some("Скрытый Автор"), None),
+            &EntityLookup::empty(),
+        );
+        assert_eq!(info.sender_name.as_deref(), Some("Скрытый Автор"));
+        assert_eq!(info.channel_id, None);
+        assert!(info.channel_name.is_none());
+    }
+
+    #[test]
+    fn forward_carries_post_author_for_signed_posts() {
+        let entities = EntityLookup::from_envelope(
+            &[tl::enums::Chat::Channel(raw_tl_channel(9, "Канал", None))],
+            &[],
+        );
+        let info = extract_forward_info(
+            &fwd_header(channel_fwd_peer(9), None, Some("И. Петров")),
+            &entities,
+        );
+        assert_eq!(info.post_author.as_deref(), Some("И. Петров"));
+    }
+
+    #[test]
+    fn envelope_miss_degrades_to_ids_only() {
+        let info = extract_forward_info(
+            &fwd_header(channel_fwd_peer(1783384254), None, None),
+            &EntityLookup::empty(),
+        );
+        assert_eq!(info.channel_id.map(|c| c.get()), Some(1783384254));
+        assert!(info.channel_name.is_none());
+        assert!(info.channel_username.is_none());
+        assert_eq!(info.sender_name, None);
+        assert_eq!(info.original_message_id.map(|m| m.get()), Some(1863));
+    }
+
+    #[test]
+    fn forward_from_legacy_group_carries_title_without_id() {
+        let entities = EntityLookup::from_envelope(
+            &[tl::enums::Chat::Chat(tl::types::Chat {
+                creator: false,
+                left: false,
+                deactivated: false,
+                call_active: false,
+                call_not_empty: false,
+                noforwards: false,
+                id: 31,
+                title: "Группа".to_string(),
+                photo: tl::enums::ChatPhoto::Empty,
+                participants_count: 0,
+                date: 0,
+                version: 0,
+                migrated_to: None,
+                admin_rights: None,
+                default_banned_rights: None,
+            })],
+            &[],
+        );
+        let from = Some(tl::enums::Peer::Chat(tl::types::PeerChat { chat_id: 31 }));
+        let info = extract_forward_info(&fwd_header(from, None, None), &entities);
+        assert_eq!(
+            info.channel_id, None,
+            "chat-namespace ids stay unemitted, as today"
+        );
+        assert_eq!(
+            info.channel_name.as_ref().map(|n| n.as_str()),
+            Some("Группа")
+        );
+    }
 
     /// Inert client for offline Peer construction (same trick as the
     /// channel-converter tests).
