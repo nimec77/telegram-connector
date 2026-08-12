@@ -1,6 +1,6 @@
 //! MCP tool implementations
 //!
-//! This module contains all 13 MCP tools.
+//! This module contains all 14 MCP tools.
 //! Tools are organized in subdirectory for better maintainability.
 
 pub mod helpers;

@@ -1,8 +1,9 @@
 //! Response types for MCP tools.
 
 use crate::telegram::types::{
-    AlbumInfo, AudioInfo, Channel, ChannelId, ChannelName, ForwardInfo, LinkPreview, MediaType,
-    Message, MessageId, MessageReaction, QueryMetadata, SearchResult, UserId, Username, VideoInfo,
+    AlbumInfo, AudioInfo, Channel, ChannelId, ChannelName, ChannelResolution, ForwardInfo,
+    LinkPreview, MediaType, Message, MessageId, MessageReaction, QueryMetadata, SearchResult,
+    UserId, Username, VideoInfo,
 };
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
@@ -156,6 +157,17 @@ pub struct MessagesBatchResponse {
     /// Ids dropped to fit the response byte budget — re-request exactly these.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub omitted_ids: Option<Vec<MessageId>>,
+}
+
+/// Response for resolve_channels tool
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ResolveChannelsResponse {
+    #[schemars(description = "One outcome per requested identifier, in request order")]
+    pub resolutions: Vec<ChannelResolution>,
+    #[schemars(description = "Number of resolutions in this response")]
+    pub returned: usize,
+    #[schemars(description = "How many identifiers resolved to a channel")]
+    pub resolved: usize,
 }
 
 /// Response for open_message_in_telegram tool

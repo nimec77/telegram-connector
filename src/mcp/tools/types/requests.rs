@@ -262,6 +262,15 @@ pub struct GetMessagesBatchRequest {
     pub max_text_length: Option<u32>,
 }
 
+/// Request for resolve_channels tool
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct ResolveChannelsRequest {
+    #[schemars(
+        description = "Identifiers to resolve (1-20): numeric channel ID, @username, or the exact title of a subscribed chat. Each entry resolves independently; failures come back per-entry, not as a call error."
+    )]
+    pub identifiers: Vec<String>,
+}
+
 /// Request for get_message_media tool
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct GetMessageMediaRequest {
