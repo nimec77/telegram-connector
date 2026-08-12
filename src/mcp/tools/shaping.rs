@@ -42,6 +42,36 @@ fn compact_response(resp: &mut SearchResponse) {
     }
 }
 
+/// Which compact header shape applies (work-order A4/A3).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CompactScope {
+    /// One channel: single `channel` header, channel fields stripped.
+    Single,
+    /// Fan-out: `channels` map keyed by decimal id; per-message channel_id
+    /// survives so messages stay attributable.
+    Multi,
+}
+
+/// Multi-channel compact hoisting (A3): build the id-keyed header map from
+/// the messages, strip name/username, keep channel_id on every message.
+fn compact_response_multi(resp: &mut SearchResponse) {
+    let mut map = std::collections::BTreeMap::new();
+    for m in &resp.messages {
+        if let (Some(id), Some(name)) = (m.channel_id, m.channel_name.clone()) {
+            map.entry(id.get().to_string()).or_insert(ChannelHeader {
+                id,
+                name,
+                username: m.channel_username.clone(),
+            });
+        }
+    }
+    for m in &mut resp.messages {
+        m.channel_name = None;
+        m.channel_username = None;
+    }
+    resp.channels = if map.is_empty() { None } else { Some(map) };
+}
+
 /// Drop trailing (oldest) messages until the serialized response fits
 /// `budget` bytes (work-order B4). Pop-until-fits: byte-exact against the
 /// cap, and at ≤100 messages the repeated serialization costs a few ms.
@@ -96,6 +126,7 @@ pub(crate) fn shape_response(
     max_text_length: u32,
     cursor_eligible: bool,
     byte_budget: usize,
+    scope: CompactScope,
 ) -> Result<(), String> {
     for msg in &mut resp.messages {
         truncate_text(msg, max_text_length);
@@ -107,7 +138,10 @@ pub(crate) fn shape_response(
         resp.next_cursor = Some(NextCursor { before_id: last.id });
     }
     if format == ResponseFormat::Compact {
-        compact_response(resp);
+        match scope {
+            CompactScope::Single => compact_response(resp),
+            CompactScope::Multi => compact_response_multi(resp),
+        }
     }
     fit_to_budget(resp, byte_budget, cursor_eligible)
 }
@@ -190,12 +224,14 @@ mod tests {
     fn compact_hoists_channel_and_strips_messages() {
         let mut resp = SearchResponse {
             channel: None,
+            channels: None,
             messages: vec![wire_message(2, "b"), wire_message(1, "a")],
             returned: 2,
             has_more: false,
             next_cursor: None,
             search_time_ms: 1,
             query_metadata: test_metadata(),
+            channel_errors: None,
         };
         compact_response(&mut resp);
         let header = resp.channel.expect("header");
@@ -215,12 +251,14 @@ mod tests {
     fn compact_on_empty_result_keeps_null_header() {
         let mut resp = SearchResponse {
             channel: None,
+            channels: None,
             messages: vec![],
             returned: 0,
             has_more: false,
             next_cursor: None,
             search_time_ms: 1,
             query_metadata: test_metadata(),
+            channel_errors: None,
         };
         compact_response(&mut resp);
         assert!(resp.channel.is_none());
@@ -255,6 +293,7 @@ mod tests {
     fn budget_fixture(n: i64, text_len: usize) -> SearchResponse {
         SearchResponse {
             channel: None,
+            channels: None,
             messages: (1..=n)
                 .rev() // newest (highest id) first, matching fetch order
                 .map(|i| wire_message(i, &"я".repeat(text_len)))
@@ -264,6 +303,7 @@ mod tests {
             next_cursor: None,
             search_time_ms: 1,
             query_metadata: test_metadata(),
+            channel_errors: None,
         }
     }
 
@@ -312,6 +352,32 @@ mod tests {
             resp.next_cursor.is_none(),
             "global search: has_more without cursor"
         );
+    }
+
+    #[test]
+    fn multi_compact_builds_channels_map_and_keeps_channel_id() {
+        let mut resp = SearchResponse {
+            channel: None,
+            channels: None,
+            messages: vec![wire_message(2, "b"), wire_message(1, "a")],
+            returned: 2,
+            has_more: false,
+            next_cursor: None,
+            search_time_ms: 1,
+            query_metadata: test_metadata(),
+            channel_errors: None,
+        };
+        compact_response_multi(&mut resp);
+        let map = resp.channels.expect("map");
+        assert!(map.contains_key("100"), "keyed by decimal channel id");
+        for m in &resp.messages {
+            assert!(
+                m.channel_id.is_some(),
+                "channel_id survives in multi compact"
+            );
+            assert!(m.channel_name.is_none());
+            assert!(m.channel_username.is_none());
+        }
     }
 
     #[test]

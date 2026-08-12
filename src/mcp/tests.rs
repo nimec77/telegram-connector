@@ -19,6 +19,8 @@ mod links;
 mod media;
 #[path = "tests/message_by_link.rs"]
 mod message_by_link;
+#[path = "tests/multi_channel.rs"]
+mod multi_channel;
 #[path = "tests/resolve.rs"]
 mod resolve;
 #[path = "tests/schema_integrity.rs"]

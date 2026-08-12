@@ -146,6 +146,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             max_text_length,
             cursor_eligible,
             self.response_byte_budget,
+            shaping::CompactScope::Single,
         )?;
         json_response(&response)
     }
@@ -154,25 +155,6 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         request: GetRecentMessagesRequest,
     ) -> Result<String, String> {
-        // Validate channel_id is provided
-        if request.channel_id.trim().is_empty() {
-            return Err("channel_id is required".to_string());
-        }
-
-        // Parse channel_id (can be numeric ID or username). The client owns
-        // resolution; the server no longer pre-resolves usernames via
-        // get_channel_info (AD-2) — that second resolve was redundant with the
-        // client's own resolve_username_peer.
-        let (channel_id, channel_identifier) =
-            if request.channel_id.chars().all(|c| c.is_ascii_digit()) {
-                // Numeric ID - validate now; the client walks dialogs by it.
-                (Some(parse_channel_id(&request.channel_id)?), None)
-            } else {
-                // Username - hand the raw reference to the client, which resolves
-                // it (and derives the numeric id from the resolved peer).
-                (None, Some(request.channel_id.clone()))
-            };
-
         // Apply defaults and limits
         let hours_back = request
             .hours_back
@@ -224,10 +206,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
         let format = request.format.unwrap_or_default();
 
-        // Build history params
-        let params = HistoryParams {
-            channel_id,
-            channel_identifier,
+        // Shared parameter template; the channel target (channel_id/channel_identifier)
+        // is filled in per-path below: once for the single-channel path, once per
+        // entry for the fan-out path.
+        let params_template = HistoryParams {
+            channel_id: None,
+            channel_identifier: None,
             hours_back,
             limit,
             media_filter: request.media_filter,
@@ -239,12 +223,90 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         };
 
         // Reject an empty window before spending a token or a network round-trip.
+        let window_from = params_template.window_start();
         validate_date_window(
-            params.from_date,
-            params.to_date,
-            params.window_start(),
-            params.hours_back,
+            params_template.from_date,
+            params_template.to_date,
+            window_from,
+            params_template.hours_back,
         )?;
+
+        let channels = fanout::validate_channel_scope(&request.channel_id, &request.channel_ids)?;
+        // channels: Option<Vec<String>> — Some(list) means fan-out.
+        if let Some(list) = channels {
+            if before_id.is_some() || after_id.is_some() {
+                return Err("before_id/after_id require a single channel_id: cursor \
+                            pagination is per-channel"
+                    .to_string());
+            }
+
+            // Rate cost for fan-out: one atomic acquire for the deduped channel
+            // count, so the D5 deficit message stays accurate.
+            self.rate_limiter
+                .acquire(list.len() as u32)
+                .await
+                .map_err(|e| e.to_string())?;
+
+            let outcomes = futures::stream::iter(list.into_iter().map(|reference| {
+                let client = Arc::clone(&self.telegram_client);
+                let base = params_template.clone(); // HistoryParams minus target
+                async move {
+                    let result = match history_target(&reference) {
+                        Ok((channel_id, channel_identifier)) => {
+                            let params = HistoryParams {
+                                channel_id,
+                                channel_identifier,
+                                ..base
+                            };
+                            client
+                                .get_recent_messages(&params)
+                                .await
+                                .map_err(|e| e.to_string())
+                        }
+                        Err(e) => Err(e),
+                    };
+                    fanout::ChannelFetchOutcome {
+                        channel: reference,
+                        result,
+                    }
+                }
+            }))
+            .buffered(fanout::FANOUT_CONCURRENCY)
+            .collect::<Vec<_>>()
+            .await;
+
+            let mut response = fanout::merge_results(
+                outcomes,
+                limit as usize,
+                String::new(),
+                window_from,
+                to_date,
+            )?;
+            shaping::shape_response(
+                &mut response,
+                format,
+                max_text_length,
+                /* cursor_eligible */ false,
+                self.response_byte_budget,
+                shaping::CompactScope::Multi,
+            )?;
+            return json_response(&response);
+        }
+
+        // Single-channel path. The client owns resolution; the server no longer
+        // pre-resolves usernames via get_channel_info (AD-2) — that second
+        // resolve was redundant with the client's own resolve_username_peer.
+        let channel_id_str = request
+            .channel_id
+            .ok_or_else(|| "channel_id (or channel_ids) is required".to_string())?;
+        let (channel_id, channel_identifier) = history_target(&channel_id_str)?;
+
+        // Build history params
+        let params = HistoryParams {
+            channel_id,
+            channel_identifier,
+            ..params_template
+        };
 
         // Acquire rate limiter tokens (1 token per request)
         self.rate_limiter
@@ -281,6 +343,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             max_text_length,
             cursor_eligible,
             self.response_byte_budget,
+            shaping::CompactScope::Single,
         )?;
         json_response(&response)
     }
@@ -320,5 +383,14 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         );
 
         json_response(&MessageResponse::from(message))
+    }
+}
+
+/// Split a channel reference into HistoryParams' (channel_id, channel_identifier) pair.
+fn history_target(reference: &str) -> Result<(Option<ChannelId>, Option<String>), String> {
+    if reference.chars().all(|c| c.is_ascii_digit()) {
+        Ok((Some(parse_channel_id(reference)?), None))
+    } else {
+        Ok((None, Some(reference.to_string())))
     }
 }

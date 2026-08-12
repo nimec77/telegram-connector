@@ -168,9 +168,15 @@ pub struct SearchRequest {
 /// Request for get_recent_messages tool
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct GetRecentMessagesRequest {
-    #[schemars(description = "Channel ID or username (required)")]
-    #[serde(deserialize_with = "flexible_string")]
-    pub channel_id: String,
+    #[schemars(description = "Channel ID or username. Required unless channel_ids is set.")]
+    #[serde(default, deserialize_with = "flexible_opt_string")]
+    pub channel_id: Option<String>,
+
+    #[schemars(
+        description = "Optional: fan out over up to 20 channels (IDs or usernames) in one call with bounded concurrency; results are merged newest-first and limit counts the merged total. Mutually exclusive with channel_id; incompatible with before_id/after_id."
+    )]
+    #[serde(default)]
+    pub channel_ids: Option<Vec<String>>,
 
     #[schemars(description = "Hours of history to retrieve (default: 48, max: 168)")]
     #[serde(default, deserialize_with = "flexible_opt_u32")]

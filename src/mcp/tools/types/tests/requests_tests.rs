@@ -96,10 +96,23 @@ fn get_recent_messages_request_deserializes() {
     let json = r#"{"channel_id": "123456"}"#;
     let request: GetRecentMessagesRequest = serde_json::from_str(json).unwrap();
 
-    assert_eq!(request.channel_id, "123456");
+    assert_eq!(request.channel_id, Some("123456".to_string()));
+    assert!(request.channel_ids.is_none());
     assert!(request.hours_back.is_none());
     assert!(request.limit.is_none());
     assert!(request.media_filter.is_none());
+}
+
+#[test]
+fn get_recent_messages_request_accepts_channel_ids() {
+    let json = r#"{"channel_ids": ["111", "222"]}"#;
+    let request: GetRecentMessagesRequest = serde_json::from_str(json).unwrap();
+
+    assert!(request.channel_id.is_none());
+    assert_eq!(
+        request.channel_ids,
+        Some(vec!["111".to_string(), "222".to_string()])
+    );
 }
 
 #[test]
@@ -112,7 +125,7 @@ fn get_recent_messages_request_with_all_params() {
         }"#;
     let request: GetRecentMessagesRequest = serde_json::from_str(json).unwrap();
 
-    assert_eq!(request.channel_id, "tech_news");
+    assert_eq!(request.channel_id, Some("tech_news".to_string()));
     assert_eq!(request.hours_back, Some(72));
     assert_eq!(request.limit, Some(50));
     assert_eq!(request.media_filter, Some(MediaFilter::Photo));
@@ -131,7 +144,7 @@ fn get_recent_messages_request_empty_media_filter() {
     let json = r#"{"channel_id": "123", "media_filter": ""}"#;
     let request: GetRecentMessagesRequest = serde_json::from_str(json).unwrap();
 
-    assert_eq!(request.channel_id, "123");
+    assert_eq!(request.channel_id, Some("123".to_string()));
     assert_eq!(request.media_filter, None);
 }
 
@@ -206,7 +219,7 @@ fn generate_link_request_bool_accepts_string_true() {
 fn get_recent_messages_request_channel_id_accepts_number() {
     let json = r#"{"channel_id": 123456}"#;
     let request: GetRecentMessagesRequest = serde_json::from_str(json).unwrap();
-    assert_eq!(request.channel_id, "123456");
+    assert_eq!(request.channel_id, Some("123456".to_string()));
 }
 
 #[test]

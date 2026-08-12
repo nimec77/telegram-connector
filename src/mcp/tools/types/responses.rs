@@ -283,6 +283,14 @@ pub struct ChannelHeader {
     pub username: Option<Username>,
 }
 
+/// One channel that failed during a multi-channel fan-out (work-order A3/A6).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ChannelFetchError {
+    #[schemars(description = "The channel reference as passed in channel_ids")]
+    pub channel: String,
+    pub error: String,
+}
+
 /// Wire representation of a single message (mirrors the domain `Message`).
 ///
 /// `sender_id` / `sender_name` mirror the domain type exactly (serialized as `null`
@@ -381,6 +389,14 @@ pub struct SearchResponse {
     /// Compact-format channel header; omitted in full format or when empty (A4).
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub channel: Option<ChannelHeader>,
+    /// Multi-channel compact header map, keyed by decimal channel id;
+    /// omitted in full format and single-channel scope (A3/A4).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub channels: Option<std::collections::BTreeMap<String, ChannelHeader>>,
+    /// Channels that failed during a multi-channel fan-out; omitted when
+    /// none did (A3/A6). Results from the other channels are still returned.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub channel_errors: Option<Vec<ChannelFetchError>>,
     pub messages: Vec<MessageResponse>,
     pub returned: u64,
     /// More qualifying messages exist beyond this page (limit- or
@@ -396,12 +412,14 @@ impl From<SearchResult> for SearchResponse {
     fn from(r: SearchResult) -> Self {
         Self {
             channel: None,
+            channels: None,
             messages: r.messages.into_iter().map(MessageResponse::from).collect(),
             returned: r.returned,
             has_more: r.has_more,
             next_cursor: None,
             search_time_ms: r.search_time_ms,
             query_metadata: r.query_metadata,
+            channel_errors: None,
         }
     }
 }
