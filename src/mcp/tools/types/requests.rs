@@ -243,6 +243,25 @@ pub struct GetMessageByLinkRequest {
     pub link: String,
 }
 
+/// Request for get_messages_batch tool
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct GetMessagesBatchRequest {
+    #[schemars(description = "Channel ID or username (required)")]
+    #[serde(deserialize_with = "flexible_string")]
+    pub channel_id: String,
+
+    #[schemars(
+        description = "Message IDs to fetch in one call (1-50). Deleted/missing ids are reported per-id in `missing`, not as an error."
+    )]
+    pub message_ids: Vec<i64>,
+
+    #[schemars(
+        description = "Optional: maximum text length in characters per message (default: 2000). This tool is the designated full-text path: pass a large value with few ids to fetch untruncated text."
+    )]
+    #[serde(default, deserialize_with = "flexible_opt_u32")]
+    pub max_text_length: Option<u32>,
+}
+
 /// Request for get_message_media tool
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct GetMessageMediaRequest {

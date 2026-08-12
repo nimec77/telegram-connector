@@ -3,6 +3,8 @@
 //! This module contains all tests for the MCP server, organized into submodules
 //! by tool/functionality for better maintainability.
 
+#[path = "tests/batch.rs"]
+mod batch;
 #[path = "tests/channels.rs"]
 mod channels;
 #[path = "tests/discovery.rs"]

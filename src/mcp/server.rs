@@ -7,8 +7,9 @@ use crate::mcp::tools::shaping;
 use crate::mcp::tools::{
     BufferedResponseEntry, ChannelsResponse, GenerateLinkRequest, GetChannelInfoRequest,
     GetChannelsRequest, GetLastResponsesRequest, GetMessageByLinkRequest, GetMessageMediaRequest,
-    GetMessageMediaResponse, GetRecentMessagesRequest, LastResponsesResponse, MessageLinkResponse,
-    MessageResponse, OpenMessageRequest, RateLimiterCosts, RateLimiterStatus, ResponseFormat,
+    GetMessageMediaResponse, GetMessagesBatchRequest, GetRecentMessagesRequest,
+    LastResponsesResponse, MessageLinkResponse, MessageResponse, MessagesBatchResponse,
+    MissingMessageEntry, OpenMessageRequest, RateLimiterCosts, RateLimiterStatus, ResponseFormat,
     SearchPublicChannelsRequest, SearchRequest, SearchResponse, StatusResponse,
     TranscribeVoiceMessageRequest, TranscribeVoiceMessageResponse, json_response, parse_channel_id,
     parse_message_id, parse_optional_channel_id, parse_optional_utc, validate_date_window,
@@ -19,7 +20,7 @@ use crate::mcp::tools::{
 use crate::mcp::tools::OpenMessageResponse;
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
-use crate::telegram::types::{HistoryParams, SearchParams};
+use crate::telegram::types::{HistoryParams, MessageId, SearchParams};
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -181,6 +182,7 @@ mod impl_channels;
 mod impl_discovery;
 mod impl_links;
 mod impl_media;
+mod impl_message_batch;
 mod impl_search;
 mod impl_status;
 
@@ -422,6 +424,26 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "Tool invocation started"
         );
         inv.finish(self.search_public_channels_impl(request).await)
+    }
+
+    /// Tool 13: get_messages_batch - Fetch up to 50 specific messages in one call
+    #[tool(
+        description = "Fetch up to 50 specific messages from one channel by id in a single call. Deleted or missing ids are reported per-id in `missing` instead of failing the batch. The designated way to re-fetch full text after text_truncated, and to verify or deduplicate specific posts without N round trips."
+    )]
+    pub async fn get_messages_batch(
+        &self,
+        Parameters(request): Parameters<GetMessagesBatchRequest>,
+        id: RequestId,
+    ) -> Result<String, String> {
+        let inv = ToolInvocation::start("get_messages_batch", id);
+        tracing::info!(
+            tool = inv.tool,
+            request_id = %inv.request_id,
+            channel_id = %request.channel_id,
+            ids = request.message_ids.len(),
+            "Tool invocation started"
+        );
+        inv.finish(self.get_messages_batch_impl(request).await)
     }
 }
 

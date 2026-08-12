@@ -12,13 +12,14 @@ pub mod serde_helpers;
 // Re-export all types for convenience
 pub use requests::{
     GenerateLinkRequest, GetChannelInfoRequest, GetChannelsRequest, GetLastResponsesRequest,
-    GetMessageByLinkRequest, GetMessageMediaRequest, GetRecentMessagesRequest, OpenMessageRequest,
-    ResponseFormat, SearchPublicChannelsRequest, SearchRequest, TranscribeVoiceMessageRequest,
+    GetMessageByLinkRequest, GetMessageMediaRequest, GetMessagesBatchRequest,
+    GetRecentMessagesRequest, OpenMessageRequest, ResponseFormat, SearchPublicChannelsRequest,
+    SearchRequest, TranscribeVoiceMessageRequest,
 };
 pub use responses::{
     BufferedResponseEntry, ChannelHeader, ChannelsResponse, GetMessageMediaResponse,
-    LastResponsesResponse, MessageLinkResponse, MessageResponse, NextCursor, OpenMessageResponse,
-    RateLimiterCosts, RateLimiterStatus, SearchResponse, StatusResponse,
-    TranscribeVoiceMessageResponse,
+    LastResponsesResponse, MessageLinkResponse, MessageResponse, MessagesBatchResponse,
+    MissingMessageEntry, NextCursor, OpenMessageResponse, RateLimiterCosts, RateLimiterStatus,
+    SearchResponse, StatusResponse, TranscribeVoiceMessageResponse,
 };
 pub use serde_helpers::{deserialize_optional_media_filter, deserialize_optional_response_format};
