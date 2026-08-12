@@ -5,8 +5,8 @@ use crate::mcp::tools::{ResponseFormat, SearchRequest, SearchResponse};
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::{
-    ChannelId, ChannelName, MediaFilter, MediaType, Message, MessageId, QueryMetadata,
-    SearchResult, Username,
+    ChannelId, ChannelIdentity, ChannelName, MediaFilter, MediaType, Message, MessageId,
+    QueryMetadata, SearchResult, Username,
 };
 use crate::test_helpers::{create_test_message, create_test_search_result};
 use rmcp::handler::server::common::RequestId;
@@ -69,6 +69,7 @@ async fn search_messages_returns_results() {
     let request = SearchRequest {
         query: "AI".to_string(),
         channel_id: None,
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -103,6 +104,7 @@ async fn search_messages_empty_query_fails() {
     let request = SearchRequest {
         query: "   ".to_string(), // whitespace only
         channel_id: None,
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None, // no filter either = error
@@ -147,6 +149,7 @@ async fn search_messages_rate_limited() {
     let request = SearchRequest {
         query: "test".to_string(),
         channel_id: None,
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -208,6 +211,7 @@ async fn search_messages_with_channel_filter() {
     let request = SearchRequest {
         query: "test".to_string(),
         channel_id: Some("999".to_string()),
+        channel_ids: None,
         hours_back: Some(24),
         limit: Some(50),
         media_filter: None,
@@ -265,6 +269,7 @@ async fn search_messages_applies_limits() {
     let request = SearchRequest {
         query: "test".to_string(),
         channel_id: None,
+        channel_ids: None,
         hours_back: Some(1000), // exceeds MAX_HOURS_BACK (72)
         limit: Some(500),       // exceeds MAX_LIMIT (100)
         media_filter: None,
@@ -340,6 +345,7 @@ async fn search_allows_empty_query_with_media_filter() {
     let request = SearchRequest {
         query: "".to_string(), // empty query is OK
         channel_id: None,
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: Some(MediaFilter::Document), // filter by documents
@@ -398,6 +404,7 @@ async fn search_passes_media_filter_to_params() {
     let request = SearchRequest {
         query: "AI news".to_string(),
         channel_id: None,
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: Some(MediaFilter::Photo),
@@ -484,6 +491,7 @@ async fn search_messages_serializes_enrichment_fields() {
     let request = SearchRequest {
         query: "x".to_string(),
         channel_id: None,
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -535,6 +543,7 @@ async fn search_passes_date_range_to_client() {
     let request = SearchRequest {
         query: "q".to_string(),
         channel_id: None,
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -565,6 +574,7 @@ async fn search_rejects_invalid_from_date() {
     let request = SearchRequest {
         query: "q".to_string(),
         channel_id: None,
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -597,6 +607,7 @@ async fn search_rejects_inverted_range() {
     let request = SearchRequest {
         query: "q".to_string(),
         channel_id: None,
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -644,6 +655,7 @@ async fn search_accepts_equal_from_and_to_date() {
     let request = SearchRequest {
         query: "q".to_string(),
         channel_id: None,
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -681,6 +693,7 @@ async fn search_rejects_to_date_older_than_hours_back_window() {
     let request = SearchRequest {
         query: "q".to_string(),
         channel_id: None,
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -723,6 +736,7 @@ async fn search_accepts_to_date_inside_hours_back_window() {
     let request = SearchRequest {
         query: "q".to_string(),
         channel_id: None,
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -753,6 +767,7 @@ async fn search_rejects_blank_from_date() {
     let request = SearchRequest {
         query: "q".to_string(),
         channel_id: None,
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -790,6 +805,7 @@ async fn search_accepts_padded_from_date() {
     let request = SearchRequest {
         query: "q".to_string(),
         channel_id: None,
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -827,6 +843,7 @@ async fn search_response_reports_window_and_returned() {
     let request = SearchRequest {
         query: "q".to_string(),
         channel_id: None,
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -871,6 +888,7 @@ async fn search_messages_rejects_cursors_without_channel() {
     let request = SearchRequest {
         query: "новости".to_string(),
         channel_id: None,
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -901,6 +919,7 @@ async fn search_messages_rejects_compact_without_channel() {
     let request = SearchRequest {
         query: "тест".to_string(),
         channel_id: None,
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -917,9 +936,43 @@ async fn search_messages_rejects_compact_without_channel() {
         .await;
     let err = out.expect_err("must reject");
     assert!(
-        err.contains("channel_id"),
-        "error should name the remedy: {err}"
+        err.contains("channel_id or channel_ids"),
+        "error should name both remedies now that compact supports multi scope: {err}"
     );
+}
+
+#[tokio::test]
+async fn search_accepts_username_channel_id() {
+    // §1.3 restoration: search_messages must accept a username channel_id,
+    // not just a numeric one. The username is resolved to a ChannelId via
+    // one cheap resolve_channel_identity call before the search itself.
+    let mut telegram = MockTelegramClientTrait::new();
+    telegram
+        .expect_resolve_channel_identity()
+        .withf(|r| r == "@swodki")
+        .returning(|_| {
+            Ok(ChannelIdentity {
+                id: ChannelId::new(1144180066).expect("id"),
+                username: Some("swodki".into()),
+            })
+        });
+    telegram
+        .expect_search_messages()
+        .withf(|p| p.channel_id.map(|c| c.get()) == Some(1144180066))
+        .returning(|_| Ok(create_test_search_result(vec![], "тест", 0)));
+    let mut limiter = MockRateLimiterTrait::new();
+    limiter.expect_acquire().returning(|_| Ok(()));
+    let server = McpServer::new(Arc::new(telegram), Arc::new(limiter));
+
+    let request = SearchRequest {
+        query: "тест".to_string(),
+        channel_id: Some("@swodki".to_string()),
+        ..Default::default()
+    };
+    server
+        .search_messages_impl(request)
+        .await
+        .expect("username channel_id must work (§1.3)");
 }
 
 #[tokio::test]
@@ -956,6 +1009,7 @@ async fn search_messages_shapes_response_end_to_end_for_single_channel() {
     let request = SearchRequest {
         query: "тест".to_string(),
         channel_id: Some("123".to_string()),
+        channel_ids: None,
         hours_back: None,
         limit: Some(3),
         media_filter: None,

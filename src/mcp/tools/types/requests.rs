@@ -104,6 +104,12 @@ pub struct SearchRequest {
     #[serde(default, deserialize_with = "flexible_opt_string")]
     pub channel_id: Option<String>,
 
+    #[schemars(
+        description = "Optional: fan out over up to 20 channels (IDs or usernames) in one call with bounded concurrency; results are merged newest-first and limit counts the merged total. Mutually exclusive with channel_id; incompatible with before_id/after_id. Omit both for a global search."
+    )]
+    #[serde(default)]
+    pub channel_ids: Option<Vec<String>>,
+
     #[schemars(description = "How many hours back to search (default: 48, max: 72)")]
     #[serde(default, deserialize_with = "flexible_opt_u32")]
     pub hours_back: Option<u32>,

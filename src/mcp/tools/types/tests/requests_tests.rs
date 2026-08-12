@@ -92,6 +92,18 @@ fn search_request_null_media_filter_treated_as_none() {
 }
 
 #[test]
+fn search_request_accepts_channel_ids() {
+    let json = r#"{"query": "тест", "channel_ids": ["111", "222"]}"#;
+    let request: SearchRequest = serde_json::from_str(json).unwrap();
+
+    assert!(request.channel_id.is_none());
+    assert_eq!(
+        request.channel_ids,
+        Some(vec!["111".to_string(), "222".to_string()])
+    );
+}
+
+#[test]
 fn get_recent_messages_request_deserializes() {
     let json = r#"{"channel_id": "123456"}"#;
     let request: GetRecentMessagesRequest = serde_json::from_str(json).unwrap();
