@@ -35,6 +35,7 @@ mod lifecycle;
 mod ops_history;
 mod ops_media;
 mod ops_message;
+mod ops_resolve;
 mod ops_search;
 mod ops_transcribe;
 mod resolve;
@@ -156,5 +157,12 @@ impl TelegramClientTrait for TelegramClient {
 
     async fn is_premium(&self) -> Option<bool> {
         self.is_premium_impl().await
+    }
+
+    async fn resolve_channels(
+        &self,
+        identifiers: &[String],
+    ) -> Result<Vec<crate::telegram::ChannelResolution>, Error> {
+        self.resolve_channels_impl(identifiers).await
     }
 }
