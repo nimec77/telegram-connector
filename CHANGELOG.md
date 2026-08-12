@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-08-12
+
 ### Added
 - `get_messages_batch`: fetch up to 50 specific messages from one channel in a
   single call (one `channels.GetMessages` RPC); deleted/missing ids are
