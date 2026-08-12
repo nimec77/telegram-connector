@@ -134,6 +134,30 @@ pub struct MessageLinkResponse {
     pub is_public: bool,
 }
 
+/// One id from a get_messages_batch request that does not exist (work-order A1).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MissingMessageEntry {
+    pub id: MessageId,
+    #[schemars(description = "Always \"not found or deleted\"")]
+    pub error: String,
+}
+
+/// Response for get_messages_batch tool
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MessagesBatchResponse {
+    #[schemars(description = "Channel the messages belong to (as passed in the request)")]
+    pub channel_id: String,
+    #[schemars(description = "Found messages, in request order")]
+    pub messages: Vec<MessageResponse>,
+    #[schemars(description = "Number of messages in this response")]
+    pub returned: usize,
+    #[schemars(description = "Requested ids that do not exist in this channel")]
+    pub missing: Vec<MissingMessageEntry>,
+    /// Ids dropped to fit the response byte budget — re-request exactly these.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub omitted_ids: Option<Vec<MessageId>>,
+}
+
 /// Response for open_message_in_telegram tool
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct OpenMessageResponse {

@@ -4,7 +4,7 @@
 
 use crate::mcp::tools::types::requests::ResponseFormat;
 use crate::mcp::tools::types::responses::{
-    ChannelHeader, MessageResponse, NextCursor, SearchResponse,
+    ChannelHeader, MessageResponse, MessagesBatchResponse, NextCursor, SearchResponse,
 };
 
 /// Default per-message text cap in characters (work-order B4).
@@ -13,7 +13,7 @@ pub(crate) const DEFAULT_MAX_TEXT_LENGTH: u32 = 2000;
 /// Cut `text` to `max_chars` characters, flagging the cut. Counts
 /// characters, not bytes: the corpus is largely Cyrillic UTF-8, where a
 /// byte cap would halve the visible text and could split a code point.
-fn truncate_text(msg: &mut MessageResponse, max_chars: u32) {
+pub(crate) fn truncate_text(msg: &mut MessageResponse, max_chars: u32) {
     let total = msg.text.chars().count();
     if total <= max_chars as usize {
         return;
@@ -110,6 +110,34 @@ pub(crate) fn shape_response(
         compact_response(resp);
     }
     fit_to_budget(resp, byte_budget, cursor_eligible)
+}
+
+/// Pop trailing messages from a batch response until it serializes within
+/// `budget`, recording popped ids in `omitted_ids` (work-order A1 + B4).
+/// Distinct from `missing`: omitted ids exist and can be re-requested.
+/// At least one message always survives (same floor as `fit_to_budget`).
+pub(crate) fn fit_batch_to_budget(
+    resp: &mut MessagesBatchResponse,
+    budget: usize,
+) -> Result<(), String> {
+    let mut omitted = Vec::new();
+    loop {
+        let len = serde_json::to_string(resp)
+            .map_err(|e| format!("Failed to serialize response: {}", e))?
+            .len();
+        if len <= budget || resp.messages.len() <= 1 {
+            break;
+        }
+        if let Some(popped) = resp.messages.pop() {
+            omitted.push(popped.id);
+        }
+    }
+    if !omitted.is_empty() {
+        omitted.reverse(); // request order, matching messages
+        resp.returned = resp.messages.len();
+        resp.omitted_ids = Some(omitted);
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -284,5 +312,25 @@ mod tests {
             resp.next_cursor.is_none(),
             "global search: has_more without cursor"
         );
+    }
+
+    #[test]
+    fn batch_budget_pops_tail_into_omitted_ids() {
+        let mut resp = MessagesBatchResponse {
+            channel_id: "swodki".into(),
+            messages: (1..=5)
+                .map(|i| wire_message(i, &"я".repeat(2_000)))
+                .collect(),
+            returned: 5,
+            missing: vec![],
+            omitted_ids: None,
+        };
+        fit_batch_to_budget(&mut resp, 10_000).expect("fit");
+        assert!(serde_json::to_string(&resp).expect("json").len() <= 10_000);
+        assert_eq!(resp.returned, resp.messages.len());
+        let omitted = resp.omitted_ids.expect("omitted");
+        assert!(!omitted.is_empty());
+        // Tail (highest fixture ids) got popped; survivors keep request order.
+        assert_eq!(resp.messages.first().expect("some").id.get(), 1);
     }
 }
