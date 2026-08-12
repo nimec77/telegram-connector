@@ -77,12 +77,36 @@ impl TelegramClient {
         // Use iter_messages to get message history (no search query)
         let peer_ref = peer_to_ref(&peer).await?;
 
+        // Convert cursor bounds once, outside the timeout closure, so `?` maps
+        // through the existing error path (A8).
+        let before_offset = match params.before_id {
+            Some(id) => Some(id.as_i32().ok_or_else(|| {
+                Error::InvalidInput(format!(
+                    "before_id {} exceeds Telegram's message id range",
+                    id.get()
+                ))
+            })?),
+            None => None,
+        };
+        let after_bound = match params.after_id {
+            Some(id) => Some(id.as_i32().ok_or_else(|| {
+                Error::InvalidInput(format!(
+                    "after_id {} exceeds Telegram's message id range",
+                    id.get()
+                ))
+            })?),
+            None => None,
+        };
+
         let (messages, has_more) =
             with_timeout("iter_messages", self.timeouts.history_secs, async {
                 let mut messages = Vec::new();
                 let mut has_more = false;
                 let mut counter = PostCounter::default();
                 let mut messages_iter = self.client.iter_messages(peer_ref);
+                if let Some(before) = before_offset {
+                    messages_iter = messages_iter.offset_id(before);
+                }
 
                 while let Some(msg) = messages_iter
                     .next()
@@ -97,6 +121,14 @@ impl TelegramClient {
 
                     // Check time filter - messages are in reverse chronological order
                     if message_timestamp(&msg).is_none_or(|t| t < cutoff_time) {
+                        break;
+                    }
+
+                    // Exclusive lower cursor bound: everything from here on
+                    // is older (reverse chronological), so stop (A8).
+                    if let Some(after) = after_bound
+                        && msg.id() <= after
+                    {
                         break;
                     }
 

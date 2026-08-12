@@ -27,6 +27,27 @@ impl TelegramClient {
         let start_time = Instant::now();
         let cutoff_time = params.window_start();
 
+        // Convert cursor bounds once, outside the timeout closures, so `?` maps
+        // through the existing error path (A8).
+        let before_offset = match params.before_id {
+            Some(id) => Some(id.as_i32().ok_or_else(|| {
+                Error::InvalidInput(format!(
+                    "before_id {} exceeds Telegram's message id range",
+                    id.get()
+                ))
+            })?),
+            None => None,
+        };
+        let after_bound = match params.after_id {
+            Some(id) => Some(id.as_i32().ok_or_else(|| {
+                Error::InvalidInput(format!(
+                    "after_id {} exceeds Telegram's message id range",
+                    id.get()
+                ))
+            })?),
+            None => None,
+        };
+
         // If channel_id is specified, search only that channel
         let (messages, channels_scanned, has_more) = if let Some(channel_id) = &params.channel_id {
             with_timeout(
@@ -51,6 +72,9 @@ impl TelegramClient {
                             let peer_ref = peer_to_ref(peer).await?;
                             let mut search_iter =
                                 self.client.search_messages(peer_ref).query(&params.query);
+                            if let Some(before) = before_offset {
+                                search_iter = search_iter.offset_id(before);
+                            }
 
                             // Apply media filter if specified
                             if let Some(ref media_filter) = params.media_filter {
@@ -70,6 +94,13 @@ impl TelegramClient {
                                 }
                                 if message_timestamp(&msg).is_none_or(|t| t < cutoff_time) {
                                     break; // reverse chronological order
+                                }
+                                // Exclusive lower cursor bound: everything from here on
+                                // is older (reverse chronological), so stop (A8).
+                                if let Some(after) = after_bound
+                                    && msg.id() <= after
+                                {
+                                    break;
                                 }
                                 if let Some(converted) = convert_message(&msg, peer) {
                                     if params.collapse_albums {
@@ -107,6 +138,16 @@ impl TelegramClient {
                 (messages, Some(channels_scanned), has_more)
             })?
         } else {
+            // Cursors are single-channel only (decision 2): global search has no
+            // per-channel offset_id to ride, and no way to bound it client-side
+            // without scanning every channel's history.
+            if params.before_id.is_some() || params.after_id.is_some() {
+                return Err(Error::InvalidInput(
+                    "before_id/after_id require channel_id: cursor pagination is per-channel"
+                        .to_string(),
+                ));
+            }
+
             // Search all channels using global search
             let (collected, has_more) =
                 with_timeout("search_all_messages", self.timeouts.search_secs, async {
