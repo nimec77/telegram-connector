@@ -4,8 +4,8 @@
 
 use crate::error::Error;
 use crate::telegram::types::{
-    Channel, ChannelIdentity, ChannelPage, ChannelResolution, HistoryParams, MediaDownload,
-    Message, MessageBatch, SearchParams, SearchResult, TranscriptionOutcome,
+    Channel, ChannelIdentity, ChannelPage, ChannelResolution, ChannelStats, HistoryParams,
+    MediaDownload, Message, MessageBatch, SearchParams, SearchResult, TranscriptionOutcome,
 };
 
 /// Trait for Telegram client operations (allows mocking in tests)
@@ -112,4 +112,14 @@ pub trait TelegramClientTrait: Send + Sync {
         &self,
         identifiers: &[String],
     ) -> Result<Vec<ChannelResolution>, Error>;
+
+    /// One bounded history sweep computing album-collapsed posting stats:
+    /// up to `days_back` days (caller-clamped), at most
+    /// `ChannelStats::MAX_MESSAGES_SCANNED` raw records (work-order A5).
+    /// `sample.complete` is false when the cap cut the sweep short.
+    async fn get_channel_stats(
+        &self,
+        channel_ref: &str,
+        days_back: u32,
+    ) -> Result<ChannelStats, Error>;
 }

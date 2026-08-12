@@ -15,6 +15,7 @@ pub mod ids;
 pub mod media;
 pub mod names;
 pub mod params;
+pub mod stats;
 pub mod transcription;
 
 // Re-export all public types for convenience
@@ -29,4 +30,5 @@ pub use media::{
 };
 pub use names::{ChannelName, Username};
 pub use params::{HistoryParams, QueryMetadata, SearchParams, SearchResult};
+pub use stats::{ChannelStats, StatsSample};
 pub use transcription::{TranscriptionOutcome, TranscriptionState};
