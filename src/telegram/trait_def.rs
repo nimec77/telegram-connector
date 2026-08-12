@@ -4,8 +4,8 @@
 
 use crate::error::Error;
 use crate::telegram::types::{
-    Channel, ChannelIdentity, ChannelPage, HistoryParams, MediaDownload, Message, MessageBatch,
-    SearchParams, SearchResult, TranscriptionOutcome,
+    Channel, ChannelIdentity, ChannelPage, ChannelResolution, HistoryParams, MediaDownload,
+    Message, MessageBatch, SearchParams, SearchResult, TranscriptionOutcome,
 };
 
 /// Trait for Telegram client operations (allows mocking in tests)
@@ -103,4 +103,13 @@ pub trait TelegramClientTrait: Send + Sync {
     /// value; if unknown, performs one `get_me()` and caches it. Returns `None`
     /// only when Premium status could not be determined.
     async fn is_premium(&self) -> Option<bool>;
+
+    /// Batch-resolve identifiers (numeric id, @username, or exact chat title)
+    /// to channel entities in one dialog walk plus at most one
+    /// `resolve_username` RPC per unmatched username-shaped identifier.
+    /// Per-identifier failures are entries, not errors (work-order A7).
+    async fn resolve_channels(
+        &self,
+        identifiers: &[String],
+    ) -> Result<Vec<ChannelResolution>, Error>;
 }

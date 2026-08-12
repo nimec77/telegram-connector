@@ -19,8 +19,8 @@ pub mod transcription;
 
 // Re-export all public types for convenience
 pub use entities::{
-    AlbumInfo, Channel, ChannelIdentity, ChannelPage, ChatType, ForwardInfo, LinkPreview, Message,
-    MessageBatch, MessageReaction,
+    AlbumInfo, Channel, ChannelIdentity, ChannelPage, ChannelResolution, ChatType, ForwardInfo,
+    LinkPreview, Message, MessageBatch, MessageReaction,
 };
 pub use ids::{ChannelId, MessageId, UserId};
 pub use media::{

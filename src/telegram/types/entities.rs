@@ -173,6 +173,18 @@ pub struct ChannelIdentity {
     pub username: Option<String>,
 }
 
+/// Outcome of resolving one identifier in resolve_channels (work-order A7).
+/// Exactly one of `channel` / `error` is present.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ChannelResolution {
+    #[schemars(description = "The identifier as passed in the request")]
+    pub identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub channel: Option<Channel>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub error: Option<String>,
+}
+
 /// Result of a batch message fetch: found messages plus the ids Telegram
 /// reported as deleted/never-existed (work-order A1). Order follows the
 /// request's id order in both vectors.
