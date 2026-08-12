@@ -41,6 +41,13 @@ impl TelegramClient {
         channel_ref: &str,
     ) -> Result<Option<grammers_client::peer::Peer>, Error> {
         let username = channel_ref.strip_prefix('@').unwrap_or(channel_ref);
+        // Reject malformed usernames locally — Ok(None) means "cannot exist",
+        // which callers already turn into the clean not-found error or their
+        // dialog-walk fallback, without spending a resolve RPC (D8).
+        if !Username::is_valid_shape(username) {
+            tracing::warn!(username = %username, "Rejected malformed username without RPC");
+            return Ok(None);
+        }
         with_timeout("resolve_username", self.timeouts.resolve_secs, async {
             self.client.resolve_username(username).await.map_err(|e| {
                 tracing::error!(username = %username, error = %e, "Failed to resolve username");

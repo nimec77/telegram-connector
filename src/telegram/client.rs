@@ -16,7 +16,7 @@ use crate::telegram::timeout::with_timeout;
 use crate::telegram::trait_def::TelegramClientTrait;
 use crate::telegram::types::{
     ChannelIdentity, HistoryParams, MediaDownload, MediaType, QueryMetadata, SearchParams,
-    SearchResult, TranscriptionOutcome, TranscriptionState,
+    SearchResult, TranscriptionOutcome, TranscriptionState, Username,
 };
 use grammers_client::Client;
 use grammers_client::media::Media;
