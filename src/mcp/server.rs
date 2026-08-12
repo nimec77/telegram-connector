@@ -9,10 +9,11 @@ use crate::mcp::tools::{
     GetChannelsRequest, GetLastResponsesRequest, GetMessageByLinkRequest, GetMessageMediaRequest,
     GetMessageMediaResponse, GetMessagesBatchRequest, GetRecentMessagesRequest,
     LastResponsesResponse, MessageLinkResponse, MessageResponse, MessagesBatchResponse,
-    MissingMessageEntry, OpenMessageRequest, RateLimiterCosts, RateLimiterStatus, ResponseFormat,
-    SearchPublicChannelsRequest, SearchRequest, SearchResponse, StatusResponse,
-    TranscribeVoiceMessageRequest, TranscribeVoiceMessageResponse, json_response, parse_channel_id,
-    parse_message_id, parse_optional_channel_id, parse_optional_utc, validate_date_window,
+    MissingMessageEntry, OpenMessageRequest, RateLimiterCosts, RateLimiterStatus,
+    ResolveChannelsRequest, ResolveChannelsResponse, ResponseFormat, SearchPublicChannelsRequest,
+    SearchRequest, SearchResponse, StatusResponse, TranscribeVoiceMessageRequest,
+    TranscribeVoiceMessageResponse, json_response, parse_channel_id, parse_message_id,
+    parse_optional_channel_id, parse_optional_utc, validate_date_window,
 };
 // Constructed only inside open_message_in_telegram's macOS-only body; an
 // unconditional import is an unused-import error on Linux builds.
@@ -183,6 +184,7 @@ mod impl_discovery;
 mod impl_links;
 mod impl_media;
 mod impl_message_batch;
+mod impl_resolve;
 mod impl_search;
 mod impl_status;
 
@@ -444,6 +446,25 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "Tool invocation started"
         );
         inv.finish(self.get_messages_batch_impl(request).await)
+    }
+
+    /// Tool 14: resolve_channels - Batch-resolve ids/usernames/titles to channels
+    #[tool(
+        description = "Batch-resolve up to 20 channel identifiers (numeric ID, @username, or exact title of a subscribed chat) to full channel entities in one call. Use for forward attribution (forwarded_from.channel_id -> name) and title-only private chats. Failures are reported per-identifier."
+    )]
+    pub async fn resolve_channels(
+        &self,
+        Parameters(request): Parameters<ResolveChannelsRequest>,
+        id: RequestId,
+    ) -> Result<String, String> {
+        let inv = ToolInvocation::start("resolve_channels", id);
+        tracing::info!(
+            tool = inv.tool,
+            request_id = %inv.request_id,
+            identifiers = request.identifiers.len(),
+            "Tool invocation started"
+        );
+        inv.finish(self.resolve_channels_impl(request).await)
     }
 }
 

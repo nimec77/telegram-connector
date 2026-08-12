@@ -70,7 +70,8 @@ impl Message {
 /// resolved title/username live in the response's peer map (not exposed per
 /// message). Filling them would require an extra resolve call per message, which the
 /// zero-extra-call enrichment invariant forbids; batch attribution is the
-/// `resolve_channels` tool planned for v0.18 (roadmap A7).
+/// `resolve_channels` tool (work-order A7): pass the forward `channel_id`s and
+/// read back names/usernames in one call.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ForwardInfo {
     #[serde(skip_serializing_if = "Option::is_none", default)]
