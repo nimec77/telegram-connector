@@ -9,8 +9,9 @@ use crate::config::{TelegramConfig, TimeoutConfig};
 use crate::error::Error;
 use crate::telegram::converters::{
     channel_identity, convert_discovered_peer, convert_media_filter, convert_media_to_type,
-    convert_message, convert_peer_to_channel, extract_audio_duration, extract_video_info,
-    matches_media_filter, message_timestamp, select_size_candidate, size_candidates,
+    convert_message, convert_peer_to_channel, convert_raw_message, extract_audio_duration,
+    extract_video_info, matches_media_filter_raw, message_timestamp, select_size_candidate,
+    size_candidates, timestamp_from_raw,
 };
 use crate::telegram::timeout::with_timeout;
 use crate::telegram::trait_def::TelegramClientTrait;

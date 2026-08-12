@@ -229,9 +229,6 @@ pub fn matches_media_filter(msg: &grammers_client::message::Message, filter: &Me
 }
 
 /// Raw-message twin of [`matches_media_filter`], for the raw history pager path.
-// Wired into ops_history in the raw-pager task of this plan; the allow only
-// bridges the strict per-task clippy gate.
-#[allow(dead_code)]
 pub(crate) fn matches_media_filter_raw(raw: &tl::enums::Message, filter: &MediaFilter) -> bool {
     let (media, text, pinned) = match raw {
         tl::enums::Message::Message(m) => (
