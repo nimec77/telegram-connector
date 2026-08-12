@@ -13,6 +13,17 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         let response = StatusResponse {
             telegram_connected: connected,
             rate_limiter_tokens: tokens,
+            rate_limiter: RateLimiterStatus {
+                tokens,
+                capacity: self.rate_limiter.capacity(),
+                refill_per_sec: self.rate_limiter.refill_rate(),
+                costs: RateLimiterCosts {
+                    // Every non-media tool acquires a literal 1.
+                    search: 1,
+                    media_download: self.media_download_cost,
+                    transcription: self.transcription_cost,
+                },
+            },
             server_version: env!("CARGO_PKG_VERSION").to_string(),
             requests_received: self.metrics.requests_received(),
             responses_written: self.metrics.responses_written(),

@@ -14,8 +14,11 @@ pub struct StatusResponse {
     #[schemars(description = "Whether Telegram client is connected")]
     pub telegram_connected: bool,
 
-    #[schemars(description = "Available rate limiter tokens")]
+    #[schemars(description = "Deprecated alias of rate_limiter.tokens; removed in v0.18")]
     pub rate_limiter_tokens: f64,
+
+    #[schemars(description = "Rate-limiter budget: tokens, capacity, refill, per-call costs")]
+    pub rate_limiter: RateLimiterStatus,
 
     #[schemars(description = "Server version")]
     pub server_version: String,
@@ -42,6 +45,35 @@ pub struct StatusResponse {
         description = "Whether the connected account has Telegram Premium (null if unknown)"
     )]
     pub premium: Option<bool>,
+}
+
+/// Rate-limiter budget breakdown (work-order D5).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RateLimiterStatus {
+    #[schemars(description = "Tokens currently available")]
+    pub tokens: f64,
+
+    #[schemars(description = "Bucket capacity (maximum tokens)")]
+    pub capacity: f64,
+
+    #[schemars(description = "Refill rate, tokens per second")]
+    pub refill_per_sec: f64,
+
+    #[schemars(description = "Token cost per call, by operation kind")]
+    pub costs: RateLimiterCosts,
+}
+
+/// Per-operation token costs (work-order D5).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RateLimiterCosts {
+    #[schemars(description = "Search / history / channel / link calls")]
+    pub search: u32,
+
+    #[schemars(description = "get_message_media calls")]
+    pub media_download: u32,
+
+    #[schemars(description = "transcribe_voice_message calls")]
+    pub transcription: u32,
 }
 
 /// Response for transcribe_voice_message tool

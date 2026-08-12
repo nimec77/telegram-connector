@@ -5,6 +5,16 @@ fn status_response_serializes() {
     let response = StatusResponse {
         telegram_connected: true,
         rate_limiter_tokens: 45.5,
+        rate_limiter: RateLimiterStatus {
+            tokens: 45.5,
+            capacity: 50.0,
+            refill_per_sec: 2.0,
+            costs: RateLimiterCosts {
+                search: 1,
+                media_download: 5,
+                transcription: 5,
+            },
+        },
         server_version: "0.1.0".to_string(),
         requests_received: 1,
         responses_written: 1,
