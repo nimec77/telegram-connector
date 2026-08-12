@@ -2,7 +2,7 @@
 //!
 //! Unit of `client` (LM-2).
 
-use super::guard::{is_empty_variant, partition_slot_ids, require_found};
+use super::guard::{is_empty_variant, require_found};
 use super::*;
 
 impl TelegramClient {
@@ -96,24 +96,37 @@ impl TelegramClient {
         })
         .await?;
 
-        // Slot i corresponds to message_ids[i]; absent and MessageEmpty both
-        // mean the id does not exist in this channel (work-order B1 guard).
-        let found_flags: Vec<Option<bool>> = slots
-            .iter()
-            .map(|slot| slot.as_ref().map(|m| !is_empty_variant(&m.raw)))
-            .collect();
-        let (_, missing) = partition_slot_ids(message_ids, &found_flags);
-
-        let messages: Vec<crate::telegram::Message> = slots
-            .into_iter()
-            .flatten()
-            .filter(|m| !is_empty_variant(&m.raw))
-            .filter_map(|m| convert_message(&m, &peer))
-            .collect();
+        // Slot i corresponds to message_ids[i]. Single pass so every requested id
+        // lands in exactly one of `messages` / `missing_ids` — never silently in
+        // neither: absent and MessageEmpty both mean the id does not exist in this
+        // channel (work-order B1 guard); a present, non-empty slot that still fails
+        // domain conversion (bad peer identity, invalid id) is logged and reported
+        // as missing rather than dropped.
+        let mut messages = Vec::with_capacity(message_ids.len());
+        let mut missing_ids = Vec::with_capacity(message_ids.len());
+        for (&message_id, slot) in message_ids.iter().zip(slots) {
+            match slot {
+                Some(msg) if !is_empty_variant(&msg.raw) => match convert_message(&msg, &peer) {
+                    Some(converted) => messages.push(converted),
+                    None => {
+                        tracing::warn!(
+                            channel_ref = %channel_ref,
+                            message_id,
+                            "Failed to convert message in batch; reporting as missing"
+                        );
+                        missing_ids.push(i64::from(message_id));
+                    }
+                },
+                // Absent slot or MessageEmpty placeholder: the id does not exist
+                // in this channel (deleted, or never existed) — no log, this is
+                // the expected/common "missing" path (work-order B1 guard).
+                _ => missing_ids.push(i64::from(message_id)),
+            }
+        }
 
         Ok(crate::telegram::MessageBatch {
             messages,
-            missing_ids: missing.into_iter().map(i64::from).collect(),
+            missing_ids,
         })
     }
 }
