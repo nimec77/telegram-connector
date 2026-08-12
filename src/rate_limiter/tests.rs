@@ -28,6 +28,14 @@ fn available_tokens_returns_correct_initial_value() {
     assert_eq!(limiter.available_tokens(), 100.0);
 }
 
+#[test]
+fn exposes_capacity_and_refill_rate() {
+    let config = test_config(50, 2.0);
+    let limiter = RateLimiter::new(&config);
+    assert_eq!(limiter.capacity(), 50.0);
+    assert_eq!(limiter.refill_rate(), 2.0);
+}
+
 // ========================================
 // Acquire - Success Cases
 // ========================================

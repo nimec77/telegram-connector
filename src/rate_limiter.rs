@@ -54,6 +54,8 @@ impl TokenBucket {
 /// Rate limiter using token bucket algorithm
 pub struct RateLimiter {
     bucket: Arc<Mutex<TokenBucket>>,
+    capacity: f64,
+    refill_rate: f64,
 }
 
 impl RateLimiter {
@@ -62,6 +64,8 @@ impl RateLimiter {
         let bucket = TokenBucket::new(config.max_tokens, config.refill_rate);
         Self {
             bucket: Arc::new(Mutex::new(bucket)),
+            capacity: config.max_tokens as f64,
+            refill_rate: config.refill_rate,
         }
     }
 
@@ -82,6 +86,12 @@ pub trait RateLimiterTrait: Send + Sync {
 
     /// Get available tokens
     fn available_tokens(&self) -> f64;
+
+    /// Bucket capacity (max tokens).
+    fn capacity(&self) -> f64;
+
+    /// Refill rate in tokens per second.
+    fn refill_rate(&self) -> f64;
 }
 
 #[async_trait::async_trait]
@@ -99,6 +109,14 @@ impl RateLimiterTrait for RateLimiter {
         let mut bucket = self.bucket.lock().unwrap();
         bucket.refill();
         bucket.available()
+    }
+
+    fn capacity(&self) -> f64 {
+        self.capacity
+    }
+
+    fn refill_rate(&self) -> f64 {
+        self.refill_rate
     }
 }
 
