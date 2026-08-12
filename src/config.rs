@@ -23,6 +23,8 @@ pub struct Config {
     pub observability: ObservabilityConfig,
     #[serde(default = "default_transcription_config")]
     pub transcription: TranscriptionConfig,
+    #[serde(default = "default_limits_config")]
+    pub limits: LimitsConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -174,6 +176,26 @@ pub struct TranscriptionConfig {
     pub max_timeout_seconds: u32,
 }
 
+/// Response-size limits applied at the MCP layer (`[limits]`, work-order B4).
+#[derive(Debug, Clone, Deserialize)]
+pub struct LimitsConfig {
+    /// Cap (bytes) on a serialized message-stream response. When exceeded,
+    /// trailing messages are dropped and `has_more`/`next_cursor` are set.
+    /// At least one message is always returned, even over-budget.
+    #[serde(default = "default_response_byte_budget")]
+    pub response_byte_budget: u64,
+}
+
+impl LimitsConfig {
+    /// Reject a zero budget — it would make every response over-cap.
+    pub fn validate(&self) -> anyhow::Result<()> {
+        if self.response_byte_budget == 0 {
+            anyhow::bail!("limits.response_byte_budget must be > 0");
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct LoggingConfig {
     #[serde(default = "default_log_level")]
@@ -264,6 +286,11 @@ impl Config {
             .timeouts
             .validate()
             .context("invalid telegram.timeouts configuration")?;
+
+        config
+            .limits
+            .validate()
+            .context("invalid limits configuration")?;
 
         Ok(config)
     }

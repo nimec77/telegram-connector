@@ -148,6 +148,7 @@ fn create_test_config(api_id: i32, api_hash: Option<&str>, phone_number: Option<
         },
         observability: default_observability_config(),
         transcription: default_transcription_config(),
+        limits: default_limits_config(),
     }
 }
 
@@ -689,4 +690,29 @@ fn test_max_buffered_payload_bytes_from_toml() {
         "[telegram]\napi_id = 12345\n[observability]\nmax_buffered_payload_bytes = 1024\n";
     let config: Config = toml::from_str(toml_str).unwrap();
     assert_eq!(config.observability.max_buffered_payload_bytes, 1024);
+}
+
+// ========================================================================
+// Limits Config Tests (Task 1, v0.16 capacity release)
+// ========================================================================
+
+#[test]
+fn limits_config_defaults_when_absent() {
+    let config: Config = toml::from_str("[telegram]\napi_id = 123\n").expect("parse");
+    assert_eq!(config.limits.response_byte_budget, 40_000);
+}
+
+#[test]
+fn limits_config_parses_response_byte_budget() {
+    let toml_str = "[telegram]\napi_id = 123\n\n[limits]\nresponse_byte_budget = 20000\n";
+    let config: Config = toml::from_str(toml_str).expect("parse");
+    assert_eq!(config.limits.response_byte_budget, 20_000);
+}
+
+#[test]
+fn limits_config_rejects_zero_budget() {
+    let config: Config =
+        toml::from_str("[telegram]\napi_id = 123\n\n[limits]\nresponse_byte_budget = 0\n")
+            .expect("parse");
+    assert!(config.limits.validate().is_err());
 }
