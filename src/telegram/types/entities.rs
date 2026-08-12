@@ -173,6 +173,15 @@ pub struct ChannelIdentity {
     pub username: Option<String>,
 }
 
+/// Result of a batch message fetch: found messages plus the ids Telegram
+/// reported as deleted/never-existed (work-order A1). Order follows the
+/// request's id order in both vectors.
+#[derive(Debug, Clone)]
+pub struct MessageBatch {
+    pub messages: Vec<Message>,
+    pub missing_ids: Vec<i64>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

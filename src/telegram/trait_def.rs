@@ -4,8 +4,8 @@
 
 use crate::error::Error;
 use crate::telegram::types::{
-    Channel, ChannelIdentity, ChannelPage, HistoryParams, MediaDownload, Message, SearchParams,
-    SearchResult, TranscriptionOutcome,
+    Channel, ChannelIdentity, ChannelPage, HistoryParams, MediaDownload, Message, MessageBatch,
+    SearchParams, SearchResult, TranscriptionOutcome,
 };
 
 /// Trait for Telegram client operations (allows mocking in tests)
@@ -56,6 +56,16 @@ pub trait TelegramClientTrait: Send + Sync {
     /// Uses grammers' `get_messages_by_id` under the hood.
     async fn get_message_by_id(&self, channel_ref: &str, message_id: i32)
     -> Result<Message, Error>;
+
+    /// Fetch up to 50 specific messages from one channel in a single RPC
+    /// (`get_messages_by_id` takes an id vector). Deleted or never-existed
+    /// ids are reported in `MessageBatch::missing_ids` instead of failing
+    /// the batch (work-order A1); the caller pre-validates count and sign.
+    async fn get_messages_batch(
+        &self,
+        channel_ref: &str,
+        message_ids: &[i32],
+    ) -> Result<MessageBatch, Error>;
 
     /// Resolve a channel reference (username or numeric-ID string) to its
     /// canonical numeric ID and public username, if any (`None` = no public

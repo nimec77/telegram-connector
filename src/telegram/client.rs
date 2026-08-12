@@ -119,6 +119,14 @@ impl TelegramClientTrait for TelegramClient {
         self.get_message_by_id_impl(channel_ref, message_id).await
     }
 
+    async fn get_messages_batch(
+        &self,
+        channel_ref: &str,
+        message_ids: &[i32],
+    ) -> Result<crate::telegram::MessageBatch, Error> {
+        self.get_messages_batch_impl(channel_ref, message_ids).await
+    }
+
     async fn resolve_channel_identity(
         &self,
         channel_ref: &str,

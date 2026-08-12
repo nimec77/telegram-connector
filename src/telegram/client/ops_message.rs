@@ -2,7 +2,7 @@
 //!
 //! Unit of `client` (LM-2).
 
-use super::guard::require_found;
+use super::guard::{is_empty_variant, partition_slot_ids, require_found};
 use super::*;
 
 impl TelegramClient {
@@ -58,6 +58,62 @@ impl TelegramClient {
                 "Failed to convert message to domain type"
             );
             Error::TelegramApi("Failed to convert message".to_string())
+        })
+    }
+
+    pub(super) async fn get_messages_batch_impl(
+        &self,
+        channel_ref: &str,
+        message_ids: &[i32],
+    ) -> Result<crate::telegram::MessageBatch, Error> {
+        if channel_ref.is_empty() {
+            return Err(Error::InvalidInput(
+                "Channel reference cannot be empty".to_string(),
+            ));
+        }
+        if message_ids.is_empty() {
+            return Err(Error::InvalidInput(
+                "message_ids cannot be empty".to_string(),
+            ));
+        }
+
+        let peer = self.resolve_peer(channel_ref).await?;
+        let peer_ref = peer_to_ref(&peer).await?;
+
+        let slots = with_timeout("get_messages_by_id", self.timeouts.history_secs, async {
+            self.client
+                .get_messages_by_id(peer_ref, message_ids)
+                .await
+                .map_err(|e| {
+                    tracing::error!(
+                        channel_ref = %channel_ref,
+                        count = message_ids.len(),
+                        error = %e,
+                        "Failed to get messages batch"
+                    );
+                    Error::TelegramApi(format!("Failed to get messages: {}", e))
+                })
+        })
+        .await?;
+
+        // Slot i corresponds to message_ids[i]; absent and MessageEmpty both
+        // mean the id does not exist in this channel (work-order B1 guard).
+        let found_flags: Vec<Option<bool>> = slots
+            .iter()
+            .map(|slot| slot.as_ref().map(|m| !is_empty_variant(&m.raw)))
+            .collect();
+        let (_, missing) = partition_slot_ids(message_ids, &found_flags);
+
+        let messages: Vec<crate::telegram::Message> = slots
+            .into_iter()
+            .flatten()
+            .filter(|m| !is_empty_variant(&m.raw))
+            .filter_map(|m| convert_message(&m, &peer))
+            .collect();
+
+        Ok(crate::telegram::MessageBatch {
+            messages,
+            missing_ids: missing.into_iter().map(i64::from).collect(),
         })
     }
 }
