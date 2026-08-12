@@ -74,7 +74,8 @@ async fn get_recent_messages_returns_results() {
 
     // When: Get recent messages
     let request = GetRecentMessagesRequest {
-        channel_id: "123".to_string(),
+        channel_id: Some("123".to_string()),
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -99,14 +100,18 @@ async fn get_recent_messages_returns_results() {
 }
 
 #[tokio::test]
-async fn get_recent_messages_empty_channel_id_fails() {
-    // Given: Server and empty channel_id
+async fn get_recent_messages_missing_channel_id_fails() {
+    // Given: Server, and neither channel_id nor channel_ids set. (Wire clients
+    // that send a blank/whitespace-only channel_id never reach this point:
+    // flexible_opt_string already collapses it to None at the deserialization
+    // boundary, so "missing" is the only shape this validation needs to catch.)
     let mock_client = MockTelegramClientTrait::new();
     let mock_limiter = MockRateLimiterTrait::new();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GetRecentMessagesRequest {
-        channel_id: "   ".to_string(), // whitespace only
+        channel_id: None,
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -127,7 +132,7 @@ async fn get_recent_messages_empty_channel_id_fails() {
     // Then: Fails with error
     assert!(result.is_err());
     let error = result.err().unwrap();
-    assert!(error.contains("channel_id is required"));
+    assert!(error.contains("required"), "got: {error}");
 }
 
 #[tokio::test]
@@ -161,7 +166,8 @@ async fn get_recent_messages_with_media_filter() {
 
     // When: Get recent messages with photo filter
     let request = GetRecentMessagesRequest {
-        channel_id: "123".to_string(),
+        channel_id: Some("123".to_string()),
+        channel_ids: None,
         hours_back: Some(24),
         limit: None,
         media_filter: Some(MediaFilter::Photo),
@@ -219,7 +225,8 @@ async fn get_recent_messages_applies_limits() {
 
     // When: Get recent messages with custom limits
     let request = GetRecentMessagesRequest {
-        channel_id: "123".to_string(),
+        channel_id: Some("123".to_string()),
+        channel_ids: None,
         hours_back: Some(72),
         limit: Some(3),
         media_filter: None,
@@ -280,7 +287,8 @@ async fn get_recent_messages_with_username_passes_identifier_without_pre_resolvi
 
     // When: Get recent messages using username
     let request = GetRecentMessagesRequest {
-        channel_id: "tech_news".to_string(), // username, not numeric ID
+        channel_id: Some("tech_news".to_string()), // username, not numeric ID
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -318,7 +326,8 @@ async fn get_recent_messages_rate_limited() {
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GetRecentMessagesRequest {
-        channel_id: "123".to_string(),
+        channel_id: Some("123".to_string()),
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -362,7 +371,8 @@ async fn get_recent_messages_passes_date_range_to_client() {
 
     // When: Get recent messages with an explicit date range
     let request = GetRecentMessagesRequest {
-        channel_id: "123".to_string(),
+        channel_id: Some("123".to_string()),
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -402,7 +412,8 @@ async fn get_recent_messages_accepts_equal_from_and_to_date() {
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GetRecentMessagesRequest {
-        channel_id: "123".to_string(),
+        channel_id: Some("123".to_string()),
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -433,7 +444,8 @@ async fn get_recent_messages_rejects_inverted_range() {
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GetRecentMessagesRequest {
-        channel_id: "123".to_string(),
+        channel_id: Some("123".to_string()),
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -470,7 +482,8 @@ async fn get_recent_messages_rejects_to_date_older_than_hours_back_window() {
     let long_ago = chrono::Utc::now() - chrono::Duration::days(30);
 
     let request = GetRecentMessagesRequest {
-        channel_id: "123".to_string(),
+        channel_id: Some("123".to_string()),
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -510,7 +523,8 @@ async fn get_recent_messages_accepts_to_date_inside_hours_back_window() {
     let recent = chrono::Utc::now() - chrono::Duration::hours(1);
 
     let request = GetRecentMessagesRequest {
-        channel_id: "123".to_string(),
+        channel_id: Some("123".to_string()),
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -537,7 +551,8 @@ async fn get_recent_messages_rejects_blank_to_date() {
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GetRecentMessagesRequest {
-        channel_id: "123".to_string(),
+        channel_id: Some("123".to_string()),
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -573,7 +588,8 @@ async fn collapse_albums_flag_reaches_params() {
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GetRecentMessagesRequest {
-        channel_id: "123".to_string(),
+        channel_id: Some("123".to_string()),
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -608,7 +624,8 @@ async fn collapse_albums_defaults_to_true() {
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GetRecentMessagesRequest {
-        channel_id: "123".to_string(),
+        channel_id: Some("123".to_string()),
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -657,7 +674,8 @@ async fn get_recent_messages_emits_next_cursor_when_limit_truncates() {
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GetRecentMessagesRequest {
-        channel_id: "123".to_string(),
+        channel_id: Some("123".to_string()),
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -695,7 +713,8 @@ async fn get_recent_messages_passes_cursor_params_to_client() {
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GetRecentMessagesRequest {
-        channel_id: "123".to_string(),
+        channel_id: Some("123".to_string()),
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -720,7 +739,8 @@ async fn get_recent_messages_rejects_inverted_cursor_range() {
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GetRecentMessagesRequest {
-        channel_id: "123".to_string(),
+        channel_id: Some("123".to_string()),
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -768,7 +788,8 @@ async fn get_recent_messages_truncates_long_text() {
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GetRecentMessagesRequest {
-        channel_id: "123".to_string(),
+        channel_id: Some("123".to_string()),
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -818,7 +839,8 @@ async fn get_recent_messages_compact_hoists_channel_header() {
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GetRecentMessagesRequest {
-        channel_id: "123".to_string(),
+        channel_id: Some("123".to_string()),
+        channel_ids: None,
         hours_back: None,
         limit: None,
         media_filter: None,
@@ -875,7 +897,8 @@ async fn get_recent_messages_oversized_page_stays_under_budget() {
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GetRecentMessagesRequest {
-        channel_id: "123".to_string(),
+        channel_id: Some("123".to_string()),
+        channel_ids: None,
         hours_back: None,
         limit: Some(100),
         media_filter: None,

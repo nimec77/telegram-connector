@@ -2,6 +2,7 @@ use crate::config::ObservabilityConfig;
 use crate::error::Error;
 use crate::link::{ChannelRef, MessageLink, parse_telegram_link};
 use crate::mcp::observability::{InstrumentedTransport, ResponseBuffer, SessionMetrics};
+use crate::mcp::tools::fanout;
 use crate::mcp::tools::image::process_image;
 use crate::mcp::tools::shaping;
 use crate::mcp::tools::{
@@ -21,7 +22,8 @@ use crate::mcp::tools::{
 use crate::mcp::tools::OpenMessageResponse;
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
-use crate::telegram::types::{HistoryParams, MessageId, SearchParams};
+use crate::telegram::types::{ChannelId, HistoryParams, MessageId, SearchParams};
+use futures::StreamExt;
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -319,7 +321,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         tracing::info!(
             tool = inv.tool,
             request_id = %inv.request_id,
-            channel_id = %request.channel_id,
+            channel_id = ?request.channel_id,
+            channel_ids = ?request.channel_ids,
             hours_back = ?request.hours_back,
             limit = ?request.limit,
             media_filter = ?request.media_filter,

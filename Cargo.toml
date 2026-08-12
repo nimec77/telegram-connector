@@ -27,6 +27,7 @@ grammers-mtsender = { git = "https://codeberg.org/Lonami/grammers", rev = "9fef0
 # Async
 tokio = { version = "1.52.3", features = ["full"] }
 async-trait = "0.1"
+futures = "0.3"
 
 # Interactive prompts
 dialoguer = "0.12.0"

@@ -2186,6 +2186,7 @@ dependencies = [
  "dialoguer",
  "directories",
  "filetime",
+ "futures",
  "grammers-client",
  "grammers-mtsender",
  "grammers-session",

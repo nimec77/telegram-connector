@@ -3,6 +3,7 @@
 //! This module contains all 14 MCP tools.
 //! Tools are organized in subdirectory for better maintainability.
 
+pub(crate) mod fanout;
 pub mod helpers;
 pub mod image;
 pub(crate) mod shaping;
