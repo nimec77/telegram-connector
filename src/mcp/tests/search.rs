@@ -1,14 +1,14 @@
 //! Tests for search_messages tool
 
 use crate::mcp::server::McpServer;
-use crate::mcp::tools::SearchRequest;
+use crate::mcp::tools::{ResponseFormat, SearchRequest, SearchResponse};
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::{
     ChannelId, ChannelName, MediaFilter, MediaType, Message, MessageId, QueryMetadata,
     SearchResult, Username,
 };
-use crate::test_helpers::create_test_search_result;
+use crate::test_helpers::{create_test_message, create_test_search_result};
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::NumberOrString;
@@ -44,6 +44,7 @@ async fn search_messages_returns_results() {
             album: None,
         }],
         returned: 1,
+        has_more: false,
         search_time_ms: 100,
         query_metadata: QueryMetadata {
             query: "AI".to_string(),
@@ -74,6 +75,10 @@ async fn search_messages_returns_results() {
         from_date: None,
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
+        format: None,
     };
 
     let result = server
@@ -82,7 +87,7 @@ async fn search_messages_returns_results() {
 
     // Then: Returns search results
     assert!(result.is_ok());
-    let response: SearchResult = serde_json::from_str(&result.unwrap()).unwrap();
+    let response: SearchResponse = serde_json::from_str(&result.unwrap()).unwrap();
     assert_eq!(response.returned, 1);
     assert_eq!(response.messages.len(), 1);
     assert!(response.messages[0].text.contains("AI"));
@@ -104,6 +109,10 @@ async fn search_messages_empty_query_fails() {
         from_date: None,
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
+        format: None,
     };
 
     // When: Search messages
@@ -143,6 +152,10 @@ async fn search_messages_rate_limited() {
         from_date: None,
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
+        format: None,
     };
 
     // When: Search messages
@@ -164,6 +177,7 @@ async fn search_messages_with_channel_filter() {
     let expected_result = SearchResult {
         messages: vec![],
         returned: 0,
+        has_more: false,
         search_time_ms: 50,
         query_metadata: QueryMetadata {
             query: "test".to_string(),
@@ -199,6 +213,10 @@ async fn search_messages_with_channel_filter() {
         from_date: None,
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
+        format: None,
     };
 
     let result = server
@@ -216,6 +234,7 @@ async fn search_messages_applies_limits() {
     let expected_result = SearchResult {
         messages: vec![],
         returned: 0,
+        has_more: false,
         search_time_ms: 50,
         query_metadata: QueryMetadata {
             query: "test".to_string(),
@@ -251,6 +270,10 @@ async fn search_messages_applies_limits() {
         from_date: None,
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
+        format: None,
     };
 
     let result = server
@@ -291,6 +314,7 @@ async fn search_allows_empty_query_with_media_filter() {
             album: None,
         }],
         returned: 1,
+        has_more: false,
         search_time_ms: 100,
         query_metadata: QueryMetadata {
             query: "".to_string(),
@@ -321,6 +345,10 @@ async fn search_allows_empty_query_with_media_filter() {
         from_date: None,
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
+        format: None,
     };
 
     let result = server
@@ -329,7 +357,7 @@ async fn search_allows_empty_query_with_media_filter() {
 
     // Then: Success (empty query allowed with media_filter)
     assert!(result.is_ok());
-    let response: SearchResult = serde_json::from_str(&result.unwrap()).unwrap();
+    let response: SearchResponse = serde_json::from_str(&result.unwrap()).unwrap();
     assert_eq!(response.returned, 1);
 }
 
@@ -340,6 +368,7 @@ async fn search_passes_media_filter_to_params() {
     let expected_result = SearchResult {
         messages: vec![],
         returned: 0,
+        has_more: false,
         search_time_ms: 50,
         query_metadata: QueryMetadata {
             query: "AI news".to_string(),
@@ -374,6 +403,10 @@ async fn search_passes_media_filter_to_params() {
         from_date: None,
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
+        format: None,
     };
 
     let result = server
@@ -427,6 +460,7 @@ async fn search_messages_serializes_enrichment_fields() {
             album: None,
         }],
         returned: 1,
+        has_more: false,
         search_time_ms: 10,
         query_metadata: QueryMetadata {
             query: "x".to_string(),
@@ -455,6 +489,10 @@ async fn search_messages_serializes_enrichment_fields() {
         from_date: None,
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
+        format: None,
     };
 
     let result = server
@@ -502,6 +540,10 @@ async fn search_passes_date_range_to_client() {
         from_date: Some("2026-08-01T00:00:00Z".to_string()),
         to_date: Some("2026-08-05T00:00:00Z".to_string()),
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
+        format: None,
     };
 
     let result = server
@@ -528,6 +570,10 @@ async fn search_rejects_invalid_from_date() {
         from_date: Some("not-a-date".to_string()),
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
+        format: None,
     };
 
     // When: Search with a malformed from_date
@@ -556,6 +602,10 @@ async fn search_rejects_inverted_range() {
         from_date: Some("2026-08-05T00:00:00Z".to_string()),
         to_date: Some("2026-08-01T00:00:00Z".to_string()),
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
+        format: None,
     };
 
     // When: Search with from_date after to_date
@@ -599,6 +649,10 @@ async fn search_accepts_equal_from_and_to_date() {
         from_date: Some("2026-08-01T00:00:00Z".to_string()),
         to_date: Some("2026-08-01T00:00:00Z".to_string()),
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
+        format: None,
     };
 
     let result = server
@@ -632,6 +686,10 @@ async fn search_rejects_to_date_older_than_hours_back_window() {
         from_date: None,
         to_date: Some(long_ago.to_rfc3339()),
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
+        format: None,
     };
 
     let result = server
@@ -670,6 +728,10 @@ async fn search_accepts_to_date_inside_hours_back_window() {
         from_date: None,
         to_date: Some(recent.to_rfc3339()),
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
+        format: None,
     };
 
     let result = server
@@ -696,6 +758,10 @@ async fn search_rejects_blank_from_date() {
         from_date: Some("   ".to_string()),
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
+        format: None,
     };
 
     let result = server
@@ -729,6 +795,10 @@ async fn search_accepts_padded_from_date() {
         from_date: Some(" 2026-08-01T00:00:00Z ".to_string()),
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
+        format: None,
     };
 
     let result = server
@@ -762,6 +832,10 @@ async fn search_response_reports_window_and_returned() {
         from_date: None,
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
+        format: None,
     };
 
     let result_string = server
@@ -785,4 +859,127 @@ async fn search_response_reports_window_and_returned() {
         "executed window start present"
     );
     assert_eq!(meta["channels_in_results"], 1);
+}
+
+#[tokio::test]
+async fn search_messages_rejects_cursors_without_channel() {
+    let mock_client = MockTelegramClientTrait::new();
+    let mock_limiter = MockRateLimiterTrait::new();
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = SearchRequest {
+        query: "новости".to_string(),
+        channel_id: None,
+        hours_back: None,
+        limit: None,
+        media_filter: None,
+        from_date: None,
+        to_date: None,
+        collapse_albums: None,
+        before_id: Some(100),
+        after_id: None,
+        max_text_length: None,
+        format: None,
+    };
+    let out = server
+        .search_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
+    let err = out.expect_err("must reject");
+    assert!(
+        err.contains("channel_id"),
+        "error should name the remedy: {err}"
+    );
+}
+
+#[tokio::test]
+async fn search_messages_rejects_compact_without_channel() {
+    let mock_client = MockTelegramClientTrait::new();
+    let mock_limiter = MockRateLimiterTrait::new();
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = SearchRequest {
+        query: "тест".to_string(),
+        channel_id: None,
+        hours_back: None,
+        limit: None,
+        media_filter: None,
+        from_date: None,
+        to_date: None,
+        collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
+        format: Some(ResponseFormat::Compact),
+    };
+    let out = server
+        .search_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
+    let err = out.expect_err("must reject");
+    assert!(
+        err.contains("channel_id"),
+        "error should name the remedy: {err}"
+    );
+}
+
+#[tokio::test]
+async fn search_messages_shapes_response_end_to_end_for_single_channel() {
+    // Given: single-channel search results with more pages available.
+    let mut mock_client = MockTelegramClientTrait::new();
+    let result = SearchResult {
+        messages: vec![
+            create_test_message(30, "third", 123),
+            create_test_message(20, "second", 123),
+            create_test_message(10, "first", 123),
+        ],
+        returned: 3,
+        has_more: true,
+        search_time_ms: 5,
+        query_metadata: QueryMetadata {
+            query: "тест".to_string(),
+            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
+        },
+    };
+    mock_client
+        .expect_search_messages()
+        .returning(move |_| Ok(result.clone()));
+
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
+
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    // When: channel-scoped search requests the compact format.
+    let request = SearchRequest {
+        query: "тест".to_string(),
+        channel_id: Some("123".to_string()),
+        hours_back: None,
+        limit: Some(3),
+        media_filter: None,
+        from_date: None,
+        to_date: None,
+        collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
+        format: Some(ResponseFormat::Compact),
+    };
+
+    let out = server
+        .search_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await
+        .expect("ok");
+    let v: serde_json::Value = serde_json::from_str(&out).expect("json");
+
+    // Then: the shared shaping pipeline ran end to end - cursor emitted from
+    // the last (oldest) message, compact header hoisted, per-message channel
+    // fields stripped.
+    assert_eq!(v["has_more"], serde_json::Value::Bool(true));
+    assert_eq!(v["next_cursor"]["before_id"], serde_json::json!(10));
+    assert_eq!(v["channel"]["id"], serde_json::json!(123));
+    for m in v["messages"].as_array().expect("messages array") {
+        assert!(m.get("channel_id").is_none());
+    }
 }

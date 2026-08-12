@@ -4,8 +4,8 @@
 //! attributes via the `use defaults::*;` glob in `config.rs`.
 
 use super::{
-    LoggingConfig, ObservabilityConfig, RateLimitConfig, SearchConfig, ServerConfig, TimeoutConfig,
-    TranscriptionConfig,
+    LimitsConfig, LoggingConfig, ObservabilityConfig, RateLimitConfig, SearchConfig, ServerConfig,
+    TimeoutConfig, TranscriptionConfig,
 };
 use std::path::PathBuf;
 
@@ -160,4 +160,14 @@ pub(crate) fn default_response_buffer_size() -> usize {
 
 pub(crate) fn default_observability_config() -> ObservabilityConfig {
     ObservabilityConfig::default()
+}
+
+pub(crate) fn default_response_byte_budget() -> u64 {
+    40_000
+}
+
+pub(crate) fn default_limits_config() -> LimitsConfig {
+    LimitsConfig {
+        response_byte_budget: default_response_byte_budget(),
+    }
 }

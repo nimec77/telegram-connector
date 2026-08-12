@@ -185,6 +185,7 @@ pub fn create_test_search_result(
 ) -> SearchResult {
     SearchResult {
         returned: messages.len() as u64,
+        has_more: false,
         search_time_ms: 100,
         query_metadata: QueryMetadata {
             query: query.to_string(),

@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `before_id` / `after_id` cursor pagination on `search_messages` and
+  `get_recent_messages` (single-channel scope), keyed on message id so pages
+  don't drift on active channels; responses carry `next_cursor` (A8)
+- `has_more` on message-stream responses — true only when more qualifying
+  messages exist beyond the returned page (A8/B4)
+- Response byte budget (`[limits] response_byte_budget`, default 40 000
+  bytes): oversized pages are truncated truthfully instead of overflowing the
+  client (B4)
+- `max_text_length` (default 2000 chars) with `text_truncated` /
+  `text_full_length` flags (B4)
+- `format: "compact"`: response-level `channel` header instead of per-message
+  channel fields (A4)
+
+### Changed
+- `MessageResponse.channel_id` / `channel_name` / `channel_username` are now
+  omitted (rather than serialized as `null`) when unset. In `format: "full"`
+  this affects only `channel_username` (`channel_id`/`channel_name` stay
+  always-present); `format: "compact"` strips all three from every message
+  and hoists them into the response-level `channel` header instead.
+
 ## [0.15.0] - 2026-08-11
 
 ### Changed (breaking)

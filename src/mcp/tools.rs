@@ -5,6 +5,7 @@
 
 pub mod helpers;
 pub mod image;
+pub(crate) mod shaping;
 pub mod types;
 
 // Re-export types for convenience

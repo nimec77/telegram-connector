@@ -45,6 +45,11 @@ phone_number = "+1234567890"
 # max_tokens = 50                          # Default: 50 (burst capacity)
 # refill_rate = 2.0                        # Default: 2.0 tokens/second
 
+[limits]
+# Byte cap on a serialized message-stream response. When a page would exceed
+# it, trailing messages are dropped and has_more/next_cursor are set.
+# response_byte_budget = 40000
+
 # [transcription]
 # Optional: bounds for the transcribe_voice_message `timeout_seconds` request param.
 # default_timeout_seconds = 30             # Default: 30 (applied when the request omits it)

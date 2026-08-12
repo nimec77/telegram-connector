@@ -3325,3 +3325,74 @@ follow-up commit). Tests 499 → 518 across eight feature/fix tasks plus this do
   `original_message_id` stay populated. Batch attribution (resolving many channel ids in one call)
   is the planned `resolve_channels` tool for v0.18 (roadmap A7); revisit this decision if that tool
   bumps the pinned grammers rev and a public peer-resolution accessor appears.
+
+## Capacity (B4, A4, A8) — 2026-08-12
+
+Nine-task plan (`docs/superpowers/plans/2026-08-12-capacity.md`) covering the first release of the
+work-order roadmap's capacity slice
+(`docs/superpowers/specs/2026-08-11-work-order-roadmap-design.md`, "Covers B4, A4, A8"): making the
+documented `limit=100` actually usable on verbose channels — a response byte budget with truthful
+`has_more`, message-id cursor pagination, per-message text truncation, and a compact response
+format. TDD throughout, gate green per task, one commit per task, no follow-up fix commits needed
+this round. Tests 518 → 547 across seven feature tasks plus this docs-only Task 8.
+
+- **Task 1 / B4** (`a9b0b13`) — new `[limits]` config table with `response_byte_budget` (default
+  40 000 bytes), reaching the server via the existing builder-method pattern.
+- **Task 2 / A8+B4** (`54a34c5`) — `has_more` on `SearchResponse` becomes a non-optional `bool`,
+  reported truthfully from the fetch loops: set only when an in-window, filter-matching message
+  was refused because of `limit`.
+- **Task 3 / A8** (`cd5e122`) — `before_id`/`after_id` cursor bounds added to the domain params
+  (`SearchParams`/`HistoryParams`) and wired into the client's history and search fetch paths.
+- **Task 4 / A8** (`e6df727`) — `before_id`/`after_id` exposed on the `search_messages` and
+  `get_recent_messages` request surface (`search_messages` additionally requires `channel_id`
+  when either is set — cursors are per-channel); `NextCursor { before_id }` added to
+  `SearchResponse`.
+- **Task 5 / B4** (`a43d26c`) — `max_text_length` (default 2000 chars) truncates `text` in the new
+  `src/mcp/tools/shaping.rs` module, flagging `text_truncated`/`text_full_length`; counts
+  characters, not bytes, so Cyrillic text isn't cut mid-codepoint or halved.
+- **Task 6 / A4** (`38ebe14`) — `format: "compact"` hoists `channel_id`/`channel_name`/
+  `channel_username` into a response-level `channel` header and strips them from every message;
+  rejected outside single-channel scope.
+- **Task 7 / B4** (`ca0112c`) — pop-until-fits byte-budget fitting: serialize, and while over
+  `[limits] response_byte_budget` with more than one message left, drop the oldest and
+  re-serialize; recomputes `returned`/`has_more`/`next_cursor` after popping.
+- **Task 8** (this entry) — README parameter tables and response-shape narrative, config docs
+  (`config.example.toml` + README config example), CHANGELOG, and this tasklist/memory pass.
+
+### Decisions worth remembering
+
+- **`after_id` is client-side, `before_id` rides the RPC.** grammers' `MessageIter`/`SearchIter`
+  expose `offset_id` (an exclusive upper bound) but no `min_id` setter, so `before_id` maps
+  directly onto `offset_id` while `after_id` is enforced as a client-side break condition in the
+  fetch loop — the same pattern already used for the time-window cutoff. Both bounds are
+  exclusive: results satisfy `after_id < id < before_id`.
+- **`has_more` means "a qualifying message was refused," not "the window is exhausted."** It is
+  set only when the fetch loop actually turned away an in-window, filter-matching message because
+  `limit` was reached, or when the byte budget popped messages after the fact. Running out of
+  window (including stopping at `after_id`) yields `has_more: false` — there was nothing left to
+  refuse, not "we don't know." This mirrors the `channels_scanned: null` "structural not
+  applicable, not a failure" pattern from the Post shape entry above.
+- **Byte budget is pop-until-fits over the fully-shaped response, with an at-least-one-message
+  floor.** Truncation and compact hoisting run first; then the module serializes the response and,
+  while it's over budget with more than one message, pops the oldest and re-serializes. At most
+  ~100 round trips for a 100-message page — a few ms. The one deliberate exception: a single
+  message is never dropped to satisfy the budget, even if it alone overruns it, because an empty
+  page with `has_more: true` on the same cursor would let a caller loop forever with no progress.
+  This is the one documented way a response may exceed `response_byte_budget`.
+- **Compact format is single-channel-only through v0.16, by design, not by accident.** The
+  response-level `channel` header is derived from the first message's channel identity; a global
+  (multi-channel) search has no single channel to hoist, so `format: "compact"` is rejected
+  outside single-channel scope (`get_recent_messages`, or `search_messages` with `channel_id`) with
+  a clear error rather than silently picking one channel. A `channels` map keyed by channel for
+  multi-channel compact responses is deferred to v0.18 (roadmap).
+- **Cursors are per-channel, so global search gets `has_more` with no `next_cursor`.** Message ids
+  are only unique within a channel; a `before_id` cursor from a multi-channel global search would
+  be ambiguous about which channel's id space it bounds. Global search reports `has_more`
+  truthfully but omits `next_cursor` entirely rather than emitting a cursor that can't be replayed
+  correctly.
+- **Lesson:** the request-struct compiler-guided approach from
+  `docs/superpowers/plans/2026-08-12-capacity.md` (Task 4) — add all four new fields to both
+  request structs in one task even before every field's behavior is implemented, then let later
+  tasks' compiler errors surface every test literal that needs updating — kept the four-field
+  rollout (`before_id`, `after_id`, `max_text_length`, `format`) from being split across mismatched
+  partial request shapes and avoided a second wave of "add missing field" test churn in Tasks 5–6.

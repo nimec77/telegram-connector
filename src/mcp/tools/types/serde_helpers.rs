@@ -1,5 +1,6 @@
 //! Custom serde deserializers for MCP tool types.
 
+use super::requests::ResponseFormat;
 use crate::telegram::types::MediaFilter;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
@@ -32,6 +33,37 @@ where
                 .map_err(serde::de::Error::custom)
         }
         Some(StringOrMediaFilter::MediaFilter(f)) => Ok(Some(f)),
+    }
+}
+
+/// Deserialize Option<ResponseFormat> treating empty strings as None.
+/// This handles MCP clients that send `"format": ""` instead of omitting the field.
+pub fn deserialize_optional_response_format<'de, D>(
+    deserializer: D,
+) -> Result<Option<ResponseFormat>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    // First try to deserialize as an Option<String> to check for empty string
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrResponseFormat {
+        String(String),
+        ResponseFormat(ResponseFormat),
+        Null,
+    }
+
+    match Option::<StringOrResponseFormat>::deserialize(deserializer)? {
+        None => Ok(None),
+        Some(StringOrResponseFormat::Null) => Ok(None),
+        Some(StringOrResponseFormat::String(s)) if s.is_empty() => Ok(None),
+        Some(StringOrResponseFormat::String(s)) => {
+            // Try to parse non-empty string as ResponseFormat
+            serde_json::from_value(serde_json::Value::String(s))
+                .map(Some)
+                .map_err(serde::de::Error::custom)
+        }
+        Some(StringOrResponseFormat::ResponseFormat(f)) => Ok(Some(f)),
     }
 }
 
@@ -88,6 +120,37 @@ where
             .trim()
             .parse::<i64>()
             .map_err(|_| Error::custom(format!("expected an integer, got '{}'", s))),
+    }
+}
+
+/// Deserialize `Option<i64>` accepting either a JSON number or a numeric string.
+///
+/// The string form is trimmed before parsing. An empty/whitespace string or a
+/// JSON `null` becomes `None`. Floats and non-numeric values produce an error.
+pub fn flexible_opt_i64<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum NumOrStr {
+        Num(i64),
+        Str(String),
+    }
+
+    match Option::<NumOrStr>::deserialize(deserializer)? {
+        None => Ok(None),
+        Some(NumOrStr::Num(n)) => Ok(Some(n)),
+        Some(NumOrStr::Str(s)) => {
+            let trimmed = s.trim();
+            if trimmed.is_empty() {
+                return Ok(None);
+            }
+            trimmed
+                .parse::<i64>()
+                .map(Some)
+                .map_err(|_| Error::custom(format!("expected an integer, got '{}'", s)))
+        }
     }
 }
 

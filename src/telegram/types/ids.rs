@@ -53,6 +53,12 @@ impl MessageId {
     pub fn get(&self) -> i64 {
         self.0
     }
+
+    /// The id as Telegram's wire type. `None` when it exceeds `i32` —
+    /// MTProto message ids are `i32`, so such a cursor cannot be sent.
+    pub fn as_i32(&self) -> Option<i32> {
+        i32::try_from(self.0).ok()
+    }
 }
 
 impl fmt::Display for MessageId {
@@ -154,6 +160,18 @@ mod tests {
     fn message_id_display() {
         let id = MessageId::new(789).unwrap();
         assert_eq!(format!("{}", id), "789");
+    }
+
+    #[test]
+    fn message_id_as_i32_converts_in_range() {
+        let id = MessageId::new(610_119).expect("valid id");
+        assert_eq!(id.as_i32(), Some(610_119_i32));
+    }
+
+    #[test]
+    fn message_id_as_i32_rejects_out_of_range() {
+        let id = MessageId::new(i64::from(i32::MAX) + 1).expect("valid id");
+        assert_eq!(id.as_i32(), None);
     }
 
     // =========================================================================

@@ -1,7 +1,7 @@
 //! Request parameters and result types.
 
 use super::entities::Message;
-use super::ids::ChannelId;
+use super::ids::{ChannelId, MessageId};
 use super::media::MediaFilter;
 use chrono::{DateTime, Duration, Utc};
 use schemars::JsonSchema;
@@ -25,6 +25,14 @@ pub struct SearchParams {
     pub to_date: Option<DateTime<Utc>>,
     /// Collapse album siblings into one post-level result; limit counts posts (B5+A2).
     pub collapse_albums: bool,
+    /// Exclusive upper message-id bound: only messages with id < before_id
+    /// are returned. Rides MTProto's offset_id, so paging doesn't drift on
+    /// active channels the way offset-based paging does (A8).
+    pub before_id: Option<MessageId>,
+    /// Exclusive lower message-id bound: iteration stops at the first
+    /// message with id <= after_id (client-side; grammers exposes no
+    /// min_id setter).
+    pub after_id: Option<MessageId>,
 }
 
 impl SearchParams {
@@ -43,6 +51,8 @@ impl SearchParams {
             from_date: None,
             to_date: None,
             collapse_albums: true,
+            before_id: None,
+            after_id: None,
         }
     }
 
@@ -86,6 +96,14 @@ pub struct HistoryParams {
     pub to_date: Option<DateTime<Utc>>,
     /// Collapse album siblings into one post-level result; limit counts posts (B5+A2).
     pub collapse_albums: bool,
+    /// Exclusive upper message-id bound: only messages with id < before_id
+    /// are returned. Rides MTProto's offset_id, so paging doesn't drift on
+    /// active channels the way offset-based paging does (A8).
+    pub before_id: Option<MessageId>,
+    /// Exclusive lower message-id bound: iteration stops at the first
+    /// message with id <= after_id (client-side; grammers exposes no
+    /// min_id setter).
+    pub after_id: Option<MessageId>,
 }
 
 impl HistoryParams {
@@ -104,6 +122,8 @@ impl HistoryParams {
             from_date: None,
             to_date: None,
             collapse_albums: true,
+            before_id: None,
+            after_id: None,
         }
     }
 
@@ -144,6 +164,9 @@ pub struct SearchResult {
     pub messages: Vec<Message>,
     /// Number of messages in this response (page size, not a match count — B6).
     pub returned: u64,
+    /// More qualifying messages exist in the requested window beyond this
+    /// page (limit- or budget-truncated), so paging on can find them (A8).
+    pub has_more: bool,
     pub search_time_ms: u64,
     pub query_metadata: QueryMetadata,
 }
@@ -210,6 +233,8 @@ mod tests {
             from_date: None,
             to_date: None,
             collapse_albums: true,
+            before_id: None,
+            after_id: None,
         };
         assert_eq!(params.media_filter, Some(MediaFilter::Photo));
     }
@@ -217,6 +242,16 @@ mod tests {
     // =========================================================================
     // HistoryParams Tests
     // =========================================================================
+
+    #[test]
+    fn params_default_to_no_cursors() {
+        let history = HistoryParams::new(ChannelId::new(1).unwrap());
+        assert!(history.before_id.is_none());
+        assert!(history.after_id.is_none());
+        let search = SearchParams::new("query");
+        assert!(search.before_id.is_none());
+        assert!(search.after_id.is_none());
+    }
 
     #[test]
     fn history_params_new() {
@@ -292,6 +327,7 @@ mod tests {
         let result = SearchResult {
             messages: vec![],
             returned: 42,
+            has_more: false,
             search_time_ms: 150,
             query_metadata: QueryMetadata {
                 query: "test".to_string(),
@@ -316,5 +352,24 @@ mod tests {
             !json.contains("window_to"),
             "window_to must be omitted when None"
         );
+    }
+
+    #[test]
+    fn search_result_serializes_has_more() {
+        let result = SearchResult {
+            messages: vec![],
+            returned: 0,
+            has_more: true,
+            search_time_ms: 1,
+            query_metadata: QueryMetadata {
+                query: String::new(),
+                window_from: Utc::now(),
+                window_to: None,
+                channels_scanned: Some(1),
+                channels_in_results: 0,
+            },
+        };
+        let json = serde_json::to_value(&result).expect("serialize");
+        assert_eq!(json["has_more"], serde_json::Value::Bool(true));
     }
 }

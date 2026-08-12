@@ -123,6 +123,28 @@ fn i64_float_number_errors() {
     assert!(serde_json::from_str::<I64T>(r#"{"v": 1.5}"#).is_err());
 }
 
+#[test]
+fn flexible_opt_i64_accepts_number_string_and_null() {
+    #[derive(serde::Deserialize)]
+    struct Probe {
+        #[serde(
+            default,
+            deserialize_with = "crate::mcp::tools::types::serde_helpers::flexible_opt_i64"
+        )]
+        v: Option<i64>,
+    }
+    let n: Probe = serde_json::from_str(r#"{"v": 610119}"#).unwrap();
+    assert_eq!(n.v, Some(610_119));
+    let s: Probe = serde_json::from_str(r#"{"v": "610119"}"#).unwrap();
+    assert_eq!(s.v, Some(610_119));
+    let null: Probe = serde_json::from_str(r#"{"v": null}"#).unwrap();
+    assert_eq!(null.v, None);
+    let absent: Probe = serde_json::from_str(r#"{}"#).unwrap();
+    assert_eq!(absent.v, None);
+    let blank: Probe = serde_json::from_str(r#"{"v": "  "}"#).unwrap();
+    assert_eq!(blank.v, None);
+}
+
 #[derive(Deserialize)]
 struct TestStruct {
     #[serde(default, deserialize_with = "deserialize_optional_media_filter")]
