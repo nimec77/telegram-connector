@@ -15,8 +15,8 @@ use crate::telegram::converters::{
 use crate::telegram::timeout::with_timeout;
 use crate::telegram::trait_def::TelegramClientTrait;
 use crate::telegram::types::{
-    ChannelIdentity, HistoryParams, MediaDownload, MediaType, QueryMetadata, SearchParams,
-    SearchResult, TranscriptionOutcome, TranscriptionState, Username,
+    ChannelId, ChannelIdentity, HistoryParams, MediaDownload, MediaType, QueryMetadata,
+    SearchParams, SearchResult, TranscriptionOutcome, TranscriptionState, Username,
 };
 use grammers_client::Client;
 use grammers_client::media::Media;
@@ -37,6 +37,7 @@ mod ops_media;
 mod ops_message;
 mod ops_resolve;
 mod ops_search;
+mod ops_stats;
 mod ops_transcribe;
 mod resolve;
 
@@ -164,5 +165,13 @@ impl TelegramClientTrait for TelegramClient {
         identifiers: &[String],
     ) -> Result<Vec<crate::telegram::ChannelResolution>, Error> {
         self.resolve_channels_impl(identifiers).await
+    }
+
+    async fn get_channel_stats(
+        &self,
+        channel_ref: &str,
+        days_back: u32,
+    ) -> Result<crate::telegram::ChannelStats, Error> {
+        self.get_channel_stats_impl(channel_ref, days_back).await
     }
 }
