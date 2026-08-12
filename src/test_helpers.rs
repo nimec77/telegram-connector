@@ -306,6 +306,23 @@ pub fn raw_tl_channel(id: i64, title: &str, username: Option<&str>) -> tl::types
     }
 }
 
+/// Raw TL community (channel-namespace group) for envelope fixtures.
+pub fn raw_tl_community(id: i64, title: &str) -> tl::types::Community {
+    tl::types::Community {
+        creator: false,
+        left: false,
+        min: false,
+        collapsed_in_dialogs: false,
+        id,
+        access_hash: Some(0),
+        title: title.to_string(),
+        photo: tl::enums::ChatPhoto::Empty,
+        date: 0,
+        admin_rights: None,
+        default_banned_rights: None,
+    }
+}
+
 /// Raw TL user for envelope fixtures. Same convention (the TL `self` field is
 /// named `is_self` in generated Rust).
 pub fn raw_tl_user(

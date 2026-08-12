@@ -3538,3 +3538,14 @@ commit (Task 2). Tests 560 → 601 across nine feature tasks plus this docs-only
   ids-only `ForwardInfo`, never an error, never a fabricated name. If a future grammers rev
   exposes the peer map publicly, the raw pagers can collapse back to the iterators — that is the
   only reason they exist.
+- **Two deliberate deltas from the pre-envelope behavior, plus one inherited gap (review of the
+  forward-attribution branch).** (1) Message-level `sender_name` for a user with only a last name
+  set (deleted/partial accounts) now emits that last name; the old `Peer::name()` path emitted
+  `None`. Deliberate: the visible name beats nothing, and the `EntityInfo::sender_name()` fallback
+  is required anyway for channel-as-sender titles. (2) grammers' `auto_cache_peers` used to warm
+  the session peer cache from every history/search envelope; the raw pagers skip that side effect.
+  Nothing in this repo reads the session cache for resolution (numeric refs go through the dialog
+  walk in `client/resolve.rs`), but if a "why doesn't X resolve anymore" hunt ever starts, start
+  here. (3) Inherited, pre-existing: `Username::new`'s 5-char minimum silently drops real 3-4-char
+  usernames (e.g. `@mash`) from `channel_username` — now also visible in forward enrichment.
+  Needs its own ticket; the fix belongs in `types/names.rs`, not the enrichment path.

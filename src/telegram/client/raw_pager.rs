@@ -97,8 +97,34 @@ fn advance_history_offsets(request: &mut tl::functions::messages::GetHistory, pa
     }
 }
 
+fn advance_search_offsets(request: &mut tl::functions::messages::Search, page: &RawPage) {
+    if let Some(last) = page.messages.last() {
+        request.offset_id = last.id();
+        request.max_date = raw_date(last);
+    }
+}
+
+/// Access hash for a channel-namespace chat variant, if this envelope entry
+/// is that chat. Communities and both Forbidden forms live in the channel
+/// namespace of this grammers rev (`Community::id()` uses `channel_unchecked`)
+/// and all carry an access hash usable for `InputPeerChannel`.
+fn channel_access_hash(chat: &tl::enums::Chat, channel_id: i64) -> Option<i64> {
+    match chat {
+        tl::enums::Chat::Channel(c) if c.id == channel_id => Some(c.access_hash.unwrap_or(0)),
+        tl::enums::Chat::ChannelForbidden(c) if c.id == channel_id => Some(c.access_hash),
+        tl::enums::Chat::Community(c) if c.id == channel_id => Some(c.access_hash.unwrap_or(0)),
+        tl::enums::Chat::CommunityForbidden(c) if c.id == channel_id => {
+            Some(c.access_hash.unwrap_or(0))
+        }
+        _ => None,
+    }
+}
+
 /// InputPeer for a message's chat, with the access hash taken from the same
-/// page's envelope. Envelope miss → `InputPeer::Empty` (grammers' fallback).
+/// page's envelope. Envelope miss → `InputPeer::Empty` (grammers reaches its
+/// session cache first in `PeerMap::get_ref`, then falls back to `Empty`;
+/// the envelope always names the chats of its own messages, so the extra
+/// cache hop buys nothing here).
 fn input_peer_for_message(raw: &tl::enums::Message, page: &RawPage) -> tl::enums::InputPeer {
     let Some(peer) = raw_peer_id(raw) else {
         return tl::enums::InputPeer::Empty;
@@ -107,14 +133,13 @@ fn input_peer_for_message(raw: &tl::enums::Message, page: &RawPage) -> tl::enums
         tl::enums::Peer::Channel(p) => page
             .chats
             .iter()
-            .find_map(|chat| match chat {
-                tl::enums::Chat::Channel(c) if c.id == p.channel_id => {
-                    Some(tl::enums::InputPeer::Channel(tl::types::InputPeerChannel {
-                        channel_id: c.id,
-                        access_hash: c.access_hash.unwrap_or(0),
-                    }))
-                }
-                _ => None,
+            .find_map(|chat| {
+                channel_access_hash(chat, p.channel_id).map(|access_hash| {
+                    tl::enums::InputPeer::Channel(tl::types::InputPeerChannel {
+                        channel_id: p.channel_id,
+                        access_hash,
+                    })
+                })
             })
             .unwrap_or(tl::enums::InputPeer::Empty),
         tl::enums::Peer::User(p) => page
@@ -247,10 +272,7 @@ impl RawChannelSearchPager {
         }
         let page = unpack_page(self.client.invoke(&self.request).await?, self.request.limit);
         self.last_chunk = page.last_chunk;
-        if let Some(last) = page.messages.last() {
-            self.request.offset_id = last.id();
-            self.request.max_date = raw_date(last);
-        }
+        advance_search_offsets(&mut self.request, &page);
         fill_buffer(&mut self.buffer, page);
         Ok(self.buffer.pop_front())
     }
@@ -360,17 +382,29 @@ fn chat_peer_for_message(
     use grammers_client::peer::{Peer, User};
     let peer = raw_peer_id(raw)?;
     match peer {
+        // Forbidden variants still identify the chat (grammers' own peer map
+        // includes them), so a message whose chat lost access mid-iteration
+        // converts instead of being dropped.
         tl::enums::Peer::Channel(p) => chats.iter().find_map(|chat| match chat {
             tl::enums::Chat::Channel(c) if c.id == p.channel_id => {
                 Some(Peer::from_raw(client, chat.clone()))
             }
+            tl::enums::Chat::ChannelForbidden(c) if c.id == p.channel_id => {
+                Some(Peer::from_raw(client, chat.clone()))
+            }
             tl::enums::Chat::Community(c) if c.id == p.channel_id => {
+                Some(Peer::from_raw(client, chat.clone()))
+            }
+            tl::enums::Chat::CommunityForbidden(c) if c.id == p.channel_id => {
                 Some(Peer::from_raw(client, chat.clone()))
             }
             _ => None,
         }),
         tl::enums::Peer::Chat(p) => chats.iter().find_map(|chat| match chat {
             tl::enums::Chat::Chat(c) if c.id == p.chat_id => {
+                Some(Peer::from_raw(client, chat.clone()))
+            }
+            tl::enums::Chat::Forbidden(c) if c.id == p.chat_id => {
                 Some(Peer::from_raw(client, chat.clone()))
             }
             _ => None,
@@ -493,5 +527,84 @@ mod tests {
             input_peer_for_message(&missing, &page),
             tl::enums::InputPeer::Empty
         ));
+    }
+
+    #[test]
+    fn global_offset_peer_resolves_community_and_forbidden_chats() {
+        // Communities and Forbidden channels are channel-namespace too; a
+        // page ending in one must still produce a real offset peer, not
+        // Empty (would drift SearchGlobal pagination).
+        let community_page = RawPage {
+            messages: vec![raw_msg(500, 1_700_000_000, 21)],
+            chats: vec![tl::enums::Chat::Community(
+                crate::test_helpers::raw_tl_community(21, "Группа"),
+            )],
+            users: vec![],
+            next_rate: None,
+            last_chunk: false,
+        };
+        match input_peer_for_message(&community_page.messages[0], &community_page) {
+            tl::enums::InputPeer::Channel(c) => assert_eq!(c.channel_id, 21),
+            other => panic!("expected InputPeer::Channel for community, got {other:?}"),
+        }
+
+        let forbidden_page = RawPage {
+            messages: vec![raw_msg(501, 1_700_000_000, 22)],
+            chats: vec![tl::enums::Chat::ChannelForbidden(
+                tl::types::ChannelForbidden {
+                    broadcast: true,
+                    megagroup: false,
+                    monoforum: false,
+                    id: 22,
+                    access_hash: 77,
+                    title: "Закрытый".to_string(),
+                    until_date: None,
+                },
+            )],
+            users: vec![],
+            next_rate: None,
+            last_chunk: false,
+        };
+        match input_peer_for_message(&forbidden_page.messages[0], &forbidden_page) {
+            tl::enums::InputPeer::Channel(c) => {
+                assert_eq!(c.channel_id, 22);
+                assert_eq!(c.access_hash, 77, "forbidden variant's hash is carried");
+            }
+            other => panic!("expected InputPeer::Channel for forbidden, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn search_offsets_advance_from_last_message() {
+        let mut request = tl::functions::messages::Search {
+            peer: tl::enums::InputPeer::Empty,
+            q: String::new(),
+            from_id: None,
+            saved_peer_id: None,
+            saved_reaction: None,
+            top_msg_id: None,
+            filter: tl::enums::MessagesFilter::InputMessagesFilterEmpty,
+            min_date: 0,
+            max_date: 0,
+            offset_id: 0,
+            add_offset: 0,
+            limit: PAGE_LIMIT,
+            max_id: 0,
+            min_id: 0,
+            hash: 0,
+        };
+        let page = unpack_page(
+            slice(
+                vec![
+                    raw_msg(500, 1_700_000_500, 11),
+                    raw_msg(499, 1_700_000_400, 11),
+                ],
+                None,
+            ),
+            100,
+        );
+        advance_search_offsets(&mut request, &page);
+        assert_eq!(request.offset_id, 499);
+        assert_eq!(request.max_date, 1_700_000_400);
     }
 }
