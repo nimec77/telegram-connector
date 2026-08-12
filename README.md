@@ -637,10 +637,16 @@ page size — not a total-match count; there may be more matches beyond it).
 (`from_date`, or `now - hours_back`); `window_to` is the effective upper bound
 and is omitted entirely when the window is open-ended. `channels_scanned` is
 the number of channels the search actually scanned — `null` for a global
-search (server-side, scan scope is unknowable), a concrete count of `1` when
-`channel_id` is set, and the attempted (not just successful) channel count when
-`channel_ids` fans out over multiple channels. `channels_in_results` is the
-number of distinct channels present in `messages`, always a number.
+search (server-side, scan scope is unknowable); the attempted (not just
+successful) channel count when `channel_ids` fans out over multiple channels;
+and, when `channel_id` is set, a concrete count that differs by tool —
+`get_recent_messages` always reports `1`, while `search_messages` walks your
+subscribed dialogs looking for a channel matching the numeric id and reports
+`0` (not an error — just an empty result) if it isn't among them, which is
+possible for a syntactically valid `channel_id` you haven't joined (e.g. one
+sourced from `forwarded_from.channel_id` or a `resolve_channels` result).
+`channels_in_results` is the number of distinct channels present in
+`messages`, always a number.
 
 **Multi-channel fan-out (`channel_ids`):** pass up to 20 channel references
 (IDs or usernames) to search or fetch them in one call instead of N round
