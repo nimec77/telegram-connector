@@ -17,6 +17,8 @@ async fn check_status_returns_connection_info() {
 
     let mut mock_limiter = MockRateLimiterTrait::new();
     mock_limiter.expect_available_tokens().return_once(|| 45.5);
+    mock_limiter.expect_capacity().return_once(|| 50.0);
+    mock_limiter.expect_refill_rate().return_once(|| 2.0);
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -43,6 +45,8 @@ async fn check_status_reports_disconnected() {
 
     let mut mock_limiter = MockRateLimiterTrait::new();
     mock_limiter.expect_available_tokens().return_once(|| 0.0);
+    mock_limiter.expect_capacity().return_once(|| 50.0);
+    mock_limiter.expect_refill_rate().return_once(|| 2.0);
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -65,6 +69,8 @@ async fn check_status_includes_session_counters() {
     mock_client.expect_is_premium().return_once(|| Some(false));
     let mut mock_limiter = MockRateLimiterTrait::new();
     mock_limiter.expect_available_tokens().return_once(|| 10.0);
+    mock_limiter.expect_capacity().return_once(|| 50.0);
+    mock_limiter.expect_refill_rate().return_once(|| 2.0);
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
     let metrics = server.metrics();
@@ -90,6 +96,8 @@ async fn check_status_age_is_none_before_first_write() {
     mock_client.expect_is_premium().return_once(|| Some(false));
     let mut mock_limiter = MockRateLimiterTrait::new();
     mock_limiter.expect_available_tokens().return_once(|| 10.0);
+    mock_limiter.expect_capacity().return_once(|| 50.0);
+    mock_limiter.expect_refill_rate().return_once(|| 2.0);
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
     let result = server
@@ -101,4 +109,34 @@ async fn check_status_age_is_none_before_first_write() {
     assert_eq!(response.requests_received, 0);
     assert_eq!(response.responses_written, 0);
     assert_eq!(response.last_response_write_age_secs, None);
+}
+
+#[tokio::test]
+async fn check_status_reports_rate_limiter_budget() {
+    let mut mock_client = MockTelegramClientTrait::new();
+    mock_client.expect_is_connected().return_once(|| true);
+    mock_client.expect_is_premium().return_once(|| Some(true));
+
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_available_tokens().return_once(|| 23.5);
+    mock_limiter.expect_capacity().return_once(|| 50.0);
+    mock_limiter.expect_refill_rate().return_once(|| 2.0);
+
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter))
+        .with_media_download_cost(5)
+        .with_transcription_cost(5);
+
+    let result = server
+        .check_mcp_status(RequestId(NumberOrString::Number(1)))
+        .await;
+
+    let response: StatusResponse = serde_json::from_str(&result.unwrap()).unwrap();
+    assert_eq!(response.rate_limiter.tokens, 23.5);
+    assert_eq!(response.rate_limiter.capacity, 50.0);
+    assert_eq!(response.rate_limiter.refill_per_sec, 2.0);
+    assert_eq!(response.rate_limiter.costs.search, 1);
+    assert_eq!(response.rate_limiter.costs.media_download, 5);
+    assert_eq!(response.rate_limiter.costs.transcription, 5);
+    // Deprecated alias must mirror the nested value for one release.
+    assert_eq!(response.rate_limiter_tokens, response.rate_limiter.tokens);
 }
