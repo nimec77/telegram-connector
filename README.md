@@ -30,7 +30,7 @@ A Model Context Protocol (MCP) service that enables Claude to search and interac
 └──────────────────────────┬──────────────────────────────────┘
                            │ JSON-RPC over stdio
 ┌──────────────────────────▼──────────────────────────────────┐
-│                     MCP Server Layer (12 tools)              │
+│                     MCP Server Layer (15 tools)              │
 │                    (rmcp + server.rs)                        │
 │                                                             │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────┐    │
@@ -48,6 +48,12 @@ A Model Context Protocol (MCP) service that enables Claude to search and interac
 │  ┌─────────────────────────┐ ┌───────────────────────────┐   │
 │  │search_public_channels   │ │transcribe_voice_message   │   │
 │  └─────────────────────────┘ └───────────────────────────┘   │
+│  ┌─────────────────────────┐ ┌───────────────────────────┐   │
+│  │get_messages_batch       │ │resolve_channels           │   │
+│  └─────────────────────────┘ └───────────────────────────┘   │
+│  ┌─────────────────────────┐                                 │
+│  │get_channel_stats        │                                 │
+│  └─────────────────────────┘                                 │
 └──────────────────────────┬──────────────────────────────────┘
                            │
 ┌──────────────────────────▼──────────────────────────────────┐
@@ -277,14 +283,18 @@ Check the connection status and rate limiter state.
 > the `1`-token cost for the other metered calls — search/history/
 > channel-info/link-generation calls, i.e. `search_messages`,
 > `get_recent_messages`, `get_message_by_link`, `search_public_channels`,
-> `generate_message_link`, `open_message_in_telegram`, and `get_channel_info`
-> when called with `include_full: true`). The remaining tools —
-> `check_mcp_status`, `get_subscribed_channels`, `get_last_responses`, and
-> `get_channel_info` without `include_full` — never call `acquire` and cost
-> nothing. When a call is rejected for insufficient
-> tokens, the error states the deficit, e.g. `rate limit exceeded: requested
-> 5 tokens, 2.40 available, retry after 2 seconds` (Telegram flood-wait
-> rejections keep their existing wording, with no token arithmetic to show).
+> `generate_message_link`, `open_message_in_telegram`, `get_messages_batch`,
+> `resolve_channels`, `get_channel_stats`, and `get_channel_info` when called
+> with `include_full: true`). The remaining tools — `check_mcp_status`,
+> `get_subscribed_channels`, `get_last_responses`, and `get_channel_info`
+> without `include_full` — never call `acquire` and cost nothing. **Exception:**
+> `search_messages`/`get_recent_messages` called with `channel_ids` (multi-channel
+> fan-out) acquire `N` tokens — one per deduped channel in the list — instead of
+> the flat `1`, so the deficit error stays accurate for a large fan-out. When a
+> call is rejected for insufficient tokens, the error states the deficit, e.g.
+> `rate limit exceeded: requested 5 tokens, 2.40 available, retry after 2
+> seconds` (Telegram flood-wait rejections keep their existing wording, with no
+> token arithmetic to show).
 
 **Usage:** Use this tool to verify the connection before performing other operations.
 
@@ -516,7 +526,8 @@ Search for messages across channels with optional media type filtering.
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
 | `query` | string | Conditional | - | Search query. Required unless `media_filter` is specified |
-| `channel_id` | string | No | - | Filter by specific channel ID |
+| `channel_id` | string | No | - | Filter by a specific channel — numeric ID or `@username`/`username` (a username spends one extra resolve call). Mutually exclusive with `channel_ids` |
+| `channel_ids` | array of strings | No | - | Fan out over up to 20 channels (IDs or usernames) in one call with bounded concurrency (4 in flight); results are merged newest-first and `limit` counts the merged total. Mutually exclusive with `channel_id`; incompatible with `before_id`/`after_id`. Omit both `channel_id` and `channel_ids` for a global search |
 | `hours_back` | integer | No | 48 | How many hours back to search (max: 72) |
 | `limit` | integer | No | 20 | Maximum results to return (max: 100) |
 | `media_filter` | string | No | - | Filter by media type (see below) |
@@ -526,7 +537,7 @@ Search for messages across channels with optional media type filtering.
 | `before_id` | integer | No | - | Exclusive upper message-id bound — return only messages with `id < before_id`. Use `next_cursor.before_id` from a previous response to fetch the next (older) page without offset drift. Requires `channel_id` |
 | `after_id` | integer | No | - | Exclusive lower message-id bound — stop before messages with `id <= after_id`. Bounds a page at ids newer than a known message. Requires `channel_id` |
 | `max_text_length` | integer | No | 2000 | Maximum text length in characters per message. Longer texts are cut and flagged with `text_truncated` plus `text_full_length`; refetch the single message to get full text |
-| `format` | string | No | `full` | Response shape — `full` repeats channel fields on every message; `compact` hoists them into one response-level `channel` header. `compact` requires a single-channel scope |
+| `format` | string | No | `full` | Response shape — `full` repeats channel fields on every message; `compact` hoists them into one response-level `channel` header (single-channel scope) or a `channels` map keyed by channel id (multi-channel `channel_ids` scope). `compact` requires `channel_id` or `channel_ids` — rejected on a global search |
 
 **Media Filter Options:**
 | Value | Description |
@@ -543,6 +554,12 @@ Search for messages across channels with optional media type filtering.
 | `pinned` | Pinned messages only |
 
 **Important:** The `media_filter` is metadata-based filtering, NOT content recognition. It filters by attachment type, not by what's inside the media.
+
+> **Note:** `channel_id` accepts `@username`, `username`, or a numeric ID —
+> the same flexibility `get_recent_messages`/`get_channel_info` have always
+> had. A username is resolved to a numeric ID via one extra channel-resolve
+> call before the search runs; a plain numeric string is parsed locally with
+> no extra round trip.
 
 **Response:**
 ```json
@@ -620,9 +637,30 @@ page size — not a total-match count; there may be more matches beyond it).
 (`from_date`, or `now - hours_back`); `window_to` is the effective upper bound
 and is omitted entirely when the window is open-ended. `channels_scanned` is
 the number of channels the search actually scanned — `null` for a global
-search (server-side, scan scope is unknowable) and a concrete count when
-`channel_id` is set. `channels_in_results` is the number of distinct channels
-present in `messages`, always a number.
+search (server-side, scan scope is unknowable), a concrete count of `1` when
+`channel_id` is set, and the attempted (not just successful) channel count when
+`channel_ids` fans out over multiple channels. `channels_in_results` is the
+number of distinct channels present in `messages`, always a number.
+
+**Multi-channel fan-out (`channel_ids`):** pass up to 20 channel references
+(IDs or usernames) to search or fetch them in one call instead of N round
+trips. Each channel is fetched concurrently (4 in flight at a time) with the
+full requested `limit`, then results are merged newest-first (timestamp desc,
+id desc tiebreak) and truncated to `limit` overall — so `has_more` is `true`
+whenever the merge truncated, or any individual channel reported more of its
+own. `before_id`/`after_id` are rejected with `channel_ids` (cursors are
+per-channel and would be ambiguous across a merged, multi-channel page); no
+`next_cursor` is ever emitted in this scope. The rate-limiter cost is
+`acquire(N)` for the deduped channel count — one atomic acquire, so a
+too-large `channel_ids` list surfaces the same "requested N tokens, X.XX
+available" deficit message as any other call. A channel that fails to
+resolve or fetch does not fail the whole call: it lands in
+`channel_errors: [{"channel": "<as passed>", "error": "..."}]` and the other
+channels' results still come back; the call only errors when **every**
+requested channel failed. `channel_id` and `channel_ids` are mutually
+exclusive (both set is a validation error); omitting both keeps
+`search_messages`'s existing global-search behavior — `get_recent_messages`
+has no global mode, so it requires one or the other.
 
 **Paging and size (`has_more`, `next_cursor`, byte budget):** every
 `search_messages` / `get_recent_messages` response carries `has_more`. It is
@@ -641,12 +679,20 @@ it alone exceeds the byte budget. Long texts are independently cut at
 `max_text_length` characters (default 2000) and flagged `text_truncated: true`
 with `text_full_length`.
 
-**Compact format (`format: "compact"`):** hoists `channel_id` /
-`channel_name` / `channel_username` into one response-level `channel` object
-and removes them from each message — at `limit: 100` this saves kilobytes of
-repetition. Single-channel scope only (`get_recent_messages`, or
-`search_messages` with `channel_id`); on an empty result the `channel` key is
-omitted entirely (same as full format), not serialized as `null`.
+**Compact format (`format: "compact"`):** in single-channel scope
+(`get_recent_messages`, or `search_messages` with `channel_id`), hoists
+`channel_id` / `channel_name` / `channel_username` into one response-level
+`channel` object and removes them from each message — at `limit: 100` this
+saves kilobytes of repetition; on an empty result the `channel` key is
+omitted entirely (same as full format), not serialized as `null`. In
+multi-channel scope (`channel_ids`), the single `channel` header doesn't
+apply — instead `channel_name`/`channel_username` are stripped into a
+response-level `channels` object, a map from decimal channel id to
+`{"id", "name", "username"}`, one entry per channel actually present in the
+merged results; each message **keeps** its own `channel_id` so it stays
+attributable to the right map entry. `compact` is rejected outside both
+scopes (i.e. on a global search with neither `channel_id` nor `channel_ids`
+set).
 
 **Wire note:** `channel_username` is now omitted (rather than serialized as
 `null`) when a message's channel has no public username; full format is
@@ -736,7 +782,8 @@ Get recent messages from a channel by time window, without requiring a search qu
 **Parameters:**
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| `channel_id` | string | Yes | - | Channel ID or username (e.g., `technews` or `1234567890`) |
+| `channel_id` | string | Conditional | - | Channel ID or username (e.g., `technews` or `1234567890`). Required unless `channel_ids` is set; mutually exclusive with it |
+| `channel_ids` | array of strings | No | - | Fan out over up to 20 channels (IDs or usernames) in one call with bounded concurrency (4 in flight); results are merged newest-first and `limit` counts the merged total. Mutually exclusive with `channel_id`; incompatible with `before_id`/`after_id`. See `search_messages` above for the full fan-out behavior — `get_recent_messages` has no global mode, so one of `channel_id`/`channel_ids` is always required |
 | `hours_back` | integer | No | 48 | Hours of history to retrieve (max: 168) |
 | `limit` | integer | No | 20 | Maximum messages to return (max: 100) |
 | `media_filter` | string | No | - | Filter by media type (same options as `search_messages`) |
@@ -746,14 +793,14 @@ Get recent messages from a channel by time window, without requiring a search qu
 | `before_id` | integer | No | - | Exclusive upper message-id bound — return only messages with `id < before_id`. Use `next_cursor.before_id` from a previous response to fetch the next (older) page without offset drift |
 | `after_id` | integer | No | - | Exclusive lower message-id bound — stop before messages with `id <= after_id`. Bounds a page at ids newer than a known message |
 | `max_text_length` | integer | No | 2000 | Maximum text length in characters per message. Longer texts are cut and flagged with `text_truncated` plus `text_full_length`; refetch the single message to get full text |
-| `format` | string | No | `full` | Response shape — `full` repeats channel fields on every message; `compact` hoists them into one response-level `channel` header. `compact` requires a single-channel scope |
+| `format` | string | No | `full` | Response shape — `full` repeats channel fields on every message; `compact` hoists them into one response-level `channel` header (single `channel_id`) or a `channels` map keyed by channel id (`channel_ids` fan-out). See `search_messages` above |
 
 **Key Difference from `search_messages`:**
 
 | Feature | search_messages | get_recent_messages |
 |---------|-----------------|---------------------|
 | Query required | Yes (or media_filter) | No |
-| Channel required | No (global search) | Yes (single channel) |
+| Channel required | No (global search) | Yes (`channel_id` or `channel_ids`) |
 | Underlying API | `search_messages()` / `search_all_messages()` | `iter_messages()` |
 | Use case | Find specific content | Get all recent activity |
 
@@ -982,13 +1029,176 @@ Search Telegram's public directory (`contacts.search`) for channels and groups b
 **Usage:** Ask Claude to "find public Telegram channels about Rust programming" — Claude calls `search_public_channels` with `query: "Rust programming"`, then drills into a result with `get_channel_info` using its `@username`.
 
 > **Drill-down limits:** follow-ups go through a result's real public `@username`
-> — `get_channel_info` (and `get_recent_messages`, which also resolves usernames
-> server-side) reach a channel you have not joined. Two things do **not** work on
-> an unsubscribed result: following up by the returned numeric `id` (id lookups
-> walk your dialog list, and `contacts.search` does not add its results to the
-> peer cache), and `search_messages`, whose `channel_id` is numeric-only. A result
-> with no public username reports `username: null` and cannot be drilled into at
-> all. To keyword-search a newly discovered channel, join it first.
+> — `get_channel_info`, `get_recent_messages`, and `search_messages`/
+> `resolve_channels` (all of which now resolve a username `channel_id`/
+> identifier server-side) reach a channel you have not joined. What does **not**
+> work on an unsubscribed result: following up by the returned numeric `id` (id
+> lookups walk your dialog list, and `contacts.search` does not add its results
+> to the peer cache). A result with no public username reports `username: null`
+> and cannot be drilled into at all by username either — numeric `id`, and
+> therefore any follow-up, requires joining first.
+
+---
+
+### 13. get_messages_batch
+
+Fetch up to 50 specific messages from one channel in a single call — one `channels.GetMessages` RPC regardless of how many ids you ask for. The designated way to re-fetch full text after `text_truncated`, and to verify or deduplicate specific posts without N round trips.
+
+**Parameters:**
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `channel_id` | string | Yes | - | Channel ID or username (required) |
+| `message_ids` | array of integers | Yes | - | Message IDs to fetch in one call (1-50). Deleted/missing ids are reported per-id in `missing`, not as an error |
+| `max_text_length` | integer | No | 2000 | Maximum text length in characters per message. This tool is the designated full-text path: pass a large value with few ids to fetch untruncated text |
+
+**Response:**
+```json
+{
+  "channel_id": "swodki",
+  "messages": [
+    {
+      "id": 610119,
+      "channel_id": 1144180066,
+      "channel_name": "Сводки",
+      "channel_username": "swodki",
+      "text": "Full untruncated post text...",
+      "timestamp": "2026-08-10T05:55:12Z",
+      "sender_id": 0,
+      "sender_name": "Сводки",
+      "has_media": false,
+      "media_type": "none",
+      "link": "https://t.me/swodki/610119"
+    }
+  ],
+  "returned": 1,
+  "missing": [
+    { "id": 609784, "error": "not found or deleted" }
+  ]
+}
+```
+
+> **Note:** `message_ids` are deduped silently (order preserved) before the
+> 50-id cap is checked, so `[7, 3, 7]` counts as 2 ids. Every requested id
+> ends up in exactly one of `messages` / `missing` — never both, never
+> neither. `missing` covers both a genuinely absent/deleted id and the rare
+> case of a real Telegram message this client could not represent
+> domain-side (logged as a warning server-side, reported to the caller as
+> missing rather than silently dropped). `missing` is unrelated to
+> `omitted_ids`: `omitted_ids` (present only when populated) lists ids whose
+> messages were found but got popped from the tail to fit the response byte
+> budget — re-request exactly those ids, since (unlike `missing`) they
+> genuinely exist. Costs one rate-limiter token regardless of batch size.
+
+**Usage:** Ask Claude to "fetch the full text of messages 610119 and 609784 from @swodki" — a single `get_messages_batch` call replaces two separate lookups and reports 609784 as missing if it was deleted.
+
+---
+
+### 14. resolve_channels
+
+Batch-resolve up to 20 channel identifiers — numeric ID, `@username`, or the exact title of a subscribed chat — to full channel entities in one call. The documented way to turn `forwarded_from.channel_id` (search/history results never carry the forward source's name) into a readable name, and to look up title-only private channels.
+
+**Parameters:**
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `identifiers` | array of strings | Yes | - | Identifiers to resolve (1-20): numeric channel ID, `@username`, or the exact title of a subscribed chat. Each entry resolves independently; failures come back per-entry, not as a call error |
+
+**Response:**
+```json
+{
+  "resolutions": [
+    {
+      "identifier": "swodki",
+      "channel": {
+        "id": 1144180066,
+        "name": "Сводки",
+        "username": "swodki",
+        "chat_type": "channel",
+        "description": null,
+        "member_count": null,
+        "is_verified": true,
+        "is_public": true,
+        "is_subscribed": true,
+        "last_message_date": "2025-12-28T10:30:00Z"
+      }
+    },
+    {
+      "identifier": "999",
+      "error": "Channel not found: 999"
+    }
+  ],
+  "returned": 2,
+  "resolved": 1
+}
+```
+
+> **Note:** Exactly one of `channel` / `error` is present per resolution
+> (the other is omitted, not `null`). Classification per identifier: a
+> numeric string matches a subscribed dialog by id; a valid-shaped username
+> (after stripping a leading `@`) first matches a subscribed dialog by
+> username (free), then falls back to one `resolve_username` RPC; anything
+> else is matched as an exact, trimmed, case-insensitive **title** against
+> your subscribed chats. A title matching zero chats reports `Channel not
+> found: {identifier}`; a title matching more than one reports `ambiguous
+> title: N subscribed chats are named '{identifier}'` — it never guesses.
+> One dialog walk serves the id/username/title paths for the whole batch;
+> only unmatched username-shaped identifiers spend an extra RPC (at most one
+> each). The call itself only fails on a transport-level error (the dialog
+> walk); per-identifier misses are data, not call failures. Blank entries in
+> `identifiers` are rejected up front as a whole-call error. Costs one
+> rate-limiter token regardless of batch size.
+
+**Usage:** Ask Claude to "who forwarded this from — resolve channel 1009988776" after seeing a bare `forwarded_from.channel_id` in a search result, or "look up my 'Семейный чатик' group" for a title-only private chat with no public username.
+
+---
+
+### 15. get_channel_stats
+
+Posting-rate and engagement statistics for one channel, computed over a bounded recent-history sample — a minimal, classifier-free "how active/popular is this channel" summary (no promo/content classification).
+
+**Parameters:**
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `channel_id` | string | Yes | - | Channel ID or username (required) |
+| `days_back` | integer | No | 7 | Days of history to sample (max: 30). The sweep also caps at 500 raw messages; `sample.complete` reports whether the full window was covered |
+
+**Response:**
+```json
+{
+  "channel_id": 1144180066,
+  "post_count": 42,
+  "posts_per_day": 6.0,
+  "median_views": 15000,
+  "media_share": 0.71,
+  "album_share": 0.12,
+  "sample": {
+    "messages_scanned": 187,
+    "window_from": "2026-08-05T00:00:00Z",
+    "window_to": "2026-08-12T00:00:00Z",
+    "complete": true
+  }
+}
+```
+
+> **Note:** `post_count` is album-collapsed — the same collapsing
+> `search_messages`/`get_recent_messages` apply by default — so a
+> multi-photo album counts as one post, not N. `posts_per_day` divides
+> `post_count` by the **sampled** span (`sample.window_to -
+> sample.window_from`), floored at one hour, not by `days_back`; when the
+> 500-message cap cuts the sweep short (`sample.complete: false`),
+> `window_from` becomes the oldest scanned message's timestamp instead of
+> the requested `days_back` boundary, so the rate still reflects what was
+> actually sampled rather than understating it. `median_views` is the
+> lower-middle median over sampled posts that carry a view count; `null`
+> when none do. `media_share`/`album_share` are `0.0`-`1.0` fractions of
+> sampled posts. A channel with zero posts in the window reports all of
+> `post_count`/`posts_per_day`/`media_share`/`album_share` as `0`/`0.0` and
+> `median_views: null`, never `NaN`. Treat `sample.complete: false` as a
+> partial-window result — the sweep hit the 500-message scan cap before
+> covering the full `days_back` request. Costs one rate-limiter token.
+
+**Usage:** Ask Claude to "how active is @swodki — how many posts per day and what's the median view count" — `get_channel_stats` answers in one call instead of paging through `get_recent_messages` and computing it client-side.
+
+---
 
 ## Manual Testing Guide
 
@@ -1208,7 +1418,7 @@ src/
 ├── test_helpers.rs     # Test fixture factories (cfg(test))
 ├── mcp.rs              # MCP module root
 ├── mcp/
-│   ├── server.rs       # MCP server + all 7 tool handlers
+│   ├── server.rs       # MCP server + all 15 tool handlers
 │   ├── tools.rs        # Re-exports tools + helpers
 │   └── tools/
 │       ├── helpers.rs  # ID parsing helpers

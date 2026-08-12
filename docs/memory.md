@@ -3437,4 +3437,93 @@ adds none.
 - **`rate_limiter_tokens` removal is due in v0.18.** It was kept as a deprecated alias of
   `rate_limiter.tokens` for exactly one release (D5) so existing integrations have a migration
   window. The v0.18 release must delete the field from `StatusResponse` (and its schema/README
-  mentions) — don't let it linger past its one-release grace period.
+  mentions) — don't let it linger past its one-release grace period. **Closed out** (`37930e9`,
+  Surface Task 1, below): the field, its assignment in `impl_status.rs`, its schema mention, and
+  its README row are all gone; `status_response_has_no_deprecated_alias` pins the absence.
+
+## Surface (A1, A3+A6, A5, A7) — 2026-08-12
+
+Nine-task plan (`docs/superpowers/plans/2026-08-12-surface.md`) shipping the final work-order
+slice (`docs/superpowers/specs/2026-08-11-work-order-roadmap-design.md` §v0.18, APPROVED): three
+new MCP tools (`get_messages_batch`, `resolve_channels`, `get_channel_stats`), `channel_ids`
+multi-channel fan-out on `get_recent_messages`/`search_messages`, and the scheduled
+`rate_limiter_tokens` alias removal. TDD throughout, gate green per task, one fix-forward review
+commit (Task 2). Tests 560 → 601 across nine feature tasks plus this docs-only Task 10. Tool count
+12 → 15.
+
+- **Task 1 / D5** (`37930e9`) — deleted `StatusResponse.rate_limiter_tokens` and its
+  `impl_status.rs` assignment; closes the standing note above.
+- **Task 2 / A1** (`0031bd8`, fixed forward by `5a199bb`) — `TelegramClientTrait::get_messages_batch`:
+  one `get_messages_by_id` RPC, slot-level classifier (`guard.rs`'s `partition_slot_ids`) turns
+  absent-or-`MessageEmpty` slots into `missing_ids`. The review fix folded a third case into
+  "missing": a present, non-empty slot that still fails `convert_message` (domain conversion) now
+  also lands in `missing_ids` (logged as a warning) instead of silently vanishing from both
+  `messages` and `missing_ids` — restoring the every-id-in-exactly-one-vector invariant.
+- **Task 3 / A1** (`bdeecaf`) — `get_messages_batch` MCP tool (13th): `MAX_BATCH_IDS = 50`
+  post-dedup, `acquire(1)` (one RPC regardless of batch size), `fit_batch_to_budget` pops the tail
+  into `omitted_ids` (distinct from `missing`: omitted ids exist and are worth re-requesting).
+- **Task 4 / A7** (`dab1ddc`) — `TelegramClientTrait::resolve_channels`: one dialog walk classifies
+  every identifier (numeric → id match, valid username shape → dialog match then
+  `resolve_username` RPC, anything else → exact trimmed case-insensitive title match), pure
+  `match_identifier`/`MatchOutcome` unit-tested offline; only unmatched username-shaped
+  identifiers spend an RPC.
+- **Task 5 / A7** (`663576c`) — `resolve_channels` MCP tool (14th): `MAX_RESOLVE_IDENTIFIERS = 20`,
+  `acquire(1)`, blank identifiers rejected as a whole-call error; `ForwardInfo` doc comment now
+  points at the real tool instead of "planned for v0.18" (B10 closed).
+- **Task 6 / A3** (`0801800`) — `channel_ids` fan-out on `get_recent_messages`: new
+  `src/mcp/tools/fanout.rs` (`MAX_FANOUT_CHANNELS = 20`, `FANOUT_CONCURRENCY = 4`,
+  `ChannelFetchOutcome`, pure `merge_results`, `validate_channel_scope`), `futures` 0.3 added for
+  `stream::iter(..).buffered(4)`; `shaping::CompactScope` (`Single`/`Multi`) generalizes
+  `shape_response` for the new multi-channel `channels` map.
+- **Task 7 / A6** (`e34b27a`) — `channel_ids` on `search_messages`, plus the §1.3 fix: username
+  `channel_id` values now resolve via `resolve_channel_identity` (one cheap resolve, no
+  full-info RPC) instead of hard-failing "not a valid number" — `SearchParams.channel_id` stays
+  numeric-only internally, the resolve happens at the MCP layer before the search RPC.
+- **Task 8 / A5** (`b34bf31`) — `TelegramClientTrait::get_channel_stats`: bounded history sweep
+  (default 7d, hard cap 500 raw messages), pure `compute_stats` in the new `src/telegram/types/stats.rs`
+  over already-album-collapsed posts.
+- **Task 9 / A5** (`eae96f5`) — `get_channel_stats` MCP tool (15th, final tool of this release):
+  `acquire(1)`, `days_back` clamped to `[1, 30]` with a `days_back == 0` rejection.
+- **Task 10** (this entry) — README (three new tool sections, `channel_ids` rows, multi-compact
+  `channels`/`channel_errors`, username-acceptance note, stale tool-count sweep), CHANGELOG
+  `[Unreleased]`, CLAUDE.md tool count, and this tasklist/memory pass.
+
+### Decisions worth remembering
+
+- **Fan-out lives at the MCP layer, over the existing single-channel trait seam, not in the
+  client.** `get_recent_messages_impl`/`search_messages_impl` run `futures::stream::iter(refs.map(..))
+  .buffered(FANOUT_CONCURRENCY)` over the *existing* `TelegramClientTrait::get_recent_messages`/
+  `search_messages` methods — the client and its mock are untouched, and the merge/compact/scope
+  logic (`fanout.rs`, `shaping.rs`) is pure and unit-testable without a live (or even mocked)
+  Telegram round trip. The same seam choice that made Capacity's byte-budget/cursor work
+  mock-testable applies again here.
+- **Per-identifier and per-channel failures are data, not errors.** `resolve_channels` returns
+  `Ok(Vec<ChannelResolution>)` even when every identifier fails — each entry carries `channel` XOR
+  `error`; only a transport-level failure (the dialog walk itself) fails the call. Fan-out mirrors
+  this: a channel that fails to resolve or fetch lands in `SearchResponse.channel_errors` and the
+  other channels' results still come back; `merge_results` only returns `Err` when **every**
+  attempted channel failed. Same shape as `get_messages_batch`'s `missing` — a per-item outcome
+  the caller reads, not an exception the caller catches.
+- **§1.3 search username restoration goes through `resolve_channel_identity`, not a
+  `SearchParams` type change.** `SearchParams.channel_id` stays `Option<ChannelId>` (numeric-only)
+  internally; the MCP layer's `search_channel_id` helper parses a purely-numeric reference locally
+  and spends one `resolve_channel_identity` call for anything else, before either the single-path
+  search or each fan-out arm's search. This is the same "resolve at the boundary, keep the domain
+  layer strict" split the flexible-scalar-coercion design already established, applied to
+  identifier flexibility instead of scalar types.
+- **`posts_per_day` divides by the sampled span, not the requested `days_back`, floored at one
+  hour.** `compute_stats` uses `(window_to - window_from)`, so an incomplete sweep (the 500-message
+  cap cut it short of the full `days_back`) still reports a truthful rate instead of understating
+  it against a `days_back` denominator the sweep never actually covered; the one-hour floor stops a
+  single very-recent post from reporting an absurd extrapolated rate (see
+  `posts_per_day_floors_span_at_one_hour`).
+- **Batch accounting invariant: every requested id lands in exactly one of `messages` /
+  `missing_ids`, never both, never neither.** The Task 2 review fix closed the one gap in the
+  original implementation — a present-but-unconvertible message (real Telegram data this client's
+  `convert_message` can't represent) previously vanished from both vectors; it now falls into
+  `missing_ids` with a server-side warning log, so the invariant holds unconditionally and callers
+  can trust `messages.len() + missing_ids.len() == requested.len()` (post-dedup).
+- **Fan-out rate cost is `acquire(N)` for the deduped channel count, not a flat `1`.** One atomic
+  acquire before the fan-out starts (not `N` separate acquires racing against `buffered(4)`) keeps
+  the D5 rate-limit deficit message ("requested N tokens, X.XX available") accurate for the whole
+  call, and avoids a partial-acquire state if the bucket runs dry mid-fan-out.
