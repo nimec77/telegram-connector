@@ -844,3 +844,61 @@ async fn get_recent_messages_compact_hoists_channel_header() {
     assert!(m.get("channel_name").is_none());
     assert!(m.get("channel_username").is_none());
 }
+
+#[tokio::test]
+async fn get_recent_messages_oversized_page_stays_under_budget() {
+    // Given: 100 messages × ~900 chars ≈ 90 KB serialized (the audit's B4 case)
+    let mut mock_client = MockTelegramClientTrait::new();
+    let messages: Vec<Message> = (1..=100)
+        .rev()
+        .map(|i| create_test_message(i, &"д".repeat(900), 123))
+        .collect();
+    let result = SearchResult {
+        returned: messages.len() as u64,
+        messages,
+        has_more: false,
+        search_time_ms: 5,
+        query_metadata: QueryMetadata {
+            query: String::new(),
+            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
+        },
+    };
+    mock_client
+        .expect_get_recent_messages()
+        .returning(move |_| Ok(result.clone()));
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = GetRecentMessagesRequest {
+        channel_id: "123".to_string(),
+        hours_back: None,
+        limit: Some(100),
+        media_filter: None,
+        from_date: None,
+        to_date: None,
+        collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
+        format: None,
+    };
+    let out = server
+        .get_recent_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await
+        .expect("ok");
+    assert!(
+        out.len() <= 40_000,
+        "default budget must cap the page, got {}",
+        out.len()
+    );
+    let v: serde_json::Value = serde_json::from_str(&out).expect("json");
+    assert_eq!(v["has_more"], serde_json::Value::Bool(true));
+    assert!(
+        v["next_cursor"]["before_id"].is_i64(),
+        "cursor must be present"
+    );
+}

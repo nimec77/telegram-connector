@@ -32,6 +32,10 @@ use rmcp::{ServerHandler, ServiceExt, tool, tool_handler, tool_router};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+/// Default serialized-response byte cap for message-stream tools
+/// (`[limits] response_byte_budget`, work-order B4).
+const DEFAULT_RESPONSE_BYTE_BUDGET: usize = 40_000;
+
 #[derive(Clone)]
 pub struct McpServer<T: TelegramClientTrait, R: RateLimiterTrait> {
     telegram_client: Arc<T>,
@@ -43,6 +47,7 @@ pub struct McpServer<T: TelegramClientTrait, R: RateLimiterTrait> {
     transcription_cost: u32,
     transcription_default_timeout_secs: u32,
     transcription_max_timeout_secs: u32,
+    response_byte_budget: usize,
     tool_router: ToolRouter<Self>,
 }
 
@@ -62,6 +67,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             transcription_cost: 5,
             transcription_default_timeout_secs: 30,
             transcription_max_timeout_secs: 120,
+            response_byte_budget: DEFAULT_RESPONSE_BYTE_BUDGET,
             tool_router: Self::tool_router(),
         }
     }
@@ -95,6 +101,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     pub fn with_transcription_timeouts(mut self, default_secs: u32, max_secs: u32) -> Self {
         self.transcription_default_timeout_secs = default_secs;
         self.transcription_max_timeout_secs = max_secs;
+        self
+    }
+
+    /// Set the serialized-response byte cap for message-stream tools
+    /// (`[limits] response_byte_budget`, default 40 000).
+    pub fn with_response_byte_budget(mut self, bytes: u64) -> Self {
+        self.response_byte_budget = bytes as usize;
         self
     }
 

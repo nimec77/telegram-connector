@@ -2,7 +2,9 @@
 //! text truncation, compact hoisting, and byte-budget fitting. Pure
 //! functions over wire types so every rule is unit-testable offline.
 
-use crate::mcp::tools::types::responses::{ChannelHeader, MessageResponse, SearchResponse};
+use crate::mcp::tools::types::responses::{
+    ChannelHeader, MessageResponse, NextCursor, SearchResponse,
+};
 
 /// Default per-message text cap in characters (work-order B4).
 pub(crate) const DEFAULT_MAX_TEXT_LENGTH: u32 = 2000;
@@ -37,6 +39,49 @@ pub(crate) fn compact_response(resp: &mut SearchResponse) {
         m.channel_name = None;
         m.channel_username = None;
     }
+}
+
+/// Drop trailing (oldest) messages until the serialized response fits
+/// `budget` bytes (work-order B4). Pop-until-fits: byte-exact against the
+/// cap, and at ≤100 messages the repeated serialization costs a few ms.
+/// At least one message always survives — a caller must never receive an
+/// empty page with `has_more: true` for the same cursor, so a single
+/// over-budget message is returned as-is (the one documented overrun).
+/// After popping: `returned`, `has_more`, `next_cursor` (when
+/// `cursor_eligible`), and `channels_in_results` (full format only) are
+/// recomputed so the metadata stays honest (B6).
+pub(crate) fn fit_to_budget(
+    resp: &mut SearchResponse,
+    budget: usize,
+    cursor_eligible: bool,
+) -> Result<(), String> {
+    let mut popped = false;
+    loop {
+        let len = serde_json::to_string(resp)
+            .map_err(|e| format!("Failed to serialize response: {}", e))?
+            .len();
+        if len <= budget || resp.messages.len() <= 1 {
+            break;
+        }
+        resp.messages.pop();
+        popped = true;
+    }
+    if popped {
+        resp.returned = resp.messages.len() as u64;
+        resp.has_more = true;
+        if cursor_eligible && let Some(last) = resp.messages.last() {
+            resp.next_cursor = Some(NextCursor { before_id: last.id });
+        }
+        let unique: std::collections::HashSet<i64> = resp
+            .messages
+            .iter()
+            .filter_map(|m| m.channel_id.as_ref().map(|c| c.get()))
+            .collect();
+        if !unique.is_empty() {
+            resp.query_metadata.channels_in_results = unique.len() as u32;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -149,5 +194,67 @@ mod tests {
         let mut msg = wire_message(1, "пять!");
         truncate_text(&mut msg, 5);
         assert_eq!(msg.text_truncated, None);
+    }
+
+    fn budget_fixture(n: i64, text_len: usize) -> SearchResponse {
+        SearchResponse {
+            channel: None,
+            messages: (1..=n)
+                .rev() // newest (highest id) first, matching fetch order
+                .map(|i| wire_message(i, &"я".repeat(text_len)))
+                .collect(),
+            returned: n as u64,
+            has_more: false,
+            next_cursor: None,
+            search_time_ms: 1,
+            query_metadata: test_metadata(),
+        }
+    }
+
+    #[test]
+    fn budget_pops_oldest_and_sets_cursor() {
+        let mut resp = budget_fixture(50, 400);
+        fit_to_budget(&mut resp, 10_000, true).expect("fit");
+        let len = serde_json::to_string(&resp).expect("json").len();
+        assert!(len <= 10_000, "must end under budget, got {len}");
+        assert!(resp.messages.len() < 50, "must have dropped messages");
+        assert!(resp.has_more);
+        assert_eq!(resp.returned, resp.messages.len() as u64);
+        // Newest kept, oldest dropped; cursor = oldest surviving id.
+        let last_id = resp.messages.last().expect("nonempty").id;
+        assert_eq!(resp.next_cursor.expect("cursor").before_id, last_id);
+        assert_eq!(resp.messages.first().expect("nonempty").id.get(), 50);
+    }
+
+    #[test]
+    fn budget_keeps_at_least_one_message() {
+        let mut resp = budget_fixture(3, 5_000);
+        fit_to_budget(&mut resp, 100, true).expect("fit");
+        assert_eq!(
+            resp.messages.len(),
+            1,
+            "one message must survive even over-budget"
+        );
+        assert!(resp.has_more);
+    }
+
+    #[test]
+    fn budget_leaves_fitting_response_untouched() {
+        let mut resp = budget_fixture(2, 10);
+        fit_to_budget(&mut resp, 40_000, true).expect("fit");
+        assert_eq!(resp.messages.len(), 2);
+        assert!(!resp.has_more);
+        assert!(resp.next_cursor.is_none());
+    }
+
+    #[test]
+    fn budget_without_cursor_eligibility_sets_no_cursor() {
+        let mut resp = budget_fixture(50, 400);
+        fit_to_budget(&mut resp, 10_000, false).expect("fit");
+        assert!(resp.has_more);
+        assert!(
+            resp.next_cursor.is_none(),
+            "global search: has_more without cursor"
+        );
     }
 }

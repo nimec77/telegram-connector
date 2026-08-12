@@ -151,6 +151,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         if format == ResponseFormat::Compact {
             shaping::compact_response(&mut response);
         }
+        shaping::fit_to_budget(&mut response, self.response_byte_budget, cursor_eligible)?;
         json_response(&response)
     }
 
@@ -290,6 +291,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         if format == ResponseFormat::Compact {
             shaping::compact_response(&mut response);
         }
+        shaping::fit_to_budget(&mut response, self.response_byte_budget, cursor_eligible)?;
         json_response(&response)
     }
 
