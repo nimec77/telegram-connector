@@ -14,9 +14,6 @@ pub struct StatusResponse {
     #[schemars(description = "Whether Telegram client is connected")]
     pub telegram_connected: bool,
 
-    #[schemars(description = "Deprecated alias of rate_limiter.tokens; removed in v0.18")]
-    pub rate_limiter_tokens: f64,
-
     #[schemars(description = "Rate-limiter budget: tokens, capacity, refill, per-call costs")]
     pub rate_limiter: RateLimiterStatus,
 

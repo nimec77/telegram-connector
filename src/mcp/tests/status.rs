@@ -31,7 +31,7 @@ async fn check_status_returns_connection_info() {
     assert!(result.is_ok());
     let response: StatusResponse = serde_json::from_str(&result.unwrap()).unwrap();
     assert!(response.telegram_connected);
-    assert_eq!(response.rate_limiter_tokens, 45.5);
+    assert_eq!(response.rate_limiter.tokens, 45.5);
     assert_eq!(response.server_version, env!("CARGO_PKG_VERSION"));
     assert_eq!(response.premium, Some(true));
 }
@@ -59,7 +59,7 @@ async fn check_status_reports_disconnected() {
     assert!(result.is_ok());
     let response: StatusResponse = serde_json::from_str(&result.unwrap()).unwrap();
     assert!(!response.telegram_connected);
-    assert_eq!(response.rate_limiter_tokens, 0.0);
+    assert_eq!(response.rate_limiter.tokens, 0.0);
 }
 
 #[tokio::test]
@@ -137,6 +137,30 @@ async fn check_status_reports_rate_limiter_budget() {
     assert_eq!(response.rate_limiter.costs.search, 1);
     assert_eq!(response.rate_limiter.costs.media_download, 5);
     assert_eq!(response.rate_limiter.costs.transcription, 5);
-    // Deprecated alias must mirror the nested value for one release.
-    assert_eq!(response.rate_limiter_tokens, response.rate_limiter.tokens);
+}
+
+#[tokio::test]
+async fn status_response_has_no_deprecated_alias() {
+    // Arrange mocks exactly like the existing rate_limiter-block test
+    let mut mock_client = MockTelegramClientTrait::new();
+    mock_client.expect_is_connected().return_once(|| true);
+    mock_client.expect_is_premium().return_once(|| Some(true));
+
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_available_tokens().return_once(|| 45.5);
+    mock_limiter.expect_capacity().return_once(|| 50.0);
+    mock_limiter.expect_refill_rate().return_once(|| 2.0);
+
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    // When: Get JSON response
+    let json: serde_json::Value =
+        serde_json::from_str(&server.check_mcp_status_impl().await.expect("ok")).expect("json");
+
+    // Then: Verify deprecated alias is gone and new field exists
+    assert!(
+        json.get("rate_limiter_tokens").is_none(),
+        "v0.17's deprecated alias must be gone in v0.18"
+    );
+    assert!(json["rate_limiter"]["tokens"].is_number());
 }

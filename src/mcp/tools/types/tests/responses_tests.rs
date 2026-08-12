@@ -4,7 +4,6 @@ use super::*;
 fn status_response_serializes() {
     let response = StatusResponse {
         telegram_connected: true,
-        rate_limiter_tokens: 45.5,
         rate_limiter: RateLimiterStatus {
             tokens: 45.5,
             capacity: 50.0,
