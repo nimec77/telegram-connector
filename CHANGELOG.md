@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-08-12
+
+### Added
+- `check_mcp_status` gains a `rate_limiter` budget block (`tokens`,
+  `capacity`, `refill_per_sec`, `costs`); `rate_limiter_tokens` is kept as a
+  deprecated alias, scheduled for removal in v0.18; rate-limit rejections now
+  state the requested and available token counts (D5)
+- `get_last_responses` accepts optional `include_binary` (default `false`):
+  image payloads are replaced with size-annotated stubs in the replay unless
+  explicitly requested (D6)
+
+### Fixed
+- `get_message_media` returns the original bytes, byte-identical, when the
+  source JPEG already fits `max_dimension` — no re-encode, no quality loss,
+  no size inflation (D4)
+- Tool-level error prefixes (`parse_channel_id` / `parse_message_id`) apply
+  exactly once instead of stacking with the inner `invalid input:` prefix
+  (D7)
+- Malformed channel usernames are rejected locally, before spending a
+  resolve RPC, surfacing the same clean not-found error as any other
+  unresolvable channel (D8)
+
 ## [0.16.0] - 2026-08-12
 
 ### Added

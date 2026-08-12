@@ -38,10 +38,11 @@
 | 28 | Correctness core (work-order B1/B2/B3/D9) | ✅ Complete | 499 | MessageEmpty → not-found across all fetch paths; shared link builder emits public t.me/username + internal_link/is_public; media_filter enum inlined + $ref schema guard. **Released as v0.14.0** (2026-08-10, PR #32) |
 | 29 | Post shape (work-order B5-B10, D1-D3, D10, A2) | ✅ Complete | 518 | Nullable `username`/`chat_type` (B9); `SearchResult.total_found`→`returned` + reworked `QueryMetadata` (B6/B7); `ChannelPage` genuine `total` + nullable `has_more` (B6a/D10); `Channel.last_message_date` (B8); message `link`/`reactions`/`reactions_total`/`grouped_id` (D1/D2); default-on album collapsing with post-counting limit (B5/A2); `get_message_media` `source_variant_*`/`largest_available_*` rename (D3); forward-attribution names verified id-only pending v0.18 `resolve_channels` (B10) |
 | 30 | Capacity (work-order B4, A4, A8) | ✅ Complete | 547 | `[limits] response_byte_budget` (default 40 000) with pop-until-fits truncation and an at-least-one-message guarantee (B4); `before_id`/`after_id` message-id cursors, single-channel scope, with `next_cursor` on truncated pages (A8); truthful `has_more` across search/history responses (A8/B4); `max_text_length` (default 2000) with `text_truncated`/`text_full_length` (B4); `format: "compact"` hoists channel fields into a response-level `channel` header, single-channel scope only until v0.18 (A4); `channel_username` now omitted rather than `null` when a channel has no public username |
+| 31 | Polish (work-order D4–D8) | ✅ Complete | 560 | `get_message_media` passes an already-fitting JPEG source through byte-identical instead of re-encoding it, eliminating quality loss and a measured +29% size inflation (D4); `check_mcp_status` gains a nested `rate_limiter` budget block (`tokens`/`capacity`/`refill_per_sec`/`costs`), with `rate_limiter_tokens` kept as a deprecated alias until v0.18 and rate-limit rejections now stating requested-vs-available tokens (D5); `get_last_responses` gains `include_binary` (default `false`) to stub image payloads on replay unless explicitly requested (D6); tool-level error prefixes (`parse_channel_id`/`parse_message_id`) apply exactly once instead of stacking with the inner `invalid input:` prefix (D7); malformed channel usernames are rejected locally before spending a resolve RPC, surfacing the same clean not-found error (D8) |
 
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
-**Overall Progress:** 30/30 phases complete
+**Overall Progress:** 31/31 phases complete
 
 ---
 
