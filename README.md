@@ -274,8 +274,15 @@ Check the connection status and rate limiter state.
 > (currently available), `capacity` (bucket size — `[rate_limiting]
 > max_tokens`, default 50), `refill_per_sec` (`[rate_limiting] refill_rate`,
 > default 2.0), and `costs` (tokens charged per call kind — `media_download`
-> and `transcription` are configurable under `[rate_limiting]`; `search`
-> covers every other tool call and is always `1`). `rate_limiter_tokens` is a
+> and `transcription` are configurable under `[rate_limiting]`; `search` is
+> the `1`-token cost for the other metered calls — search/history/
+> channel-info/link-generation calls, i.e. `search_messages`,
+> `get_recent_messages`, `get_message_by_link`, `search_public_channels`,
+> `generate_message_link`, `open_message_in_telegram`, and `get_channel_info`
+> when called with `include_full: true`). The remaining tools —
+> `check_mcp_status`, `get_subscribed_channels`, `get_last_responses`, and
+> `get_channel_info` without `include_full` — never call `acquire` and cost
+> nothing. `rate_limiter_tokens` is a
 > deprecated alias of `rate_limiter.tokens`, kept only for this release —
 > it is removed in v0.18, so new integrations should read
 > `rate_limiter.tokens` directly. When a call is rejected for insufficient
@@ -857,7 +864,7 @@ Retrieve the visual media from a Telegram message as an MCP **image content bloc
 
 **What it returns:**
 - **Photos:** the photo is downscaled so its longest side fits `max_dimension`, re-encoded as JPEG, and returned as an MCP image block. The metadata block contains `media_type`, `is_thumbnail` (always `false` for photos), `caption`, source variant dimensions (what was actually fetched) and byte size, largest available variant dimensions (if better exists), and the returned dimensions and byte size.
-- **Already-fitting JPEGs pass through byte-identical:** if the fetched source variant is already a JPEG whose longest side is `<= max_dimension` (and its base64 size fits the payload cap), it is returned as-is — no decode/re-encode round-trip, so no quality loss and no size inflation from a needless re-encode. `returned_width`/`returned_height`/`returned_size_bytes` then equal the source variant's own dimensions and byte size.
+- **Already-fitting JPEGs pass through byte-identical:** if the fetched source variant is already a JPEG whose longest side is `<= max_dimension` (and its base64 size fits the payload cap), it is returned as-is — the source is still decoded (its dimensions are read from that decode), but the re-encode is skipped, so no quality loss and no size inflation from a needless re-encode. `returned_width`/`returned_height`/`returned_size_bytes` then equal the source variant's own dimensions and byte size.
 - **Videos, animations, video notes:** only the server-side thumbnail is available; it is returned as an image block with `is_thumbnail: true` and a `video_info` object (duration, dimensions, kind) in the metadata.
 - **Messages without visual media:** a structured error is returned (no image block).
 - **Photos whose selected size variant exceeds 20 MB:** refused with an error.

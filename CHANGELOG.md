@@ -27,7 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (D7)
 - Malformed channel usernames are rejected locally, before spending a
   resolve RPC, surfacing the same clean not-found error as any other
-  unresolvable channel (D8)
+  unresolvable channel; the local shape check rejects only the empty string,
+  names over 32 characters, non-`[A-Za-z0-9_]` characters, and a leading
+  digit — there is no minimum-length floor, since short legacy usernames
+  (3 chars, e.g. `@gif`) and Fragment-auction usernames (4 chars, e.g.
+  `@bank`) are real and resolvable (D8)
 
 ## [0.16.0] - 2026-08-12
 
