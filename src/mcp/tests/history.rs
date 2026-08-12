@@ -723,3 +723,51 @@ async fn get_recent_messages_rejects_inverted_cursor_range() {
         "error should name the field: {err}"
     );
 }
+
+#[tokio::test]
+async fn get_recent_messages_truncates_long_text() {
+    let mut mock_client = MockTelegramClientTrait::new();
+    let long_text = "б".repeat(3000);
+    let msg = create_test_message(1, &long_text, 123);
+    let result = SearchResult {
+        messages: vec![msg],
+        returned: 1,
+        has_more: false,
+        search_time_ms: 5,
+        query_metadata: QueryMetadata {
+            query: String::new(),
+            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
+        },
+    };
+    mock_client
+        .expect_get_recent_messages()
+        .returning(move |_| Ok(result.clone()));
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = GetRecentMessagesRequest {
+        channel_id: "123".to_string(),
+        hours_back: None,
+        limit: None,
+        media_filter: None,
+        from_date: None,
+        to_date: None,
+        collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None, // default 2000 applies
+    };
+    let out = server
+        .get_recent_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await
+        .expect("ok");
+    let v: serde_json::Value = serde_json::from_str(&out).expect("json");
+    let m = &v["messages"][0];
+    assert_eq!(m["text"].as_str().expect("text").chars().count(), 2000);
+    assert_eq!(m["text_truncated"], serde_json::Value::Bool(true));
+    assert_eq!(m["text_full_length"], serde_json::json!(3000));
+}

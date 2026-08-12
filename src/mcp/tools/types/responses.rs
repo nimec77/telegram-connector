@@ -222,6 +222,12 @@ pub struct MessageResponse {
     pub channel_name: ChannelName,
     pub channel_username: Option<Username>,
     pub text: String,
+    /// Present (true) only when text was cut at max_text_length (B4).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub text_truncated: Option<bool>,
+    /// Full text length in characters, present only when truncated.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub text_full_length: Option<u64>,
     pub timestamp: DateTime<Utc>,
     pub sender_id: Option<UserId>,
     pub sender_name: Option<String>,
@@ -260,6 +266,8 @@ impl From<Message> for MessageResponse {
             channel_name: m.channel_name,
             channel_username: m.channel_username,
             text: m.text,
+            text_truncated: None,
+            text_full_length: None,
             timestamp: m.timestamp,
             sender_id: m.sender_id,
             sender_name: m.sender_name,

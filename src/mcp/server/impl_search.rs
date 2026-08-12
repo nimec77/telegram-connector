@@ -70,6 +70,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             ));
         }
 
+        let max_text_length = request
+            .max_text_length
+            .unwrap_or(shaping::DEFAULT_MAX_TEXT_LENGTH);
+        if max_text_length == 0 {
+            return Err("max_text_length must be greater than 0".to_string());
+        }
+
         // Build search params
         let params = SearchParams {
             query: request.query,
@@ -123,6 +130,9 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
         let cursor_eligible = params.channel_id.is_some();
         let mut response = SearchResponse::from(result);
+        for msg in &mut response.messages {
+            shaping::truncate_text(msg, max_text_length);
+        }
         if response.has_more
             && cursor_eligible
             && let Some(last) = response.messages.last()
@@ -196,6 +206,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             ));
         }
 
+        let max_text_length = request
+            .max_text_length
+            .unwrap_or(shaping::DEFAULT_MAX_TEXT_LENGTH);
+        if max_text_length == 0 {
+            return Err("max_text_length must be greater than 0".to_string());
+        }
+
         // Build history params
         let params = HistoryParams {
             channel_id,
@@ -247,6 +264,9 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
         let cursor_eligible = true; // get_recent_messages: always single-channel
         let mut response = SearchResponse::from(result);
+        for msg in &mut response.messages {
+            shaping::truncate_text(msg, max_text_length);
+        }
         if response.has_more
             && cursor_eligible
             && let Some(last) = response.messages.last()

@@ -3,6 +3,7 @@ use crate::error::Error;
 use crate::link::{ChannelRef, MessageLink, parse_telegram_link};
 use crate::mcp::observability::{InstrumentedTransport, ResponseBuffer, SessionMetrics};
 use crate::mcp::tools::image::process_image;
+use crate::mcp::tools::shaping;
 use crate::mcp::tools::{
     BufferedResponseEntry, ChannelsResponse, GenerateLinkRequest, GetChannelInfoRequest,
     GetChannelsRequest, GetLastResponsesRequest, GetMessageByLinkRequest, GetMessageMediaRequest,
