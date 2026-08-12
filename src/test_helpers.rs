@@ -114,6 +114,30 @@ pub fn create_test_message_with_forward(
     msg
 }
 
+/// Forward fixture with full attribution, as the envelope-enriched
+/// conversion now produces it.
+pub fn create_test_message_with_enriched_forward(
+    id: i64,
+    text: &str,
+    channel_id: i64,
+    forwarded_channel_id: i64,
+) -> Message {
+    let mut msg = create_test_message(id, text, channel_id);
+    msg.forwarded_from = Some(ForwardInfo {
+        channel_id: Some(
+            ChannelId::new(forwarded_channel_id)
+                .expect("Test forwarded channel ID must be positive"),
+        ),
+        channel_name: Some(ChannelName::new("Военкор").expect("valid name")),
+        channel_username: Some(Username::new("voenkor_ru").expect("valid username")),
+        sender_name: None,
+        post_author: Some("И. Петров".to_string()),
+        original_date: None,
+        original_message_id: Some(MessageId::new(1863).expect("valid id")),
+    });
+    msg
+}
+
 /// Create a test message carrying a link preview.
 pub fn create_test_message_with_link_preview(
     id: i64,
