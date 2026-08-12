@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-08-12
+
 ### Added
 - `before_id` / `after_id` cursor pagination on `search_messages` and
   `get_recent_messages` (single-channel scope), keyed on message id so pages
