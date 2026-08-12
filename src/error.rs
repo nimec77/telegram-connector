@@ -8,8 +8,14 @@ pub enum Error {
     #[error("telegram API error: {0}")]
     TelegramApi(String),
 
-    #[error("rate limit exceeded, retry after {retry_after_seconds} seconds")]
-    RateLimit { retry_after_seconds: u64 },
+    #[error("rate limit exceeded{detail}, retry after {retry_after_seconds} seconds")]
+    RateLimit {
+        retry_after_seconds: u64,
+        /// Pre-rendered deficit detail from the local limiter (leading ": "),
+        /// or empty when the wait comes from Telegram (FLOOD_WAIT) and no
+        /// token arithmetic exists.
+        detail: String,
+    },
 
     #[error("configuration error: {0}")]
     Config(String),
@@ -73,10 +79,23 @@ mod tests {
     fn test_rate_limit_error_display() {
         let error = Error::RateLimit {
             retry_after_seconds: 5,
+            detail: String::new(),
         };
         assert_eq!(
             error.to_string(),
             "rate limit exceeded, retry after 5 seconds"
+        );
+    }
+
+    #[test]
+    fn test_rate_limit_error_display_with_deficit_detail() {
+        let error = Error::RateLimit {
+            retry_after_seconds: 2,
+            detail: ": requested 5 tokens, 2.40 available".to_string(),
+        };
+        assert_eq!(
+            error.to_string(),
+            "rate limit exceeded: requested 5 tokens, 2.40 available, retry after 2 seconds"
         );
     }
 

@@ -165,6 +165,7 @@ async fn get_message_by_link_rate_limited() {
     mock_limiter.expect_acquire().returning(|_| {
         Err(Error::RateLimit {
             retry_after_seconds: 5,
+            detail: String::new(),
         })
     });
 

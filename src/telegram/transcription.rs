@@ -40,6 +40,7 @@ pub(crate) fn map_transcribe_rpc_error(err: InvocationError) -> Error {
             "FLOOD_WAIT" | "FLOOD_PREMIUM_WAIT" => {
                 return Error::RateLimit {
                     retry_after_seconds: rpc.value.unwrap_or(0) as u64,
+                    detail: String::new(),
                 };
             }
             _ => {}
@@ -161,7 +162,11 @@ mod tests {
         match map_transcribe_rpc_error(rpc("FLOOD_WAIT", Some(31))) {
             Error::RateLimit {
                 retry_after_seconds,
-            } => assert_eq!(retry_after_seconds, 31),
+                detail,
+            } => {
+                assert_eq!(retry_after_seconds, 31);
+                assert_eq!(detail, "");
+            }
             other => panic!("expected RateLimit, got {other:?}"),
         }
     }

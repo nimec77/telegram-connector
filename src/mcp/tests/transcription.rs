@@ -185,6 +185,7 @@ async fn surfaces_flood_wait_retry_after() {
     client.expect_transcribe_audio().return_once(|_, _, _| {
         Err(Error::RateLimit {
             retry_after_seconds: 42,
+            detail: String::new(),
         })
     });
     let mut limiter = MockRateLimiterTrait::new();

@@ -315,6 +315,7 @@ async fn rate_limited_request_never_reaches_telegram() {
     mock_limiter.expect_acquire().returning(|_| {
         Err(Error::RateLimit {
             retry_after_seconds: 3,
+            detail: String::new(),
         })
     });
 

@@ -100,6 +100,7 @@ async fn acquire_more_than_available_fails() {
     match result {
         Err(Error::RateLimit {
             retry_after_seconds,
+            ..
         }) => {
             // Should need to wait for 10 tokens at 2/sec = 5 seconds
             assert_eq!(retry_after_seconds, 5);
@@ -135,12 +136,24 @@ async fn rate_limit_error_includes_retry_after() {
     match result {
         Err(Error::RateLimit {
             retry_after_seconds,
+            ..
         }) => {
             // Need 20 tokens at 5/sec = 4 seconds
             assert_eq!(retry_after_seconds, 4);
         }
         _ => panic!("Expected RateLimit error with retry_after"),
     }
+}
+
+#[tokio::test]
+async fn rejection_states_requested_and_available() {
+    let config = test_config(3, 1.0);
+    let limiter = RateLimiter::new(&config);
+    let err = limiter.acquire(5).await.unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "rate limit exceeded: requested 5 tokens, 3.00 available, retry after 2 seconds"
+    );
 }
 
 // ========================================
