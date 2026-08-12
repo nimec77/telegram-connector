@@ -256,9 +256,32 @@ Check the connection status and rate limiter state.
 {
   "telegram_connected": true,
   "rate_limiter_tokens": 45.5,
+  "rate_limiter": {
+    "tokens": 45.5,
+    "capacity": 50.0,
+    "refill_per_sec": 2.0,
+    "costs": {
+      "search": 1,
+      "media_download": 5,
+      "transcription": 5
+    }
+  },
   "server_version": "0.1.0"
 }
 ```
+
+> **Note:** `rate_limiter` reports the live token-bucket budget: `tokens`
+> (currently available), `capacity` (bucket size — `[rate_limiting]
+> max_tokens`, default 50), `refill_per_sec` (`[rate_limiting] refill_rate`,
+> default 2.0), and `costs` (tokens charged per call kind — `media_download`
+> and `transcription` are configurable under `[rate_limiting]`; `search`
+> covers every other tool call and is always `1`). `rate_limiter_tokens` is a
+> deprecated alias of `rate_limiter.tokens`, kept only for this release —
+> it is removed in v0.18, so new integrations should read
+> `rate_limiter.tokens` directly. When a call is rejected for insufficient
+> tokens, the error states the deficit, e.g. `rate limit exceeded: requested
+> 5 tokens, 2.40 available, retry after 2 seconds` (Telegram flood-wait
+> rejections keep their existing wording, with no token arithmetic to show).
 
 **Usage:** Use this tool to verify the connection before performing other operations.
 
@@ -771,12 +794,70 @@ Get recent messages from a channel by time window, without requiring a search qu
 
 ---
 
+### 9. get_last_responses
+
+Debug/recovery tool: replay the last N tool responses that were written to stdout, so a response lost in transit (client crash, truncated read, etc.) can be recovered without re-querying Telegram or spending rate-limit budget.
+
+**Parameters:**
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `n` | integer | No | all buffered | How many recent responses to return, newest first |
+| `include_binary` | boolean | No | `false` | Include full base64 image payloads in replayed responses. When `false` (default), image content blocks are replaced with `{omitted, mime_type, size_bytes}` stubs |
+
+**Response (default, `include_binary: false`):**
+```json
+{
+  "buffered": 12,
+  "responses": [
+    {
+      "request_id": "7",
+      "tool_name": "get_message_media",
+      "written_at": "2026-08-12T09:15:03Z",
+      "size_bytes": 88211,
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "result": {
+          "content": [
+            {
+              "type": "image",
+              "omitted": true,
+              "mime_type": "image/jpeg",
+              "size_bytes": 65890
+            },
+            {
+              "type": "text",
+              "text": "{\"channel_id\":\"@swodki\",\"message_id\":610119,...}"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
+```
+
+> **Note:** `buffered` is the total number of responses currently held in the
+> ring buffer (sized by `[observability] response_buffer_size`, default 10;
+> `0` disables buffering entirely). `responses` is the requested page,
+> newest first. Each entry's `response` is the exact JSON-RPC envelope that
+> was written to stdout — with `include_binary: false` (the default), any
+> `image` content block inside it is replaced by a `{omitted: true,
+> mime_type, size_bytes}` stub instead of its base64 payload, since this
+> tool exists for when context is already tight or damaged; pass
+> `include_binary: true` to get the full base64 data back (work-order D6).
+
+**Usage:** Ask Claude to "show me the last response" or "recover response 7" after a dropped or truncated reply, without paying for another Telegram round-trip.
+
+---
+
 ### 10. get_message_media
 
 Retrieve the visual media from a Telegram message as an MCP **image content block** (base64-encoded JPEG, quality 80) plus a JSON metadata text block. Useful for reading photos posted in channels without leaving the conversation.
 
 **What it returns:**
 - **Photos:** the photo is downscaled so its longest side fits `max_dimension`, re-encoded as JPEG, and returned as an MCP image block. The metadata block contains `media_type`, `is_thumbnail` (always `false` for photos), `caption`, source variant dimensions (what was actually fetched) and byte size, largest available variant dimensions (if better exists), and the returned dimensions and byte size.
+- **Already-fitting JPEGs pass through byte-identical:** if the fetched source variant is already a JPEG whose longest side is `<= max_dimension` (and its base64 size fits the payload cap), it is returned as-is — no decode/re-encode round-trip, so no quality loss and no size inflation from a needless re-encode. `returned_width`/`returned_height`/`returned_size_bytes` then equal the source variant's own dimensions and byte size.
 - **Videos, animations, video notes:** only the server-side thumbnail is available; it is returned as an image block with `is_thumbnail: true` and a `video_info` object (duration, dimensions, kind) in the metadata.
 - **Messages without visual media:** a structured error is returned (no image block).
 - **Photos whose selected size variant exceeds 20 MB:** refused with an error.

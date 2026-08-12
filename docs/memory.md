@@ -3396,3 +3396,45 @@ this round. Tests 518 → 547 across seven feature tasks plus this docs-only Tas
   tasks' compiler errors surface every test literal that needs updating — kept the four-field
   rollout (`before_id`, `after_id`, `max_text_length`, `format`) from being split across mismatched
   partial request shapes and avoided a second wave of "add missing field" test churn in Tasks 5–6.
+
+## Polish (D4–D8) — 2026-08-12
+
+Five-task plan (`docs/superpowers/plans/2026-08-12-polish.md`) shipping the "polish" slice of the
+work-order audit (`docs/telegram-mcp-0.13.0-work-order.md` §D4–D8; roadmap:
+`docs/superpowers/specs/2026-08-11-work-order-roadmap-design.md` §v0.17): five independent,
+non-breaking fixes — no new tools, no new config keys. TDD throughout, gate green per task, no
+follow-up fix commits needed this round. Tests 547 → 560 across Tasks 1–7; this docs-only Task 8
+adds none.
+
+- **Task 1 / D7** (`ac8551e`) — tool-level error prefixes (`parse_channel_id`/`parse_message_id`)
+  now strip the wrapped `Error::InvalidInput`'s own `invalid input:` prefix before applying their
+  own, so `Invalid message_id: Message ID must be positive, got -5` no longer doubles up.
+- **Task 2 / D8** (`d466388`) — `Username::is_valid_shape` (5–32 chars of `[A-Za-z0-9_]`, no
+  leading digit) rejects malformed usernames inside `resolve_username_peer` before the
+  `contacts.resolveUsername` RPC, returning `Ok(None)` so callers fall through to their existing
+  not-found (`resolve_peer`) or dialog-walk-fallback (`get_recent_messages`) paths unchanged.
+- **Task 3 / D5** (`e0921a4`) — `RateLimiterTrait` gains `capacity()`/`refill_rate()` accessors.
+- **Task 4 / D5** (`883ad20`) — `Error::RateLimit` gains a `detail` string; local token-bucket
+  refusals now render `rate limit exceeded: requested N tokens, X.XX available, retry after S
+  seconds`; Telegram flood-wait rejections keep their existing (detail-less) wording.
+- **Task 5 / D5** (`f5b0b08`) — `check_mcp_status` nests a `rate_limiter` block
+  (`tokens`/`capacity`/`refill_per_sec`/`costs`); `rate_limiter_tokens` kept as a deprecated alias
+  of `rate_limiter.tokens` for this release.
+- **Task 6 / D6** (`6c550e7`) — `get_last_responses` gains `include_binary` (default `false`);
+  `omit_binary_blocks` replaces `image` content blocks in replayed envelopes with
+  `{omitted, mime_type, size_bytes}` stubs unless opted in.
+- **Task 7 / D4** (`6714e47`, `cc3b905`) — `process_image` passes an already-JPEG source through
+  byte-identical when it's already within `max_dimension` and the payload cap (the audit had
+  measured +29% inflation from a needless re-encode at identical dimensions); the `png` codec
+  feature pulled in for one dev-only test fixture was rescoped to `[dev-dependencies]` so
+  production binaries don't carry it.
+- **Task 8** (this entry) — CHANGELOG `[0.17.0]` entry, README (`rate_limiter` status block, new
+  `get_last_responses` tool section, JPEG-passthrough note on `get_message_media`), and this
+  tasklist/memory pass.
+
+### Standing note
+
+- **`rate_limiter_tokens` removal is due in v0.18.** It was kept as a deprecated alias of
+  `rate_limiter.tokens` for exactly one release (D5) so existing integrations have a migration
+  window. The v0.18 release must delete the field from `StatusResponse` (and its schema/README
+  mentions) — don't let it linger past its one-release grace period.
