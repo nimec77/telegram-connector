@@ -33,6 +33,17 @@ impl Username {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// Telegram public-username shape: 5–32 chars of `[A-Za-z0-9_]`, not
+    /// starting with a digit. Used to reject malformed usernames locally before
+    /// spending a resolve RPC (work-order D8). Deliberately stricter than
+    /// [`Username::new`], which also admits Telegram-supplied Unicode names
+    /// arriving from the API side.
+    pub fn is_valid_shape(s: &str) -> bool {
+        (5..=32).contains(&s.len())
+            && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+            && !s.starts_with(|c: char| c.is_ascii_digit())
+    }
 }
 
 impl fmt::Display for Username {
@@ -127,6 +138,22 @@ mod tests {
         let username = Username::new("testuser").unwrap();
         let json = serde_json::to_string(&username).unwrap();
         assert_eq!(json, "\"testuser\"");
+    }
+
+    #[test]
+    fn is_valid_shape_accepts_real_usernames() {
+        assert!(Username::is_valid_shape("swodki"));
+        assert!(Username::is_valid_shape("a_b_c"));
+        assert!(Username::is_valid_shape("chan5"));
+    }
+
+    #[test]
+    fn is_valid_shape_rejects_malformed() {
+        assert!(!Username::is_valid_shape("abcd")); // too short
+        assert!(!Username::is_valid_shape(&"x".repeat(33))); // too long
+        assert!(!Username::is_valid_shape("1abcd")); // leading digit
+        assert!(!Username::is_valid_shape("Семейный чатик")); // non-ASCII title
+        assert!(!Username::is_valid_shape("not a valid identifier!!!")); // punctuation
     }
 
     // =========================================================================
