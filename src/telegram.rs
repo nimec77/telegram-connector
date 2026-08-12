@@ -2,6 +2,7 @@ pub(crate) mod albums;
 pub mod auth;
 pub mod client;
 pub mod converters;
+pub(crate) mod envelope;
 pub mod timeout;
 pub mod trait_def;
 pub mod transcription;

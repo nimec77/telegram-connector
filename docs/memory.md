@@ -3525,3 +3525,27 @@ commit (Task 2). Tests 560 → 601 across nine feature tasks plus this docs-only
   acquire before the fan-out starts (not `N` separate acquires racing against `buffered(4)`) keeps
   the D5 rate-limit deficit message ("requested N tokens, X.XX available") accurate for the whole
   call, and avoids a partial-acquire state if the bucket runs dry mid-fan-out.
+- **Forward attribution comes from the response envelope, and that required raw TL fetches.** The
+  `messages.Messages` family responses carry `chats`+`users` for every entity their messages
+  reference — including forward sources the account is not subscribed to (which `resolve_channels`
+  can never resolve). grammers keeps that envelope behind `Message.peers: PeerMap` (`pub(crate)`,
+  no public accessor; pinned rev 9fef0bae **is** upstream HEAD, verified 2026-08-12), so
+  `get_recent_messages`/`search_messages` invoke `messages.GetHistory`/`Search`/`SearchGlobal` raw
+  — same requests, same pagination (replicated byte-for-byte from grammers `client/messages.rs` in
+  `client/raw_pager.rs`) — and feed `telegram/envelope.rs::EntityLookup` into
+  `convert_raw_message`. Conversion is a pure function (no client parameter), so the
+  zero-extra-call invariant is enforced by the type signature, not by discipline. Envelope miss →
+  ids-only `ForwardInfo`, never an error, never a fabricated name. If a future grammers rev
+  exposes the peer map publicly, the raw pagers can collapse back to the iterators — that is the
+  only reason they exist.
+- **Two deliberate deltas from the pre-envelope behavior, plus one inherited gap (review of the
+  forward-attribution branch).** (1) Message-level `sender_name` for a user with only a last name
+  set (deleted/partial accounts) now emits that last name; the old `Peer::name()` path emitted
+  `None`. Deliberate: the visible name beats nothing, and the `EntityInfo::sender_name()` fallback
+  is required anyway for channel-as-sender titles. (2) grammers' `auto_cache_peers` used to warm
+  the session peer cache from every history/search envelope; the raw pagers skip that side effect.
+  Nothing in this repo reads the session cache for resolution (numeric refs go through the dialog
+  walk in `client/resolve.rs`), but if a "why doesn't X resolve anymore" hunt ever starts, start
+  here. (3) Inherited, pre-existing: `Username::new`'s 5-char minimum silently drops real 3-4-char
+  usernames (e.g. `@mash`) from `channel_username` — now also visible in forward enrichment.
+  Needs its own ticket; the fix belongs in `types/names.rs`, not the enrichment path.

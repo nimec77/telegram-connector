@@ -581,6 +581,9 @@ Search for messages across channels with optional media type filtering.
       "forwards": 230,
       "forwarded_from": {
         "channel_id": 1009988776,
+        "channel_name": "Военкор",
+        "channel_username": "voenkor_ru",
+        "post_author": "И. Петров",
         "original_message_id": 8123,
         "original_date": "2025-12-28T09:00:00Z"
       },
@@ -706,10 +709,13 @@ otherwise unchanged (`channel_id`/`channel_name` remain always-present).
 
 **Forward attribution & link previews:** Messages carry optional enrichment derived
 from the same Telegram response — no extra API calls. `forwarded_from` attributes a
-forwarded post to its source (`channel_id`, `original_message_id`, `original_date`,
-and `sender_name` for hidden senders); the source channel's **title and username are
-not included** — Telegram does not expose them per message without an extra lookup,
-so pair `channel_id` with `generate_message_link` if you need to reach the source.
+forwarded post to its source: `channel_id`, `original_message_id`, `original_date`,
+plus the source's **`channel_name` and `channel_username`** resolved from the same
+response envelope (works even for channels you are not subscribed to), `sender_name`
+(the user's display name for user-source forwards, or the hidden-sender name), and
+`post_author` for signed channel posts. When Telegram's envelope happens not to
+carry the source entity, the ids-only form is emitted — nothing is fabricated and
+no resolution call is made.
 `link_preview` surfaces Telegram's server-side webpage preview (`url`, `site_name`,
 `title`, `description`, truncated to 500 characters). `views`, `forwards`, and
 `reply_to_message_id` are included when present. All of these fields are omitted
@@ -1101,7 +1107,7 @@ Fetch up to 50 specific messages from one channel in a single call — one `chan
 
 ### 14. resolve_channels
 
-Batch-resolve up to 20 channel identifiers — numeric ID, `@username`, or the exact title of a subscribed chat — to full channel entities in one call. The documented way to turn `forwarded_from.channel_id` (search/history results never carry the forward source's name) into a readable name, and to look up title-only private channels.
+Batch-resolve up to 20 channel identifiers — numeric ID, `@username`, or the exact title of a subscribed chat — to full channel entities in one call. Use it for full channel entities (subscriber counts, verification flags, chat type) of reachable chats, and to look up title-only private channels. Forward attribution no longer needs it: `forwarded_from` carries the source's name/username inline, resolved from the same response envelope — including sources you are not subscribed to, which this tool cannot resolve.
 
 **Parameters:**
 | Name | Type | Required | Default | Description |
@@ -1153,7 +1159,7 @@ Batch-resolve up to 20 channel identifiers — numeric ID, `@username`, or the e
 > `identifiers` are rejected up front as a whole-call error. Costs one
 > rate-limiter token regardless of batch size.
 
-**Usage:** Ask Claude to "who forwarded this from — resolve channel 1009988776" after seeing a bare `forwarded_from.channel_id` in a search result, or "look up my 'Семейный чатик' group" for a title-only private chat with no public username.
+**Usage:** Ask Claude to "get the full entity for channel 1009988776 — subscriber count and verification" after spotting it in results, or "look up my 'Семейный чатик' group" for a title-only private chat with no public username. (Forward sources already arrive named in `forwarded_from` — no resolve round-trip needed.)
 
 ---
 

@@ -2,6 +2,7 @@
 //!
 //! Unit of `client` (LM-2).
 
+use super::raw_pager::RawHistoryPager;
 use super::*;
 use crate::telegram::albums::{PostCounter, album_key, collapse_albums};
 
@@ -103,45 +104,48 @@ impl TelegramClient {
                 let mut messages = Vec::new();
                 let mut has_more = false;
                 let mut counter = PostCounter::default();
-                let mut messages_iter = self.client.iter_messages(peer_ref);
+                // Raw GetHistory pager instead of grammers' iter_messages: same
+                // request, but it keeps the response envelope so forwards get
+                // attributed from data already in hand (zero extra calls).
+                let mut pager = RawHistoryPager::new(&self.client, peer_ref);
                 if let Some(before) = before_offset {
-                    messages_iter = messages_iter.offset_id(before);
+                    pager = pager.offset_id(before);
                 }
 
-                while let Some(msg) = messages_iter
+                while let Some((raw_msg, entities)) = pager
                     .next()
                     .await
                     .map_err(|e| Error::TelegramApi(format!("Failed to iterate messages: {}", e)))?
                 {
                     if let Some(to) = params.to_date
-                        && message_timestamp(&msg).is_some_and(|t| t > to)
+                        && timestamp_from_raw(&raw_msg).is_some_and(|t| t > to)
                     {
                         continue; // newer than the requested window; keep iterating toward it
                     }
 
                     // Check time filter - messages are in reverse chronological order
-                    if message_timestamp(&msg).is_none_or(|t| t < cutoff_time) {
+                    if timestamp_from_raw(&raw_msg).is_none_or(|t| t < cutoff_time) {
                         break;
                     }
 
                     // Exclusive lower cursor bound: everything from here on
                     // is older (reverse chronological), so stop (A8).
                     if let Some(after) = after_bound
-                        && msg.id() <= after
+                        && raw_msg.id() <= after
                     {
                         break;
                     }
 
-                    // Apply media filter client-side (iter_messages doesn't support server-side filtering)
+                    // Apply media filter client-side (GetHistory has no server-side filtering)
                     if params
                         .media_filter
                         .as_ref()
-                        .is_some_and(|filter| !matches_media_filter(&msg, filter))
+                        .is_some_and(|filter| !matches_media_filter_raw(&raw_msg, filter))
                     {
                         continue;
                     }
 
-                    if let Some(converted) = convert_message(&msg, &peer) {
+                    if let Some(converted) = convert_raw_message(&raw_msg, &peer, &entities) {
                         if params.collapse_albums {
                             // Post-level limit: stop only when a NEW post would
                             // overflow; trailing siblings of admitted albums pass.

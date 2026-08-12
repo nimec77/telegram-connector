@@ -1,6 +1,8 @@
+use super::media::matches_media_filter_raw;
 use super::message::{extract_forward_info, extract_link_preview};
 use super::*;
-use crate::telegram::types::{AudioKind, SizeCandidate, VideoKind};
+use crate::telegram::envelope::EntityLookup;
+use crate::telegram::types::{AudioKind, MediaFilter, SizeCandidate, VideoKind};
 use grammers_client::media::{Document, Media};
 use grammers_client::tl;
 
@@ -69,6 +71,86 @@ fn single_candidate_below_threshold_is_returned_via_fallback() {
     assert_eq!(selected.photo_type, "m");
 }
 
+/// Raw message with optional media for the raw filter tests. Flags false,
+/// unset options None.
+fn raw_message_with_media(
+    media: Option<tl::enums::MessageMedia>,
+    text: &str,
+) -> tl::enums::Message {
+    tl::enums::Message::Message(tl::types::Message {
+        out: false,
+        mentioned: false,
+        media_unread: false,
+        silent: false,
+        post: true,
+        from_scheduled: false,
+        legacy: false,
+        edit_hide: false,
+        pinned: false,
+        noforwards: false,
+        video_processing_pending: false,
+        paid_suggested_post_stars: false,
+        paid_suggested_post_ton: false,
+        invert_media: false,
+        offline: false,
+        id: 1,
+        from_id: None,
+        from_boosts_applied: None,
+        from_rank: None,
+        peer_id: tl::enums::Peer::Channel(tl::types::PeerChannel { channel_id: 1 }),
+        saved_peer_id: None,
+        fwd_from: None,
+        via_bot_id: None,
+        via_business_bot_id: None,
+        guestchat_via_from: None,
+        reply_to: None,
+        date: 1_700_000_000,
+        message: text.to_string(),
+        media,
+        reply_markup: None,
+        entities: None,
+        views: None,
+        forwards: None,
+        replies: None,
+        edit_date: None,
+        post_author: None,
+        grouped_id: None,
+        restriction_reason: None,
+        ttl_period: None,
+        reactions: None,
+        quick_reply_shortcut_id: None,
+        effect: None,
+        factcheck: None,
+        report_delivery_until_date: None,
+        paid_message_stars: None,
+        suggested_post: None,
+        schedule_repeat_period: None,
+        summary_from_language: None,
+        rich_message: None,
+    })
+}
+
+#[test]
+fn raw_filter_matches_photo_media() {
+    let media = tl::enums::MessageMedia::Photo(tl::types::MessageMediaPhoto {
+        spoiler: false,
+        photo: Some(tl::enums::Photo::Empty(tl::types::PhotoEmpty { id: 1 })),
+        ttl_seconds: None,
+        live_photo: false,
+        video: None,
+    });
+    let raw = raw_message_with_media(Some(media), "");
+    assert!(matches_media_filter_raw(&raw, &MediaFilter::Photo));
+    assert!(!matches_media_filter_raw(&raw, &MediaFilter::Video));
+}
+
+#[test]
+fn raw_filter_url_matches_text_without_media() {
+    let raw = raw_message_with_media(None, "see https://example.com");
+    assert!(matches_media_filter_raw(&raw, &MediaFilter::Url));
+    assert!(!matches_media_filter_raw(&raw, &MediaFilter::Photo));
+}
+
 fn fwd_header() -> tl::types::MessageFwdHeader {
     tl::types::MessageFwdHeader {
         imported: false,
@@ -124,14 +206,14 @@ fn webpage_media(
 }
 
 #[test]
-fn forward_from_channel_extracts_ids_not_names() {
+fn forward_from_channel_without_envelope_extracts_ids_only() {
     let mut header = fwd_header();
     header.from_id = Some(tl::enums::Peer::Channel(tl::types::PeerChannel {
         channel_id: 555,
     }));
     header.channel_post = Some(42);
 
-    let info = extract_forward_info(&header);
+    let info = extract_forward_info(&header, &EntityLookup::empty());
     assert_eq!(info.channel_id.map(|c| c.get()), Some(555));
     assert_eq!(info.original_message_id.map(|m| m.get()), Some(42));
     assert_eq!(info.original_date.unwrap().timestamp(), 1_700_000_000);
@@ -145,7 +227,7 @@ fn forward_from_hidden_user_has_name_only() {
     let mut header = fwd_header();
     header.from_name = Some("Hidden User".to_string());
 
-    let info = extract_forward_info(&header);
+    let info = extract_forward_info(&header, &EntityLookup::empty());
     assert_eq!(info.sender_name.as_deref(), Some("Hidden User"));
     assert!(info.channel_id.is_none());
     assert!(info.original_message_id.is_none());
@@ -156,7 +238,7 @@ fn forward_with_zero_date_has_no_original_date() {
     let mut header = fwd_header();
     header.date = 0;
 
-    let info = extract_forward_info(&header);
+    let info = extract_forward_info(&header, &EntityLookup::empty());
     assert!(info.original_date.is_none());
 }
 

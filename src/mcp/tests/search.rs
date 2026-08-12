@@ -447,6 +447,7 @@ async fn search_messages_serializes_enrichment_fields() {
                 channel_name: None,
                 channel_username: None,
                 sender_name: None,
+                post_author: None,
                 original_date: None,
                 original_message_id: Some(MessageId::new(42).unwrap()),
             }),
@@ -519,6 +520,67 @@ async fn search_messages_serializes_enrichment_fields() {
     assert_eq!(msg["link_preview"]["url"], "https://example.com");
     // Plain-message backward compat: sender_id still present as null.
     assert!(msg["sender_id"].is_null());
+}
+
+#[tokio::test]
+async fn search_messages_serializes_enriched_forward_without_resolve_calls() {
+    let mut mock_client = MockTelegramClientTrait::new();
+    let enriched = create_test_search_result(
+        vec![
+            crate::test_helpers::create_test_message_with_enriched_forward(
+                1,
+                "переслано",
+                123,
+                1783384254,
+            ),
+        ],
+        "x",
+        0,
+    );
+
+    mock_client
+        .expect_search_messages()
+        .times(1)
+        .returning(move |_| Ok(enriched.clone()));
+    // No expectation on resolve_channels / resolve_channel_identity /
+    // get_channel_info: mockall panics if any of them is called — the
+    // zero-resolve guarantee for the enrichment path.
+
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
+
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = SearchRequest {
+        query: "x".to_string(),
+        channel_id: None,
+        channel_ids: None,
+        hours_back: None,
+        limit: None,
+        media_filter: None,
+        from_date: None,
+        to_date: None,
+        collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
+        format: None,
+    };
+
+    let result = server
+        .search_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await
+        .unwrap();
+
+    let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+    let fwd = &json["messages"][0]["forwarded_from"];
+    assert_eq!(fwd["channel_id"], 1783384254);
+    assert_eq!(fwd["channel_name"], "Военкор");
+    assert_eq!(fwd["channel_username"], "voenkor_ru");
+    assert_eq!(fwd["post_author"], "И. Петров");
+    assert_eq!(fwd["original_message_id"], 1863);
+    // Absent enrichment fields stay skipped, not null.
+    assert!(fwd.get("sender_name").is_none());
 }
 
 #[tokio::test]

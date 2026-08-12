@@ -8,6 +8,7 @@ use crate::telegram::types::{
     MessageId, QueryMetadata, SearchResult, UserId, Username,
 };
 use chrono::{DateTime, Utc};
+use grammers_client::tl;
 
 /// Create a test message with commonly used defaults.
 ///
@@ -104,10 +105,35 @@ pub fn create_test_message_with_forward(
         channel_name: None,
         channel_username: None,
         sender_name: None,
+        post_author: None,
         original_date: None,
         original_message_id: Some(
             MessageId::new(original_message_id).expect("Test original message ID must be positive"),
         ),
+    });
+    msg
+}
+
+/// Forward fixture with full attribution, as the envelope-enriched
+/// conversion now produces it.
+pub fn create_test_message_with_enriched_forward(
+    id: i64,
+    text: &str,
+    channel_id: i64,
+    forwarded_channel_id: i64,
+) -> Message {
+    let mut msg = create_test_message(id, text, channel_id);
+    msg.forwarded_from = Some(ForwardInfo {
+        channel_id: Some(
+            ChannelId::new(forwarded_channel_id)
+                .expect("Test forwarded channel ID must be positive"),
+        ),
+        channel_name: Some(ChannelName::new("Военкор").expect("valid name")),
+        channel_username: Some(Username::new("voenkor_ru").expect("valid username")),
+        sender_name: None,
+        post_author: Some("И. Петров".to_string()),
+        original_date: None,
+        original_message_id: Some(MessageId::new(1863).expect("valid id")),
     });
     msg
 }
@@ -220,6 +246,144 @@ pub fn create_test_jpeg(width: u32, height: u32) -> Vec<u8> {
         ))
         .expect("test JPEG encoding cannot fail");
     buf.into_inner()
+}
+
+/// Raw TL channel for envelope fixtures: every flag false, every optional not
+/// listed below `None` — the same convention as `public_channel_peer` in the
+/// converter tests.
+pub fn raw_tl_channel(id: i64, title: &str, username: Option<&str>) -> tl::types::Channel {
+    tl::types::Channel {
+        creator: false,
+        left: false,
+        broadcast: true,
+        verified: false,
+        megagroup: false,
+        restricted: false,
+        signatures: false,
+        min: false,
+        scam: false,
+        has_link: false,
+        has_geo: false,
+        slowmode_enabled: false,
+        call_active: false,
+        call_not_empty: false,
+        fake: false,
+        gigagroup: false,
+        noforwards: false,
+        join_to_send: false,
+        join_request: false,
+        forum: false,
+        stories_hidden: false,
+        stories_hidden_min: false,
+        stories_unavailable: true,
+        signature_profiles: false,
+        autotranslation: false,
+        broadcast_messages_allowed: false,
+        monoforum: false,
+        forum_tabs: false,
+        id,
+        access_hash: Some(0),
+        title: title.to_string(),
+        username: username.map(|u| u.to_string()),
+        photo: tl::enums::ChatPhoto::Empty,
+        date: 0,
+        restriction_reason: None,
+        admin_rights: None,
+        banned_rights: None,
+        default_banned_rights: None,
+        participants_count: None,
+        usernames: None,
+        stories_max_id: None,
+        color: None,
+        profile_color: None,
+        emoji_status: None,
+        level: None,
+        subscription_until_date: None,
+        bot_verification_icon: None,
+        send_paid_messages_stars: None,
+        linked_monoforum_id: None,
+        linked_community_id: None,
+    }
+}
+
+/// Raw TL community (channel-namespace group) for envelope fixtures.
+pub fn raw_tl_community(id: i64, title: &str) -> tl::types::Community {
+    tl::types::Community {
+        creator: false,
+        left: false,
+        min: false,
+        collapsed_in_dialogs: false,
+        id,
+        access_hash: Some(0),
+        title: title.to_string(),
+        photo: tl::enums::ChatPhoto::Empty,
+        date: 0,
+        admin_rights: None,
+        default_banned_rights: None,
+    }
+}
+
+/// Raw TL user for envelope fixtures. Same convention (the TL `self` field is
+/// named `is_self` in generated Rust).
+pub fn raw_tl_user(
+    id: i64,
+    first: Option<&str>,
+    last: Option<&str>,
+    username: Option<&str>,
+) -> tl::types::User {
+    tl::types::User {
+        is_self: false,
+        contact: false,
+        mutual_contact: false,
+        deleted: false,
+        bot: false,
+        bot_chat_history: false,
+        bot_nochats: false,
+        verified: false,
+        restricted: false,
+        min: false,
+        bot_inline_geo: false,
+        support: false,
+        scam: false,
+        apply_min_photo: false,
+        fake: false,
+        bot_attach_menu: false,
+        premium: false,
+        attach_menu_enabled: false,
+        bot_can_edit: false,
+        close_friend: false,
+        stories_hidden: false,
+        stories_unavailable: true,
+        contact_require_premium: false,
+        bot_business: false,
+        bot_has_main_app: false,
+        bot_forum_view: false,
+        bot_forum_can_manage_topics: false,
+        bot_can_manage_bots: false,
+        bot_guestchat: false,
+        bot_guard: false,
+        id,
+        access_hash: Some(0),
+        first_name: first.map(|s| s.to_string()),
+        last_name: last.map(|s| s.to_string()),
+        username: username.map(|s| s.to_string()),
+        phone: None,
+        photo: None,
+        status: None,
+        bot_info_version: None,
+        restriction_reason: None,
+        bot_inline_placeholder: None,
+        lang_code: None,
+        emoji_status: None,
+        usernames: None,
+        stories_max_id: None,
+        color: None,
+        profile_color: None,
+        bot_active_users: None,
+        bot_verification_icon: None,
+        send_paid_messages_stars: None,
+        linked_community_id: None,
+    }
 }
 
 #[cfg(test)]
