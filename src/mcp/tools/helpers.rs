@@ -2,7 +2,17 @@
 //!
 //! This module extracts common ID parsing logic used across multiple tools.
 
+use crate::error::Error;
 use crate::telegram::types::{ChannelId, MessageId};
+
+/// The message inside `InvalidInput`, so tool-level prefixes don't stack on
+/// the variant's own `invalid input:` Display prefix (work-order D7).
+fn error_detail(e: Error) -> String {
+    match e {
+        Error::InvalidInput(msg) => msg,
+        other => other.to_string(),
+    }
+}
 
 /// Parse a channel ID string to a type-safe ChannelId.
 ///
@@ -23,7 +33,7 @@ pub fn parse_channel_id(id_str: &str) -> Result<ChannelId, String> {
         .parse()
         .map_err(|_| format!("Invalid channel_id: '{}' is not a valid number", id_str))?;
 
-    ChannelId::new(id_num).map_err(|e| format!("Invalid channel_id: {}", e))
+    ChannelId::new(id_num).map_err(|e| format!("Invalid channel_id: {}", error_detail(e)))
 }
 
 /// Parse a message ID to a type-safe MessageId.
@@ -35,7 +45,7 @@ pub fn parse_channel_id(id_str: &str) -> Result<ChannelId, String> {
 /// * `Ok(MessageId)` - Valid message ID
 /// * `Err(String)` - Error message describing the issue
 pub fn parse_message_id(id: i64) -> Result<MessageId, String> {
-    MessageId::new(id).map_err(|e| format!("Invalid message_id: {}", e))
+    MessageId::new(id).map_err(|e| format!("Invalid message_id: {}", error_detail(e)))
 }
 
 /// Parse an optional channel ID string to an optional ChannelId.
@@ -154,6 +164,24 @@ mod tests {
         let result = parse_message_id(-1);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Invalid message_id"));
+    }
+
+    #[test]
+    fn parse_message_id_negative_has_single_prefix() {
+        let err = parse_message_id(-5).unwrap_err();
+        assert_eq!(
+            err,
+            "Invalid message_id: Message ID must be positive, got -5"
+        );
+    }
+
+    #[test]
+    fn parse_channel_id_negative_has_single_prefix() {
+        let err = parse_channel_id("-1").unwrap_err();
+        assert_eq!(
+            err,
+            "Invalid channel_id: Channel ID must be positive, got -1"
+        );
     }
 
     #[test]
