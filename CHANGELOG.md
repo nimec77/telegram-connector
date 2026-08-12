@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Forward attribution: `forwarded_from` on `search_messages` /
+  `get_recent_messages` now carries `channel_name`, `channel_username`,
+  `sender_name`, and `post_author`, resolved from the same MTProto response
+  envelope (`chats`/`users`) — zero additional API calls; sources the account
+  is not subscribed to are attributed too. The ids-only form is kept when the
+  envelope lacks the peer. Additive and backward compatible.
+
+### Changed
+- `get_recent_messages` / `search_messages` fetch via raw
+  `messages.GetHistory` / `messages.Search` / `messages.SearchGlobal`
+  invocations (same requests and pagination as the grammers iterators, which
+  discard the envelope behind a crate-private `PeerMap`).
+
 ## [0.18.0] - 2026-08-12
 
 ### Added

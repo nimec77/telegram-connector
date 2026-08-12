@@ -455,7 +455,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
     /// Tool 14: resolve_channels - Batch-resolve ids/usernames/titles to channels
     #[tool(
-        description = "Batch-resolve up to 20 channel identifiers (numeric ID, @username, or exact title of a subscribed chat) to full channel entities in one call. Use for forward attribution (forwarded_from.channel_id -> name) and title-only private chats. Failures are reported per-identifier."
+        description = "Batch-resolve up to 20 channel identifiers (numeric ID, @username, or exact title of a subscribed chat) to full channel entities in one call. Use for full entities (subscriber counts, flags) and title-only private chats; forward sources already arrive named in forwarded_from. Failures are reported per-identifier."
     )]
     pub async fn resolve_channels(
         &self,

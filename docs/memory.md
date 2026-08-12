@@ -3525,3 +3525,16 @@ commit (Task 2). Tests 560 → 601 across nine feature tasks plus this docs-only
   acquire before the fan-out starts (not `N` separate acquires racing against `buffered(4)`) keeps
   the D5 rate-limit deficit message ("requested N tokens, X.XX available") accurate for the whole
   call, and avoids a partial-acquire state if the bucket runs dry mid-fan-out.
+- **Forward attribution comes from the response envelope, and that required raw TL fetches.** The
+  `messages.Messages` family responses carry `chats`+`users` for every entity their messages
+  reference — including forward sources the account is not subscribed to (which `resolve_channels`
+  can never resolve). grammers keeps that envelope behind `Message.peers: PeerMap` (`pub(crate)`,
+  no public accessor; pinned rev 9fef0bae **is** upstream HEAD, verified 2026-08-12), so
+  `get_recent_messages`/`search_messages` invoke `messages.GetHistory`/`Search`/`SearchGlobal` raw
+  — same requests, same pagination (replicated byte-for-byte from grammers `client/messages.rs` in
+  `client/raw_pager.rs`) — and feed `telegram/envelope.rs::EntityLookup` into
+  `convert_raw_message`. Conversion is a pure function (no client parameter), so the
+  zero-extra-call invariant is enforced by the type signature, not by discipline. Envelope miss →
+  ids-only `ForwardInfo`, never an error, never a fabricated name. If a future grammers rev
+  exposes the peer map publicly, the raw pagers can collapse back to the iterators — that is the
+  only reason they exist.
