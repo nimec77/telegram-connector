@@ -7,14 +7,14 @@ use crate::mcp::tools::image::process_image;
 use crate::mcp::tools::shaping;
 use crate::mcp::tools::{
     BufferedResponseEntry, ChannelsResponse, GenerateLinkRequest, GetChannelInfoRequest,
-    GetChannelsRequest, GetLastResponsesRequest, GetMessageByLinkRequest, GetMessageMediaRequest,
-    GetMessageMediaResponse, GetMessagesBatchRequest, GetRecentMessagesRequest,
-    LastResponsesResponse, MessageLinkResponse, MessageResponse, MessagesBatchResponse,
-    MissingMessageEntry, OpenMessageRequest, RateLimiterCosts, RateLimiterStatus,
-    ResolveChannelsRequest, ResolveChannelsResponse, ResponseFormat, SearchPublicChannelsRequest,
-    SearchRequest, SearchResponse, StatusResponse, TranscribeVoiceMessageRequest,
-    TranscribeVoiceMessageResponse, json_response, parse_channel_id, parse_message_id,
-    parse_optional_utc, validate_date_window,
+    GetChannelStatsRequest, GetChannelsRequest, GetLastResponsesRequest, GetMessageByLinkRequest,
+    GetMessageMediaRequest, GetMessageMediaResponse, GetMessagesBatchRequest,
+    GetRecentMessagesRequest, LastResponsesResponse, MessageLinkResponse, MessageResponse,
+    MessagesBatchResponse, MissingMessageEntry, OpenMessageRequest, RateLimiterCosts,
+    RateLimiterStatus, ResolveChannelsRequest, ResolveChannelsResponse, ResponseFormat,
+    SearchPublicChannelsRequest, SearchRequest, SearchResponse, StatusResponse,
+    TranscribeVoiceMessageRequest, TranscribeVoiceMessageResponse, json_response, parse_channel_id,
+    parse_message_id, parse_optional_utc, validate_date_window,
 };
 // Constructed only inside open_message_in_telegram's macOS-only body; an
 // unconditional import is an unused-import error on Linux builds.
@@ -188,6 +188,7 @@ mod impl_media;
 mod impl_message_batch;
 mod impl_resolve;
 mod impl_search;
+mod impl_stats;
 mod impl_status;
 
 #[tool_router]
@@ -468,6 +469,26 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "Tool invocation started"
         );
         inv.finish(self.resolve_channels_impl(request).await)
+    }
+
+    /// Tool 15: get_channel_stats - Posting-rate and engagement statistics
+    #[tool(
+        description = "Compute posting statistics for one channel from a bounded history sample (default 7 days, max 30, capped at 500 messages): album-collapsed post count, posts/day, median views, media and album share. sample.complete is false when the cap cut the window short. No content classification."
+    )]
+    pub async fn get_channel_stats(
+        &self,
+        Parameters(request): Parameters<GetChannelStatsRequest>,
+        id: RequestId,
+    ) -> Result<String, String> {
+        let inv = ToolInvocation::start("get_channel_stats", id);
+        tracing::info!(
+            tool = inv.tool,
+            request_id = %inv.request_id,
+            channel_id = %request.channel_id,
+            days_back = ?request.days_back,
+            "Tool invocation started"
+        );
+        inv.finish(self.get_channel_stats_impl(request).await)
     }
 }
 
