@@ -73,7 +73,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             && before.get() <= after.get()
         {
             return Err(format!(
-                "before_id ({}) must be greater than after_id ({}): the page covers after_id < id < before_id",
+                "before_id ({}) must be greater than after_id ({}): the page covers after_id \
+                 < id < before_id",
                 before.get(),
                 after.get()
             ));
@@ -139,19 +140,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
         let cursor_eligible = params.channel_id.is_some();
         let mut response = SearchResponse::from(result);
-        for msg in &mut response.messages {
-            shaping::truncate_text(msg, max_text_length);
-        }
-        if response.has_more
-            && cursor_eligible
-            && let Some(last) = response.messages.last()
-        {
-            response.next_cursor = Some(NextCursor { before_id: last.id });
-        }
-        if format == ResponseFormat::Compact {
-            shaping::compact_response(&mut response);
-        }
-        shaping::fit_to_budget(&mut response, self.response_byte_budget, cursor_eligible)?;
+        shaping::shape_response(
+            &mut response,
+            format,
+            max_text_length,
+            cursor_eligible,
+            self.response_byte_budget,
+        )?;
         json_response(&response)
     }
 
@@ -213,7 +208,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             && before.get() <= after.get()
         {
             return Err(format!(
-                "before_id ({}) must be greater than after_id ({}): the page covers after_id < id < before_id",
+                "before_id ({}) must be greater than after_id ({}): the page covers after_id \
+                 < id < before_id",
                 before.get(),
                 after.get()
             ));
@@ -279,19 +275,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
         let cursor_eligible = true; // get_recent_messages: always single-channel
         let mut response = SearchResponse::from(result);
-        for msg in &mut response.messages {
-            shaping::truncate_text(msg, max_text_length);
-        }
-        if response.has_more
-            && cursor_eligible
-            && let Some(last) = response.messages.last()
-        {
-            response.next_cursor = Some(NextCursor { before_id: last.id });
-        }
-        if format == ResponseFormat::Compact {
-            shaping::compact_response(&mut response);
-        }
-        shaping::fit_to_budget(&mut response, self.response_byte_budget, cursor_eligible)?;
+        shaping::shape_response(
+            &mut response,
+            format,
+            max_text_length,
+            cursor_eligible,
+            self.response_byte_budget,
+        )?;
         json_response(&response)
     }
 

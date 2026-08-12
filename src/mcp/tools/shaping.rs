@@ -2,6 +2,7 @@
 //! text truncation, compact hoisting, and byte-budget fitting. Pure
 //! functions over wire types so every rule is unit-testable offline.
 
+use crate::mcp::tools::types::requests::ResponseFormat;
 use crate::mcp::tools::types::responses::{
     ChannelHeader, MessageResponse, NextCursor, SearchResponse,
 };
@@ -12,7 +13,7 @@ pub(crate) const DEFAULT_MAX_TEXT_LENGTH: u32 = 2000;
 /// Cut `text` to `max_chars` characters, flagging the cut. Counts
 /// characters, not bytes: the corpus is largely Cyrillic UTF-8, where a
 /// byte cap would halve the visible text and could split a code point.
-pub(crate) fn truncate_text(msg: &mut MessageResponse, max_chars: u32) {
+fn truncate_text(msg: &mut MessageResponse, max_chars: u32) {
     let total = msg.text.chars().count();
     if total <= max_chars as usize {
         return;
@@ -26,7 +27,7 @@ pub(crate) fn truncate_text(msg: &mut MessageResponse, max_chars: u32) {
 /// strip it from every message (A4). Caller guarantees single-channel
 /// scope; the header is read from the first message, and an empty result
 /// keeps `channel: None`.
-pub(crate) fn compact_response(resp: &mut SearchResponse) {
+fn compact_response(resp: &mut SearchResponse) {
     resp.channel = resp.messages.first().and_then(|m| {
         Some(ChannelHeader {
             id: m.channel_id?,
@@ -50,7 +51,7 @@ pub(crate) fn compact_response(resp: &mut SearchResponse) {
 /// After popping: `returned`, `has_more`, `next_cursor` (when
 /// `cursor_eligible`), and `channels_in_results` (full format only) are
 /// recomputed so the metadata stays honest (B6).
-pub(crate) fn fit_to_budget(
+fn fit_to_budget(
     resp: &mut SearchResponse,
     budget: usize,
     cursor_eligible: bool,
@@ -82,6 +83,33 @@ pub(crate) fn fit_to_budget(
         }
     }
     Ok(())
+}
+
+/// Run the full post-fetch shaping pipeline in the order the audit verified:
+/// (1) per-message text truncation, (2) `next_cursor` emission when the page
+/// was truncated and the scope is single-channel, (3) compact hoisting, then
+/// (4) byte-budget fitting. Shared by `search_messages_impl` and
+/// `get_recent_messages_impl` so the order and conditions live in one place.
+pub(crate) fn shape_response(
+    resp: &mut SearchResponse,
+    format: ResponseFormat,
+    max_text_length: u32,
+    cursor_eligible: bool,
+    byte_budget: usize,
+) -> Result<(), String> {
+    for msg in &mut resp.messages {
+        truncate_text(msg, max_text_length);
+    }
+    if resp.has_more
+        && cursor_eligible
+        && let Some(last) = resp.messages.last()
+    {
+        resp.next_cursor = Some(NextCursor { before_id: last.id });
+    }
+    if format == ResponseFormat::Compact {
+        compact_response(resp);
+    }
+    fit_to_budget(resp, byte_budget, cursor_eligible)
 }
 
 #[cfg(test)]

@@ -8,7 +8,7 @@ use crate::mcp::tools::{
     BufferedResponseEntry, ChannelsResponse, GenerateLinkRequest, GetChannelInfoRequest,
     GetChannelsRequest, GetLastResponsesRequest, GetMessageByLinkRequest, GetMessageMediaRequest,
     GetMessageMediaResponse, GetRecentMessagesRequest, LastResponsesResponse, MessageLinkResponse,
-    MessageResponse, NextCursor, OpenMessageRequest, ResponseFormat, SearchPublicChannelsRequest,
+    MessageResponse, OpenMessageRequest, ResponseFormat, SearchPublicChannelsRequest,
     SearchRequest, SearchResponse, StatusResponse, TranscribeVoiceMessageRequest,
     TranscribeVoiceMessageResponse, json_response, parse_channel_id, parse_message_id,
     parse_optional_channel_id, parse_optional_utc, validate_date_window,

@@ -8,7 +8,7 @@ use crate::telegram::types::{
     ChannelId, ChannelName, MediaFilter, MediaType, Message, MessageId, QueryMetadata,
     SearchResult, Username,
 };
-use crate::test_helpers::create_test_search_result;
+use crate::test_helpers::{create_test_message, create_test_search_result};
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::NumberOrString;
@@ -919,4 +919,67 @@ async fn search_messages_rejects_compact_without_channel() {
         err.contains("channel_id"),
         "error should name the remedy: {err}"
     );
+}
+
+#[tokio::test]
+async fn search_messages_shapes_response_end_to_end_for_single_channel() {
+    // Given: single-channel search results with more pages available.
+    let mut mock_client = MockTelegramClientTrait::new();
+    let result = SearchResult {
+        messages: vec![
+            create_test_message(30, "third", 123),
+            create_test_message(20, "second", 123),
+            create_test_message(10, "first", 123),
+        ],
+        returned: 3,
+        has_more: true,
+        search_time_ms: 5,
+        query_metadata: QueryMetadata {
+            query: "тест".to_string(),
+            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
+        },
+    };
+    mock_client
+        .expect_search_messages()
+        .returning(move |_| Ok(result.clone()));
+
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
+
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    // When: channel-scoped search requests the compact format.
+    let request = SearchRequest {
+        query: "тест".to_string(),
+        channel_id: Some("123".to_string()),
+        hours_back: None,
+        limit: Some(3),
+        media_filter: None,
+        from_date: None,
+        to_date: None,
+        collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
+        format: Some(ResponseFormat::Compact),
+    };
+
+    let out = server
+        .search_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await
+        .expect("ok");
+    let v: serde_json::Value = serde_json::from_str(&out).expect("json");
+
+    // Then: the shared shaping pipeline ran end to end - cursor emitted from
+    // the last (oldest) message, compact header hoisted, per-message channel
+    // fields stripped.
+    assert_eq!(v["has_more"], serde_json::Value::Bool(true));
+    assert_eq!(v["next_cursor"]["before_id"], serde_json::json!(10));
+    assert_eq!(v["channel"]["id"], serde_json::json!(123));
+    for m in v["messages"].as_array().expect("messages array") {
+        assert!(m.get("channel_id").is_none());
+    }
 }

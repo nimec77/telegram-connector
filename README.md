@@ -606,7 +606,10 @@ response hit the `[limits] response_byte_budget` cap (default 40 000 bytes) and
 trailing messages were dropped. In single-channel scope the response then also
 carries `next_cursor: {"before_id": <oldest included id>}`; pass it as
 `before_id` on the next call to page strictly older messages with no overlap
-and no drift from new posts. Global search reports `has_more` without a cursor
+and no drift from new posts. `after_id` can likewise cut an album at the page
+boundary — its siblings with `id <= after_id` are excluded from the fetch —
+so `album.message_ids` lets a caller detect a partial album and re-fetch the
+missing siblings. Global search reports `has_more` without a cursor
 (message ids are per-channel). At least one message is always returned even if
 it alone exceeds the byte budget. Long texts are independently cut at
 `max_text_length` characters (default 2000) and flagged `text_truncated: true`
