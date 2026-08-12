@@ -61,7 +61,7 @@ chrono = { version = "0.4.45", features = ["serde"] }
 secrecy = { version = "0.10", features = ["serde"] }
 
 # Media processing
-image = { version = "0.25", default-features = false, features = ["jpeg"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 base64 = "0.22"
 
 [dev-dependencies]

@@ -18,6 +18,11 @@ const JPEG_QUALITY: u8 = 80;
 /// a >40% total reduction — far beyond what any real photo needs).
 const MAX_CAP_ITERATIONS: usize = 5;
 
+/// JPEG SOI magic — cheap already-JPEG sniff for the passthrough branch.
+fn is_jpeg(bytes: &[u8]) -> bool {
+    bytes.starts_with(&[0xFF, 0xD8])
+}
+
 /// A processed image ready to be returned as an MCP image content block.
 #[derive(Debug, Clone)]
 pub struct ProcessedImage {
@@ -43,6 +48,22 @@ fn process_image_with_cap(
 ) -> Result<ProcessedImage, Error> {
     let decoded = image::load_from_memory(bytes)
         .map_err(|e| Error::DownloadFailed(format!("failed to decode image: {e}")))?;
+
+    // Already-JPEG sources that need no downscale pass through untouched —
+    // re-encoding at identical dimensions degrades quality and can grow the
+    // payload (work-order D4 measured +29%).
+    let passthrough_base64_len = bytes.len().div_ceil(3) * 4;
+    if is_jpeg(bytes)
+        && decoded.width().max(decoded.height()) <= max_dimension
+        && passthrough_base64_len <= max_base64_len
+    {
+        return Ok(ProcessedImage {
+            width: decoded.width(),
+            height: decoded.height(),
+            encoded_size_bytes: bytes.len(),
+            base64_jpeg: BASE64.encode(bytes),
+        });
+    }
 
     let mut target = max_dimension;
     for _ in 0..MAX_CAP_ITERATIONS {
@@ -146,5 +167,33 @@ mod tests {
             }
             other => panic!("expected DownloadFailed, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn jpeg_within_max_dimension_passes_through_byte_identical() {
+        let jpeg = create_test_jpeg(100, 50);
+        let processed = process_image(&jpeg, 1280).unwrap();
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(&processed.base64_jpeg)
+            .unwrap();
+        assert_eq!(decoded, jpeg, "no re-encode may occur");
+        assert_eq!(processed.encoded_size_bytes, jpeg.len());
+        assert_eq!((processed.width, processed.height), (100, 50));
+    }
+
+    #[test]
+    fn non_jpeg_source_is_still_reencoded_to_jpeg() {
+        let img = image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+            80,
+            40,
+            image::Rgb([10, 200, 30]),
+        ));
+        let mut png = std::io::Cursor::new(Vec::new());
+        img.write_to(&mut png, image::ImageFormat::Png).unwrap();
+        let processed = process_image(png.get_ref(), 1280).unwrap();
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(&processed.base64_jpeg)
+            .unwrap();
+        assert_eq!(&decoded[..2], [0xFF, 0xD8], "output must be JPEG");
     }
 }
