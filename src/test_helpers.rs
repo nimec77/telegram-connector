@@ -104,6 +104,7 @@ pub fn create_test_message_with_forward(
         channel_name: None,
         channel_username: None,
         sender_name: None,
+        post_author: None,
         original_date: None,
         original_message_id: Some(
             MessageId::new(original_message_id).expect("Test original message ID must be positive"),

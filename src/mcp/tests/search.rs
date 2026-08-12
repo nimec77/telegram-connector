@@ -447,6 +447,7 @@ async fn search_messages_serializes_enrichment_fields() {
                 channel_name: None,
                 channel_username: None,
                 sender_name: None,
+                post_author: None,
                 original_date: None,
                 original_message_id: Some(MessageId::new(42).unwrap()),
             }),

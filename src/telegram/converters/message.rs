@@ -54,6 +54,7 @@ pub(crate) fn extract_forward_info(header: &tl::types::MessageFwdHeader) -> Forw
         channel_name: None,
         channel_username: None,
         sender_name: header.from_name.clone(),
+        post_author: None,
         original_date: DateTime::<Utc>::from_timestamp(header.date as i64, 0)
             .filter(|dt| dt.timestamp() > 0),
         original_message_id: header

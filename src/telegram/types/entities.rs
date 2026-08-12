@@ -65,13 +65,11 @@ impl Message {
 
 /// Attribution for a forwarded message.
 ///
-/// `channel_name` / `channel_username` are intentionally never populated: the
-/// grammers forward header carries only the source's numeric `from_id`, and the
-/// resolved title/username live in the response's peer map (not exposed per
-/// message). Filling them would require an extra resolve call per message, which the
-/// zero-extra-call enrichment invariant forbids; batch attribution is the
-/// `resolve_channels` tool (work-order A7): pass the forward `channel_id`s and
-/// read back names/usernames in one call.
+/// `channel_name` / `channel_username` / `sender_name` are resolved from the
+/// same response envelope the message arrived in (its `chats` + `users`
+/// arrays) — never from an extra resolve call. When the envelope does not
+/// contain the source peer, the ids-only form is emitted instead; nothing is
+/// fabricated (zero-extra-call enrichment invariant).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ForwardInfo {
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -82,6 +80,9 @@ pub struct ForwardInfo {
     pub channel_username: Option<Username>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub sender_name: Option<String>,
+    /// Author signature on signed channel posts (fwd header `post_author`).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub post_author: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub original_date: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -207,6 +208,36 @@ pub struct MessageBatch {
 mod tests {
     use super::*;
 
+    #[test]
+    fn forward_info_serializes_post_author_and_skips_absent_fields() {
+        let info = ForwardInfo {
+            channel_id: Some(ChannelId::new(1783384254).expect("valid id")),
+            channel_name: None,
+            channel_username: None,
+            sender_name: None,
+            post_author: Some("Иван Петров".to_string()),
+            original_date: None,
+            original_message_id: None,
+        };
+        let json = serde_json::to_value(&info).expect("serializes");
+        assert_eq!(json["post_author"], "Иван Петров");
+        // Absent optionals must be skipped, not null (backward-compatible shape).
+        assert!(json.get("channel_name").is_none());
+        assert!(json.get("sender_name").is_none());
+
+        let bare = ForwardInfo {
+            channel_id: None,
+            channel_name: None,
+            channel_username: None,
+            sender_name: None,
+            post_author: None,
+            original_date: None,
+            original_message_id: None,
+        };
+        let json = serde_json::to_value(&bare).expect("serializes");
+        assert!(json.get("post_author").is_none());
+    }
+
     fn create_test_message() -> Message {
         Message {
             id: MessageId::new(1).unwrap(),
@@ -297,6 +328,7 @@ mod tests {
             channel_name: None,
             channel_username: None,
             sender_name: None,
+            post_author: None,
             original_date: None,
             original_message_id: Some(MessageId::new(7).unwrap()),
         });
