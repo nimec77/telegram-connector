@@ -12,7 +12,6 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
         let response = StatusResponse {
             telegram_connected: connected,
-            rate_limiter_tokens: tokens,
             rate_limiter: RateLimiterStatus {
                 tokens,
                 capacity: self.rate_limiter.capacity(),

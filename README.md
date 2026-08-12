@@ -255,7 +255,6 @@ Check the connection status and rate limiter state.
 ```json
 {
   "telegram_connected": true,
-  "rate_limiter_tokens": 45.5,
   "rate_limiter": {
     "tokens": 45.5,
     "capacity": 50.0,
@@ -282,10 +281,7 @@ Check the connection status and rate limiter state.
 > when called with `include_full: true`). The remaining tools —
 > `check_mcp_status`, `get_subscribed_channels`, `get_last_responses`, and
 > `get_channel_info` without `include_full` — never call `acquire` and cost
-> nothing. `rate_limiter_tokens` is a
-> deprecated alias of `rate_limiter.tokens`, kept only for this release —
-> it is removed in v0.18, so new integrations should read
-> `rate_limiter.tokens` directly. When a call is rejected for insufficient
+> nothing. When a call is rejected for insufficient
 > tokens, the error states the deficit, e.g. `rate limit exceeded: requested
 > 5 tokens, 2.40 available, retry after 2 seconds` (Telegram flood-wait
 > rejections keep their existing wording, with no token arithmetic to show).
@@ -1014,7 +1010,7 @@ Then send via stdin:
 {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"check_mcp_status","arguments":{}}}
 ```
 
-**Expected:** `telegram_connected: true`, `rate_limiter_tokens: 50.0`
+**Expected:** `telegram_connected: true`, `rate_limiter.tokens: 50.0`
 
 ### Test 2: List Channels
 
