@@ -33,9 +33,12 @@ impl TelegramClient {
 
     /// Resolve a username to a peer via `resolve_username`, bounded by the resolve
     /// timeout (a leading `@` is stripped). `Ok(None)` means the username does not
-    /// exist; `Err` is an RPC/timeout failure. Shared by [`Self::resolve_peer`]
-    /// (which hard-errors on `None`) and `get_recent_messages` (which falls back to
-    /// a dialog walk on `None`/`Err`).
+    /// exist; `Err` is an RPC/timeout failure. `Ok(None)` is also returned before
+    /// any RPC is made when the username locally fails [`Username::is_valid_shape`]
+    /// — a malformed username cannot exist, so the local shape-reject path and the
+    /// "no such username" RPC outcome are indistinguishable to callers by design.
+    /// Shared by [`Self::resolve_peer`] (which hard-errors on `None`) and
+    /// `get_recent_messages` (which falls back to a dialog walk on `None`/`Err`).
     pub(super) async fn resolve_username_peer(
         &self,
         channel_ref: &str,
