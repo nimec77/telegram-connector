@@ -13,11 +13,11 @@ pub mod serde_helpers;
 pub use requests::{
     GenerateLinkRequest, GetChannelInfoRequest, GetChannelsRequest, GetLastResponsesRequest,
     GetMessageByLinkRequest, GetMessageMediaRequest, GetRecentMessagesRequest, OpenMessageRequest,
-    SearchPublicChannelsRequest, SearchRequest, TranscribeVoiceMessageRequest,
+    ResponseFormat, SearchPublicChannelsRequest, SearchRequest, TranscribeVoiceMessageRequest,
 };
 pub use responses::{
-    BufferedResponseEntry, ChannelsResponse, GetMessageMediaResponse, LastResponsesResponse,
-    MessageLinkResponse, MessageResponse, NextCursor, OpenMessageResponse, SearchResponse,
-    StatusResponse, TranscribeVoiceMessageResponse,
+    BufferedResponseEntry, ChannelHeader, ChannelsResponse, GetMessageMediaResponse,
+    LastResponsesResponse, MessageLinkResponse, MessageResponse, NextCursor, OpenMessageResponse,
+    SearchResponse, StatusResponse, TranscribeVoiceMessageResponse,
 };
-pub use serde_helpers::deserialize_optional_media_filter;
+pub use serde_helpers::{deserialize_optional_media_filter, deserialize_optional_response_format};

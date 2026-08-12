@@ -29,6 +29,15 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             );
         }
 
+        let format = request.format.unwrap_or_default();
+        if channel_id.is_none() && format == ResponseFormat::Compact {
+            return Err(
+                "format=compact requires channel_id: the compact header describes one channel; \
+                 use full format for global search"
+                    .to_string(),
+            );
+        }
+
         // Apply defaults and limits
         let hours_back = request
             .hours_back
@@ -139,6 +148,9 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         {
             response.next_cursor = Some(NextCursor { before_id: last.id });
         }
+        if format == ResponseFormat::Compact {
+            shaping::compact_response(&mut response);
+        }
         json_response(&response)
     }
 
@@ -213,6 +225,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             return Err("max_text_length must be greater than 0".to_string());
         }
 
+        let format = request.format.unwrap_or_default();
+
         // Build history params
         let params = HistoryParams {
             channel_id,
@@ -272,6 +286,9 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             && let Some(last) = response.messages.last()
         {
             response.next_cursor = Some(NextCursor { before_id: last.id });
+        }
+        if format == ResponseFormat::Compact {
+            shaping::compact_response(&mut response);
         }
         json_response(&response)
     }

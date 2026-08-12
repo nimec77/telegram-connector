@@ -1,5 +1,6 @@
 //! Custom serde deserializers for MCP tool types.
 
+use super::requests::ResponseFormat;
 use crate::telegram::types::MediaFilter;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
@@ -32,6 +33,37 @@ where
                 .map_err(serde::de::Error::custom)
         }
         Some(StringOrMediaFilter::MediaFilter(f)) => Ok(Some(f)),
+    }
+}
+
+/// Deserialize Option<ResponseFormat> treating empty strings as None.
+/// This handles MCP clients that send `"format": ""` instead of omitting the field.
+pub fn deserialize_optional_response_format<'de, D>(
+    deserializer: D,
+) -> Result<Option<ResponseFormat>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    // First try to deserialize as an Option<String> to check for empty string
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrResponseFormat {
+        String(String),
+        ResponseFormat(ResponseFormat),
+        Null,
+    }
+
+    match Option::<StringOrResponseFormat>::deserialize(deserializer)? {
+        None => Ok(None),
+        Some(StringOrResponseFormat::Null) => Ok(None),
+        Some(StringOrResponseFormat::String(s)) if s.is_empty() => Ok(None),
+        Some(StringOrResponseFormat::String(s)) => {
+            // Try to parse non-empty string as ResponseFormat
+            serde_json::from_value(serde_json::Value::String(s))
+                .map(Some)
+                .map_err(serde::de::Error::custom)
+        }
+        Some(StringOrResponseFormat::ResponseFormat(f)) => Ok(Some(f)),
     }
 }
 

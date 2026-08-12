@@ -1,12 +1,25 @@
 //! Request types for MCP tools.
 
 use super::serde_helpers::{
-    deserialize_optional_media_filter, flexible_i64, flexible_opt_bool, flexible_opt_i64,
-    flexible_opt_string, flexible_opt_u32, flexible_string,
+    deserialize_optional_media_filter, deserialize_optional_response_format, flexible_i64,
+    flexible_opt_bool, flexible_opt_i64, flexible_opt_string, flexible_opt_u32, flexible_string,
 };
 use crate::telegram::types::MediaFilter;
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+
+/// Response shape for message-returning tools (work-order A4).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+#[schemars(inline)]
+pub enum ResponseFormat {
+    /// Every message carries its own channel fields (v0.15 shape).
+    #[default]
+    Full,
+    /// Channel fields hoisted into one response-level `channel` header and
+    /// dropped from each message — saves kilobytes at limit=100 (A4).
+    Compact,
+}
 
 /// Request for get_subscribed_channels tool
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -144,6 +157,12 @@ pub struct SearchRequest {
     )]
     #[serde(default, deserialize_with = "flexible_opt_u32")]
     pub max_text_length: Option<u32>,
+
+    #[schemars(
+        description = "Optional: response shape — 'full' (default) repeats channel fields on every message; 'compact' hoists them into one response-level channel header. compact requires a single-channel scope."
+    )]
+    #[serde(default, deserialize_with = "deserialize_optional_response_format")]
+    pub format: Option<ResponseFormat>,
 }
 
 /// Request for get_recent_messages tool
@@ -206,6 +225,12 @@ pub struct GetRecentMessagesRequest {
     )]
     #[serde(default, deserialize_with = "flexible_opt_u32")]
     pub max_text_length: Option<u32>,
+
+    #[schemars(
+        description = "Optional: response shape — 'full' (default) repeats channel fields on every message; 'compact' hoists them into one response-level channel header. compact requires a single-channel scope."
+    )]
+    #[serde(default, deserialize_with = "deserialize_optional_response_format")]
+    pub format: Option<ResponseFormat>,
 }
 
 /// Request for get_message_by_link tool

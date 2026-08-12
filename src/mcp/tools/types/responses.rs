@@ -210,16 +210,29 @@ pub struct GetMessageMediaResponse {
     pub video_info: Option<VideoInfo>,
 }
 
+/// Response-level channel header emitted in compact format (work-order A4).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ChannelHeader {
+    pub id: ChannelId,
+    pub name: ChannelName,
+    pub username: Option<Username>,
+}
+
 /// Wire representation of a single message (mirrors the domain `Message`).
 ///
 /// `sender_id` / `sender_name` mirror the domain type exactly (serialized as `null`
 /// when absent, no `skip_serializing_if`) to preserve the existing wire format; the
-/// enrichment fields are omitted when absent.
+/// enrichment fields are omitted when absent. `channel_id`/`channel_name`/
+/// `channel_username` are populated in full format and stripped (hoisted into
+/// `SearchResponse.channel`) in compact format (A4).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MessageResponse {
     pub id: MessageId,
-    pub channel_id: ChannelId,
-    pub channel_name: ChannelName,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub channel_id: Option<ChannelId>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub channel_name: Option<ChannelName>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub channel_username: Option<Username>,
     pub text: String,
     /// Present (true) only when text was cut at max_text_length (B4).
@@ -262,8 +275,8 @@ impl From<Message> for MessageResponse {
     fn from(m: Message) -> Self {
         Self {
             id: m.id,
-            channel_id: m.channel_id,
-            channel_name: m.channel_name,
+            channel_id: Some(m.channel_id),
+            channel_name: Some(m.channel_name),
             channel_username: m.channel_username,
             text: m.text,
             text_truncated: None,
@@ -300,6 +313,9 @@ pub struct NextCursor {
 /// Wire representation of a search/history result set.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SearchResponse {
+    /// Compact-format channel header; null in full format or when empty (A4).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub channel: Option<ChannelHeader>,
     pub messages: Vec<MessageResponse>,
     pub returned: u64,
     /// More qualifying messages exist beyond this page (limit- or
@@ -314,6 +330,7 @@ pub struct SearchResponse {
 impl From<SearchResult> for SearchResponse {
     fn from(r: SearchResult) -> Self {
         Self {
+            channel: None,
             messages: r.messages.into_iter().map(MessageResponse::from).collect(),
             returned: r.returned,
             has_more: r.has_more,

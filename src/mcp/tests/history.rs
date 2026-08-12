@@ -1,7 +1,7 @@
 //! Tests for get_recent_messages tool
 
 use crate::mcp::server::McpServer;
-use crate::mcp::tools::{GetRecentMessagesRequest, SearchResponse};
+use crate::mcp::tools::{GetRecentMessagesRequest, ResponseFormat, SearchResponse};
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::{
@@ -84,6 +84,7 @@ async fn get_recent_messages_returns_results() {
         before_id: None,
         after_id: None,
         max_text_length: None,
+        format: None,
     };
 
     let result = server
@@ -115,6 +116,7 @@ async fn get_recent_messages_empty_channel_id_fails() {
         before_id: None,
         after_id: None,
         max_text_length: None,
+        format: None,
     };
 
     // When: Get recent messages
@@ -169,6 +171,7 @@ async fn get_recent_messages_with_media_filter() {
         before_id: None,
         after_id: None,
         max_text_length: None,
+        format: None,
     };
 
     let result = server
@@ -226,6 +229,7 @@ async fn get_recent_messages_applies_limits() {
         before_id: None,
         after_id: None,
         max_text_length: None,
+        format: None,
     };
 
     let result = server
@@ -286,6 +290,7 @@ async fn get_recent_messages_with_username_passes_identifier_without_pre_resolvi
         before_id: None,
         after_id: None,
         max_text_length: None,
+        format: None,
     };
 
     let result = server
@@ -322,6 +327,7 @@ async fn get_recent_messages_rate_limited() {
         before_id: None,
         after_id: None,
         max_text_length: None,
+        format: None,
     };
 
     // When: Get recent messages when rate limited
@@ -365,6 +371,7 @@ async fn get_recent_messages_passes_date_range_to_client() {
         before_id: None,
         after_id: None,
         max_text_length: None,
+        format: None,
     };
 
     let result = server
@@ -404,6 +411,7 @@ async fn get_recent_messages_accepts_equal_from_and_to_date() {
         before_id: None,
         after_id: None,
         max_text_length: None,
+        format: None,
     };
 
     let result = server
@@ -434,6 +442,7 @@ async fn get_recent_messages_rejects_inverted_range() {
         before_id: None,
         after_id: None,
         max_text_length: None,
+        format: None,
     };
 
     let result = server
@@ -470,6 +479,7 @@ async fn get_recent_messages_rejects_to_date_older_than_hours_back_window() {
         before_id: None,
         after_id: None,
         max_text_length: None,
+        format: None,
     };
 
     let result = server
@@ -509,6 +519,7 @@ async fn get_recent_messages_accepts_to_date_inside_hours_back_window() {
         before_id: None,
         after_id: None,
         max_text_length: None,
+        format: None,
     };
 
     let result = server
@@ -535,6 +546,7 @@ async fn get_recent_messages_rejects_blank_to_date() {
         before_id: None,
         after_id: None,
         max_text_length: None,
+        format: None,
     };
 
     let result = server
@@ -570,6 +582,7 @@ async fn collapse_albums_flag_reaches_params() {
         before_id: None,
         after_id: None,
         max_text_length: None,
+        format: None,
     };
 
     let result = server
@@ -604,6 +617,7 @@ async fn collapse_albums_defaults_to_true() {
         before_id: None,
         after_id: None,
         max_text_length: None,
+        format: None,
     };
 
     let result = server
@@ -652,6 +666,7 @@ async fn get_recent_messages_emits_next_cursor_when_limit_truncates() {
         before_id: None,
         after_id: None,
         max_text_length: None,
+        format: None,
     };
     let out = server
         .get_recent_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
@@ -689,6 +704,7 @@ async fn get_recent_messages_passes_cursor_params_to_client() {
         before_id: Some(610_119),
         after_id: Some(600_000),
         max_text_length: None,
+        format: None,
     };
     let out = server
         .get_recent_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
@@ -713,6 +729,7 @@ async fn get_recent_messages_rejects_inverted_cursor_range() {
         before_id: Some(100),
         after_id: Some(100),
         max_text_length: None,
+        format: None,
     };
     let out = server
         .get_recent_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
@@ -760,6 +777,7 @@ async fn get_recent_messages_truncates_long_text() {
         before_id: None,
         after_id: None,
         max_text_length: None, // default 2000 applies
+        format: None,
     };
     let out = server
         .get_recent_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
@@ -770,4 +788,59 @@ async fn get_recent_messages_truncates_long_text() {
     assert_eq!(m["text"].as_str().expect("text").chars().count(), 2000);
     assert_eq!(m["text_truncated"], serde_json::Value::Bool(true));
     assert_eq!(m["text_full_length"], serde_json::json!(3000));
+}
+
+#[tokio::test]
+async fn get_recent_messages_compact_hoists_channel_header() {
+    let mut mock_client = MockTelegramClientTrait::new();
+    let result = SearchResult {
+        messages: vec![
+            create_test_message(2, "второе", 123),
+            create_test_message(1, "первое", 123),
+        ],
+        returned: 2,
+        has_more: false,
+        search_time_ms: 5,
+        query_metadata: QueryMetadata {
+            query: String::new(),
+            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
+        },
+    };
+    mock_client
+        .expect_get_recent_messages()
+        .returning(move |_| Ok(result.clone()));
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = GetRecentMessagesRequest {
+        channel_id: "123".to_string(),
+        hours_back: None,
+        limit: None,
+        media_filter: None,
+        from_date: None,
+        to_date: None,
+        collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
+        format: Some(ResponseFormat::Compact),
+    };
+    let out = server
+        .get_recent_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await
+        .expect("ok");
+    let v: serde_json::Value = serde_json::from_str(&out).expect("json");
+
+    // Then: one response-level header, no per-message channel fields
+    assert_eq!(v["channel"]["id"], serde_json::json!(123));
+    assert_eq!(v["channel"]["name"], serde_json::json!("Test Channel"));
+    assert_eq!(v["channel"]["username"], serde_json::json!("testchannel"));
+    let m = &v["messages"][0];
+    assert!(m.get("channel_id").is_none());
+    assert!(m.get("channel_name").is_none());
+    assert!(m.get("channel_username").is_none());
 }
