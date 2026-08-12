@@ -3454,11 +3454,9 @@ commit (Task 2). Tests 560 → 601 across nine feature tasks plus this docs-only
 - **Task 1 / D5** (`37930e9`) — deleted `StatusResponse.rate_limiter_tokens` and its
   `impl_status.rs` assignment; closes the standing note above.
 - **Task 2 / A1** (`0031bd8`, fixed forward by `5a199bb`) — `TelegramClientTrait::get_messages_batch`:
-  one `get_messages_by_id` RPC, slot-level classifier (`guard.rs`'s `partition_slot_ids`) turns
-  absent-or-`MessageEmpty` slots into `missing_ids`. The review fix folded a third case into
-  "missing": a present, non-empty slot that still fails `convert_message` (domain conversion) now
-  also lands in `missing_ids` (logged as a warning) instead of silently vanishing from both
-  `messages` and `missing_ids` — restoring the every-id-in-exactly-one-vector invariant.
+  one `get_messages_by_id` RPC, single-pass loop classifies slots: `guard::is_empty_variant` guards
+  absent-or-`MessageEmpty` → `missing_ids`; present non-empty that fails `convert_message` is logged as
+  warning and reported missing (instead of dropped) — ensuring every-id-in-exactly-one-vector invariant.
 - **Task 3 / A1** (`bdeecaf`) — `get_messages_batch` MCP tool (13th): `MAX_BATCH_IDS = 50`
   post-dedup, `acquire(1)` (one RPC regardless of batch size), `fit_batch_to_budget` pops the tail
   into `omitted_ids` (distinct from `missing`: omitted ids exist and are worth re-requesting).

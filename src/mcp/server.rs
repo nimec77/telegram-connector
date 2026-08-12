@@ -301,6 +301,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             request_id = %inv.request_id,
             query = %request.query,
             channel_id = ?request.channel_id,
+            channel_ids = ?request.channel_ids,
             hours_back = ?request.hours_back,
             limit = ?request.limit,
             media_filter = ?request.media_filter,
@@ -311,7 +312,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
     /// Tool 7: get_recent_messages - Get recent messages from a channel by time window
     #[tool(
-        description = "Get recent messages from a specific channel by time window (no search query needed)"
+        description = "Get recent messages from one channel - or fan out over up to 20 channels via channel_ids - by time window (no search query needed)"
     )]
     pub async fn get_recent_messages(
         &self,
