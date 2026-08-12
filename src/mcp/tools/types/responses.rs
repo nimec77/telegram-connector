@@ -313,7 +313,7 @@ pub struct NextCursor {
 /// Wire representation of a search/history result set.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SearchResponse {
-    /// Compact-format channel header; null in full format or when empty (A4).
+    /// Compact-format channel header; omitted in full format or when empty (A4).
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub channel: Option<ChannelHeader>,
     pub messages: Vec<MessageResponse>,
