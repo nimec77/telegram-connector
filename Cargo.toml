@@ -61,10 +61,12 @@ chrono = { version = "0.4.45", features = ["serde"] }
 secrecy = { version = "0.10", features = ["serde"] }
 
 # Media processing
-image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
 base64 = "0.22"
 
 [dev-dependencies]
+# PNG codec for tests: create_test_jpeg & non-JPEG re-encode test write_to PNG
+image = { version = "0.25", default-features = false, features = ["png"] }
 # `test-util` enables the pausable clock (`start_paused`, `time::advance`) used by
 # the timeout/transcription tests. It is intentionally excluded from `full`, so it
 # must be requested explicitly here (dev-only, never compiled into release builds).
