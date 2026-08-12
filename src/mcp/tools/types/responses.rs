@@ -281,11 +281,24 @@ impl From<Message> for MessageResponse {
     }
 }
 
+/// Resume point for the next (older) page (work-order A8).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
+pub struct NextCursor {
+    /// Pass as `before_id` on the next call: pages strictly older than
+    /// the last message included here.
+    pub before_id: MessageId,
+}
+
 /// Wire representation of a search/history result set.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SearchResponse {
     pub messages: Vec<MessageResponse>,
     pub returned: u64,
+    /// More qualifying messages exist beyond this page (limit- or
+    /// budget-truncated) — page on via next_cursor (A8/B4).
+    pub has_more: bool,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub next_cursor: Option<NextCursor>,
     pub search_time_ms: u64,
     pub query_metadata: QueryMetadata,
 }
@@ -295,6 +308,8 @@ impl From<SearchResult> for SearchResponse {
         Self {
             messages: r.messages.into_iter().map(MessageResponse::from).collect(),
             returned: r.returned,
+            has_more: r.has_more,
+            next_cursor: None,
             search_time_ms: r.search_time_ms,
             query_metadata: r.query_metadata,
         }

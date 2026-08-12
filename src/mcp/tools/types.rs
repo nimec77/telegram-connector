@@ -17,7 +17,7 @@ pub use requests::{
 };
 pub use responses::{
     BufferedResponseEntry, ChannelsResponse, GetMessageMediaResponse, LastResponsesResponse,
-    MessageLinkResponse, MessageResponse, OpenMessageResponse, SearchResponse, StatusResponse,
-    TranscribeVoiceMessageResponse,
+    MessageLinkResponse, MessageResponse, NextCursor, OpenMessageResponse, SearchResponse,
+    StatusResponse, TranscribeVoiceMessageResponse,
 };
 pub use serde_helpers::deserialize_optional_media_filter;

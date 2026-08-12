@@ -81,6 +81,9 @@ async fn get_recent_messages_returns_results() {
         from_date: None,
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     let result = server
@@ -109,6 +112,9 @@ async fn get_recent_messages_empty_channel_id_fails() {
         from_date: None,
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     // When: Get recent messages
@@ -160,6 +166,9 @@ async fn get_recent_messages_with_media_filter() {
         from_date: None,
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     let result = server
@@ -214,6 +223,9 @@ async fn get_recent_messages_applies_limits() {
         from_date: None,
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     let result = server
@@ -271,6 +283,9 @@ async fn get_recent_messages_with_username_passes_identifier_without_pre_resolvi
         from_date: None,
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     let result = server
@@ -304,6 +319,9 @@ async fn get_recent_messages_rate_limited() {
         from_date: None,
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     // When: Get recent messages when rate limited
@@ -344,6 +362,9 @@ async fn get_recent_messages_passes_date_range_to_client() {
         from_date: Some("2026-08-01T00:00:00Z".to_string()),
         to_date: Some("2026-08-05T00:00:00Z".to_string()),
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     let result = server
@@ -380,6 +401,9 @@ async fn get_recent_messages_accepts_equal_from_and_to_date() {
         from_date: Some("2026-08-01T00:00:00Z".to_string()),
         to_date: Some("2026-08-01T00:00:00Z".to_string()),
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     let result = server
@@ -407,6 +431,9 @@ async fn get_recent_messages_rejects_inverted_range() {
         from_date: Some("2026-08-05T00:00:00Z".to_string()),
         to_date: Some("2026-08-01T00:00:00Z".to_string()),
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     let result = server
@@ -440,6 +467,9 @@ async fn get_recent_messages_rejects_to_date_older_than_hours_back_window() {
         from_date: None,
         to_date: Some(long_ago.to_rfc3339()),
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     let result = server
@@ -476,6 +506,9 @@ async fn get_recent_messages_accepts_to_date_inside_hours_back_window() {
         from_date: None,
         to_date: Some(recent.to_rfc3339()),
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     let result = server
@@ -499,6 +532,9 @@ async fn get_recent_messages_rejects_blank_to_date() {
         from_date: None,
         to_date: Some("".to_string()),
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     let result = server
@@ -531,6 +567,9 @@ async fn collapse_albums_flag_reaches_params() {
         from_date: None,
         to_date: None,
         collapse_albums: Some(false),
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     let result = server
@@ -562,6 +601,9 @@ async fn collapse_albums_defaults_to_true() {
         from_date: None,
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     let result = server
@@ -569,4 +611,115 @@ async fn collapse_albums_defaults_to_true() {
         .await;
 
     assert!(result.is_ok(), "got {:?}", result.err());
+}
+
+#[tokio::test]
+async fn get_recent_messages_emits_next_cursor_when_limit_truncates() {
+    // Given: client reports has_more (limit refused a qualifying message)
+    let mut mock_client = MockTelegramClientTrait::new();
+    let result = SearchResult {
+        messages: vec![
+            create_test_message(20, "newest", 123),
+            create_test_message(10, "oldest included", 123),
+        ],
+        returned: 2,
+        has_more: true,
+        search_time_ms: 5,
+        query_metadata: QueryMetadata {
+            query: String::new(),
+            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_to: None,
+            channels_scanned: Some(1),
+            channels_in_results: 1,
+        },
+    };
+    mock_client
+        .expect_get_recent_messages()
+        .withf(|p| p.before_id.is_none() && p.after_id.is_none())
+        .returning(move |_| Ok(result.clone()));
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = GetRecentMessagesRequest {
+        channel_id: "123".to_string(),
+        hours_back: None,
+        limit: None,
+        media_filter: None,
+        from_date: None,
+        to_date: None,
+        collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
+    };
+    let out = server
+        .get_recent_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await
+        .expect("tool ok");
+    let v: serde_json::Value = serde_json::from_str(&out).expect("json");
+
+    // Then: has_more is surfaced and the cursor points at the oldest included id
+    assert_eq!(v["has_more"], serde_json::Value::Bool(true));
+    assert_eq!(v["next_cursor"]["before_id"], serde_json::json!(10));
+}
+
+#[tokio::test]
+async fn get_recent_messages_passes_cursor_params_to_client() {
+    let mut mock_client = MockTelegramClientTrait::new();
+    mock_client
+        .expect_get_recent_messages()
+        .withf(|p| {
+            p.before_id.map(|id| id.get()) == Some(610_119)
+                && p.after_id.map(|id| id.get()) == Some(600_000)
+        })
+        .returning(move |_| Ok(create_test_search_result(vec![], "", 1)));
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = GetRecentMessagesRequest {
+        channel_id: "123".to_string(),
+        hours_back: None,
+        limit: None,
+        media_filter: None,
+        from_date: None,
+        to_date: None,
+        collapse_albums: None,
+        before_id: Some(610_119),
+        after_id: Some(600_000),
+        max_text_length: None,
+    };
+    let out = server
+        .get_recent_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
+    assert!(out.is_ok());
+}
+
+#[tokio::test]
+async fn get_recent_messages_rejects_inverted_cursor_range() {
+    let mock_client = MockTelegramClientTrait::new();
+    let mock_limiter = MockRateLimiterTrait::new();
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = GetRecentMessagesRequest {
+        channel_id: "123".to_string(),
+        hours_back: None,
+        limit: None,
+        media_filter: None,
+        from_date: None,
+        to_date: None,
+        collapse_albums: None,
+        before_id: Some(100),
+        after_id: Some(100),
+        max_text_length: None,
+    };
+    let out = server
+        .get_recent_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
+    let err = out.expect_err("must reject");
+    assert!(
+        err.contains("before_id"),
+        "error should name the field: {err}"
+    );
 }

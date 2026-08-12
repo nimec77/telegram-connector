@@ -75,6 +75,9 @@ async fn search_messages_returns_results() {
         from_date: None,
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     let result = server
@@ -105,6 +108,9 @@ async fn search_messages_empty_query_fails() {
         from_date: None,
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     // When: Search messages
@@ -144,6 +150,9 @@ async fn search_messages_rate_limited() {
         from_date: None,
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     // When: Search messages
@@ -201,6 +210,9 @@ async fn search_messages_with_channel_filter() {
         from_date: None,
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     let result = server
@@ -254,6 +266,9 @@ async fn search_messages_applies_limits() {
         from_date: None,
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     let result = server
@@ -325,6 +340,9 @@ async fn search_allows_empty_query_with_media_filter() {
         from_date: None,
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     let result = server
@@ -379,6 +397,9 @@ async fn search_passes_media_filter_to_params() {
         from_date: None,
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     let result = server
@@ -461,6 +482,9 @@ async fn search_messages_serializes_enrichment_fields() {
         from_date: None,
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     let result = server
@@ -508,6 +532,9 @@ async fn search_passes_date_range_to_client() {
         from_date: Some("2026-08-01T00:00:00Z".to_string()),
         to_date: Some("2026-08-05T00:00:00Z".to_string()),
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     let result = server
@@ -534,6 +561,9 @@ async fn search_rejects_invalid_from_date() {
         from_date: Some("not-a-date".to_string()),
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     // When: Search with a malformed from_date
@@ -562,6 +592,9 @@ async fn search_rejects_inverted_range() {
         from_date: Some("2026-08-05T00:00:00Z".to_string()),
         to_date: Some("2026-08-01T00:00:00Z".to_string()),
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     // When: Search with from_date after to_date
@@ -605,6 +638,9 @@ async fn search_accepts_equal_from_and_to_date() {
         from_date: Some("2026-08-01T00:00:00Z".to_string()),
         to_date: Some("2026-08-01T00:00:00Z".to_string()),
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     let result = server
@@ -638,6 +674,9 @@ async fn search_rejects_to_date_older_than_hours_back_window() {
         from_date: None,
         to_date: Some(long_ago.to_rfc3339()),
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     let result = server
@@ -676,6 +715,9 @@ async fn search_accepts_to_date_inside_hours_back_window() {
         from_date: None,
         to_date: Some(recent.to_rfc3339()),
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     let result = server
@@ -702,6 +744,9 @@ async fn search_rejects_blank_from_date() {
         from_date: Some("   ".to_string()),
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     let result = server
@@ -735,6 +780,9 @@ async fn search_accepts_padded_from_date() {
         from_date: Some(" 2026-08-01T00:00:00Z ".to_string()),
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     let result = server
@@ -768,6 +816,9 @@ async fn search_response_reports_window_and_returned() {
         from_date: None,
         to_date: None,
         collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
     };
 
     let result_string = server
@@ -791,4 +842,33 @@ async fn search_response_reports_window_and_returned() {
         "executed window start present"
     );
     assert_eq!(meta["channels_in_results"], 1);
+}
+
+#[tokio::test]
+async fn search_messages_rejects_cursors_without_channel() {
+    let mock_client = MockTelegramClientTrait::new();
+    let mock_limiter = MockRateLimiterTrait::new();
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = SearchRequest {
+        query: "новости".to_string(),
+        channel_id: None,
+        hours_back: None,
+        limit: None,
+        media_filter: None,
+        from_date: None,
+        to_date: None,
+        collapse_albums: None,
+        before_id: Some(100),
+        after_id: None,
+        max_text_length: None,
+    };
+    let out = server
+        .search_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
+    let err = out.expect_err("must reject");
+    assert!(
+        err.contains("channel_id"),
+        "error should name the remedy: {err}"
+    );
 }

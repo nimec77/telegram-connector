@@ -91,6 +91,37 @@ where
     }
 }
 
+/// Deserialize `Option<i64>` accepting either a JSON number or a numeric string.
+///
+/// The string form is trimmed before parsing. An empty/whitespace string or a
+/// JSON `null` becomes `None`. Floats and non-numeric values produce an error.
+pub fn flexible_opt_i64<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum NumOrStr {
+        Num(i64),
+        Str(String),
+    }
+
+    match Option::<NumOrStr>::deserialize(deserializer)? {
+        None => Ok(None),
+        Some(NumOrStr::Num(n)) => Ok(Some(n)),
+        Some(NumOrStr::Str(s)) => {
+            let trimmed = s.trim();
+            if trimmed.is_empty() {
+                return Ok(None);
+            }
+            trimmed
+                .parse::<i64>()
+                .map(Some)
+                .map_err(|_| Error::custom(format!("expected an integer, got '{}'", s)))
+        }
+    }
+}
+
 /// Deserialize `String` accepting either a JSON string or an integer JSON number.
 ///
 /// Integer numbers are stringified (`123` -> `"123"`). Float numbers error.

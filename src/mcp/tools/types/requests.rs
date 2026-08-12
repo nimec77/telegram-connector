@@ -1,8 +1,8 @@
 //! Request types for MCP tools.
 
 use super::serde_helpers::{
-    deserialize_optional_media_filter, flexible_i64, flexible_opt_bool, flexible_opt_string,
-    flexible_opt_u32, flexible_string,
+    deserialize_optional_media_filter, flexible_i64, flexible_opt_bool, flexible_opt_i64,
+    flexible_opt_string, flexible_opt_u32, flexible_string,
 };
 use crate::telegram::types::MediaFilter;
 use schemars::JsonSchema;
@@ -126,6 +126,24 @@ pub struct SearchRequest {
     )]
     #[serde(default, deserialize_with = "flexible_opt_bool")]
     pub collapse_albums: Option<bool>,
+
+    #[schemars(
+        description = "Optional: exclusive upper message-id bound — return only messages with id < before_id. Use next_cursor.before_id from a previous response to fetch the next (older) page without offset drift. Requires channel_id."
+    )]
+    #[serde(default, deserialize_with = "flexible_opt_i64")]
+    pub before_id: Option<i64>,
+
+    #[schemars(
+        description = "Optional: exclusive lower message-id bound — stop before messages with id <= after_id. Bounds a page at ids newer than a known message. Requires channel_id."
+    )]
+    #[serde(default, deserialize_with = "flexible_opt_i64")]
+    pub after_id: Option<i64>,
+
+    #[schemars(
+        description = "Optional: maximum text length in characters per message (default: 2000). Longer texts are cut and flagged with text_truncated plus text_full_length; refetch the single message to get full text."
+    )]
+    #[serde(default, deserialize_with = "flexible_opt_u32")]
+    pub max_text_length: Option<u32>,
 }
 
 /// Request for get_recent_messages tool
@@ -170,6 +188,24 @@ pub struct GetRecentMessagesRequest {
     )]
     #[serde(default, deserialize_with = "flexible_opt_bool")]
     pub collapse_albums: Option<bool>,
+
+    #[schemars(
+        description = "Optional: exclusive upper message-id bound — return only messages with id < before_id. Use next_cursor.before_id from a previous response to fetch the next (older) page without offset drift."
+    )]
+    #[serde(default, deserialize_with = "flexible_opt_i64")]
+    pub before_id: Option<i64>,
+
+    #[schemars(
+        description = "Optional: exclusive lower message-id bound — stop before messages with id <= after_id. Bounds a page at ids newer than a known message."
+    )]
+    #[serde(default, deserialize_with = "flexible_opt_i64")]
+    pub after_id: Option<i64>,
+
+    #[schemars(
+        description = "Optional: maximum text length in characters per message (default: 2000). Longer texts are cut and flagged with text_truncated plus text_full_length; refetch the single message to get full text."
+    )]
+    #[serde(default, deserialize_with = "flexible_opt_u32")]
+    pub max_text_length: Option<u32>,
 }
 
 /// Request for get_message_by_link tool

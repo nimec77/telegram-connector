@@ -21,6 +21,14 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         // Parse optional channel_id using helper
         let channel_id = parse_optional_channel_id(&request.channel_id)?;
 
+        if channel_id.is_none() && (request.before_id.is_some() || request.after_id.is_some()) {
+            return Err(
+                "before_id/after_id require channel_id: cursor pagination is per-channel; \
+                 global search cannot page by message id"
+                    .to_string(),
+            );
+        }
+
         // Apply defaults and limits
         let hours_back = request
             .hours_back
@@ -41,6 +49,27 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         let from_date = parse_optional_utc("from_date", &request.from_date)?;
         let to_date = parse_optional_utc("to_date", &request.to_date)?;
 
+        // Parse and cross-validate the cursor bounds (A8).
+        let before_id = request
+            .before_id
+            .map(parse_message_id)
+            .transpose()
+            .map_err(|e| format!("before_id: {}", e))?;
+        let after_id = request
+            .after_id
+            .map(parse_message_id)
+            .transpose()
+            .map_err(|e| format!("after_id: {}", e))?;
+        if let (Some(before), Some(after)) = (before_id, after_id)
+            && before.get() <= after.get()
+        {
+            return Err(format!(
+                "before_id ({}) must be greater than after_id ({}): the page covers after_id < id < before_id",
+                before.get(),
+                after.get()
+            ));
+        }
+
         // Build search params
         let params = SearchParams {
             query: request.query,
@@ -51,8 +80,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             from_date,
             to_date,
             collapse_albums: request.collapse_albums.unwrap_or(true),
-            before_id: None,
-            after_id: None,
+            before_id,
+            after_id,
         };
 
         // Reject an empty window before spending a token or a network round-trip.
@@ -92,7 +121,15 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "Search results"
         );
 
-        json_response(&SearchResponse::from(result))
+        let cursor_eligible = params.channel_id.is_some();
+        let mut response = SearchResponse::from(result);
+        if response.has_more
+            && cursor_eligible
+            && let Some(last) = response.messages.last()
+        {
+            response.next_cursor = Some(NextCursor { before_id: last.id });
+        }
+        json_response(&response)
     }
 
     pub(super) async fn get_recent_messages_impl(
@@ -138,6 +175,27 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         let from_date = parse_optional_utc("from_date", &request.from_date)?;
         let to_date = parse_optional_utc("to_date", &request.to_date)?;
 
+        // Parse and cross-validate the cursor bounds (A8).
+        let before_id = request
+            .before_id
+            .map(parse_message_id)
+            .transpose()
+            .map_err(|e| format!("before_id: {}", e))?;
+        let after_id = request
+            .after_id
+            .map(parse_message_id)
+            .transpose()
+            .map_err(|e| format!("after_id: {}", e))?;
+        if let (Some(before), Some(after)) = (before_id, after_id)
+            && before.get() <= after.get()
+        {
+            return Err(format!(
+                "before_id ({}) must be greater than after_id ({}): the page covers after_id < id < before_id",
+                before.get(),
+                after.get()
+            ));
+        }
+
         // Build history params
         let params = HistoryParams {
             channel_id,
@@ -148,8 +206,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             from_date,
             to_date,
             collapse_albums: request.collapse_albums.unwrap_or(true),
-            before_id: None,
-            after_id: None,
+            before_id,
+            after_id,
         };
 
         // Reject an empty window before spending a token or a network round-trip.
@@ -187,7 +245,15 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "Recent messages results"
         );
 
-        json_response(&SearchResponse::from(result))
+        let cursor_eligible = true; // get_recent_messages: always single-channel
+        let mut response = SearchResponse::from(result);
+        if response.has_more
+            && cursor_eligible
+            && let Some(last) = response.messages.last()
+        {
+            response.next_cursor = Some(NextCursor { before_id: last.id });
+        }
+        json_response(&response)
     }
 
     pub(super) async fn get_message_by_link_impl(
