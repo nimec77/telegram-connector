@@ -25,3 +25,6 @@ logs/
 
 # Proptest
 proptest-regressions/
+
+# Worktrees
+.worktrees/
