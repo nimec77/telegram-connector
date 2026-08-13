@@ -3549,3 +3549,102 @@ commit (Task 2). Tests 560 → 601 across nine feature tasks plus this docs-only
   here. (3) Inherited, pre-existing: `Username::new`'s 5-char minimum silently drops real 3-4-char
   usernames (e.g. `@mash`) from `channel_username` — now also visible in forward enrichment.
   Needs its own ticket; the fix belongs in `types/names.rs`, not the enrichment path.
+
+## Converter parity (work order A) — 2026-08-13
+
+Nine-task SDD plan (`docs/superpowers/plans/2026-08-13-converter-parity.md`, design:
+`docs/superpowers/specs/2026-08-13-converter-parity-design.md`) closing the gap Phase 33's
+envelope work left open: `forwarded_from` reached `get_recent_messages`/`search_messages` but not
+`get_message_by_link`/`get_messages_batch`, because both fetched through grammers' high-level
+`get_messages_by_id`, which discards the response envelope. Controller-mediated subagent-driven
+development with a review pass per task; two review findings changed the shipped design from the
+plan's draft (see Decisions below). Tests 628 → 656 across Tasks 1–8; this docs-only Task 9 adds
+none. Tool surface unchanged (still 15 tools) — this is response-shape parity plus new optional
+fields, not new tools.
+
+- **Task 1** (`255a981`) — `document_info` (`file_name`, `file_size_bytes`, `mime_type`) on
+  `media_type: "document"` messages, read from the document's attributes with no extra call;
+  omitted for video/audio/voice/animation, which already have their own info objects.
+- **Task 2** (`c71d4b1`) — `audio_info` gains `title`/`performer` from the same
+  `DocumentAttributeAudio` attribute already walked for duration; both omitted when Telegram
+  supplies no ID3 metadata (the common case for voice messages).
+- **Task 3** (`44afc12`, fixed forward `b50d90b`) — `poll_info` (`question`, `options` with
+  per-option `voters`, `total_voters`, `closed`, `multiple_choice`, `quiz`), matched to vote
+  counts by the option-bytes key rather than position. Deviates deliberately from the work
+  order's plain-array-of-strings shape (see Decisions below). Review caught the original
+  `unwrap_or(0)` fabricating a zero for an option Telegram had chosen not to disclose a count
+  for; fixed to `filter_map`, degrading that option to `voters: None` like the whole-poll
+  undisclosed case already did.
+- **Task 4** (`57caa3e`) — `raw_pager::fetch_messages_by_id`: an envelope-preserving raw
+  `getMessages` mirroring grammers' `get_messages_by_id` request-for-request (same peer routing,
+  same by-id keying, same wrong-peer filter), keeping the `chats`/`users` arrays forward
+  attribution needs. Not yet wired to a caller in this commit.
+- **Task 5** (`60832cd`) — wired `get_message_by_link`/`get_messages_batch` onto Task 4's raw
+  fetch. The plan called for retyping `require_found` to raw TL; the implementer correctly
+  blocked instead — it has three callers, and `download_message_media`/`transcribe_voice_message`
+  need the high-level wrapper's `.media()`. Controller resolution: add a `require_found_raw` twin
+  instead, both delegating to a shared `not_found()` error constructor, zero changes to
+  `ops_media.rs`/`ops_transcribe.rs`.
+- **Task 6** (`59f2c81`) — `get_channel_stats` moved onto `RawHistoryPager` (behavior-neutral —
+  stats aggregates rather than returning messages), retiring the last caller of the envelope-less
+  path so Task 7 can delete it.
+- **Task 7** (`59ececb`, fixed forward `f2d4299`) — deleted `convert_message` and
+  `EntityLookup::insert_peer`; gated `EntityLookup::empty()` `#[cfg(test)]`. Review caught that a
+  derived `#[derive(Default)]` on `EntityLookup` left `default()`/`Default::default()` as a live,
+  ungated equivalent to the gated `empty()` — the exact bug the task existed to make
+  unrepresentable, spelled differently. Fix: dropped the derive, gave `empty()` a direct
+  `HashMap::new()` body. `from_envelope` is now genuinely the sole production constructor,
+  confirmed by three separate compile-fail transcripts (`empty()`, `default()`,
+  `Default::default()` — all E0599/E0277 from a temporarily-inserted production call site,
+  reverted before commit).
+- **Task 8** (`6c244a6`, fixed forward `a3e348a`) — `src/mcp/tests/parity.rs`: one fixture routed
+  through `get_recent_messages`/`search_messages`/`get_message_by_link`/`get_messages_batch` must
+  serialize an identical `forwarded_from`, plus a 50-message batch (the tool's id cap) asserting
+  zero resolve/download calls fire during conversion. Review caught the file's own doc comment
+  claiming compact-format coverage that no test actually exercised — escalated per the
+  plan-mandated-finding rule rather than trimmed to match; fix added compact-format variants for
+  both single-channel tools, plus a guard that compaction actually ran, so the equality assertion
+  can't pass for the wrong reason.
+- **Task 9** (this entry) — README (`document_info`/`poll_info` examples, extended `audio_info`
+  example, new "Document metadata"/"Poll metadata" prose, a forward-attribution parity note),
+  CHANGELOG `[Unreleased]`, and this tasklist/memory pass.
+
+### Decisions worth remembering
+
+- **A shared function is not a shared path.** Phase 33 built one converter
+  (`convert_raw_message`) and still shipped a path-dependent bug: `get_message_by_link`/
+  `get_messages_batch` reached it through `convert_message`, a wrapper that fabricated an empty
+  `EntityLookup` because those two tools' fetch path (grammers' high-level `get_messages_by_id`)
+  never had a real one to supply. Enrichment quality depended on an argument two callers could
+  not supply — "does everyone call the shared function" audits nothing when the shared function
+  accepts a substitute for the data that makes it work. The audit that matters is what everyone
+  *passes*, not what everyone *calls*.
+- **Delete the weak overload rather than testing for it.** `convert_message` existed only to make
+  an envelope-less call compile. Removing it — instead of adding a test that enumerates every
+  tool and asserts each one's `forwarded_from` — is what makes the bug unrepresentable. An
+  enumeration test has the same failure mode as the original defect: it proves the tools the
+  author remembered to list are correct, and says nothing about the next tool someone adds. Task
+  8's parity test is real regression coverage, but it is a net *behind* the Task 7 deletion, not a
+  substitute for it.
+- **Self-designed verification confirms the author's assumptions, not the property.** Task 7's
+  plan specified a compile-fail check to prove the envelope-less path was closed: temporarily call
+  the gated symbol from production code and confirm `cargo build` fails. It tested exactly one
+  symbol — `empty()`, the one its author had thought to gate — and passed, while `EntityLookup`'s
+  derived `Default` left `default()`/`Default::default()` fully reachable from the same production
+  code, unblocked. The hole wasn't found by re-running the author's own check harder; it was found
+  by a reviewer reasoning about the *type* ("what else constructs this struct?") rather than the
+  specific method the plan had named. A self-authored verification step is scoped by what its
+  author already suspected was the risk — it cannot catch a risk the author didn't think to name,
+  which is exactly the class of bug a second reader is for.
+
+### Standing note
+
+- **Manual acceptance against live Telegram was not run this session.** The work order's
+  acceptance criteria — channel `1912881684` message `298716` returning
+  `"channel_name":"Pavel Zloi"` identically across `get_recent_messages`, `get_message_by_link`,
+  and `get_messages_batch`; channel `2246801752` message `198` returning a populated
+  `document_info.file_name` — need a deployed server with an authenticated Telegram session, which
+  this documentation pass did not have. All eight implementation tasks are covered by the offline
+  test suite (656 passed, 0 failed, 5 ignored); the live check is the one thing that suite cannot
+  exercise. Whoever has a live session next should run both checks before considering this work
+  order fully closed, and update this note with the result.

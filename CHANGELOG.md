@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `forwarded_from` now carries `channel_name`, `channel_username`, `sender_name`,
+  and `post_author` on `get_message_by_link` and `get_messages_batch`, matching
+  `get_recent_messages` / `search_messages`. Both tools fetched through
+  grammers' high-level `get_messages_by_id`, which discards the MTProto
+  response envelope forward attribution reads — so re-fetching a forward by id
+  for its full untruncated text (the designated use of `get_messages_batch`)
+  silently dropped attribution the original search/history call already
+  showed.
+- `poll_info.options[].voters` no longer reports a fabricated `0` for an
+  option Telegram has not disclosed a count for. `PollAnswerVoters.voters`
+  carries its own disclosure flag independent of whether results exist at
+  all — Telegram's partial-disclosure case can reveal which option is
+  chosen/correct while withholding that option's count; that case now
+  degrades the option to `voters` omitted, same as an entirely undisclosed
+  poll.
+
+### Added
+- `document_info` (`file_name`, `file_size_bytes`, `mime_type`) on messages
+  whose `media_type` is `document`, read from the document's attributes with
+  no extra API call. Video/audio/voice/animation media keep their own
+  `video_info`/`audio_info` objects instead, so nothing is duplicated.
+- `poll_info` (`question`, `options` — each `{text, voters}` —,
+  `total_voters`, `closed`, `multiple_choice`, `quiz`) on poll messages, read
+  directly from the message's poll media with no extra API call. Deviates
+  from the original work order's plain-array-of-strings shape: a per-option
+  vote breakdown is what tells a caller what the poll actually concluded.
+- `audio_info` gains `title` and `performer`, read from
+  `DocumentAttributeAudio`'s ID3-style metadata — populated for music
+  tracks, absent for the common case of voice messages.
+
+### Changed
+- `get_channel_stats` now sweeps via the same raw `RawHistoryPager` the
+  other history/search paths use, instead of the grammers iterator —
+  behavior-neutral; retires the last caller of the envelope-less conversion
+  path.
+- Internal: `convert_message` and `EntityLookup::insert_peer` are removed.
+  `EntityLookup` no longer derives `Default`, and `empty()` (still
+  `#[cfg(test)]`-only) has a direct body instead of delegating to it — a
+  derived `Default` would have stayed reachable from production code as an
+  ungated equivalent to the gated `empty()`, defeating the guard's purpose.
+  `from_envelope` is now the sole production constructor, so message
+  conversion cannot compile without a real response envelope. `require_found`
+  gained a `require_found_raw` twin, both delegating to a shared `not_found`
+  error constructor, for the two callers that now fetch raw TL rather than
+  grammers' high-level wrapper; `get_message_media` and
+  `transcribe_voice_message` are unaffected and still use the original
+  (they need `.media()`, which only the high-level wrapper exposes).
+
+All additions above are zero extra network calls and are omitted from JSON
+when absent.
+
 ## [0.19.0] - 2026-08-12
 
 ### Added

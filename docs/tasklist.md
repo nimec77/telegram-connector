@@ -43,9 +43,11 @@
 
 | 33 | Forward attribution enrichment | ✅ Complete | 626 | `forwarded_from` now carries `channel_name`/`channel_username`/`sender_name`/`post_author` resolved from the same response envelope (`chats`+`users`) — zero extra calls, unsubscribed sources attributed too; required dropping `get_recent_messages`/`search_messages` to raw `messages.GetHistory`/`Search`/`SearchGlobal` invocations (grammers pins `Message.peers` crate-private; pinned rev = upstream HEAD), with pagination parity replicated in `client/raw_pager.rs` and the entity map in `telegram/envelope.rs`; envelope miss degrades to ids-only, never an error |
 
+| 34 | Converter parity (work order A) | ✅ Complete | 656 | `forwarded_from` enrichment reaches `get_message_by_link` / `get_messages_batch` via a raw envelope-preserving `getMessages` (`raw_pager::fetch_messages_by_id`); `get_channel_stats` moved to `RawHistoryPager`; `convert_message` + `EntityLookup::insert_peer` deleted, `EntityLookup::empty` gated `#[cfg(test)]` with a non-derived body (the `#[derive(Default)]` hole a review caught would have left `EntityLookup::default()` as an ungated equivalent), making envelope-less conversion unrepresentable; `require_found_raw` twin added for the two raw-TL callers, `download_message_media`/`transcribe_voice_message` unchanged. Adds `document_info`, `poll_info` (per-option `voters`, never fabricating an undisclosed `0`), and `audio_info.title`/`performer` — all zero-call. Manual acceptance against live Telegram not run this session (see docs/memory.md standing note) — needs an authenticated session |
+
 **Legend:** ⬜ Pending | 🔄 In Progress | ✅ Complete | ❌ Blocked
 
-**Overall Progress:** 33/33 phases complete
+**Overall Progress:** 34/34 phases complete
 
 ---
 

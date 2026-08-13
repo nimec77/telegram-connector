@@ -604,10 +604,28 @@ Search for messages across channels with optional media type filtering.
         "mime_type": "video/mp4"
       },
       "audio_info": {
-        "duration_seconds": 8,
-        "file_size_bytes": 41200,
-        "kind": "voice",
-        "mime_type": "audio/ogg"
+        "duration_seconds": 215,
+        "file_size_bytes": 5242880,
+        "kind": "audio",
+        "mime_type": "audio/mpeg",
+        "title": "Around the World",
+        "performer": "Daft Punk"
+      },
+      "document_info": {
+        "file_name": "Как мы строим RAG.pdf",
+        "file_size_bytes": 2411008,
+        "mime_type": "application/pdf"
+      },
+      "poll_info": {
+        "question": "Какой стек выбрать?",
+        "options": [
+          {"text": "Rust", "voters": 287},
+          {"text": "Go", "voters": 125}
+        ],
+        "total_voters": 412,
+        "closed": true,
+        "multiple_choice": false,
+        "quiz": false
       },
       "grouped_id": 13579246801357,
       "reactions": [
@@ -715,7 +733,12 @@ response envelope (works even for channels you are not subscribed to), `sender_n
 (the user's display name for user-source forwards, or the hidden-sender name), and
 `post_author` for signed channel posts. When Telegram's envelope happens not to
 carry the source entity, the ids-only form is emitted — nothing is fabricated and
-no resolution call is made.
+no resolution call is made. This enrichment is identical across every
+message-returning tool — `search_messages`, `get_recent_messages`,
+`get_message_by_link`, and `get_messages_batch` all fetch through the same
+envelope-preserving path, so re-fetching a forward by id (e.g. for its full
+untruncated text) carries the same `channel_name`/`channel_username` the
+original search or history call already showed.
 `link_preview` surfaces Telegram's server-side webpage preview (`url`, `site_name`,
 `title`, `description`, truncated to 500 characters). `views`, `forwards`, and
 `reply_to_message_id` are included when present. All of these fields are omitted
@@ -758,13 +781,33 @@ same timeout budget, so the call may hit the timeout sooner than expected — lo
 `video_info` object — `duration_seconds`, `width`, `height`, `file_size_bytes`,
 `kind` (`video` | `video_note` | `animation`), `has_thumbnail`, and `mime_type` —
 and audio-class media carry an optional `audio_info` object (`duration_seconds`,
-`file_size_bytes`, `kind` (`audio` | `voice`), `mime_type`). Both are derived from
-the message's document attributes with **no extra API calls** (the full video is
-never downloaded), so the client can judge a clip's length and shape — and whether
-fetching its thumbnail via `get_message_media`, or transcribing a voice message, is
-worthwhile — before spending a request. Rare GIF-class animations without a video
-attribute report `duration_seconds`/`width`/`height` as `0`. Both objects are
-omitted when the message has no video/audio media.
+`file_size_bytes`, `kind` (`audio` | `voice`), `mime_type`, plus `title` and
+`performer` read from `DocumentAttributeAudio`'s ID3-style metadata — populated
+for music tracks, omitted for the common case of voice messages). Both are
+derived from the message's document attributes with **no extra API calls** (the
+full video is never downloaded), so the client can judge a clip's length and
+shape — and whether fetching its thumbnail via `get_message_media`, or
+transcribing a voice message, is worthwhile — before spending a request. Rare
+GIF-class animations without a video attribute report
+`duration_seconds`/`width`/`height` as `0`. Both objects are omitted when the
+message has no video/audio media.
+
+**Document metadata:** Messages whose `media_type` is `document` carry an
+optional `document_info` object (`file_name`, `file_size_bytes`, `mime_type`),
+derived from the document's attributes with **no extra API call**. `file_name`
+is itself omitted when Telegram carries no `DocumentAttributeFilename` for the
+file. Video, audio, voice, and animation media keep their own `video_info` /
+`audio_info` objects instead — `document_info` is never emitted alongside
+them, so nothing is duplicated across two keys.
+
+**Poll metadata:** Poll messages (`media_type: "poll"`) carry an optional
+`poll_info` object — `question`, `options` (each `{"text", "voters"}`),
+`total_voters`, `closed`, `multiple_choice`, and `quiz` — read directly from the
+message's poll media with **no extra API call**. `total_voters` and each
+option's `voters` are independently optional: Telegram can disclose which
+option is winning while withholding one option's individual count, or withhold
+results entirely. An undisclosed count is omitted (`voters` absent on that
+option, or `total_voters` absent for the whole poll) — never fabricated as `0`.
 
 **Media Types:** `none`, `photo`, `video`, `document`, `audio`, `voice`, `video_note`, `animation`, `sticker`, `contact`, `location`, `venue`, `poll`, `dice`
 
