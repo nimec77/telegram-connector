@@ -47,6 +47,83 @@ impl TelegramClient {
             .await
     }
 
+    pub(super) async fn download_messages_media_impl(
+        &self,
+        channel_ref: &str,
+        message_ids: &[i32],
+        max_dimension: u32,
+    ) -> Result<Vec<MediaFetchOutcome>, Error> {
+        use futures::StreamExt as _;
+
+        if channel_ref.is_empty() {
+            return Err(Error::InvalidInput(
+                "Channel reference cannot be empty".to_string(),
+            ));
+        }
+
+        // One resolve and one fetch for the whole batch — the point of this
+        // method. A numeric channel_ref costs a full dialog walk, so doing it
+        // per id is what made the naive loop slow.
+        let peer = self.resolve_peer(channel_ref).await?;
+        let peer_ref = peer_to_ref(&peer).await?;
+
+        let messages = with_timeout("get_messages_by_id", self.timeouts.history_secs, async {
+            self.client
+                .get_messages_by_id(peer_ref, message_ids)
+                .await
+                .map_err(|e| {
+                    tracing::error!(
+                        channel_ref = %channel_ref,
+                        requested = message_ids.len(),
+                        error = %e,
+                        "Failed to get messages for batch media download"
+                    );
+                    Error::TelegramApi(format!("Failed to get messages: {}", e))
+                })
+        })
+        .await?;
+
+        // grammers returns one slot per requested id, in request order; a None
+        // slot is a deleted or inaccessible message.
+        let slots: Vec<(i32, Option<_>)> = message_ids
+            .iter()
+            .copied()
+            .zip(messages.into_iter().chain(std::iter::repeat_with(|| None)))
+            .collect();
+
+        let outcomes =
+            futures::stream::iter(slots.into_iter().map(|(message_id, slot)| async move {
+                // require_found also rejects the MessageEmpty placeholder, so
+                // both flavours of "deleted" collapse to NotFound here exactly
+                // as they do on the single-message path.
+                let result = match require_found(slot, channel_ref, message_id) {
+                    Err(_) => Err(MediaFetchError::NotFound),
+                    Ok(msg) => self
+                        .media_download_from_message(msg, channel_ref, message_id, max_dimension)
+                        .await
+                        .map_err(|e| match e {
+                            Error::NoVisualMedia { media_type } => {
+                                MediaFetchError::NoVisualMedia { media_type }
+                            }
+                            other => MediaFetchError::Failed(other),
+                        }),
+                };
+                MediaFetchOutcome { message_id, result }
+            }))
+            .buffered(crate::mcp::tools::fanout::FANOUT_CONCURRENCY)
+            .collect::<Vec<_>>()
+            .await;
+
+        tracing::info!(
+            channel_ref = %channel_ref,
+            requested = outcomes.len(),
+            succeeded = outcomes.iter().filter(|o| o.result.is_ok()).count(),
+            "Batch media download complete"
+        );
+
+        Ok(outcomes)
+    }
+
     /// Select and download a message's visual media: the photo itself, or the
     /// server-side thumbnail for video-like media.
     ///
