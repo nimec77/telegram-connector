@@ -1655,10 +1655,26 @@ git commit -m "feat: bound get_messages_media_batch by a total base64 payload ca
 **Files:**
 - Modify: `src/mcp/server/impl_media.rs`
 - Test: `src/mcp/tests/media_batch.rs`
+- Modify: `src/mcp/server.rs:70` and `:90` — see the prerequisite below
+- Modify: `src/mcp/tests/media.rs:53` — see the prerequisite below
 
 **Interfaces:**
 - Consumes: `RateLimiterTrait::refund` (Task 1), `self.media_download_cost` (existing field).
 - Produces: nothing new.
+
+- [ ] **Step 0: Align the in-struct cost fallback with the config default (prerequisite)**
+
+Task 1 changed the `[rate_limiting] media_download_cost` default from 5 to 3, but `McpServer::new` carries its own hardcoded fallback that was not part of that task's scope and is now stale:
+
+- `src/mcp/server.rs:70` — `media_download_cost: 5,` → `media_download_cost: 3,`
+- `src/mcp/server.rs:90` — the doc comment `(…, default 5)` → `(…, default 3)`
+- `src/mcp/tests/media.rs:53` — `.with(eq(5))` → `.with(eq(3))`
+
+This is load-bearing, not cosmetic: every test in this task constructs the server via `McpServer::new` without `.with_media_download_cost(...)`, so the fallback — not the config default — is the cost actually charged. Left at 5, this task's `acquire(15)` expectation would see `acquire(25)` and every charging test would fail for the wrong reason.
+
+Do **not** change the `eq(5)` expectations in `src/mcp/tests/transcription.rs`: those assert `transcription_cost`, which stays 5.
+
+Run `cargo test media` after this step and confirm it is green before writing the new tests.
 
 - [ ] **Step 1: Write the failing charging tests**
 
