@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-08-13
+
 ### Fixed
 - Unscoped `search_messages` no longer walks Telegram's entire global message
   index to enforce its own time window. `messages.SearchGlobal` carries
