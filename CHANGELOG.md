@@ -29,11 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whose `media_type` is `document`, read from the document's attributes with
   no extra API call. Video/audio/voice/animation media keep their own
   `video_info`/`audio_info` objects instead, so nothing is duplicated.
-- `poll_info` (`question`, `options` — each `{text, voters}` —,
-  `total_voters`, `closed`, `multiple_choice`, `quiz`) on poll messages, read
-  directly from the message's poll media with no extra API call. Deviates
-  from the original work order's plain-array-of-strings shape: a per-option
-  vote breakdown is what tells a caller what the poll actually concluded.
+- `poll_info` (`question`, `options` (each `{text, voters}`), `total_voters`,
+  `closed`, `multiple_choice`, `quiz`) on poll messages, read directly from
+  the message's poll media with no extra API call. Deviates from the
+  original work order's plain-array-of-strings shape: a per-option vote
+  breakdown is what tells a caller what the poll actually concluded.
 - `audio_info` gains `title` and `performer`, read from
   `DocumentAttributeAudio`'s ID3-style metadata — populated for music
   tracks, absent for the common case of voice messages.

@@ -735,10 +735,14 @@ response envelope (works even for channels you are not subscribed to), `sender_n
 carry the source entity, the ids-only form is emitted — nothing is fabricated and
 no resolution call is made. This enrichment is identical across every
 message-returning tool — `search_messages`, `get_recent_messages`,
-`get_message_by_link`, and `get_messages_batch` all fetch through the same
-envelope-preserving path, so re-fetching a forward by id (e.g. for its full
-untruncated text) carries the same `channel_name`/`channel_username` the
-original search or history call already showed.
+`get_message_by_link`, and `get_messages_batch` all convert messages through
+the same step, each one handed a genuine Telegram response envelope from its
+own raw TL call (`messages.GetHistory`/`Search`/`SearchGlobal` for search and
+history, a raw `getMessages` call for by-link and batch) rather than a
+grammers high-level helper that would discard it — so re-fetching a forward
+by id (e.g. for its full untruncated text) carries the same
+`channel_name`/`channel_username` the original search or history call
+already showed.
 `link_preview` surfaces Telegram's server-side webpage preview (`url`, `site_name`,
 `title`, `description`, truncated to 500 characters). `views`, `forwards`, and
 `reply_to_message_id` are included when present. All of these fields are omitted
