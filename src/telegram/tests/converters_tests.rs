@@ -3,7 +3,7 @@ use super::message::{extract_forward_info, extract_link_preview};
 use super::*;
 use crate::telegram::envelope::EntityLookup;
 use crate::telegram::types::{AudioKind, MediaFilter, SizeCandidate, VideoKind};
-use grammers_client::media::{Document, Media};
+use grammers_client::media::{Document, Media, Poll};
 use grammers_client::tl;
 
 fn candidate(width: u32, height: u32, size_bytes: u64, tag: &str) -> SizeCandidate {
@@ -577,4 +577,185 @@ fn document_info_absent_from_json_when_media_is_not_a_document() {
     let json = serde_json::to_value(&msg).expect("serializes");
 
     assert!(json.get("document_info").is_none());
+}
+
+fn poll_media(
+    question: &str,
+    answers: &[&str],
+    voters: Option<&[i32]>,
+    total_voters: Option<i32>,
+    closed: bool,
+    multiple_choice: bool,
+    quiz: bool,
+) -> Media {
+    let text = |s: &str| {
+        tl::enums::TextWithEntities::Entities(tl::types::TextWithEntities {
+            text: s.to_string(),
+            entities: Vec::new(),
+        })
+    };
+    // The `option` bytes are the key linking an answer to its vote count.
+    let raw_answers = answers
+        .iter()
+        .enumerate()
+        .map(|(i, a)| {
+            tl::enums::PollAnswer::Answer(tl::types::PollAnswer {
+                text: text(a),
+                option: vec![i as u8],
+                media: None,
+                added_by: None,
+                date: None,
+            })
+        })
+        .collect();
+    let results = voters.map(|counts| {
+        counts
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| {
+                tl::enums::PollAnswerVoters::Voters(tl::types::PollAnswerVoters {
+                    chosen: false,
+                    correct: false,
+                    option: vec![i as u8],
+                    voters: Some(v),
+                    recent_voters: None,
+                })
+            })
+            .collect()
+    });
+    Media::Poll(Poll::from_raw_media(tl::types::MessageMediaPoll {
+        poll: tl::enums::Poll::Poll(tl::types::Poll {
+            id: 1,
+            closed,
+            public_voters: false,
+            multiple_choice,
+            quiz,
+            open_answers: false,
+            revoting_disabled: false,
+            shuffle_answers: false,
+            hide_results_until_close: false,
+            creator: false,
+            subscribers_only: false,
+            question: text(question),
+            answers: raw_answers,
+            close_period: None,
+            close_date: None,
+            countries_iso2: None,
+            hash: 0,
+        }),
+        results: tl::enums::PollResults::Results(Box::new(tl::types::PollResults {
+            min: false,
+            has_unread_votes: false,
+            can_view_stats: false,
+            results,
+            total_voters,
+            recent_voters: None,
+            solution: None,
+            solution_entities: None,
+            solution_media: None,
+        })),
+        attached_media: None,
+    }))
+}
+
+#[test]
+fn poll_info_reads_question_options_and_per_option_voters() {
+    let media = poll_media(
+        "Какой стек выбрать?",
+        &["Rust", "Go"],
+        Some(&[287, 125]),
+        Some(412),
+        true,
+        false,
+        false,
+    );
+
+    let info = extract_poll_info(&media).expect("poll info present");
+
+    assert_eq!(info.question, "Какой стек выбрать?");
+    assert_eq!(info.options.len(), 2);
+    assert_eq!(info.options[0].text, "Rust");
+    assert_eq!(info.options[0].voters, Some(287));
+    assert_eq!(info.options[1].text, "Go");
+    assert_eq!(info.options[1].voters, Some(125));
+    assert_eq!(info.total_voters, Some(412));
+    assert!(info.closed);
+    assert!(!info.multiple_choice);
+    assert!(!info.quiz);
+}
+
+#[test]
+fn poll_info_without_results_keeps_options_and_omits_voters() {
+    let media = poll_media(
+        "Придёте на митап?",
+        &["Да", "Нет"],
+        None,
+        None,
+        false,
+        false,
+        false,
+    );
+
+    let info = extract_poll_info(&media).expect("poll info present");
+
+    assert_eq!(info.options.len(), 2);
+    assert_eq!(info.options[0].voters, None);
+    assert_eq!(info.options[1].voters, None);
+    assert_eq!(info.total_voters, None);
+    assert!(!info.closed);
+}
+
+#[test]
+fn poll_info_matches_voters_to_options_by_key_not_position() {
+    // Results arrive in a different order than the answers: option b'\x01'
+    // (Go) first. Matching by the `option` bytes must still be correct.
+    let mut media = poll_media(
+        "Какой стек выбрать?",
+        &["Rust", "Go"],
+        Some(&[287, 125]),
+        Some(412),
+        false,
+        false,
+        false,
+    );
+    if let Media::Poll(ref mut poll) = media
+        && let Some(results) = poll.raw_results.results.as_mut()
+    {
+        results.reverse();
+    }
+
+    let info = extract_poll_info(&media).expect("poll info present");
+
+    assert_eq!(info.options[0].text, "Rust");
+    assert_eq!(info.options[0].voters, Some(287));
+    assert_eq!(info.options[1].text, "Go");
+    assert_eq!(info.options[1].voters, Some(125));
+}
+
+#[test]
+fn poll_info_flags_a_quiz_and_multiple_choice() {
+    let media = poll_media("2+2?", &["4", "5"], None, None, false, true, true);
+
+    let info = extract_poll_info(&media).expect("poll info present");
+
+    assert!(info.quiz);
+    assert!(info.multiple_choice);
+}
+
+#[test]
+fn poll_info_is_none_for_non_poll_media() {
+    let media = plain_doc(Some("slides.pdf"), 1024, "application/pdf");
+
+    assert!(extract_poll_info(&media).is_none());
+}
+
+#[test]
+fn poll_option_omits_absent_voters_from_json() {
+    let media = poll_media("Придёте?", &["Да"], None, None, false, false, false);
+    let info = extract_poll_info(&media).expect("poll info present");
+
+    let json = serde_json::to_value(&info).expect("serializes");
+
+    assert!(json["options"][0].get("voters").is_none());
+    assert!(json.get("total_voters").is_none());
 }

@@ -5,7 +5,8 @@
 
 use super::channel::{channel_identity, peer_identity};
 use super::media::{
-    convert_media_to_type, extract_audio_info, extract_document_info, extract_video_info,
+    convert_media_to_type, extract_audio_info, extract_document_info, extract_poll_info,
+    extract_video_info,
 };
 use crate::link::MessageLink;
 use crate::telegram::envelope::EntityLookup;
@@ -272,6 +273,7 @@ pub(crate) fn convert_raw_message(
     let video_info = media.as_ref().and_then(extract_video_info);
     let audio_info = media.as_ref().and_then(extract_audio_info);
     let document_info = media.as_ref().and_then(extract_document_info);
+    let poll_info = media.as_ref().and_then(extract_poll_info);
 
     let forwarded_from = raw_forward_header(raw).map(|h| extract_forward_info(h, entities));
 
@@ -306,6 +308,7 @@ pub(crate) fn convert_raw_message(
         video_info,
         audio_info,
         document_info,
+        poll_info,
         grouped_id: raw_grouped_id(raw),
         link,
         reactions,

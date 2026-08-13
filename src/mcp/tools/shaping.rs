@@ -201,6 +201,7 @@ mod tests {
             video_info: None,
             audio_info: None,
             document_info: None,
+            poll_info: None,
             grouped_id: None,
             link: format!("https://t.me/testchan/{id}"),
             reactions: None,

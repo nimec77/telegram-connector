@@ -42,6 +42,7 @@ pub fn create_test_message(id: i64, text: &str, channel_id: i64) -> Message {
         video_info: None,
         audio_info: None,
         document_info: None,
+        poll_info: None,
         grouped_id: None,
         link: format!("https://t.me/testchannel/{}", id),
         reactions: None,

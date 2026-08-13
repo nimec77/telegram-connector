@@ -5,10 +5,12 @@
 //! candidate selection.
 
 use crate::telegram::types::{
-    AudioInfo, AudioKind, DocumentInfo, MediaFilter, MediaType, SizeCandidate, VideoInfo, VideoKind,
+    AudioInfo, AudioKind, DocumentInfo, MediaFilter, MediaType, PollInfo, PollOption,
+    SizeCandidate, VideoInfo, VideoKind,
 };
 use grammers_client::media::{Document, Media, PhotoSize};
 use grammers_client::tl;
+use std::collections::HashMap;
 
 /// Convert our MediaFilter enum to grammers MessagesFilter for server-side filtering
 pub fn convert_media_filter(filter: &MediaFilter) -> tl::enums::MessagesFilter {
@@ -216,6 +218,56 @@ pub fn extract_document_info(media: &Media) -> Option<DocumentInfo> {
         file_name,
         file_size_bytes: raw.size.max(0) as u64,
         mime_type: Some(raw.mime_type.clone()),
+    })
+}
+
+/// Derive `PollInfo` from poll media. Returns `None` for every other media
+/// class. Answers are matched to their vote counts by the `option` bytes key
+/// that both `PollAnswer` and `PollAnswerVoters` carry — never by position,
+/// which Telegram does not guarantee. Undisclosed results degrade to
+/// text-only options; nothing is fabricated and no call is made.
+pub fn extract_poll_info(media: &Media) -> Option<PollInfo> {
+    let Media::Poll(poll) = media else {
+        return None;
+    };
+
+    let voters_by_option: HashMap<&[u8], u64> = poll
+        .iter_voters_summary()
+        .map(|voters| {
+            voters
+                .map(|v| {
+                    let count = v.voters.and_then(|n| u64::try_from(n).ok()).unwrap_or(0);
+                    (v.option.as_slice(), count)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let options = poll
+        .iter_answers()
+        .filter_map(|answer| {
+            let tl::enums::PollAnswer::Answer(answer) = answer else {
+                return None;
+            };
+            let tl::enums::TextWithEntities::Entities(text) = &answer.text;
+            Some(PollOption {
+                text: text.text.clone(),
+                voters: voters_by_option.get(answer.option.as_slice()).copied(),
+            })
+        })
+        .collect();
+
+    let tl::enums::TextWithEntities::Entities(question) = poll.question();
+
+    Some(PollInfo {
+        question: question.text.clone(),
+        options,
+        total_voters: poll.total_voters().and_then(|v| u64::try_from(v).ok()),
+        closed: poll.closed(),
+        // No accessor for this one in the pinned rev; `raw` is public and the
+        // repo already reads document attributes the same way.
+        multiple_choice: poll.raw.multiple_choice,
+        quiz: poll.is_quiz(),
     })
 }
 

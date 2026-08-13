@@ -91,6 +91,32 @@ pub struct DocumentInfo {
     pub mime_type: Option<String>,
 }
 
+/// Poll / quiz content and results, read from the poll media already on the
+/// message (no network calls). Results are whatever Telegram delivered — no
+/// separate call is made to fetch them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct PollInfo {
+    pub question: String,
+    pub options: Vec<PollOption>,
+    /// Absent when the poll has no disclosed results yet.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub total_voters: Option<u64>,
+    pub closed: bool,
+    pub multiple_choice: bool,
+    /// A graded quiz rather than an opinion poll.
+    pub quiz: bool,
+}
+
+/// One poll answer with its vote count when Telegram has disclosed results.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct PollOption {
+    pub text: String,
+    /// Absent when results are undisclosed — an unvoted poll degrades to
+    /// text-only options rather than to a separate response shape.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub voters: Option<u64>,
+}
+
 /// Media filter for search (maps to Telegram's InputMessagesFilter).
 ///
 /// **Important:** This is metadata-based filtering, NOT content recognition.
