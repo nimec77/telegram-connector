@@ -49,7 +49,7 @@ fn join_names(first: Option<&str>, last: Option<&str>) -> Option<String> {
 ///
 /// Keyed by [`PeerId`], which bit-packs the peer namespace — a user and a
 /// channel sharing a bare id never collide.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct EntityLookup {
     map: HashMap<PeerId, EntityInfo>,
 }
@@ -58,16 +58,21 @@ impl EntityLookup {
     /// Test-only: an entity map with no entries, for asserting the
     /// envelope-miss degradation path.
     ///
-    /// Deliberately NOT available to production code. Conversion requires an
-    /// `EntityLookup`, and `from_envelope` is the only way to build one
-    /// outside tests — so a fetch path physically cannot convert without a
-    /// real response envelope. This is the structural guarantee that replaced
+    /// Deliberately NOT available to production code, and deliberately not a
+    /// `#[derive(Default)]` either — a derived `Default` would be reachable
+    /// from anywhere in the crate regardless of this method's `#[cfg(test)]`
+    /// gate, defeating the point. Conversion requires an `EntityLookup`, and
+    /// `from_envelope` is the only way to build one outside tests — so a
+    /// fetch path physically cannot convert without a real response
+    /// envelope. This is the structural guarantee that replaced
     /// `convert_message`, which existed solely to satisfy the converter's
     /// signature without an envelope and silently degraded every forward it
     /// touched (work order A).
     #[cfg(test)]
     pub(crate) fn empty() -> Self {
-        Self::default()
+        Self {
+            map: HashMap::new(),
+        }
     }
 
     /// Build from a response envelope's `chats` + `users` arrays.
