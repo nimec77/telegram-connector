@@ -1,4 +1,4 @@
-//! Message assembly: forward header, link preview, and `convert_message`.
+//! Message assembly: forward header, link preview, and `convert_raw_message`.
 //!
 //! Sub-domain of `converters` (LM-4). Depends on `media` for media-type
 //! detection and video/audio info.
@@ -315,27 +315,6 @@ pub(crate) fn convert_raw_message(
         reactions_total,
         album: None,
     })
-}
-
-/// Convert a grammers high-level Message (call paths that never see the raw
-/// envelope: get_message_by_id, get_messages_batch, get_channel_stats).
-///
-/// Seeds the entity map from the only peers the high-level API exposes —
-/// sender and chat — so sender resolution is unchanged; forwards on these
-/// paths stay ids-only because `Message.peers` is crate-private in the
-/// pinned grammers rev (see `envelope.rs`).
-pub fn convert_message(
-    msg: &grammers_client::message::Message,
-    peer: &grammers_client::peer::Peer,
-) -> Option<Message> {
-    let mut entities = EntityLookup::empty();
-    if let Some(sender) = msg.sender() {
-        entities.insert_peer(sender);
-    }
-    if let Some(chat) = msg.peer() {
-        entities.insert_peer(chat);
-    }
-    convert_raw_message(&msg.raw, peer, &entities)
 }
 
 #[cfg(test)]

@@ -2,7 +2,7 @@
 //!
 //! Split into sub-domains (LM-4):
 //! - `media`   media classification, sizing, video/audio info
-//! - `message` message assembly (forward header, link preview, convert_message)
+//! - `message` message assembly (forward header, link preview, convert_raw_message)
 //! - `channel` peer -> channel conversion
 
 mod channel;
@@ -17,7 +17,6 @@ pub use media::{
     extract_document_info, extract_poll_info, extract_video_info, matches_media_filter,
     select_size_candidate, size_candidates,
 };
-pub use message::convert_message;
 pub(crate) use message::{convert_raw_message, message_timestamp, timestamp_from_raw};
 
 #[cfg(test)]

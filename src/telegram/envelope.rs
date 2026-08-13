@@ -6,6 +6,10 @@
 //! arrays into a pure, client-free lookup used to attribute forwards (and
 //! resolve senders) with zero extra network calls. Required because the
 //! pinned grammers rev keeps `Message.peers` crate-private.
+//!
+//! `from_envelope` is the only production constructor: conversion cannot be
+//! reached without a real response envelope, so forward attribution cannot
+//! silently degrade on a code path that forgets to supply one.
 
 use grammers_client::tl;
 use grammers_session::types::PeerId;
@@ -51,6 +55,17 @@ pub(crate) struct EntityLookup {
 }
 
 impl EntityLookup {
+    /// Test-only: an entity map with no entries, for asserting the
+    /// envelope-miss degradation path.
+    ///
+    /// Deliberately NOT available to production code. Conversion requires an
+    /// `EntityLookup`, and `from_envelope` is the only way to build one
+    /// outside tests — so a fetch path physically cannot convert without a
+    /// real response envelope. This is the structural guarantee that replaced
+    /// `convert_message`, which existed solely to satisfy the converter's
+    /// signature without an envelope and silently degraded every forward it
+    /// touched (work order A).
+    #[cfg(test)]
     pub(crate) fn empty() -> Self {
         Self::default()
     }
@@ -111,35 +126,6 @@ impl EntityLookup {
     /// Resolve a raw `Peer` reference (e.g. a fwd header's `from_id`).
     pub(crate) fn get(&self, peer: &tl::enums::Peer) -> Option<&EntityInfo> {
         self.map.get(&PeerId::from(peer.clone()))
-    }
-
-    /// Seed from a high-level peer (used by the grammers-`Message` wrapper so
-    /// call paths without an envelope keep their sender resolution).
-    pub(crate) fn insert_peer(&mut self, peer: &grammers_client::peer::Peer) {
-        use grammers_client::peer::Peer;
-        let info = match peer {
-            Peer::User(u) => EntityInfo {
-                display_name: join_names(u.first_name(), u.last_name()),
-                first_name: u.first_name().map(|s| s.to_string()),
-                username: u.username().map(|s| s.to_string()),
-            },
-            Peer::Group(g) => EntityInfo {
-                display_name: g.title().map(|s| s.to_string()),
-                first_name: None,
-                username: g.username().map(|s| s.to_string()),
-            },
-            Peer::Channel(c) => EntityInfo {
-                display_name: Some(c.title().to_string()),
-                first_name: None,
-                username: c.username().map(|s| s.to_string()),
-            },
-            Peer::Community(c) => EntityInfo {
-                display_name: Some(c.title().to_string()),
-                first_name: None,
-                username: None,
-            },
-        };
-        self.map.insert(peer.id(), info);
     }
 }
 

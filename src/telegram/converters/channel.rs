@@ -7,7 +7,7 @@ use crate::telegram::types::{
 };
 
 /// Extract the `(id, display name, username)` triple shared by
-/// `convert_peer_to_channel` and `convert_message` (AD-4).
+/// `convert_peer_to_channel` and `convert_raw_message` (AD-4).
 ///
 /// Returns `None` only when the peer's id or display name cannot form a valid
 /// newtype. `username` is `None` when the peer has no public username — no
