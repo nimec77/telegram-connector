@@ -2,6 +2,7 @@
 //!
 //! Unit of `client` (LM-2).
 
+use super::raw_pager::RawHistoryPager;
 use super::*;
 use crate::telegram::albums::collapse_albums;
 use crate::telegram::types::stats::{ChannelStats, compute_stats};
@@ -35,13 +36,16 @@ impl TelegramClient {
                 let mut scanned = 0u32;
                 let mut oldest: Option<chrono::DateTime<chrono::Utc>> = None;
                 let mut complete = true;
-                let mut iter = self.client.iter_messages(peer_ref);
-                while let Some(msg) = iter
+                // Raw GetHistory pager instead of grammers' iter_messages:
+                // same request, but it keeps the response envelope, which is
+                // what lets the envelope-less converter be deleted entirely.
+                let mut pager = RawHistoryPager::new(&self.client, peer_ref);
+                while let Some((raw_msg, entities)) = pager
                     .next()
                     .await
                     .map_err(|e| Error::TelegramApi(format!("Failed to iterate messages: {}", e)))?
                 {
-                    if message_timestamp(&msg).is_none_or(|t| t < cutoff) {
+                    if timestamp_from_raw(&raw_msg).is_none_or(|t| t < cutoff) {
                         break; // reached the window edge: sweep is complete
                     }
                     if scanned >= ChannelStats::MAX_MESSAGES_SCANNED {
@@ -49,11 +53,11 @@ impl TelegramClient {
                         break;
                     }
                     scanned += 1;
-                    if let Some(t) = message_timestamp(&msg) {
+                    if let Some(t) = timestamp_from_raw(&raw_msg) {
                         oldest =
                             Some(oldest.map_or(t, |o: chrono::DateTime<chrono::Utc>| o.min(t)));
                     }
-                    if let Some(converted) = convert_message(&msg, &peer) {
+                    if let Some(converted) = convert_raw_message(&raw_msg, &peer, &entities) {
                         messages.push(converted);
                     }
                 }
