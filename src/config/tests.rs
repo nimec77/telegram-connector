@@ -766,3 +766,21 @@ fn retuned_media_rate_limit_defaults() {
         "refill rate is deliberately unchanged"
     );
 }
+
+#[test]
+fn media_batch_payload_cap_defaults_to_eight_mib() {
+    let limits = default_limits_config();
+    assert_eq!(limits.media_batch_max_total_bytes, 8_388_608);
+}
+
+#[test]
+fn zero_media_batch_payload_cap_is_rejected() {
+    let limits = LimitsConfig {
+        response_byte_budget: 40_000,
+        media_batch_max_total_bytes: 0,
+    };
+    let err = limits
+        .validate()
+        .expect_err("a zero cap returns no images at all");
+    assert!(err.to_string().contains("media_batch_max_total_bytes"));
+}

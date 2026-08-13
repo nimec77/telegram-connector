@@ -218,6 +218,13 @@ pub struct LimitsConfig {
     /// At least one message is always returned, even over-budget.
     #[serde(default = "default_response_byte_budget")]
     pub response_byte_budget: u64,
+
+    /// Cap (bytes of base64 payload, as sent to the client) on the total image
+    /// payload of one `get_messages_media_batch` call. Base64 is 4/3 the size
+    /// of the underlying JPEG, and base64 is what consumes client context, so
+    /// the budget is counted in base64 bytes.
+    #[serde(default = "default_media_batch_max_total_bytes")]
+    pub media_batch_max_total_bytes: u64,
 }
 
 impl LimitsConfig {
@@ -225,6 +232,9 @@ impl LimitsConfig {
     pub fn validate(&self) -> anyhow::Result<()> {
         if self.response_byte_budget == 0 {
             anyhow::bail!("limits.response_byte_budget must be > 0");
+        }
+        if self.media_batch_max_total_bytes == 0 {
+            anyhow::bail!("limits.media_batch_max_total_bytes must be > 0");
         }
         Ok(())
     }

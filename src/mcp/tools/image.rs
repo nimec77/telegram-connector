@@ -41,7 +41,7 @@ pub fn process_image(bytes: &[u8], max_dimension: u32) -> Result<ProcessedImage,
 
 /// Same as [`process_image`] with an explicit payload cap (separated for tests:
 /// producing >1.5 MB of JPEG in a unit test would be slow).
-fn process_image_with_cap(
+pub(crate) fn process_image_with_cap(
     bytes: &[u8],
     max_dimension: u32,
     max_base64_len: usize,

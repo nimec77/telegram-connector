@@ -69,6 +69,15 @@ phone_number = "+1234567890"
 # it, trailing messages are dropped and has_more/next_cursor are set.
 # response_byte_budget = 40000
 
+# Cap on the TOTAL image payload of one get_messages_media_batch call, counted
+# in bytes of base64 as sent to the client (base64 is 4/3 the JPEG size, and
+# base64 is what consumes context). Images are downscaled progressively to fit;
+# ids that still do not fit are reported in `failed` with reason
+# payload_cap_reached.
+#
+# This is a CONSERVATIVE ESTIMATE, not a measured limit.
+# media_batch_max_total_bytes = 8388608    # Default: 8388608 (8 MiB)
+
 # [transcription]
 # Optional: bounds for the transcribe_voice_message `timeout_seconds` request param.
 # default_timeout_seconds = 30             # Default: 30 (applied when the request omits it)

@@ -6,6 +6,7 @@
 pub(crate) mod fanout;
 pub mod helpers;
 pub mod image;
+pub(crate) mod media_budget;
 pub(crate) mod shaping;
 pub mod types;
 

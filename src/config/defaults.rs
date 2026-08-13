@@ -171,8 +171,13 @@ pub(crate) fn default_response_byte_budget() -> u64 {
     40_000
 }
 
+pub(crate) fn default_media_batch_max_total_bytes() -> u64 {
+    8 * 1024 * 1024
+}
+
 pub(crate) fn default_limits_config() -> LimitsConfig {
     LimitsConfig {
         response_byte_budget: default_response_byte_budget(),
+        media_batch_max_total_bytes: default_media_batch_max_total_bytes(),
     }
 }
