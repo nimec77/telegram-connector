@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-08-14
+
 ### Added
 - `get_messages_media_batch` returns the images of up to 10 messages from one
   channel in a single call — image block plus metadata block per message, then
