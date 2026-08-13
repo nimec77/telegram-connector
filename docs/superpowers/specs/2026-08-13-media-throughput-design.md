@@ -7,13 +7,24 @@
 
 ## Problem
 
-`get_message_media` returns exactly one image per call and charges 5 tokens
-against a bucket of capacity 30 refilling at 1 token/sec. A digest run covering
-10–15 visual posts therefore spends over a minute blocked on refill, and issues
-10–15 separate round trips.
+`get_message_media` returns exactly one image per call, and a digest run
+covering 10–15 visual posts issues 10–15 separate round trips.
 
 The work order attributes the cost to the rate limiter. That is only the
-visible half.
+visible half, and its arithmetic is based on stale defaults.
+
+### Correcting the work order's premise
+
+The work order states "capacity 30 refilling at 1 token/sec", giving "6 images
+immediately, then one per 5 seconds". The actual defaults are `max_tokens = 50`
+and `refill_rate = 2.0` (`src/config/defaults.rs:34-40`), so the real behaviour
+at `media_download_cost = 5` is **10 images immediately, then one per 2.5 s** —
+about 12.5 s of blocking across 15 images, not "over a minute".
+
+The rate limiter is therefore a smaller contributor than the work order
+believes. That does not make the retune wrong, but it does mean the retune
+alone would not have delivered the throughput the work order is after. The
+dominant cost is the per-call overhead below.
 
 ## What the cost actually is
 
@@ -100,8 +111,12 @@ enforced by construction, not by an assertion. `TelegramClient` *is* the mock
 boundary — `MockTelegramClientTrait` replaces it wholesale, so there is no seam
 below it against which to count `resolve_peer` calls. The property is
 guaranteed by there being a single `resolve_peer` call site in the batch impl.
-The mockable surface is the new trait method itself, which is what the MCP-layer
-tests exercise.
+
+This is the codebase's existing situation, not a new gap:
+`src/telegram/tests/client_tests.rs` exercises the *mock*, not
+`TelegramClient`, so no `*_impl` method in `src/telegram/client/` carries a
+unit test today. The new impl inherits that. Its verification is the compiler,
+the MCP-layer tests against the mocked trait, and live acceptance.
 
 ### 2. MCP tool — `get_messages_media_batch`
 
@@ -232,14 +247,20 @@ search fan-out already uses (`impl_search.rs:126-131`).
 
 Config changes, all in existing tables:
 
-| key | table | old | new |
+| key | table | actual current | new |
 |---|---|---|---|
-| `max_tokens` | `[rate_limiting]` | 30 | 60 |
+| `max_tokens` | `[rate_limiting]` | **50** (not 30) | 60 |
 | `media_download_cost` | `[rate_limiting]` | 5 | 3 |
+| `refill_rate` | `[rate_limiting]` | **2.0** (not 1.0) | unchanged |
 | `media_batch_max_total_bytes` | `[limits]` | — | `8_388_608` (8 MiB) |
 
-Note the existing key is `media_download_cost`; the work order calls it
-`media_download`.
+Two notes on the work order's text. The existing key is `media_download_cost`,
+not `media_download`. And its "30" baseline is stale — the current default is
+50, so this is a 50→60 raise, not 30→60. `refill_rate` stays at 2.0; the work
+order does not propose changing it and nothing here argues for it.
+
+Post-retune, at cost 3 against capacity 60 refilling at 2.0/sec: 20 images
+immediately, then one per 1.5 s. A 15-image digest fits entirely in the burst.
 
 `media_batch_max_total_bytes` counts **bytes of base64 payload as sent to the
 client** — the quantity that actually consumes context, and 4/3 the size of the
