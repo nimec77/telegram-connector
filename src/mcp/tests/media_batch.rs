@@ -304,3 +304,107 @@ async fn batch_of_one_matches_the_single_tool_metadata() {
     assert_eq!(batch.content.len(), 3);
     assert_eq!(single.content.len(), 2);
 }
+
+#[tokio::test]
+async fn payload_cap_downscales_then_reports_cap_reached() {
+    // Three sizeable photos against a cap that fits roughly one of them.
+    let mut client = MockTelegramClientTrait::new();
+    client
+        .expect_download_messages_media()
+        .return_once(|_, _, _| {
+            Ok(vec![
+                ok_outcome(10, 1200, 1200),
+                ok_outcome(11, 1200, 1200),
+                ok_outcome(12, 1200, 1200),
+            ])
+        });
+
+    let server = McpServer::new(Arc::new(client), Arc::new(permissive_limiter()))
+        .with_media_batch_max_total_bytes(400_000);
+    let result = server
+        .get_messages_media_batch(
+            Parameters(request("news", vec![10, 11, 12])),
+            RequestId(NumberOrString::Number(1)),
+        )
+        .await
+        .expect("hitting the cap is not an error");
+
+    let summary = summary_of(&result.content);
+    assert!(
+        summary.total_base64_bytes <= 400_000,
+        "cap must hold: {} bytes returned",
+        summary.total_base64_bytes
+    );
+    assert_eq!(summary.max_total_bytes, 400_000);
+    assert!(summary.returned >= 1, "at least one image must come back");
+    assert!(
+        summary
+            .failed
+            .iter()
+            .any(|f| f.reason == "payload_cap_reached"),
+        "ids dropped at the cap must say so: {:?}",
+        summary.failed
+    );
+    assert_eq!(
+        summary.returned + summary.failed.len(),
+        3,
+        "every requested id must be accounted for"
+    );
+}
+
+#[tokio::test]
+async fn cap_reached_ids_are_reported_in_request_order() {
+    let mut client = MockTelegramClientTrait::new();
+    client
+        .expect_download_messages_media()
+        .return_once(|_, _, _| {
+            Ok(vec![
+                ok_outcome(10, 1200, 1200),
+                ok_outcome(11, 1200, 1200),
+                ok_outcome(12, 1200, 1200),
+            ])
+        });
+
+    let server = McpServer::new(Arc::new(client), Arc::new(permissive_limiter()))
+        .with_media_batch_max_total_bytes(400_000);
+    let result = server
+        .get_messages_media_batch(
+            Parameters(request("news", vec![10, 11, 12])),
+            RequestId(NumberOrString::Number(1)),
+        )
+        .await
+        .expect("tool should succeed");
+
+    let summary = summary_of(&result.content);
+    let capped: Vec<i64> = summary
+        .failed
+        .iter()
+        .filter(|f| f.reason == "payload_cap_reached")
+        .map(|f| f.id)
+        .collect();
+    let mut sorted = capped.clone();
+    sorted.sort_unstable();
+    assert_eq!(capped, sorted, "cap failures follow request order");
+}
+
+#[tokio::test]
+async fn a_generous_cap_returns_every_image() {
+    let mut client = MockTelegramClientTrait::new();
+    client
+        .expect_download_messages_media()
+        .return_once(|_, _, _| Ok(vec![ok_outcome(10, 200, 100), ok_outcome(11, 200, 100)]));
+
+    let server = McpServer::new(Arc::new(client), Arc::new(permissive_limiter()))
+        .with_media_batch_max_total_bytes(8 * 1024 * 1024);
+    let result = server
+        .get_messages_media_batch(
+            Parameters(request("news", vec![10, 11])),
+            RequestId(NumberOrString::Number(1)),
+        )
+        .await
+        .expect("tool should succeed");
+
+    let summary = summary_of(&result.content);
+    assert_eq!(summary.returned, 2);
+    assert!(summary.failed.is_empty());
+}

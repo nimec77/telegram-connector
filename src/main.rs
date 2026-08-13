@@ -112,7 +112,8 @@ async fn run_mcp_server(telegram_client: TelegramClient, config: Config) -> Resu
             config.transcription.default_timeout_seconds,
             config.transcription.max_timeout_seconds,
         )
-        .with_response_byte_budget(config.limits.response_byte_budget);
+        .with_response_byte_budget(config.limits.response_byte_budget)
+        .with_media_batch_max_total_bytes(config.limits.media_batch_max_total_bytes);
 
     // Metrics handle survives the move of `server` into run_stdio
     let metrics = server.metrics();

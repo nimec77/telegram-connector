@@ -4,6 +4,9 @@
 //! delegate to them. Split out per LM-3 (`server.rs` was 880 lines).
 
 use super::*;
+use crate::mcp::tools::image::{ProcessedImage, process_image_with_cap};
+use crate::mcp::tools::media_budget::Base64Budget;
+use crate::telegram::types::MediaDownload;
 
 /// Longest-side pixel limit applied when a request omits `max_dimension`.
 pub(super) const DEFAULT_MAX_DIMENSION: u32 = 1280;
@@ -37,24 +40,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             .map_err(|e| e.to_string())?;
 
         let processed = process_image(&download.bytes, max_dimension).map_err(|e| e.to_string())?;
-
-        let metadata = GetMessageMediaResponse {
-            channel_id: request.channel_id.clone(),
-            message_id: message_id.get(),
-            media_type: download.media_type,
-            is_thumbnail: download.is_thumbnail,
-            caption: download.caption,
-            source_variant_width: download.width,
-            source_variant_height: download.height,
-            source_variant_size_bytes: download.source_size_bytes,
-            largest_available_width: download.largest_width,
-            largest_available_height: download.largest_height,
-            returned_width: processed.width,
-            returned_height: processed.height,
-            returned_size_bytes: processed.encoded_size_bytes,
-            mime_type: "image/jpeg".to_string(),
-            video_info: download.video_info,
-        };
+        let metadata = media_metadata(
+            request.channel_id.clone(),
+            message_id.get(),
+            download,
+            &processed,
+        );
 
         tracing::info!(
             channel = %request.channel_id,
@@ -124,6 +115,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         let mut content = Vec::new();
         let mut failed = Vec::new();
         let mut total_base64_bytes = 0usize;
+        let mut budget = Base64Budget::new(self.media_batch_max_total_bytes);
 
         for outcome in outcomes {
             let id = i64::from(outcome.message_id);
@@ -138,9 +130,25 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                 }
             };
 
-            let processed = match process_image(&download.bytes, max_dimension) {
+            // Encoding runs in request order, so allocation is deterministic no
+            // matter which download finished first.
+            let Some(allowance) = budget.allowance() else {
+                failed.push(MediaBatchFailure {
+                    id,
+                    reason: "payload_cap_reached".to_string(),
+                });
+                continue;
+            };
+
+            // process_image_with_cap already shrinks the target dimension
+            // iteratively until the encoded payload fits — that is the
+            // progressive downscaling, no second implementation needed.
+            let processed = match process_image_with_cap(&download.bytes, max_dimension, allowance)
+            {
                 Ok(processed) => processed,
                 Err(e) => {
+                    // Budget deliberately untouched: a failed image cost nothing,
+                    // so later ids keep their full allowance.
                     failed.push(MediaBatchFailure {
                         id,
                         reason: format!("download_failed: {e}"),
@@ -148,25 +156,10 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                     continue;
                 }
             };
+            budget.consume(processed.base64_jpeg.len());
 
             total_base64_bytes += processed.base64_jpeg.len();
-            let metadata = GetMessageMediaResponse {
-                channel_id: request.channel_id.clone(),
-                message_id: id,
-                media_type: download.media_type,
-                is_thumbnail: download.is_thumbnail,
-                caption: download.caption,
-                source_variant_width: download.width,
-                source_variant_height: download.height,
-                source_variant_size_bytes: download.source_size_bytes,
-                largest_available_width: download.largest_width,
-                largest_available_height: download.largest_height,
-                returned_width: processed.width,
-                returned_height: processed.height,
-                returned_size_bytes: processed.encoded_size_bytes,
-                mime_type: "image/jpeg".to_string(),
-                video_info: download.video_info,
-            };
+            let metadata = media_metadata(request.channel_id.clone(), id, download, &processed);
             content.push(ContentBlock::image(processed.base64_jpeg, "image/jpeg"));
             content.push(ContentBlock::text(json_response(&metadata)?));
         }
@@ -258,6 +251,36 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         );
 
         json_response(&response)
+    }
+}
+
+/// Build the metadata block accompanying a returned image.
+///
+/// Shared by `get_message_media_impl` and `get_messages_media_batch_impl` so
+/// a batch-of-one produces byte-identical metadata to the single-image tool
+/// (`batch_of_one_matches_the_single_tool_metadata`).
+fn media_metadata(
+    channel_id: String,
+    message_id: i64,
+    download: MediaDownload,
+    processed: &ProcessedImage,
+) -> GetMessageMediaResponse {
+    GetMessageMediaResponse {
+        channel_id,
+        message_id,
+        media_type: download.media_type,
+        is_thumbnail: download.is_thumbnail,
+        caption: download.caption,
+        source_variant_width: download.width,
+        source_variant_height: download.height,
+        source_variant_size_bytes: download.source_size_bytes,
+        largest_available_width: download.largest_width,
+        largest_available_height: download.largest_height,
+        returned_width: processed.width,
+        returned_height: processed.height,
+        returned_size_bytes: processed.encoded_size_bytes,
+        mime_type: "image/jpeg".to_string(),
+        video_info: download.video_info,
     }
 }
 

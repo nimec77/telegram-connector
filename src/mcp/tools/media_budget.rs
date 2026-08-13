@@ -9,17 +9,14 @@ use crate::mcp::tools::image::MAX_BASE64_LEN;
 /// Floor below which an image would be downscaled past usefulness. Once the
 /// remaining budget drops under this, the batch stops rather than emitting
 /// unreadable thumbnails.
-#[allow(dead_code)] // wired into the batch tool by Task 6; exercised by this module's tests
 pub(crate) const MIN_IMAGE_BASE64_BYTES: usize = 32_768;
 
 /// Greedy allocator over a batch's total base64 payload budget.
-#[allow(dead_code)] // wired into the batch tool by Task 6; exercised by this module's tests
 #[derive(Debug)]
 pub(crate) struct Base64Budget {
     remaining: usize,
 }
 
-#[allow(dead_code)] // wired into the batch tool by Task 6; exercised by this module's tests
 impl Base64Budget {
     pub(crate) fn new(total: usize) -> Self {
         Self { remaining: total }
@@ -80,5 +77,11 @@ mod tests {
     fn allowance_is_none_when_the_budget_starts_below_the_floor() {
         let budget = Base64Budget::new(MIN_IMAGE_BASE64_BYTES - 1);
         assert_eq!(budget.allowance(), None);
+    }
+
+    #[test]
+    fn allowance_is_some_exactly_at_the_floor() {
+        let budget = Base64Budget::new(MIN_IMAGE_BASE64_BYTES);
+        assert_eq!(budget.allowance(), Some(MIN_IMAGE_BASE64_BYTES));
     }
 }
