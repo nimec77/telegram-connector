@@ -274,6 +274,25 @@ pub struct GetMessagesBatchRequest {
     pub max_text_length: Option<u32>,
 }
 
+/// Request for get_messages_media_batch tool (work-order C)
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct GetMessagesMediaBatchRequest {
+    #[schemars(description = "Channel ID or username (required). All ids must belong to it.")]
+    #[serde(deserialize_with = "flexible_string")]
+    pub channel_id: String,
+
+    #[schemars(
+        description = "Message IDs to fetch media for in one call (1-10). Ids with no visual media, deleted ids, and ids dropped at the payload cap are reported per-id in `failed`, not as an error."
+    )]
+    pub message_ids: Vec<i64>,
+
+    #[schemars(
+        description = "Optional: longest-side pixel limit per image (default: 1280, clamped 64-2048). Images may be downscaled below this to fit the batch payload cap."
+    )]
+    #[serde(default, deserialize_with = "flexible_opt_u32")]
+    pub max_dimension: Option<u32>,
+}
+
 /// Request for resolve_channels tool
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct ResolveChannelsRequest {

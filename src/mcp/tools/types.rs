@@ -13,13 +13,15 @@ pub mod serde_helpers;
 pub use requests::{
     GenerateLinkRequest, GetChannelInfoRequest, GetChannelStatsRequest, GetChannelsRequest,
     GetLastResponsesRequest, GetMessageByLinkRequest, GetMessageMediaRequest,
-    GetMessagesBatchRequest, GetRecentMessagesRequest, OpenMessageRequest, ResolveChannelsRequest,
-    ResponseFormat, SearchPublicChannelsRequest, SearchRequest, TranscribeVoiceMessageRequest,
+    GetMessagesBatchRequest, GetMessagesMediaBatchRequest, GetRecentMessagesRequest,
+    OpenMessageRequest, ResolveChannelsRequest, ResponseFormat, SearchPublicChannelsRequest,
+    SearchRequest, TranscribeVoiceMessageRequest,
 };
 pub use responses::{
     BufferedResponseEntry, ChannelHeader, ChannelsResponse, GetMessageMediaResponse,
-    LastResponsesResponse, MessageLinkResponse, MessageResponse, MessagesBatchResponse,
-    MissingMessageEntry, NextCursor, OpenMessageResponse, RateLimiterCosts, RateLimiterStatus,
-    ResolveChannelsResponse, SearchResponse, StatusResponse, TranscribeVoiceMessageResponse,
+    LastResponsesResponse, MediaBatchFailure, MediaBatchSummary, MessageLinkResponse,
+    MessageResponse, MessagesBatchResponse, MissingMessageEntry, NextCursor, OpenMessageResponse,
+    RateLimiterCosts, RateLimiterStatus, ResolveChannelsResponse, SearchResponse, StatusResponse,
+    TranscribeVoiceMessageResponse,
 };
 pub use serde_helpers::{deserialize_optional_media_filter, deserialize_optional_response_format};

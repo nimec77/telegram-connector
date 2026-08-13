@@ -9,7 +9,8 @@ use crate::mcp::tools::{
     BufferedResponseEntry, ChannelsResponse, GenerateLinkRequest, GetChannelInfoRequest,
     GetChannelStatsRequest, GetChannelsRequest, GetLastResponsesRequest, GetMessageByLinkRequest,
     GetMessageMediaRequest, GetMessageMediaResponse, GetMessagesBatchRequest,
-    GetRecentMessagesRequest, LastResponsesResponse, MessageLinkResponse, MessageResponse,
+    GetMessagesMediaBatchRequest, GetRecentMessagesRequest, LastResponsesResponse,
+    MediaBatchFailure, MediaBatchSummary, MessageLinkResponse, MessageResponse,
     MessagesBatchResponse, MissingMessageEntry, OpenMessageRequest, RateLimiterCosts,
     RateLimiterStatus, ResolveChannelsRequest, ResolveChannelsResponse, ResponseFormat,
     SearchPublicChannelsRequest, SearchRequest, SearchResponse, StatusResponse,
@@ -22,7 +23,7 @@ use crate::mcp::tools::{
 use crate::mcp::tools::OpenMessageResponse;
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
-use crate::telegram::types::{ChannelId, HistoryParams, MessageId, SearchParams};
+use crate::telegram::types::{ChannelId, HistoryParams, MediaFetchError, MessageId, SearchParams};
 use futures::StreamExt;
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::tool::ToolRouter;
@@ -52,6 +53,7 @@ pub struct McpServer<T: TelegramClientTrait, R: RateLimiterTrait> {
     transcription_default_timeout_secs: u32,
     transcription_max_timeout_secs: u32,
     response_byte_budget: usize,
+    media_batch_max_total_bytes: usize,
     tool_router: ToolRouter<Self>,
 }
 
@@ -72,6 +74,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             transcription_default_timeout_secs: 30,
             transcription_max_timeout_secs: 120,
             response_byte_budget: DEFAULT_RESPONSE_BYTE_BUDGET,
+            media_batch_max_total_bytes: 8 * 1024 * 1024,
             tool_router: Self::tool_router(),
         }
     }
@@ -112,6 +115,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     /// (`[limits] response_byte_budget`, default 40 000).
     pub fn with_response_byte_budget(mut self, bytes: u64) -> Self {
         self.response_byte_budget = bytes as usize;
+        self
+    }
+
+    /// Set the total base64 payload cap for `get_messages_media_batch`
+    /// (`[limits] media_batch_max_total_bytes`, default 8 MiB).
+    pub fn with_media_batch_max_total_bytes(mut self, bytes: u64) -> Self {
+        self.media_batch_max_total_bytes = bytes as usize;
         self
     }
 
@@ -396,6 +406,27 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "Tool invocation started"
         );
         inv.finish(self.get_message_media_impl(request).await)
+    }
+
+    /// Tool 16: get_messages_media_batch - Return several messages' images in one call
+    #[tool(
+        description = "Get the photos (or video/animation/video-note thumbnails) of up to 10 messages from ONE channel in a single call, as image blocks the model can see, each followed by its JSON metadata and a trailing batch summary. Far cheaper than N get_message_media calls: one channel resolution and one fetch round trip for the whole batch. Ids with no visual media, deleted ids, and ids dropped at the total payload cap are reported in the summary's `failed` array rather than failing the call. Charged media_download_cost tokens per image actually returned."
+    )]
+    pub async fn get_messages_media_batch(
+        &self,
+        Parameters(request): Parameters<GetMessagesMediaBatchRequest>,
+        id: RequestId,
+    ) -> Result<CallToolResult, String> {
+        let inv = ToolInvocation::start("get_messages_media_batch", id);
+        tracing::info!(
+            tool = inv.tool,
+            request_id = %inv.request_id,
+            channel_id = %request.channel_id,
+            requested = request.message_ids.len(),
+            max_dimension = ?request.max_dimension,
+            "Tool invocation started"
+        );
+        inv.finish(self.get_messages_media_batch_impl(request).await)
     }
 
     /// Tool 11: transcribe_voice_message - Transcribe a voice/video-note message to text

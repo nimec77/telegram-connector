@@ -275,6 +275,40 @@ pub struct GetMessageMediaResponse {
     pub video_info: Option<VideoInfo>,
 }
 
+/// Trailing summary block of a get_messages_media_batch response (work-order C).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MediaBatchSummary {
+    #[schemars(description = "Channel the messages belong to (as passed in the request)")]
+    pub channel_id: String,
+
+    #[schemars(description = "Ids requested, after de-duplication")]
+    pub requested: usize,
+
+    #[schemars(description = "Images actually returned as content blocks")]
+    pub returned: usize,
+
+    #[schemars(description = "Ids that produced no image, with a machine-readable reason each")]
+    pub failed: Vec<MediaBatchFailure>,
+
+    #[schemars(description = "Total base64 payload returned, in bytes")]
+    pub total_base64_bytes: usize,
+
+    #[schemars(description = "Configured cap on total base64 payload, in bytes")]
+    pub max_total_bytes: u64,
+}
+
+/// One id that produced no image.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MediaBatchFailure {
+    #[schemars(description = "The requested message id")]
+    pub id: i64,
+
+    #[schemars(
+        description = "Why no image was returned: not_found, no_visual_media, payload_cap_reached, or download_failed: <detail>"
+    )]
+    pub reason: String,
+}
+
 /// Response-level channel header emitted in compact format (work-order A4).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ChannelHeader {

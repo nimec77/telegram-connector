@@ -67,8 +67,8 @@ fn tools_list_carries_cache_hints_and_stable_order() {
     // When: Build the tools/list payload via the pure helper
     let result = server.tools_list_result();
 
-    // Then: All 15 tools are present, with SEP-2549 cache hints attached
-    assert_eq!(result.tools.len(), 15);
+    // Then: All 16 tools are present, with SEP-2549 cache hints attached
+    assert_eq!(result.tools.len(), 16);
     assert_eq!(result.ttl_ms, Some(3_600_000));
     assert_eq!(result.cache_scope, Some(rmcp::model::CacheScope::Private));
 
@@ -96,14 +96,14 @@ fn tools_list_hints_gated_on_protocol_version() {
     let current = server.tools_list_result_for(Some(rmcp::model::ProtocolVersion::V_2026_07_28));
     assert_eq!(current.ttl_ms, Some(3_600_000));
     assert_eq!(current.cache_scope, Some(rmcp::model::CacheScope::Private));
-    assert_eq!(current.tools.len(), 15);
+    assert_eq!(current.tools.len(), 16);
 
     // ...but a client on an older negotiated version does not, mirroring the
     // #[tool_handler] macro's own default list_tools gating...
     let legacy = server.tools_list_result_for(Some(rmcp::model::ProtocolVersion::V_2025_11_25));
     assert_eq!(legacy.ttl_ms, None);
     assert!(legacy.cache_scope.is_none());
-    assert_eq!(legacy.tools.len(), 15); // tool list itself is unaffected
+    assert_eq!(legacy.tools.len(), 16); // tool list itself is unaffected
 
     // ...and neither does a client that never negotiated a protocol version at
     // all (the legacy `initialize`-handshake fallback CLAUDE.md documents).
