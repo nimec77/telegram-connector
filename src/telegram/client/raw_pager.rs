@@ -8,6 +8,7 @@
 //! forward attribution (see `telegram/envelope.rs`).
 
 use crate::telegram::envelope::EntityLookup;
+use chrono::{DateTime, Utc};
 use grammers_client::Client;
 use grammers_client::tl;
 use grammers_mtsender::InvocationError;
@@ -103,6 +104,20 @@ fn advance_search_offsets(request: &mut tl::functions::messages::Search, page: &
         request.offset_id = last.id();
         request.max_date = raw_date(last);
     }
+}
+
+/// Map a time window onto `messages.SearchGlobal`'s `min_date`/`max_date`.
+///
+/// The TL schema types both as `int` (i32 unix seconds) and treats `0` as
+/// "unbounded". Out-of-range instants clamp rather than error: a degraded
+/// bound costs a slower search, a rejected one costs the caller their result.
+/// The client-side window filter in `ops_search` stays in place either way.
+fn window_bounds(from: DateTime<Utc>, to: Option<DateTime<Utc>>) -> (i32, i32) {
+    let clamp = |ts: i64| ts.clamp(0, i32::MAX as i64) as i32;
+    (
+        clamp(from.timestamp()),
+        to.map_or(0, |t| clamp(t.timestamp())),
+    )
 }
 
 /// Access hash for a channel-namespace chat variant, if this envelope entry
@@ -391,6 +406,16 @@ impl RawGlobalSearchPager {
         self
     }
 
+    /// Bound the search server-side. Without this the pager walks the entire
+    /// global index backwards discarding out-of-window results — measured at
+    /// 44.86 s for a rare media filter over a 24 h window.
+    pub(super) fn window(mut self, from: DateTime<Utc>, to: Option<DateTime<Utc>>) -> Self {
+        let (min_date, max_date) = window_bounds(from, to);
+        self.request.min_date = min_date;
+        self.request.max_date = max_date;
+        self
+    }
+
     pub(super) async fn next(
         &mut self,
     ) -> Result<
@@ -485,6 +510,7 @@ fn chat_peer_for_message(
 mod tests {
     use super::*;
     use crate::test_helpers::raw_tl_channel;
+    use chrono::DateTime;
     use grammers_client::tl;
     use grammers_session::types::PeerAuth;
 
@@ -670,6 +696,43 @@ mod tests {
         advance_search_offsets(&mut request, &page);
         assert_eq!(request.offset_id, 499);
         assert_eq!(request.max_date, 1_700_000_400);
+    }
+
+    #[test]
+    fn window_bounds_maps_both_ends() {
+        let from = DateTime::from_timestamp(1_700_000_000, 0).expect("valid ts");
+        let to = DateTime::from_timestamp(1_700_086_400, 0).expect("valid ts");
+        let (min_date, max_date) = window_bounds(from, Some(to));
+        assert_eq!(min_date, 1_700_000_000);
+        assert_eq!(max_date, 1_700_086_400);
+    }
+
+    #[test]
+    fn window_bounds_open_upper_end_is_unbounded_sentinel() {
+        let from = DateTime::from_timestamp(1_700_000_000, 0).expect("valid ts");
+        let (min_date, max_date) = window_bounds(from, None);
+        assert_eq!(min_date, 1_700_000_000);
+        // 0 is the protocol's "no upper bound", not "the epoch".
+        assert_eq!(max_date, 0);
+    }
+
+    #[test]
+    fn window_bounds_clamps_pre_epoch_lower_end_to_unbounded() {
+        let from = DateTime::from_timestamp(-86_400, 0).expect("valid ts");
+        let (min_date, max_date) = window_bounds(from, None);
+        // A degraded bound costs latency; a rejected search costs the caller
+        // their result. Degrade.
+        assert_eq!(min_date, 0);
+        assert_eq!(max_date, 0);
+    }
+
+    #[test]
+    fn window_bounds_clamps_beyond_i32_range() {
+        // Past 2038: saturates instead of wrapping into a negative i32, which
+        // would silently widen the window to everything.
+        let from = DateTime::from_timestamp(i32::MAX as i64 + 1_000, 0).expect("valid ts");
+        let (min_date, _) = window_bounds(from, None);
+        assert_eq!(min_date, i32::MAX);
     }
 
     fn channel_ref(id: i64) -> PeerRef {

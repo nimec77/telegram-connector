@@ -164,7 +164,12 @@ impl TelegramClient {
                     // response envelope is kept so forwards get attributed
                     // (zero extra calls). The pager also yields each result's
                     // own chat peer, built from that same envelope.
-                    let mut pager = RawGlobalSearchPager::new(&self.client).query(&params.query);
+                    // Bound the search server-side. The client-side window checks below are
+                    // retained as defense in depth: they cost nothing once the server honors
+                    // these bounds, and keep the result correct if it ever does not.
+                    let mut pager = RawGlobalSearchPager::new(&self.client)
+                        .query(&params.query)
+                        .window(cutoff_time, params.to_date);
 
                     if let Some(ref media_filter) = params.media_filter {
                         pager = pager.filter(convert_media_filter(media_filter));
