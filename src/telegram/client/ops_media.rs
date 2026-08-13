@@ -12,10 +12,6 @@ impl TelegramClient {
         message_id: i32,
         max_dimension: u32,
     ) -> Result<MediaDownload, Error> {
-        // Hard cap on a single download (`[telegram] max_download_bytes`, AD-6).
-        // Hoisted to a Copy local so the streaming closure captures the value.
-        let max_download_bytes = self.max_download_bytes;
-
         if channel_ref.is_empty() {
             return Err(Error::InvalidInput(
                 "Channel reference cannot be empty".to_string(),
@@ -46,6 +42,28 @@ impl TelegramClient {
             channel_ref,
             message_id,
         )?;
+
+        self.media_download_from_message(msg, channel_ref, message_id, max_dimension)
+            .await
+    }
+
+    /// Select and download a message's visual media: the photo itself, or the
+    /// server-side thumbnail for video-like media.
+    ///
+    /// Shared by the single-message and batch entry points so the
+    /// photo-vs-thumbnail rules, the size-variant selection and the
+    /// `max_download_bytes` enforcement exist in exactly one place. Takes an
+    /// already-fetched message, so it performs no resolve and no fetch.
+    pub(super) async fn media_download_from_message(
+        &self,
+        msg: grammers_client::message::Message,
+        channel_ref: &str,
+        message_id: i32,
+        max_dimension: u32,
+    ) -> Result<MediaDownload, Error> {
+        // Hard cap on a single download (`[telegram] max_download_bytes`, AD-6).
+        // Hoisted to a Copy local so the streaming closure captures the value.
+        let max_download_bytes = self.max_download_bytes;
 
         let media = msg.media().ok_or_else(|| Error::NoVisualMedia {
             media_type: "none".to_string(),
