@@ -562,6 +562,13 @@ Search for messages across channels with optional media type filtering.
 > no extra round trip.
 
 **Response:**
+
+*This example is a field reference — it shows every possible field on one
+message for illustration. A real message never carries `video_info`,
+`audio_info`, `document_info`, and `poll_info` together; each is exclusive to
+its own `media_type` (see "Video & audio metadata" / "Document metadata" /
+"Poll metadata" below).*
+
 ```json
 {
   "messages": [

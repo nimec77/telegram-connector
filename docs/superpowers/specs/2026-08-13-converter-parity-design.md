@@ -152,6 +152,7 @@ With no envelope-less callers left:
 | `convert_message` (`message.rs:320`) | **deleted** | Its only purpose was to satisfy the converter's signature without an envelope |
 | `EntityLookup::insert_peer` (`envelope.rs:118`) | **deleted** | Zero callers outside `convert_message` (verified) |
 | `EntityLookup::empty` (`envelope.rs:54`) | gated `#[cfg(test)]` | Still needed by degradation tests |
+| `#[derive(Default)]` on `EntityLookup` (`envelope.rs:52`) | **deleted** | `empty()` was `Self::default()`, so the derive gave production code an ungated equivalent (`EntityLookup::default()`) — gating `empty()` alone left this hole open |
 | `EntityLookup::from_envelope` | sole production constructor | — |
 
 This satisfies the work order's requirement for a type-level constraint over an
@@ -190,11 +191,17 @@ follows their structure: match the media, read `doc.raw.document`, walk
 attributes, return `None` for anything else.
 
 **Emitted only when `convert_media_to_type(media) == MediaType::Document`.**
-Video, audio, voice, animation, and sticker media are all document-backed at
-the TL level, but they already have dedicated info objects; emitting
-`document_info` for them too would duplicate `file_size_bytes` and `mime_type`
-on every media message and consume the 40 KB `[limits] response_byte_budget`
-for no new information. One info object per media class.
+Video, audio, voice, and animation media are all document-backed at the TL
+level but already have dedicated info objects; emitting `document_info` for
+them too would duplicate `file_size_bytes` and `mime_type` on every media
+message and consume the 40 KB `[limits] response_byte_budget` for no new
+information. One info object per media class.
+
+Sticker media is also document-backed at the TL level, but `convert_media_to_type`
+maps `Media::Sticker` straight to `MediaType::Sticker` without a dedicated info
+object of its own — an acknowledged gap, not a duplication-avoidance case like
+the four above. A sticker message today carries no filename and no size.
+Closing it is out of scope for this work order.
 
 ### 5. `audio_info` gains `title` / `performer`
 
@@ -357,14 +364,32 @@ its implementation.
 
 **Zero-call invariant**
 
-- mockall expectations assert no resolve / get-entity / download call fires
-  during conversion of a 100-message batch containing forwards, documents, and
-  polls.
+- Structural, not test-enforced: `convert_raw_message` and the four
+  `extract_*` media helpers (`extract_video_info`, `extract_audio_info`,
+  `extract_document_info`, `extract_poll_info`) are pure functions of raw TL
+  data — none holds a client handle, so none can issue a resolve /
+  get-entity / download call, regardless of batch size or content. The
+  MCP-layer test `get_messages_batch_issues_exactly_one_client_call`
+  (`src/mcp/tests/parity.rs`) pins a related but distinct fact — that
+  `get_messages_batch_impl` itself makes exactly one client call — one layer
+  above conversion, not this invariant.
 
 **Stats migration**
 
-- Window cutoff, `MAX_MESSAGES_SCANNED` cap, and the `complete` flag behave
-  identically before and after the `RawHistoryPager` switch.
+- No dedicated test: the sweep loop lives in `ops_stats.rs`, below the
+  mockable `TelegramClientTrait` boundary — `src/mcp/tests/stats.rs` mocks
+  `get_channel_stats` wholesale and never reaches it, the same reason the
+  batch-conversion loop has no direct test either.
+- Neutrality is established by construction, not by a test: `message_timestamp`
+  is literally `timestamp_from_raw(&msg.raw)`, `RawHistoryPager` issues the
+  same `GetHistory` request shape `iter_messages` did, and `compute_stats`
+  reads only `views` / `has_media` / `album` off the converted posts —
+  whatever forward/media enrichment the raw path adds is discarded before the
+  aggregate numbers are computed. The existing `src/mcp/tests/stats.rs` suite
+  still passes unmodified, which confirms the migration did not change the
+  MCP-layer contract, but — mocking `get_channel_stats` outright — it is not
+  itself proof of window-cutoff / `MAX_MESSAGES_SCANNED` / `complete`
+  equivalence inside the sweep.
 
 ## Quality gates
 

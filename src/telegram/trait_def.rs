@@ -53,14 +53,17 @@ pub trait TelegramClientTrait: Send + Sync {
     /// Get a single message by its ID from a specific channel.
     ///
     /// The `channel_ref` can be a username (e.g. "swodki") or a numeric ID string (e.g. "1234567").
-    /// Uses grammers' `get_messages_by_id` under the hood.
+    /// Uses `raw_pager::fetch_messages_by_id` under the hood — the same RPC as
+    /// grammers' `get_messages_by_id`, but with the response envelope kept so
+    /// forward attribution resolves.
     async fn get_message_by_id(&self, channel_ref: &str, message_id: i32)
     -> Result<Message, Error>;
 
-    /// Fetch up to 50 specific messages from one channel in a single RPC
-    /// (`get_messages_by_id` takes an id vector). Deleted or never-existed
-    /// ids are reported in `MessageBatch::missing_ids` instead of failing
-    /// the batch (work-order A1); the caller pre-validates count and sign.
+    /// Fetch up to 50 specific messages from one channel in a single RPC via
+    /// `raw_pager::fetch_messages_by_id` (an id vector, envelope preserved).
+    /// Deleted or never-existed ids are reported in `MessageBatch::missing_ids`
+    /// instead of failing the batch (work-order A1); the caller pre-validates
+    /// count and sign.
     async fn get_messages_batch(
         &self,
         channel_ref: &str,

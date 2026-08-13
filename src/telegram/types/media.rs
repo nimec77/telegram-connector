@@ -79,7 +79,10 @@ pub enum AudioKind {
 /// Generic-document metadata, derived entirely from the document attributes
 /// already on the message (no network calls). Present only when `media_type`
 /// is `document` — video / audio / voice / animation media carry their own
-/// `video_info` / `audio_info` instead, so nothing is emitted twice.
+/// `video_info` / `audio_info` instead, so nothing is emitted twice. Sticker
+/// media is document-backed at the TL level too, but gets no dedicated info
+/// object of its own and no `document_info` either — an acknowledged gap, not
+/// a duplication-avoidance case like the other four (no filename, no size).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct DocumentInfo {
     /// From `DocumentAttributeFilename`; often the only description a

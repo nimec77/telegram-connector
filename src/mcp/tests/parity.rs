@@ -282,12 +282,14 @@ fn assert_compaction_actually_ran(response: &serde_json::Value, label: &str) {
 const FULL_BATCH_SIZE: i64 = 50;
 
 #[tokio::test]
-async fn converting_a_full_batch_issues_no_resolve_or_download_calls() {
+async fn get_messages_batch_issues_exactly_one_client_call() {
     let mut telegram = MockTelegramClientTrait::new();
 
-    // The batch fetch is the ONLY call permitted. A resolve or a download
-    // during conversion would be a zero-extra-call violation — mockall fails
-    // the test on any invocation of these.
+    // `get_messages_batch` must be the ONLY client call this tool makes for a
+    // full batch — no per-message resolve or download fan-out. This pins the
+    // MCP-layer call count; it does not (and, mocking `TelegramClientTrait`,
+    // cannot) observe what happens inside conversion itself — see the file
+    // header.
     telegram.expect_resolve_channels().never();
     telegram.expect_download_message_media().never();
 

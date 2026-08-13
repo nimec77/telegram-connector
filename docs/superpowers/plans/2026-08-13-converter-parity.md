@@ -82,7 +82,6 @@ tl::types::TextWithEntities { text: String, entities: Vec<enums::MessageEntity> 
 tl::types::DocumentAttributeFilename { file_name: String }
 tl::types::DocumentAttributeAudio { voice, duration, title: Option<String>,
                                     performer: Option<String>, waveform }
-tl::types::MessageMediaPoll { poll: enums::Poll, results: enums::PollResults }
 
 // grammers_client::media (all exported from the `media` module)
 pub struct Poll { pub raw: tl::types::Poll, pub raw_results: tl::types::PollResults }
@@ -505,6 +504,14 @@ ID3 metadata, so voice messages are unchanged on the wire."
 - [ ] **Step 1: Write the failing tests**
 
 Append to `src/telegram/tests/converters_tests.rs`. Add `Poll` to the `use grammers_client::media::{...}` import at the top of the file.
+
+> **Historical note.** The snippet below predates the TL-shape correction in
+> commit `462b08e` (`PollResults::Results` is boxed, `PollAnswerVoters.voters`
+> is `Option<i32>`, `MessageMediaPoll` also carries `attached_media`). It is
+> left as written — a record of what was drafted before the correction, not a
+> guide to the shipped shapes. The shipped test fixture (`src/telegram/tests/converters_tests.rs`)
+> uses the corrected shapes and is authoritative; do not copy this snippet
+> as-is.
 
 ```rust
 fn poll_media(

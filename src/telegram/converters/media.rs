@@ -251,6 +251,9 @@ pub fn extract_poll_info(media: &Media) -> Option<PollInfo> {
     let options = poll
         .iter_answers()
         .filter_map(|answer| {
+            // `PollAnswer::InputPollAnswer` (`inputPollAnswer#199fed96`) is the
+            // client->server vote-submission shape; it cannot appear on a
+            // received message, so dropping it here never shrinks `options`.
             let tl::enums::PollAnswer::Answer(answer) = answer else {
                 return None;
             };

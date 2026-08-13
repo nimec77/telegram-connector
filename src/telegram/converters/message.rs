@@ -224,10 +224,11 @@ fn raw_grouped_id(raw: &tl::enums::Message) -> Option<i64> {
 /// Convert a raw TL message to our domain Message, resolving senders and
 /// forward attribution from the response envelope's entity map.
 ///
-/// This is the single conversion path for every fetch route; the raw pagers
-/// call it with the full envelope, the grammers-`Message` wrapper below calls
-/// it with what the high-level API exposes. Pure function of its inputs — no
-/// client, no network (the zero-extra-call invariant is structural).
+/// This is the single conversion path for every fetch route: every fetch
+/// path supplies a real response envelope, and `EntityLookup` has no
+/// production constructor other than `from_envelope`. Pure function of its
+/// inputs — no client, no network (the zero-extra-call invariant is
+/// structural).
 pub(crate) fn convert_raw_message(
     raw: &tl::enums::Message,
     peer: &grammers_client::peer::Peer,
