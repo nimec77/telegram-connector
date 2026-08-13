@@ -110,7 +110,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         // work: charging only for what succeeds would mean the limiter could
         // never refuse a batch, since the downloads would already have happened.
         // One atomic acquire keeps the D5 deficit message accurate.
-        let charged = self.media_download_cost * unique.len() as u32;
+        let charged = self.media_download_cost.saturating_mul(unique.len() as u32);
         self.rate_limiter
             .acquire(charged)
             .await
@@ -181,12 +181,32 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                     continue;
                 }
             };
+            // Serialize before mutating any batch-level state, so a failure
+            // here (unreachable today — GetMessageMediaResponse has no map
+            // keys or floats, the only things that make serde_json::to_string
+            // fail — but not a compile-time guarantee) lands this id in
+            // `failed` instead of returning early and leaking every other
+            // id's charge along with it (`json_response(&metadata)?` used to
+            // do exactly that).
+            let metadata = media_metadata(request.channel_id.clone(), id, download, &processed);
+            let metadata_json = match json_response(&metadata) {
+                Ok(json) => json,
+                Err(e) => {
+                    // Budget deliberately untouched, same reasoning as the
+                    // process_image_with_cap failure above: nothing was returned,
+                    // so nothing was spent.
+                    failed.push(MediaBatchFailure {
+                        id,
+                        reason: format!("download_failed: {e}"),
+                    });
+                    continue;
+                }
+            };
             budget.consume(processed.base64_jpeg.len());
 
             total_base64_bytes += processed.base64_jpeg.len();
-            let metadata = media_metadata(request.channel_id.clone(), id, download, &processed);
             content.push(ContentBlock::image(processed.base64_jpeg, "image/jpeg"));
-            content.push(ContentBlock::text(json_response(&metadata)?));
+            content.push(ContentBlock::text(metadata_json));
         }
 
         let returned = content.len() / 2;

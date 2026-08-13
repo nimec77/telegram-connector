@@ -279,6 +279,16 @@ order does not propose changing it and nothing here argues for it.
 Post-retune, at cost 3 against capacity 60 refilling at 2.0/sec: 20 images
 immediately, then one per 1.5 s. A 15-image digest fits entirely in the burst.
 
+Whole-call failure is a separate case from the per-id refund above. If
+`download_messages_media` itself fails — channel not found, resolve or fetch
+RPC error — the batch performed real work (a channel resolution and a fetch
+RPC against Telegram) before failing, even though it returned zero images. A
+full refund would let a caller hammer an unresolvable channel for free, which
+is exactly the abuse the limiter exists to prevent. So this path refunds
+`charged - 1` rather than `charged`, keeping exactly one token charged: the
+same cost `get_messages_batch` already charges for that identical
+resolve-plus-fetch shape of work.
+
 `media_batch_max_total_bytes` counts **bytes of base64 payload as sent to the
 client** — the quantity that actually consumes context, and 4/3 the size of the
 underlying JPEG bytes. It is validated `> 0` alongside `response_byte_budget`.
@@ -372,9 +382,22 @@ CHANGELOG, `docs/tasklist.md`, `docs/memory.md`.
   touches the single tool's behaviour. Mitigated by the byte-identical
   batch-of-1 test and by the existing `get_message_media` test suite, which must
   pass unchanged.
-- **Memory during a batch.** Up to 4 concurrent downloads are buffered in
-  memory, each bounded by `max_download_bytes` (20 MiB default). Worst case
-  ~80 MiB transient. Real thumbnails and 1280px variants are far smaller, but
-  the bound is the bound.
+- **Memory during a batch.** `.buffered(FANOUT_CONCURRENCY)` bounds downloads
+  *in flight* to 4 at a time, but that only bounds the concurrency window, not
+  the memory. `download_messages_media_impl`
+  (`src/telegram/client/ops_media.rs`) `.collect::<Vec<_>>()`s the whole
+  stream before returning, and the MCP layer (`impl_media.rs`) only starts
+  consuming the result afterwards — so every successful download's
+  `MediaDownload.bytes` stays resident until the full
+  `Vec<MediaFetchOutcome>` exists, and nothing is freed in between. The bound
+  that matters is therefore the **batch size**, not the concurrency window: a
+  reader who sees `.buffered(4)` and concludes memory is capped at
+  `4 × max_download_bytes` is reasoning about the wrong stage of the pipeline.
+  Worst case is `MAX_MEDIA_BATCH_IDS × max_download_bytes` = 10 × 20 MiB ≈
+  **200 MiB** of raw bytes resident at once, plus the decode buffer of
+  whichever image is currently being processed, plus up to
+  `media_batch_max_total_bytes` (8 MiB default) of accumulated base64. Real
+  thumbnails and 1280px variants are far smaller (100 KB–1 MB), so this bound
+  is rarely approached in practice, but the bound is the bound.
 - **Uncalibrated defaults.** 60 / 3 / 8 MiB are estimates. Documented as such;
   every one is config-driven so a deployment can correct them without a rebuild.

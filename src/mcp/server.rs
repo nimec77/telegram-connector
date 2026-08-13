@@ -41,6 +41,12 @@ use std::time::{Duration, Instant};
 /// (`[limits] response_byte_budget`, work-order B4).
 const DEFAULT_RESPONSE_BYTE_BUDGET: usize = 40_000;
 
+/// Default total base64 payload cap for `get_messages_media_batch`
+/// (`[limits] media_batch_max_total_bytes`, work-order C). Mirrors
+/// `default_media_batch_max_total_bytes()` in `config/defaults.rs`, which is
+/// unreachable from here — that module is private to `config`.
+const DEFAULT_MEDIA_BATCH_MAX_TOTAL_BYTES: usize = 8 * 1024 * 1024;
+
 #[derive(Clone)]
 pub struct McpServer<T: TelegramClientTrait, R: RateLimiterTrait> {
     telegram_client: Arc<T>,
@@ -74,7 +80,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             transcription_default_timeout_secs: 30,
             transcription_max_timeout_secs: 120,
             response_byte_budget: DEFAULT_RESPONSE_BYTE_BUDGET,
-            media_batch_max_total_bytes: 8 * 1024 * 1024,
+            media_batch_max_total_bytes: DEFAULT_MEDIA_BATCH_MAX_TOTAL_BYTES,
             tool_router: Self::tool_router(),
         }
     }
@@ -389,7 +395,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
     /// Tool 10: get_message_media - Return a message's photo (or video thumbnail) as an image
     #[tool(
-        description = "Get a message's photo (or the thumbnail of its video/animation/video note) as an image the model can see, plus a JSON metadata block. Photos are downscaled (max_dimension, default 1280) and re-encoded as JPEG. Heavier than a search: charged media_download_cost rate-limit tokens."
+        description = "Get a message's photo (or the thumbnail of its video/animation/video note) as an image the model can see, plus a JSON metadata block. Photos are downscaled (max_dimension, default 1280) and re-encoded as JPEG. Heavier than a search: charged media_download_cost rate-limit tokens. For more than one image, use get_messages_media_batch instead of looping this tool."
     )]
     pub async fn get_message_media(
         &self,
