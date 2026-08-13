@@ -1703,8 +1703,28 @@ async fn converting_a_full_batch_issues_no_resolve_or_download_calls() {
 
     let json: serde_json::Value = serde_json::from_str(&out).expect("json");
     assert_eq!(json["messages"][0]["forwarded_from"]["channel_name"], "Военкор");
+
+    // Id accounting at the MCP layer: every requested id is accounted for as
+    // returned, missing, or budget-omitted — never silently dropped.
+    let returned = json["messages"].as_array().map_or(0, |a| a.len());
+    let missing = json["missing"].as_array().map_or(0, |a| a.len());
+    let omitted = json["omitted_ids"].as_array().map_or(0, |a| a.len());
+    assert_eq!(
+        returned + missing + omitted,
+        100,
+        "every requested id must be accounted for exactly once"
+    );
 }
 ```
+
+**Note on the layer below.** The same conservation property inside
+`get_messages_batch_impl`'s loop (`ops_message.rs`) cannot be reached from
+here — these tests mock `TelegramClientTrait`, and that loop lives in the real
+`TelegramClient`, which needs a live grammers client. That loop is instead
+guaranteed *structurally*: it iterates `message_ids` (not response slots),
+every match arm pushes to exactly one vec, and the fallback arm is an
+irrefutable `_`. Do not fabricate a mocked test that appears to cover it —
+mocking at the wrong layer would assert nothing while looking like coverage.
 
 Note: the response is subject to `[limits] response_byte_budget` (40 000), so 100 messages may be truncated with the remainder reported in `omitted_ids`. That is expected and does not affect this assertion — it reads the first message only.
 
