@@ -61,6 +61,10 @@ async fn get_recent_messages_returns_results() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     let expected = expected_result.clone();
@@ -152,6 +156,10 @@ async fn get_recent_messages_with_media_filter() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     let expected = expected_result.clone();
@@ -211,6 +219,10 @@ async fn get_recent_messages_applies_limits() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     let expected = expected_result.clone();
@@ -271,6 +283,10 @@ async fn get_recent_messages_with_username_passes_identifier_without_pre_resolvi
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     let expected = expected_result.clone();
@@ -665,6 +681,10 @@ async fn get_recent_messages_emits_next_cursor_when_limit_truncates() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     mock_client
@@ -780,6 +800,10 @@ async fn get_recent_messages_truncates_long_text() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     mock_client
@@ -831,6 +855,10 @@ async fn get_recent_messages_compact_hoists_channel_header() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     mock_client
@@ -889,6 +917,10 @@ async fn get_recent_messages_oversized_page_stays_under_budget() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     mock_client

@@ -35,12 +35,22 @@ pub(crate) fn merge_results(
     let mut errors: Vec<ChannelFetchError> = Vec::new();
     let mut has_more = false;
     let mut search_time_ms = 0u64;
+    let mut pages_fetched = 0u32;
+    let mut messages_scanned = 0u64;
+    let mut timed_out = false;
+    let mut partial = false;
 
     for outcome in outcomes {
         match outcome.result {
             Ok(result) => {
                 has_more |= result.has_more;
                 search_time_ms = search_time_ms.max(result.search_time_ms);
+                // Summed, not maxed: these are the fan-out's total cost.
+                pages_fetched = pages_fetched.saturating_add(result.query_metadata.pages_fetched);
+                messages_scanned =
+                    messages_scanned.saturating_add(result.query_metadata.messages_scanned);
+                timed_out |= result.query_metadata.timed_out;
+                partial |= result.query_metadata.partial;
                 messages.extend(result.messages.into_iter().map(MessageResponse::from));
             }
             Err(error) => errors.push(ChannelFetchError {
@@ -89,6 +99,10 @@ pub(crate) fn merge_results(
             window_to,
             channels_scanned: Some(attempted),
             channels_in_results: unique.len() as u32,
+            timed_out,
+            partial,
+            pages_fetched,
+            messages_scanned,
         },
         channel_errors: if errors.is_empty() {
             None
@@ -159,6 +173,10 @@ mod tests {
                 window_to: None,
                 channels_scanned: Some(1),
                 channels_in_results: 1,
+                timed_out: false,
+                partial: false,
+                pages_fetched: 0,
+                messages_scanned: 0,
             },
             messages,
         }

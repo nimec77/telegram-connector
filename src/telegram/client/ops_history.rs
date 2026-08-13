@@ -3,6 +3,7 @@
 //! Unit of `client` (LM-2).
 
 use super::raw_pager::RawHistoryPager;
+use super::search_budget::SearchBudget;
 use super::*;
 use crate::telegram::albums::{PostCounter, album_key, collapse_albums};
 
@@ -99,11 +100,13 @@ impl TelegramClient {
             None => None,
         };
 
-        let (messages, has_more) =
+        let (messages, has_more, budget) =
             with_timeout("iter_messages", self.timeouts.history_secs, async {
                 let mut messages = Vec::new();
                 let mut has_more = false;
                 let mut counter = PostCounter::default();
+                // counters only — the spec scopes the deadline to search
+                let mut budget = SearchBudget::new(0);
                 // Raw GetHistory pager instead of grammers' iter_messages: same
                 // request, but it keeps the response envelope so forwards get
                 // attributed from data already in hand (zero extra calls).
@@ -112,11 +115,18 @@ impl TelegramClient {
                     pager = pager.offset_id(before);
                 }
 
-                while let Some((raw_msg, entities)) = pager
-                    .next()
-                    .await
-                    .map_err(|e| Error::TelegramApi(format!("Failed to iterate messages: {}", e)))?
-                {
+                loop {
+                    let next = pager.next().await.map_err(|e| {
+                        Error::TelegramApi(format!("Failed to iterate messages: {}", e))
+                    })?;
+                    // Before the `else break`: a round trip that came back empty still
+                    // cost the caller latency, which is what the field reports.
+                    if let Some(page_size) = pager.take_last_page_size() {
+                        budget.record_page(page_size);
+                    }
+                    let Some((raw_msg, entities)) = next else {
+                        break;
+                    };
                     if let Some(to) = params.to_date
                         && timestamp_from_raw(&raw_msg).is_some_and(|t| t > to)
                     {
@@ -166,7 +176,7 @@ impl TelegramClient {
                         }
                     }
                 }
-                Ok((messages, has_more))
+                Ok((messages, has_more, budget))
             })
             .await?;
 
@@ -200,6 +210,16 @@ impl TelegramClient {
                 window_to: params.to_date,
                 channels_scanned: Some(1),
                 channels_in_results,
+                // History has no deadline (spec scopes it to search), so it can
+                // never truncate on time — only the work counters are live here.
+                // Read off the budget anyway rather than hardcoding `false`:
+                // identical today (`SearchBudget::new(0)` never latches, and
+                // `expired()` is never called on this path) and self-maintaining
+                // if a deadline is ever extended to history.
+                timed_out: budget.timed_out(),
+                partial: budget.timed_out(),
+                pages_fetched: budget.pages_fetched(),
+                messages_scanned: budget.messages_scanned(),
             },
             messages,
         })

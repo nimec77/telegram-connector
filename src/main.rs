@@ -39,7 +39,7 @@ async fn main() -> Result<()> {
             .context("Setup mode requires authentication credentials")?;
 
         // Create Telegram client for setup
-        let telegram_client = TelegramClient::new(&config.telegram)
+        let telegram_client = TelegramClient::new(&config.telegram, &config.search)
             .await
             .context("Failed to create Telegram client")?;
 
@@ -48,7 +48,7 @@ async fn main() -> Result<()> {
     }
 
     // Normal mode: create client and check session
-    let telegram_client = TelegramClient::new(&config.telegram)
+    let telegram_client = TelegramClient::new(&config.telegram, &config.search)
         .await
         .context("Failed to create Telegram client")?;
 

@@ -5,7 +5,7 @@
 //! `client/` submodules (LM-2). The struct stays here so every submodule (a
 //! descendant) can reach its private fields.
 
-use crate::config::{TelegramConfig, TimeoutConfig};
+use crate::config::{SearchConfig, TelegramConfig, TimeoutConfig};
 use crate::error::Error;
 use crate::telegram::converters::{
     channel_identity, convert_discovered_peer, convert_media_filter, convert_media_to_type,
@@ -42,6 +42,7 @@ mod ops_stats;
 mod ops_transcribe;
 mod raw_pager;
 mod resolve;
+mod search_budget;
 
 pub(crate) use resolve::username_to_resolve;
 
@@ -69,6 +70,8 @@ pub struct TelegramClient {
     timeouts: TimeoutConfig,
     /// Hard cap (bytes) on a single media download (`[telegram] max_download_bytes`, AD-6).
     max_download_bytes: u64,
+    /// Wall-clock budget for a search accumulation loop (`[search] deadline_seconds`).
+    search_deadline_secs: u64,
     /// Cached Premium flag for the connected account (None = not yet determined).
     premium: tokio::sync::RwLock<Option<bool>>,
     _runner_handle: JoinHandle<()>,

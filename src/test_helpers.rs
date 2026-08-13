@@ -221,6 +221,10 @@ pub fn create_test_search_result(
             window_to: None,
             channels_scanned: Some(channels_in_results),
             channels_in_results,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
         messages,
     }

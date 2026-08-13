@@ -164,8 +164,10 @@ pub struct SearchResult {
     pub messages: Vec<Message>,
     /// Number of messages in this response (page size, not a match count — B6).
     pub returned: u64,
-    /// More qualifying messages exist in the requested window beyond this
-    /// page (limit- or budget-truncated), so paging on can find them (A8).
+    /// A qualifying message was *proven* to exist in the window beyond this
+    /// page — refused by the limit, or dropped by `[limits] response_byte_budget`
+    /// — so paging on can find it (A8). Deadline truncation proves nothing: it
+    /// reports `query_metadata.timed_out`/`partial` and leaves this false.
     pub has_more: bool,
     pub search_time_ms: u64,
     pub query_metadata: QueryMetadata,
@@ -185,6 +187,31 @@ pub struct QueryMetadata {
     pub channels_scanned: Option<u32>,
     /// Distinct channels present in `messages`.
     pub channels_in_results: u32,
+    /// The search hit `[search] deadline_seconds` and stopped early. Omitted
+    /// when false, so unaffected responses are unchanged on the wire.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub timed_out: bool,
+    /// The result set is known-incomplete. Today only the deadline sets this;
+    /// it is distinct from `timed_out` so future truncation causes can report
+    /// incompleteness without claiming a timeout.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub partial: bool,
+    /// Result pages fetched from Telegram. Not every round trip the call made:
+    /// the channel-scoped path's `iter_dialogs` walk — often most of its cost —
+    /// is not counted here.
+    #[serde(default)]
+    pub pages_fetched: u32,
+    /// Raw messages walked, including those filtered out. Together with
+    /// `pages_fetched` this is what makes an expensive call legible: a caller
+    /// who cannot see a cost cannot budget for it.
+    #[serde(default)]
+    pub messages_scanned: u64,
+}
+
+/// serde `skip_serializing_if` helper. `std::ops::Not::not` cannot be used
+/// here — serde hands the predicate a `&bool`.
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 #[cfg(test)]
@@ -335,6 +362,10 @@ mod tests {
                 window_to: None,
                 channels_scanned: Some(5),
                 channels_in_results: 5,
+                timed_out: false,
+                partial: false,
+                pages_fetched: 0,
+                messages_scanned: 0,
             },
         };
 
@@ -367,9 +398,63 @@ mod tests {
                 window_to: None,
                 channels_scanned: Some(1),
                 channels_in_results: 0,
+                timed_out: false,
+                partial: false,
+                pages_fetched: 0,
+                messages_scanned: 0,
             },
         };
         let json = serde_json::to_value(&result).expect("serialize");
         assert_eq!(json["has_more"], serde_json::Value::Bool(true));
+    }
+
+    #[test]
+    fn query_metadata_omits_false_flags_from_json() {
+        let meta = QueryMetadata {
+            query: "test".to_string(),
+            window_from: Utc::now(),
+            window_to: None,
+            channels_scanned: None,
+            channels_in_results: 0,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 3,
+            messages_scanned: 300,
+        };
+        let json = serde_json::to_string(&meta).expect("serializes");
+        assert!(!json.contains("timed_out"), "false flags stay off the wire");
+        assert!(!json.contains("partial"), "false flags stay off the wire");
+        assert!(json.contains("\"pages_fetched\":3"));
+        assert!(json.contains("\"messages_scanned\":300"));
+    }
+
+    #[test]
+    fn query_metadata_emits_true_flags() {
+        let meta = QueryMetadata {
+            query: "test".to_string(),
+            window_from: Utc::now(),
+            window_to: None,
+            channels_scanned: None,
+            channels_in_results: 0,
+            timed_out: true,
+            partial: true,
+            pages_fetched: 9,
+            messages_scanned: 900,
+        };
+        let json = serde_json::to_string(&meta).expect("serializes");
+        assert!(json.contains("\"timed_out\":true"));
+        assert!(json.contains("\"partial\":true"));
+    }
+
+    #[test]
+    fn query_metadata_deserializes_without_the_new_fields() {
+        // A payload written by an older server must still parse.
+        let json = r#"{"query":"q","window_from":"2026-08-13T00:00:00Z",
+                       "channels_scanned":null,"channels_in_results":2}"#;
+        let meta: QueryMetadata = serde_json::from_str(json).expect("parses");
+        assert!(!meta.timed_out);
+        assert!(!meta.partial);
+        assert_eq!(meta.pages_fetched, 0);
+        assert_eq!(meta.messages_scanned, 0);
     }
 }

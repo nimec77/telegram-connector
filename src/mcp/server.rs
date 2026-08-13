@@ -288,7 +288,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
     /// Tool 6: search_messages - Search messages across Telegram channels
     #[tool(
-        description = "Search messages across subscribed Telegram channels with optional filters"
+        description = "Search messages across subscribed Telegram channels with optional \
+                       filters. Scoping with channel_id or channel_ids is cheaper than an \
+                       unscoped global search and supports cursor pagination \
+                       (before_id/after_id); global searches support neither, because there \
+                       is no per-channel offset to resume from. A search that exceeds its \
+                       configured deadline returns the results gathered so far with \
+                       query_metadata.timed_out and .partial set, never an error."
     )]
     pub async fn search_messages(
         &self,

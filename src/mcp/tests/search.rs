@@ -54,6 +54,10 @@ async fn search_messages_returns_results() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     let expected = expected_result.clone();
@@ -191,6 +195,10 @@ async fn search_messages_with_channel_filter() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     let expected = expected_result.clone();
@@ -249,6 +257,10 @@ async fn search_messages_applies_limits() {
             window_to: None,
             channels_scanned: Some(0),
             channels_in_results: 0,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     let expected = expected_result.clone();
@@ -332,6 +344,10 @@ async fn search_allows_empty_query_with_media_filter() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     let expected = expected_result.clone();
@@ -387,6 +403,10 @@ async fn search_passes_media_filter_to_params() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     let expected = expected_result.clone();
@@ -483,6 +503,10 @@ async fn search_messages_serializes_enrichment_fields() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
 
@@ -1062,6 +1086,10 @@ async fn search_messages_shapes_response_end_to_end_for_single_channel() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     mock_client
@@ -1105,4 +1133,85 @@ async fn search_messages_shapes_response_end_to_end_for_single_channel() {
     for m in v["messages"].as_array().expect("messages array") {
         assert!(m.get("channel_id").is_none());
     }
+}
+
+/// All-`None` request body; only `query` varies in these two tests.
+fn search_request(query: &str) -> SearchRequest {
+    SearchRequest {
+        query: query.to_string(),
+        channel_id: None,
+        channel_ids: None,
+        hours_back: None,
+        limit: None,
+        media_filter: None,
+        from_date: None,
+        to_date: None,
+        collapse_albums: None,
+        before_id: None,
+        after_id: None,
+        max_text_length: None,
+        format: None,
+    }
+}
+
+#[tokio::test]
+async fn timed_out_search_returns_partial_results_not_an_error() {
+    let mut mock_client = MockTelegramClientTrait::new();
+    let mut degraded =
+        create_test_search_result(vec![create_test_message(1, "partial hit", 123)], "rare", 1);
+    degraded.query_metadata.timed_out = true;
+    degraded.query_metadata.partial = true;
+    degraded.query_metadata.pages_fetched = 41;
+    degraded.query_metadata.messages_scanned = 4100;
+
+    mock_client
+        .expect_search_messages()
+        .returning(move |_| Ok(degraded.clone()));
+
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
+
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let result = server
+        .search_messages(
+            Parameters(search_request("rare")),
+            RequestId(NumberOrString::Number(1)),
+        )
+        .await;
+
+    let body = result.expect("a slow-but-working search must not surface as an error");
+    let parsed: serde_json::Value = serde_json::from_str(&body).expect("valid JSON");
+    assert_eq!(parsed["query_metadata"]["timed_out"], true);
+    assert_eq!(parsed["query_metadata"]["partial"], true);
+    assert_eq!(parsed["query_metadata"]["pages_fetched"], 41);
+    assert_eq!(parsed["query_metadata"]["messages_scanned"], 4100);
+    // The whole point: results survive the deadline.
+    assert_eq!(parsed["returned"], 1);
+}
+
+#[tokio::test]
+async fn healthy_search_omits_the_degradation_flags() {
+    let mut mock_client = MockTelegramClientTrait::new();
+    let expected = create_test_search_result(vec![create_test_message(1, "hit", 123)], "common", 1);
+    mock_client
+        .expect_search_messages()
+        .returning(move |_| Ok(expected.clone()));
+
+    let mut mock_limiter = MockRateLimiterTrait::new();
+    mock_limiter.expect_acquire().returning(|_| Ok(()));
+
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let result = server
+        .search_messages(
+            Parameters(search_request("common")),
+            RequestId(NumberOrString::Number(1)),
+        )
+        .await;
+
+    let body = result.expect("search succeeds");
+    let parsed: serde_json::Value = serde_json::from_str(&body).expect("valid JSON");
+    assert!(parsed["query_metadata"].get("timed_out").is_none());
+    assert!(parsed["query_metadata"].get("partial").is_none());
 }
