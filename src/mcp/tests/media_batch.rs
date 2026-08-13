@@ -354,6 +354,9 @@ async fn payload_cap_downscales_then_reports_cap_reached() {
 
 #[tokio::test]
 async fn cap_reached_ids_are_reported_in_request_order() {
+    // Six sizeable photos against a cap that only fits the first two — this
+    // reliably drops four ids (>= 3, so the ordering assertion below cannot
+    // be satisfied by a 0- or 1-element list trivially matching itself).
     let mut client = MockTelegramClientTrait::new();
     client
         .expect_download_messages_media()
@@ -362,6 +365,9 @@ async fn cap_reached_ids_are_reported_in_request_order() {
                 ok_outcome(10, 1200, 1200),
                 ok_outcome(11, 1200, 1200),
                 ok_outcome(12, 1200, 1200),
+                ok_outcome(13, 1200, 1200),
+                ok_outcome(14, 1200, 1200),
+                ok_outcome(15, 1200, 1200),
             ])
         });
 
@@ -369,7 +375,7 @@ async fn cap_reached_ids_are_reported_in_request_order() {
         .with_media_batch_max_total_bytes(400_000);
     let result = server
         .get_messages_media_batch(
-            Parameters(request("news", vec![10, 11, 12])),
+            Parameters(request("news", vec![10, 11, 12, 13, 14, 15])),
             RequestId(NumberOrString::Number(1)),
         )
         .await
@@ -382,9 +388,13 @@ async fn cap_reached_ids_are_reported_in_request_order() {
         .filter(|f| f.reason == "payload_cap_reached")
         .map(|f| f.id)
         .collect();
-    let mut sorted = capped.clone();
-    sorted.sort_unstable();
-    assert_eq!(capped, sorted, "cap failures follow request order");
+    // Ids 10 and 11 fit under the cap; the budget is spent by the time 12
+    // comes up, so 12-15 are dropped in the order they were requested.
+    assert_eq!(
+        capped,
+        vec![12, 13, 14, 15],
+        "cap failures must be exactly these ids, in request order"
+    );
 }
 
 #[tokio::test]
