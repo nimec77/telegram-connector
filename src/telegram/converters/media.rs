@@ -171,9 +171,13 @@ pub fn extract_audio_info(media: &Media) -> Option<AudioInfo> {
     };
 
     let mut duration_seconds = 0;
+    let mut title = None;
+    let mut performer = None;
     for attr in &raw.attributes {
         if let tl::enums::DocumentAttribute::Audio(a) = attr {
             duration_seconds = a.duration.max(0) as u32;
+            title = a.title.clone();
+            performer = a.performer.clone();
             break;
         }
     }
@@ -183,6 +187,8 @@ pub fn extract_audio_info(media: &Media) -> Option<AudioInfo> {
         file_size_bytes: raw.size.max(0) as u64,
         kind,
         mime_type: Some(raw.mime_type.clone()),
+        title,
+        performer,
     })
 }
 

@@ -373,6 +373,8 @@ mod tests {
             file_size_bytes: 4096,
             kind: AudioKind::Voice,
             mime_type: None,
+            title: None,
+            performer: None,
         });
 
         let json = serde_json::to_value(&msg).unwrap();

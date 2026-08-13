@@ -59,6 +59,13 @@ pub struct AudioInfo {
     pub kind: AudioKind,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub mime_type: Option<String>,
+    /// Track title from `DocumentAttributeAudio`; absent when Telegram
+    /// carries no ID3 metadata (the common case for voice messages).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub title: Option<String>,
+    /// Track performer from `DocumentAttributeAudio`.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub performer: Option<String>,
 }
 
 /// Closed set of audio-class kinds (`audio | voice`).
@@ -337,6 +344,8 @@ mod tests {
             file_size_bytes: 2048,
             kind: AudioKind::Voice,
             mime_type: Some("audio/ogg".to_string()),
+            title: None,
+            performer: None,
         };
         let json = serde_json::to_string(&info).unwrap();
         let back: AudioInfo = serde_json::from_str(&json).unwrap();

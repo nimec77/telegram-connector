@@ -352,7 +352,14 @@ fn gif_doc(size: i64, with_thumb: bool) -> Media {
     }))
 }
 
-fn audio_doc(voice: bool, duration: i32, size: i64, mime: &str) -> Media {
+fn audio_doc(
+    voice: bool,
+    duration: i32,
+    size: i64,
+    mime: &str,
+    title: Option<&str>,
+    performer: Option<&str>,
+) -> Media {
     Media::Document(Document::from_raw_media(tl::types::MessageMediaDocument {
         nopremium: false,
         spoiler: false,
@@ -373,8 +380,8 @@ fn audio_doc(voice: bool, duration: i32, size: i64, mime: &str) -> Media {
                 tl::types::DocumentAttributeAudio {
                     voice,
                     duration,
-                    title: None,
-                    performer: None,
+                    title: title.map(|s| s.to_string()),
+                    performer: performer.map(|s| s.to_string()),
                     waveform: None,
                 },
             )],
@@ -426,13 +433,13 @@ fn extract_video_info_without_thumbs_is_false() {
 
 #[test]
 fn extract_video_info_none_for_audio() {
-    let media = audio_doc(true, 7, 1000, "audio/ogg");
+    let media = audio_doc(true, 7, 1000, "audio/ogg", None, None);
     assert!(extract_video_info(&media).is_none());
 }
 
 #[test]
 fn extract_audio_info_voice() {
-    let media = audio_doc(true, 7, 1000, "audio/ogg");
+    let media = audio_doc(true, 7, 1000, "audio/ogg", None, None);
     let info = extract_audio_info(&media).expect("audio info present");
     assert_eq!(info.kind, AudioKind::Voice);
     assert_eq!(info.duration_seconds, 7);
@@ -442,7 +449,7 @@ fn extract_audio_info_voice() {
 
 #[test]
 fn extract_audio_info_music() {
-    let media = audio_doc(false, 200, 4_000_000, "audio/mpeg");
+    let media = audio_doc(false, 200, 4_000_000, "audio/mpeg", None, None);
     let info = extract_audio_info(&media).expect("audio info present");
     assert_eq!(info.kind, AudioKind::Audio);
 }
@@ -451,6 +458,46 @@ fn extract_audio_info_music() {
 fn extract_audio_info_none_for_video() {
     let media = video_doc(false, 30.0, 1920, 1080, 5_000_000, "video/mp4", true);
     assert!(extract_audio_info(&media).is_none());
+}
+
+#[test]
+fn audio_info_carries_title_and_performer() {
+    let media = audio_doc(
+        false,
+        184,
+        7_340_032,
+        "audio/mpeg",
+        Some("Ноктюрн"),
+        Some("Шопен"),
+    );
+
+    let info = extract_audio_info(&media).expect("audio info present");
+
+    assert_eq!(info.title.as_deref(), Some("Ноктюрн"));
+    assert_eq!(info.performer.as_deref(), Some("Шопен"));
+    assert_eq!(info.duration_seconds, 184);
+}
+
+#[test]
+fn audio_info_without_id3_metadata_omits_title_and_performer() {
+    let media = audio_doc(true, 12, 4096, "audio/ogg", None, None);
+
+    let info = extract_audio_info(&media).expect("audio info present");
+
+    assert_eq!(info.title, None);
+    assert_eq!(info.performer, None);
+    assert_eq!(info.kind, AudioKind::Voice);
+}
+
+#[test]
+fn audio_info_omits_absent_title_from_json() {
+    let media = audio_doc(true, 12, 4096, "audio/ogg", None, None);
+    let info = extract_audio_info(&media).expect("audio info present");
+
+    let json = serde_json::to_value(&info).expect("serializes");
+
+    assert!(json.get("title").is_none());
+    assert!(json.get("performer").is_none());
 }
 
 fn plain_doc(file_name: Option<&str>, size: i64, mime: &str) -> Media {
@@ -518,7 +565,7 @@ fn document_info_is_none_for_video_media() {
 
 #[test]
 fn document_info_is_none_for_audio_media() {
-    let media = audio_doc(false, 184, 7_340_032, "audio/mpeg");
+    let media = audio_doc(false, 184, 7_340_032, "audio/mpeg", None, None);
 
     assert!(extract_document_info(&media).is_none());
 }
