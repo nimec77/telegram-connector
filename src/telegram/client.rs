@@ -42,6 +42,7 @@ mod ops_stats;
 mod ops_transcribe;
 mod raw_pager;
 mod resolve;
+mod search_budget;
 
 pub(crate) use resolve::username_to_resolve;
 
