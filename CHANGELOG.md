@@ -40,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which still fails the call. The default is a conservative starting point,
   not a measured value.
 - `query_metadata.pages_fetched` and `query_metadata.messages_scanned` report
-  the round trips issued and raw messages walked, so an expensive search is
+  result pages fetched from Telegram and the raw messages walked, so an expensive search is
   legible to its caller. These replace the work order's suggested
   `dialogs_scanned`: the global path issues one paginated `searchGlobal` and
   sweeps no dialogs. Both are new fields, always present on every
