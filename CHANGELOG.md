@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Unscoped `search_messages` no longer walks Telegram's entire global message
+  index to enforce its own time window. `messages.SearchGlobal` carries
+  `min_date`/`max_date` parameters that the pager hardcoded to `0`, so the
+  window was applied client-side while Telegram streamed results backwards at
+  100 per round trip — a rare media filter over a narrow window paged to
+  exhaustion. Both bounds are now sent with the request. Measured on a live
+  session, limit 20:
+
+  | search | before | after |
+  |---|---|---|
+  | global `document`, 24h | 44.86 s | 0.449 s |
+  | global `video_note`, 24h | 12.93 s | 0.411 s |
+  | global `voice`, 72h | 8.07 s | 0.468 s |
+  | global `url`, 24h | 0.46 s | 0.500 s |
+
+  The client-side window checks are retained as defense in depth. Result sets
+  are unchanged; only the work done to produce them is.
+
+### Added
+- `[search] deadline_seconds` (default 20) bounds a search's accumulation loop.
+  On expiry the search returns the results gathered so far with
+  `query_metadata.timed_out` and `query_metadata.partial` set — never an error,
+  because partial results beat a failed workflow. Keep it below
+  `[telegram.timeouts] search_secs` (default 120), which still fails the call.
+  The default is a conservative starting point, not a measured value.
+- `query_metadata.pages_fetched` and `query_metadata.messages_scanned` report
+  the round trips issued and raw messages walked, so an expensive search is
+  legible to its caller. These replace the work order's suggested
+  `dialogs_scanned`: the global path issues one paginated `searchGlobal` and
+  sweeps no dialogs. Both flags are omitted from JSON when false, so existing
+  responses are byte-identical.
+
 ## [0.20.0] - 2026-08-13
 
 ### Fixed

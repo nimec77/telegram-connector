@@ -157,6 +157,7 @@ phone_number = "+1234567890"
 # default_hours_back = 48
 # max_results_default = 20
 # max_results_limit = 100
+# deadline_seconds = 20                                          # Wall-clock budget (seconds) for a search_messages accumulation loop; must be > 0 and <= 3600. On expiry the search returns what it gathered so far with query_metadata.timed_out/partial set, never an error
 
 [rate_limiting]
 # Optional: token bucket configuration
@@ -654,7 +655,9 @@ its own `media_type` (see "Video & audio metadata" / "Document metadata" /
     "query": "AI model",
     "window_from": "2025-12-26T10:30:00Z",
     "channels_scanned": 10,
-    "channels_in_results": 6
+    "channels_in_results": 6,
+    "pages_fetched": 3,
+    "messages_scanned": 245
   }
 }
 ```
@@ -676,6 +679,23 @@ sourced from `forwarded_from.channel_id` or a `resolve_channels` result).
 `channels_in_results` is the number of distinct channels present in
 `messages`, always a number.
 
+`query_metadata.pages_fetched` and `query_metadata.messages_scanned` report the
+round trips issued to Telegram and the raw messages walked (including ones
+later filtered out or outside the window) to produce this result — both are
+always present, on every `search_messages` and `get_recent_messages` response,
+so an expensive call is legible to its caller. `query_metadata.timed_out` and
+`query_metadata.partial` are set together, on `search_messages` only, when the
+search hit `[search] deadline_seconds` (default 20) and stopped early with
+whatever it had gathered so far — never an error, because partial results beat
+a failed workflow. Both flags are omitted from the JSON entirely when `false`,
+so a healthy response's shape on the wire is unchanged — the example above
+never carries them. A deadline-truncated result does not set `has_more`:
+expiry proves nothing about what lies beyond the page, unlike an overflowed
+`limit`, which does (see "Paging and size" below). `get_recent_messages`
+reports `pages_fetched`/`messages_scanned` too (it pages through history the
+same way) but never `timed_out`/`partial` — the deadline is scoped to
+`search_messages`.
+
 **Multi-channel fan-out (`channel_ids`):** pass up to 20 channel references
 (IDs or usernames) to search or fetch them in one call instead of N round
 trips. Each channel is fetched concurrently (4 in flight at a time) with the
@@ -694,7 +714,11 @@ channels' results still come back; the call only errors when **every**
 requested channel failed. `channel_id` and `channel_ids` are mutually
 exclusive (both set is a validation error); omitting both keeps
 `search_messages`'s existing global-search behavior — `get_recent_messages`
-has no global mode, so it requires one or the other.
+has no global mode, so it requires one or the other. The merged response's
+`query_metadata.pages_fetched`/`messages_scanned` are the sum across every
+fetched channel, and `timed_out`/`partial` are `true` if any one channel's
+search hit its deadline — so a single slow channel degrades the whole
+fan-out's flags without hiding which channels actually returned data.
 
 **Paging and size (`has_more`, `next_cursor`, byte budget):** every
 `search_messages` / `get_recent_messages` response carries `has_more`. It is
@@ -896,7 +920,9 @@ Get recent messages from a channel by time window, without requiring a search qu
     "query": "",
     "window_from": "2025-12-27T10:30:00Z",
     "channels_scanned": 1,
-    "channels_in_results": 1
+    "channels_in_results": 1,
+    "pages_fetched": 1,
+    "messages_scanned": 5
   }
 }
 ```

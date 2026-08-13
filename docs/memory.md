@@ -3648,3 +3648,42 @@ fields, not new tools.
   test suite (656 passed, 0 failed, 5 ignored); the live check is the one thing that suite cannot
   exercise. Whoever has a live session next should run both checks before considering this work
   order fully closed, and update this note with the result.
+
+## Global search latency (work order B) — 2026-08-13
+
+Eight-task SDD plan (`docs/superpowers/plans/2026-08-13-global-search-latency.md`, design:
+`docs/superpowers/specs/2026-08-13-global-search-latency-design.md`) closing a 44.86 s worst case
+on unscoped `search_messages`: `messages.SearchGlobal` carries `min_date`/`max_date`, but the pager
+hardcoded both to `0`, so a rare media filter over a narrow window paged Telegram's global index to
+exhaustion before the client-side window check could stop it. Sending both bounds server-side
+(Task 1) collapsed every measured case to well under a second; `[search] deadline_seconds` (Tasks
+2/3), wired into both search branches (Task 5) and reported back as `query_metadata.timed_out`/
+`partial`/`pages_fetched`/`messages_scanned` (Task 4), is the backstop for whatever case the
+server-side fix doesn't cover. Tests 656 → 676 across Tasks 1–7; this docs-only Task 8 adds none.
+
+### Decisions worth remembering
+
+- **A client-side filter over a server-paginated cursor is unbounded work whenever the filter is
+  more selective than the page.** `search_messages` filtered by media type and time window while
+  paging Telegram's global index at 100 messages/round-trip; for a rare filter over a narrow
+  window, "keep paging until `limit` fills" means "keep paging until the index runs out" — the
+  loop had no way to know it was searching for something Telegram's own index could bound for it.
+  The fix isn't a smarter client loop; it's not doing client-side what the server API already
+  supports (`min_date`/`max_date` on `SearchGlobal`). This shape generalizes past this one
+  endpoint: any client-side predicate layered on top of a server cursor is exposed to the same
+  failure whenever the predicate is more selective than a page.
+- **The measurement that isolates this class of bug is varying `limit`, not varying the filter.**
+  A `limit=1` probe against the identical `document`/24h query returned in 0.27 s (pre-fix baseline)
+  where `limit=20` took 44.86 s — same upstream query, same filter, same window, only the
+  accumulation target changed. That >160x gap is what rules out "Telegram is just slow for this
+  filter" and points at the loop itself: a fast per-page cost with a slow aggregate means the loop
+  is walking, not the server computing. Varying the filter (document vs voice vs url) only shows
+  *that* selectivity matters, not *why* — it still looks like "some queries are just slow."
+  Varying `limit` on one fixed query isolates the walk from the query.
+- **`min_date`/`max_date` exist on `messages.Search` (the channel-scoped path) too — deliberately
+  left alone.** The channel path measured 0.97–1.30 s live, nowhere near the global path's worst
+  case, so applying the same server-side-bound treatment there was out of scope for this change.
+  If the channel path ever shows up slow (e.g. a very active channel with a rare filter over a
+  deep window), the same fix — push `min_date`/`max_date` onto `RawChannelSearchPager`'s request
+  instead of relying solely on the client-side `continue`/`break` window checks — is the first
+  thing to reach for, not a redesign.
