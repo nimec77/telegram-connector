@@ -270,6 +270,45 @@ async fn concurrent_acquires_are_thread_safe() {
 }
 
 // ========================================
+// Refund Tests
+// ========================================
+
+#[tokio::test]
+async fn refund_returns_tokens_to_the_bucket() {
+    let limiter = RateLimiter::new(&test_config(30, 0.0));
+    limiter.acquire(15).await.expect("bucket starts full");
+    assert_eq!(limiter.available_tokens(), 15.0);
+
+    limiter.refund(6);
+
+    assert_eq!(limiter.available_tokens(), 21.0);
+}
+
+#[tokio::test]
+async fn refund_cannot_exceed_capacity() {
+    let limiter = RateLimiter::new(&test_config(30, 0.0));
+    limiter.acquire(5).await.expect("bucket starts full");
+
+    limiter.refund(500);
+
+    assert_eq!(
+        limiter.available_tokens(),
+        30.0,
+        "refund must clamp at capacity, never inflate the bucket"
+    );
+}
+
+#[tokio::test]
+async fn refund_of_zero_is_a_no_op() {
+    let limiter = RateLimiter::new(&test_config(30, 0.0));
+    limiter.acquire(10).await.expect("bucket starts full");
+
+    limiter.refund(0);
+
+    assert_eq!(limiter.available_tokens(), 20.0);
+}
+
+// ========================================
 // Property-Based Tests (using proptest)
 // ========================================
 

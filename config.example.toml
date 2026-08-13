@@ -55,9 +55,14 @@ phone_number = "+1234567890"
 # deadline_seconds = 20                    # Default: 20 (max: 3600)
 
 [rate_limiting]
-# Optional: Token bucket configuration
-# max_tokens = 50                          # Default: 50 (burst capacity)
+# Optional: Token bucket configuration.
+#
+# These are CONSERVATIVE ESTIMATES, not values calibrated against Telegram's
+# real flood thresholds. Tune them against your own traffic.
+# max_tokens = 60                          # Default: 60 (burst capacity)
 # refill_rate = 2.0                        # Default: 2.0 tokens/second
+# media_download_cost = 3                  # Default: 3 tokens per image
+# transcription_cost = 5                   # Default: 5 (Telegram's weekly quota is scarce)
 
 [limits]
 # Byte cap on a serialized message-stream response. When a page would exceed

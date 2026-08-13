@@ -32,7 +32,7 @@ pub(crate) fn default_search_deadline_seconds() -> u64 {
 }
 
 pub(crate) fn default_max_tokens() -> u32 {
-    50
+    60
 }
 
 pub(crate) fn default_refill_rate() -> f64 {
@@ -82,7 +82,7 @@ pub(crate) fn default_download_secs() -> u64 {
 }
 
 pub(crate) fn default_media_download_cost() -> u32 {
-    5
+    3
 }
 
 pub(crate) fn default_transcription_cost() -> u32 {

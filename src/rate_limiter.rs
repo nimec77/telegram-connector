@@ -46,6 +46,13 @@ impl TokenBucket {
         }
     }
 
+    /// Return previously-acquired tokens. Clamped at capacity, so returning
+    /// more than was taken can never inflate the bucket.
+    fn refund(&mut self, tokens: u32) {
+        self.refill();
+        self.available_tokens = (self.available_tokens + f64::from(tokens)).min(self.max_tokens);
+    }
+
     fn available(&self) -> f64 {
         self.available_tokens
     }
@@ -84,6 +91,13 @@ pub trait RateLimiterTrait: Send + Sync {
     /// Acquire tokens, returning error if rate limit exceeded
     async fn acquire(&self, tokens: u32) -> Result<(), Error>;
 
+    /// Return tokens taken by an `acquire` whose work did not happen.
+    ///
+    /// Batch tools acquire pessimistically for every requested item, then
+    /// refund the items that produced nothing, so admission control stays real
+    /// while the net charge matches the work actually performed.
+    fn refund(&self, tokens: u32);
+
     /// Get available tokens
     fn available_tokens(&self) -> f64;
 
@@ -104,6 +118,11 @@ impl RateLimiterTrait for RateLimiter {
                 retry_after_seconds,
                 detail: format!(": requested {tokens} tokens, {available:.2} available"),
             })
+    }
+
+    fn refund(&self, tokens: u32) {
+        let mut bucket = self.bucket.lock().unwrap();
+        bucket.refund(tokens);
     }
 
     fn available_tokens(&self) -> f64 {

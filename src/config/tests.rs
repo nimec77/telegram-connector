@@ -641,7 +641,7 @@ fn test_observability_partial_table_fills_defaults() {
 #[test]
 fn test_media_download_cost_default() {
     let config: Config = toml::from_str("[telegram]\napi_id = 12345\n").unwrap();
-    assert_eq!(config.rate_limiting.media_download_cost, 5);
+    assert_eq!(config.rate_limiting.media_download_cost, 3);
 }
 
 #[test]
@@ -751,4 +751,18 @@ fn search_config_rejects_deadline_over_one_hour() {
         toml::from_str("[telegram]\napi_id = 123\n\n[search]\ndeadline_seconds = 3601\n")
             .expect("parse");
     assert!(config.search.validate().is_err());
+}
+
+#[test]
+fn retuned_media_rate_limit_defaults() {
+    let config = default_rate_limit_config();
+    assert_eq!(
+        config.max_tokens, 60,
+        "burst capacity raised for batch media"
+    );
+    assert_eq!(config.media_download_cost, 3, "per-image cost lowered");
+    assert_eq!(
+        config.refill_rate, 2.0,
+        "refill rate is deliberately unchanged"
+    );
 }
