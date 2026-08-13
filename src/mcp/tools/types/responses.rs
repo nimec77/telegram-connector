@@ -18,6 +18,9 @@ pub struct StatusResponse {
     #[schemars(description = "Rate-limiter budget: tokens, capacity, refill, per-call costs")]
     pub rate_limiter: RateLimiterStatus,
 
+    #[schemars(description = "Media retrieval limits: batch size, payload caps, dimension bounds")]
+    pub media: MediaLimits,
+
     #[schemars(description = "Server version")]
     pub server_version: String,
 
@@ -72,6 +75,26 @@ pub struct RateLimiterCosts {
 
     #[schemars(description = "transcribe_voice_message calls")]
     pub transcription: u32,
+}
+
+/// Media retrieval limits, so a caller can plan a run instead of discovering
+/// the limits by hitting them (work-order C).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MediaLimits {
+    #[schemars(description = "Maximum message_ids per get_messages_media_batch call")]
+    pub batch_max_ids: usize,
+
+    #[schemars(description = "Cap on a batch's total base64 payload, in bytes")]
+    pub max_total_bytes: u64,
+
+    #[schemars(description = "Cap on one image's base64 payload, in bytes")]
+    pub per_image_max_bytes: usize,
+
+    #[schemars(description = "Longest-side pixel limit applied when max_dimension is omitted")]
+    pub default_max_dimension: u32,
+
+    #[schemars(description = "Largest max_dimension a request may ask for")]
+    pub max_dimension_limit: u32,
 }
 
 /// Response for transcribe_voice_message tool

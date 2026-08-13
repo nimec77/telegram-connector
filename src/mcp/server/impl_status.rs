@@ -23,6 +23,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                     transcription: self.transcription_cost,
                 },
             },
+            media: MediaLimits {
+                batch_max_ids: super::impl_media::MAX_MEDIA_BATCH_IDS,
+                max_total_bytes: self.media_batch_max_total_bytes as u64,
+                per_image_max_bytes: crate::mcp::tools::image::MAX_BASE64_LEN,
+                default_max_dimension: super::impl_media::DEFAULT_MAX_DIMENSION,
+                max_dimension_limit: super::impl_media::MAX_DIMENSION,
+            },
             server_version: env!("CARGO_PKG_VERSION").to_string(),
             requests_received: self.metrics.requests_received(),
             responses_written: self.metrics.responses_written(),

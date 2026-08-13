@@ -19,7 +19,7 @@ pub use requests::{
 };
 pub use responses::{
     BufferedResponseEntry, ChannelHeader, ChannelsResponse, GetMessageMediaResponse,
-    LastResponsesResponse, MediaBatchFailure, MediaBatchSummary, MessageLinkResponse,
+    LastResponsesResponse, MediaBatchFailure, MediaBatchSummary, MediaLimits, MessageLinkResponse,
     MessageResponse, MessagesBatchResponse, MissingMessageEntry, NextCursor, OpenMessageResponse,
     RateLimiterCosts, RateLimiterStatus, ResolveChannelsResponse, SearchResponse, StatusResponse,
     TranscribeVoiceMessageResponse,

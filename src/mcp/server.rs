@@ -10,7 +10,7 @@ use crate::mcp::tools::{
     GetChannelStatsRequest, GetChannelsRequest, GetLastResponsesRequest, GetMessageByLinkRequest,
     GetMessageMediaRequest, GetMessageMediaResponse, GetMessagesBatchRequest,
     GetMessagesMediaBatchRequest, GetRecentMessagesRequest, LastResponsesResponse,
-    MediaBatchFailure, MediaBatchSummary, MessageLinkResponse, MessageResponse,
+    MediaBatchFailure, MediaBatchSummary, MediaLimits, MessageLinkResponse, MessageResponse,
     MessagesBatchResponse, MissingMessageEntry, OpenMessageRequest, RateLimiterCosts,
     RateLimiterStatus, ResolveChannelsRequest, ResolveChannelsResponse, ResponseFormat,
     SearchPublicChannelsRequest, SearchRequest, SearchResponse, StatusResponse,

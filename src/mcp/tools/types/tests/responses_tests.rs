@@ -14,6 +14,13 @@ fn status_response_serializes() {
                 transcription: 5,
             },
         },
+        media: MediaLimits {
+            batch_max_ids: 10,
+            max_total_bytes: 8 * 1024 * 1024,
+            per_image_max_bytes: 1_572_864,
+            default_max_dimension: 1280,
+            max_dimension_limit: 2048,
+        },
         server_version: "0.1.0".to_string(),
         requests_received: 1,
         responses_written: 1,

@@ -164,3 +164,32 @@ async fn status_response_has_no_deprecated_alias() {
     );
     assert!(json["rate_limiter"]["tokens"].is_number());
 }
+
+#[tokio::test]
+async fn status_reports_media_batch_limits_from_config() {
+    let mut client = MockTelegramClientTrait::new();
+    client.expect_is_connected().returning(|| true);
+    client.expect_is_premium().returning(|| Some(true));
+
+    let mut limiter = MockRateLimiterTrait::new();
+    limiter.expect_available_tokens().returning(|| 60.0);
+    limiter.expect_capacity().returning(|| 60.0);
+    limiter.expect_refill_rate().returning(|| 2.0);
+
+    let server = McpServer::new(Arc::new(client), Arc::new(limiter))
+        .with_media_batch_max_total_bytes(1_234_567);
+    let json = server
+        .check_mcp_status(RequestId(NumberOrString::Number(1)))
+        .await
+        .expect("status should succeed");
+    let status: StatusResponse = serde_json::from_str(&json).expect("valid JSON");
+
+    assert_eq!(status.media.batch_max_ids, 10);
+    assert_eq!(
+        status.media.max_total_bytes, 1_234_567,
+        "the cap must come from config, not a hardcoded literal"
+    );
+    assert_eq!(status.media.per_image_max_bytes, 1_572_864);
+    assert_eq!(status.media.default_max_dimension, 1280);
+    assert_eq!(status.media.max_dimension_limit, 2048);
+}
