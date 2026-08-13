@@ -318,9 +318,13 @@ impl RawHistoryPager {
         }
         let page = unpack_page(self.client.invoke(&self.request).await?, self.request.limit);
         self.last_chunk = page.last_chunk;
+        // Measured on the page, not the buffer: the field reports raw messages
+        // walked, which only coincides with the buffer length while the buffer
+        // is provably empty here and nothing filters on the way in.
+        let page_size = page.messages.len();
         advance_history_offsets(&mut self.request, &page);
         fill_buffer(&mut self.buffer, page);
-        self.last_page_size = Some(self.buffer.len());
+        self.last_page_size = Some(page_size);
         Ok(self.buffer.pop_front())
     }
 }
@@ -393,9 +397,11 @@ impl RawChannelSearchPager {
         }
         let page = unpack_page(self.client.invoke(&self.request).await?, self.request.limit);
         self.last_chunk = page.last_chunk;
+        // Measured on the page, not the buffer — see `RawHistoryPager::next`.
+        let page_size = page.messages.len();
         advance_search_offsets(&mut self.request, &page);
         fill_buffer(&mut self.buffer, page);
-        self.last_page_size = Some(self.buffer.len());
+        self.last_page_size = Some(page_size);
         Ok(self.buffer.pop_front())
     }
 }
@@ -487,6 +493,8 @@ impl RawGlobalSearchPager {
         // chats/users are still needed for per-message chat peers.
         let page = unpack_page(self.client.invoke(&self.request).await?, self.request.limit);
         self.last_chunk = page.last_chunk;
+        // Measured on the page, not the buffer — see `RawHistoryPager::next`.
+        let page_size = page.messages.len();
         if let Some(last) = page.messages.last() {
             self.request.offset_rate = page.next_rate.unwrap_or(0);
             self.request.offset_id = last.id();
@@ -504,7 +512,7 @@ impl RawGlobalSearchPager {
             self.buffer
                 .push_back((message, Arc::clone(&entities), chat));
         }
-        self.last_page_size = Some(self.buffer.len());
+        self.last_page_size = Some(page_size);
         Ok(self.buffer.pop_front())
     }
 }

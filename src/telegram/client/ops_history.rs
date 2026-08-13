@@ -212,8 +212,12 @@ impl TelegramClient {
                 channels_in_results,
                 // History has no deadline (spec scopes it to search), so it can
                 // never truncate on time — only the work counters are live here.
-                timed_out: false,
-                partial: false,
+                // Read off the budget anyway rather than hardcoding `false`:
+                // identical today (`SearchBudget::new(0)` never latches, and
+                // `expired()` is never called on this path) and self-maintaining
+                // if a deadline is ever extended to history.
+                timed_out: budget.timed_out(),
+                partial: budget.timed_out(),
                 pages_fetched: budget.pages_fetched(),
                 messages_scanned: budget.messages_scanned(),
             },

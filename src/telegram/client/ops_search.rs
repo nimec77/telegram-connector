@@ -70,6 +70,16 @@ impl TelegramClient {
                     while let Some(dialog) = dialogs.next().await.map_err(|e| {
                         Error::TelegramApi(format!("Failed to iterate dialogs: {}", e))
                     })? {
+                        // The dialog walk is on the deadline too: a large dialog list, or
+                        // a `channel_id` the account has not joined (which walks every
+                        // dialog before concluding), would otherwise run past the budget
+                        // into `search_secs` and error — the exact outcome the deadline
+                        // exists to replace with a graceful partial. Checking here also
+                        // latches `timed_out`, so a slow walk is reported rather than
+                        // looking like a fast empty result.
+                        if budget.expired() {
+                            break;
+                        }
                         let peer = dialog.peer();
                         if peer.id().bare_id() == Some(channel_id.get()) {
                             channels_scanned += 1;
