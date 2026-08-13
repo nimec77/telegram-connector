@@ -106,18 +106,44 @@ fn advance_search_offsets(request: &mut tl::functions::messages::Search, page: &
     }
 }
 
-/// Map a time window onto `messages.SearchGlobal`'s `min_date`/`max_date`.
+/// Map a time window onto `messages.SearchGlobal`'s `min_date`/`max_date`,
+/// widened by one second at each end.
 ///
 /// The TL schema types both as `int` (i32 unix seconds) and treats `0` as
 /// "unbounded". Out-of-range instants clamp rather than error: a degraded
 /// bound costs a slower search, a rejected one costs the caller their result.
-/// The client-side window filter in `ops_search` stays in place either way.
+///
+/// Neither the TL schema nor grammers documents whether the bounds are
+/// inclusive or exclusive, and the ±1 makes the answer stop mattering: the
+/// server window is a strict superset of the requested one under *either*
+/// semantics, so no message can be dropped server-side that the client-side
+/// window checks in `ops_search` would have kept. Without it, an exclusive
+/// server silently drops a message posted on the exact second of an explicit
+/// `from_date`/`to_date` (the README's own example is that shape), and the
+/// retained client-side guard never sees it to recover it. Cost is at most two
+/// extra seconds of index — unmeasurable against a sub-second search.
 fn window_bounds(from: DateTime<Utc>, to: Option<DateTime<Utc>>) -> (i32, i32) {
     let clamp = |ts: i64| ts.clamp(0, i32::MAX as i64) as i32;
     (
-        clamp(from.timestamp()),
-        to.map_or(0, |t| clamp(t.timestamp())),
+        clamp(from.timestamp().saturating_sub(1)),
+        to.map_or(0, |t| clamp(t.timestamp().saturating_add(1))),
     )
+}
+
+/// Write a time window onto a `SearchGlobal` request.
+///
+/// Split out of `RawGlobalSearchPager::new` so the assignment itself is
+/// testable: `new` needs a live `Client`, which no unit test can build, and a
+/// transposition here (`min_date` ← the upper bound) would compile, pass, and
+/// silently reinstate the unbounded global walk.
+fn apply_window(
+    request: &mut tl::functions::messages::SearchGlobal,
+    from: DateTime<Utc>,
+    to: Option<DateTime<Utc>>,
+) {
+    let (min_date, max_date) = window_bounds(from, to);
+    request.min_date = min_date;
+    request.max_date = max_date;
 }
 
 /// Access hash for a channel-namespace chat variant, if this envelope entry
@@ -394,24 +420,32 @@ pub(super) struct RawGlobalSearchPager {
 }
 
 impl RawGlobalSearchPager {
-    pub(super) fn new(client: &Client) -> Self {
+    /// The time window is a constructor argument, not an optional builder step:
+    /// without server-side bounds the pager walks the entire global index
+    /// backwards discarding out-of-window results — measured at 44.86 s for a
+    /// rare media filter over a 24 h window. An omitted builder call would
+    /// reinstate that silently, so the unbounded request is not constructible.
+    pub(super) fn new(client: &Client, from: DateTime<Utc>, to: Option<DateTime<Utc>>) -> Self {
+        let mut request = tl::functions::messages::SearchGlobal {
+            folder_id: None,
+            q: String::new(),
+            filter: tl::enums::MessagesFilter::InputMessagesFilterEmpty,
+            // Overwritten by `apply_window` below; the literal cannot call it.
+            min_date: 0,
+            max_date: 0,
+            offset_rate: 0,
+            offset_peer: tl::enums::InputPeer::Empty,
+            offset_id: 0,
+            limit: PAGE_LIMIT,
+            broadcasts_only: false,
+            groups_only: false,
+            users_only: false,
+            community: None,
+        };
+        apply_window(&mut request, from, to);
         Self {
             client: client.clone(),
-            request: tl::functions::messages::SearchGlobal {
-                folder_id: None,
-                q: String::new(),
-                filter: tl::enums::MessagesFilter::InputMessagesFilterEmpty,
-                min_date: 0,
-                max_date: 0,
-                offset_rate: 0,
-                offset_peer: tl::enums::InputPeer::Empty,
-                offset_id: 0,
-                limit: PAGE_LIMIT,
-                broadcasts_only: false,
-                groups_only: false,
-                users_only: false,
-                community: None,
-            },
+            request,
             buffer: VecDeque::new(),
             last_chunk: false,
             last_page_size: None,
@@ -425,16 +459,6 @@ impl RawGlobalSearchPager {
 
     pub(super) fn filter(mut self, filter: tl::enums::MessagesFilter) -> Self {
         self.request.filter = filter;
-        self
-    }
-
-    /// Bound the search server-side. Without this the pager walks the entire
-    /// global index backwards discarding out-of-window results — measured at
-    /// 44.86 s for a rare media filter over a 24 h window.
-    pub(super) fn window(mut self, from: DateTime<Utc>, to: Option<DateTime<Utc>>) -> Self {
-        let (min_date, max_date) = window_bounds(from, to);
-        self.request.min_date = min_date;
-        self.request.max_date = max_date;
         self
     }
 
@@ -726,20 +750,23 @@ mod tests {
     }
 
     #[test]
-    fn window_bounds_maps_both_ends() {
+    fn window_bounds_maps_both_ends_widened_by_a_second() {
         let from = DateTime::from_timestamp(1_700_000_000, 0).expect("valid ts");
         let to = DateTime::from_timestamp(1_700_086_400, 0).expect("valid ts");
         let (min_date, max_date) = window_bounds(from, Some(to));
-        assert_eq!(min_date, 1_700_000_000);
-        assert_eq!(max_date, 1_700_086_400);
+        // ±1 makes the server window a superset under both inclusive and
+        // exclusive semantics; the client-side checks still filter exactly.
+        assert_eq!(min_date, 1_699_999_999);
+        assert_eq!(max_date, 1_700_086_401);
     }
 
     #[test]
     fn window_bounds_open_upper_end_is_unbounded_sentinel() {
         let from = DateTime::from_timestamp(1_700_000_000, 0).expect("valid ts");
         let (min_date, max_date) = window_bounds(from, None);
-        assert_eq!(min_date, 1_700_000_000);
-        // 0 is the protocol's "no upper bound", not "the epoch".
+        assert_eq!(min_date, 1_699_999_999);
+        // 0 is the protocol's "no upper bound", not "the epoch" — and the
+        // widening must not turn it into 1.
         assert_eq!(max_date, 0);
     }
 
@@ -760,6 +787,56 @@ mod tests {
         let from = DateTime::from_timestamp(i32::MAX as i64 + 1_000, 0).expect("valid ts");
         let (min_date, _) = window_bounds(from, None);
         assert_eq!(min_date, i32::MAX);
+    }
+
+    #[test]
+    fn window_bounds_saturates_the_upper_end_at_i32_max() {
+        // The +1 widening is the edge here: an upper bound already at the i32
+        // ceiling must clamp, not wrap to a negative "max_date" — which the
+        // server would read as a nonsense window rather than an open one.
+        let from = DateTime::from_timestamp(1_700_000_000, 0).expect("valid ts");
+        let at_ceiling = DateTime::from_timestamp(i32::MAX as i64, 0).expect("valid ts");
+        let (_, max_date) = window_bounds(from, Some(at_ceiling));
+        assert_eq!(max_date, i32::MAX);
+
+        let beyond = DateTime::from_timestamp(i32::MAX as i64 + 1_000, 0).expect("valid ts");
+        let (_, max_date) = window_bounds(from, Some(beyond));
+        assert_eq!(max_date, i32::MAX);
+    }
+
+    #[test]
+    fn apply_window_lands_both_bounds_on_the_tl_request() {
+        // The seam the pager's server-side bounding actually depends on: a
+        // transposition here compiles and passes every other test while
+        // reinstating the unbounded global walk.
+        let mut request = tl::functions::messages::SearchGlobal {
+            folder_id: None,
+            q: String::new(),
+            filter: tl::enums::MessagesFilter::InputMessagesFilterEmpty,
+            min_date: 0,
+            max_date: 0,
+            offset_rate: 0,
+            offset_peer: tl::enums::InputPeer::Empty,
+            offset_id: 0,
+            limit: PAGE_LIMIT,
+            broadcasts_only: false,
+            groups_only: false,
+            users_only: false,
+            community: None,
+        };
+
+        let from = DateTime::from_timestamp(1_700_000_000, 0).expect("valid ts");
+        apply_window(&mut request, from, None);
+        assert_eq!(request.min_date, 1_699_999_999, "lower bound is min_date");
+        assert_eq!(
+            request.max_date, 0,
+            "open-ended window leaves max_date at 0"
+        );
+
+        let to = DateTime::from_timestamp(1_700_086_400, 0).expect("valid ts");
+        apply_window(&mut request, from, Some(to));
+        assert_eq!(request.min_date, 1_699_999_999, "lower bound is min_date");
+        assert_eq!(request.max_date, 1_700_086_401, "upper bound is max_date");
     }
 
     fn channel_ref(id: i64) -> PeerRef {
