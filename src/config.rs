@@ -137,6 +137,15 @@ where
         .map(|s| SecretString::new(s.into_boxed_str())))
 }
 
+/// Upper bound accepted for `[search] deadline_seconds`.
+///
+/// `SearchBudget::new` computes `Instant::now() + Duration::from_secs(deadline_secs)`,
+/// which panics on overflow in every build profile. This cap keeps a pathological
+/// TOML value from turning every search into a panic. It is deliberately permissive:
+/// a useful value sits well below `[telegram.timeouts] search_secs` (default 120),
+/// which is the actual practical ceiling.
+const MAX_SEARCH_DEADLINE_SECONDS: u64 = 3600;
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct SearchConfig {
     #[serde(default = "default_hours_back")]
@@ -145,6 +154,31 @@ pub struct SearchConfig {
     pub max_results_default: u32,
     #[serde(default = "default_max_results_limit")]
     pub max_results_limit: u32,
+    /// Wall-clock budget for a search's accumulation loop. On expiry the
+    /// search returns the results gathered so far with `timed_out`/`partial`
+    /// set — never an error. Must stay below `[telegram.timeouts] search_secs`
+    /// (default 120) to be reachable.
+    #[serde(default = "default_search_deadline_seconds")]
+    pub deadline_seconds: u64,
+}
+
+impl SearchConfig {
+    /// Reject a zero deadline (would end every search before its first page) or a
+    /// deadline above `MAX_SEARCH_DEADLINE_SECONDS` (would overflow the `Instant`
+    /// arithmetic in `SearchBudget::new`).
+    pub fn validate(&self) -> anyhow::Result<()> {
+        if self.deadline_seconds == 0 {
+            anyhow::bail!("search.deadline_seconds must be > 0");
+        }
+        if self.deadline_seconds > MAX_SEARCH_DEADLINE_SECONDS {
+            anyhow::bail!(
+                "search.deadline_seconds must be between 1 and {MAX_SEARCH_DEADLINE_SECONDS}, \
+                 got {}",
+                self.deadline_seconds
+            );
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -291,6 +325,11 @@ impl Config {
             .limits
             .validate()
             .context("invalid limits configuration")?;
+
+        config
+            .search
+            .validate()
+            .context("invalid search configuration")?;
 
         Ok(config)
     }

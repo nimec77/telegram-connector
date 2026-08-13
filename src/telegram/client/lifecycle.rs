@@ -11,7 +11,7 @@ impl TelegramClient {
     /// If session exists, it will be loaded and used. Otherwise, a new session is created.
     ///
     /// After creation, check `is_connected()` to determine if authentication is needed.
-    pub async fn new(config: &TelegramConfig) -> Result<Self, Error> {
+    pub async fn new(config: &TelegramConfig, search: &SearchConfig) -> Result<Self, Error> {
         // Create parent directory if it doesn't exist
         if let Some(parent) = config.session_file.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
@@ -51,6 +51,7 @@ impl TelegramClient {
             session_path: config.session_file.clone(),
             timeouts: config.timeouts.clone(),
             max_download_bytes: config.max_download_bytes,
+            search_deadline_secs: search.deadline_seconds,
             premium: tokio::sync::RwLock::new(None),
             _runner_handle: runner_handle,
         })

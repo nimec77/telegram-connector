@@ -129,6 +129,7 @@ fn create_test_config(api_id: i32, api_hash: Option<&str>, phone_number: Option<
             default_hours_back: 48,
             max_results_default: 20,
             max_results_limit: 100,
+            deadline_seconds: 20,
         },
         rate_limiting: RateLimitConfig {
             max_tokens: 50,
@@ -715,4 +716,39 @@ fn limits_config_rejects_zero_budget() {
         toml::from_str("[telegram]\napi_id = 123\n\n[limits]\nresponse_byte_budget = 0\n")
             .expect("parse");
     assert!(config.limits.validate().is_err());
+}
+
+// ========================================================================
+// Search Deadline Config Tests (global-search-latency, Task 3)
+// ========================================================================
+
+#[test]
+fn search_deadline_defaults_to_twenty_seconds() {
+    let config: Config = toml::from_str("[telegram]\napi_id = 123\n").expect("parse");
+    assert_eq!(config.search.deadline_seconds, 20);
+}
+
+#[test]
+fn search_config_rejects_zero_deadline() {
+    let config: Config =
+        toml::from_str("[telegram]\napi_id = 123\n\n[search]\ndeadline_seconds = 0\n")
+            .expect("parse");
+    assert!(config.search.validate().is_err());
+}
+
+#[test]
+fn search_config_accepts_explicit_deadline() {
+    let config: Config =
+        toml::from_str("[telegram]\napi_id = 123\n\n[search]\ndeadline_seconds = 45\n")
+            .expect("parse");
+    assert_eq!(config.search.deadline_seconds, 45);
+    assert!(config.search.validate().is_ok());
+}
+
+#[test]
+fn search_config_rejects_deadline_over_one_hour() {
+    let config: Config =
+        toml::from_str("[telegram]\napi_id = 123\n\n[search]\ndeadline_seconds = 3601\n")
+            .expect("parse");
+    assert!(config.search.validate().is_err());
 }

@@ -27,6 +27,10 @@ pub(crate) fn default_max_results_limit() -> u32 {
     100
 }
 
+pub(crate) fn default_search_deadline_seconds() -> u64 {
+    20
+}
+
 pub(crate) fn default_max_tokens() -> u32 {
     50
 }
@@ -128,6 +132,7 @@ pub(crate) fn default_search_config() -> SearchConfig {
         default_hours_back: default_hours_back(),
         max_results_default: default_max_results_default(),
         max_results_limit: default_max_results_limit(),
+        deadline_seconds: default_search_deadline_seconds(),
     }
 }
 

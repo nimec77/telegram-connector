@@ -40,6 +40,20 @@ phone_number = "+1234567890"
 # max_results_default = 20                 # Default: 20
 # max_results_limit = 100                  # Default: 100
 
+# Wall-clock budget for a search's accumulation loop. On expiry the search
+# returns the results gathered so far with "timed_out": true and
+# "partial": true in query_metadata — never an error, because partial
+# results beat a failed workflow. Must be > 0 and <= 3600.
+#
+# Keep this BELOW [telegram.timeouts] search_secs (default 120), or the hard
+# timeout fires first and the call fails instead of degrading. The two are not
+# cross-validated: each table is independently overridable, and a hard coupling
+# would surprise anyone tuning one without the other.
+#
+# CONSERVATIVE STARTING POINT, NOT A MEASURED VALUE — chosen to sit below
+# typical MCP client timeouts. Tune against your own traffic.
+# deadline_seconds = 20                    # Default: 20 (max: 3600)
+
 [rate_limiting]
 # Optional: Token bucket configuration
 # max_tokens = 50                          # Default: 50 (burst capacity)
