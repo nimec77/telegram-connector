@@ -830,4 +830,34 @@ mod tests {
         let ts = timestamp_from_raw(&raw).expect("real date converts");
         assert_eq!(ts.timestamp(), 1_700_000_000);
     }
+
+    #[test]
+    fn batch_style_conversion_enriches_forward_from_a_shared_envelope() {
+        // One envelope shared by every message in a getMessages response — the
+        // shape fetch_messages_by_id returns. Both messages must attribute.
+        let peer = public_channel_peer(1144180066, "swodki");
+        let entities = EntityLookup::from_envelope(
+            &[tl::enums::Chat::Channel(raw_tl_channel(
+                1783384254,
+                "Pavel Zloi",
+                Some("evilfreelancer"),
+            ))],
+            &[],
+        );
+
+        for id in [610121, 610122] {
+            let raw =
+                raw_forwarded_message(id, fwd_header(channel_fwd_peer(1783384254), None, None));
+            let msg = convert_raw_message(&raw, &peer, &entities).expect("converts");
+            let fwd = msg.forwarded_from.expect("forward attribution present");
+            assert_eq!(
+                fwd.channel_name.as_ref().map(|n| n.as_str()),
+                Some("Pavel Zloi")
+            );
+            assert_eq!(
+                fwd.channel_username.as_ref().map(|u| u.as_str()),
+                Some("evilfreelancer")
+            );
+        }
+    }
 }

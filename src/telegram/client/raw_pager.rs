@@ -219,9 +219,6 @@ fn index_messages(
 /// keeps the `chats`+`users` arrays that forward attribution reads instead of
 /// collapsing them into a crate-private `PeerMap` (see `telegram/envelope.rs`).
 /// Zero additional network calls.
-// Nothing calls this yet — Task 5 wires it to get_message_by_link and
-// get_messages_batch. Remove this attribute once that caller lands.
-#[allow(dead_code)]
 pub(super) async fn fetch_messages_by_id(
     client: &Client,
     peer: PeerRef,
