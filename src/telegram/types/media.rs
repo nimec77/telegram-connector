@@ -69,6 +69,21 @@ pub enum AudioKind {
     Voice,
 }
 
+/// Generic-document metadata, derived entirely from the document attributes
+/// already on the message (no network calls). Present only when `media_type`
+/// is `document` — video / audio / voice / animation media carry their own
+/// `video_info` / `audio_info` instead, so nothing is emitted twice.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct DocumentInfo {
+    /// From `DocumentAttributeFilename`; often the only description a
+    /// document post carries.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub file_name: Option<String>,
+    pub file_size_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub mime_type: Option<String>,
+}
+
 /// Media filter for search (maps to Telegram's InputMessagesFilter).
 ///
 /// **Important:** This is metadata-based filtering, NOT content recognition.

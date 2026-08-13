@@ -5,7 +5,7 @@
 //! candidate selection.
 
 use crate::telegram::types::{
-    AudioInfo, AudioKind, MediaFilter, MediaType, SizeCandidate, VideoInfo, VideoKind,
+    AudioInfo, AudioKind, DocumentInfo, MediaFilter, MediaType, SizeCandidate, VideoInfo, VideoKind,
 };
 use grammers_client::media::{Document, Media, PhotoSize};
 use grammers_client::tl;
@@ -182,6 +182,33 @@ pub fn extract_audio_info(media: &Media) -> Option<AudioInfo> {
         duration_seconds,
         file_size_bytes: raw.size.max(0) as u64,
         kind,
+        mime_type: Some(raw.mime_type.clone()),
+    })
+}
+
+/// Derive `DocumentInfo` from a generic document's attributes. Returns `None`
+/// for every other media class, including the document-backed ones (video,
+/// audio, voice, animation, sticker) that already have a dedicated info
+/// object. Same zero-cost raw-TL source as [`extract_video_info`].
+pub fn extract_document_info(media: &Media) -> Option<DocumentInfo> {
+    if convert_media_to_type(media) != MediaType::Document {
+        return None;
+    }
+    let Media::Document(doc) = media else {
+        return None;
+    };
+    let Some(tl::enums::Document::Document(raw)) = doc.raw.document.as_ref() else {
+        return None;
+    };
+
+    let file_name = raw.attributes.iter().find_map(|attr| match attr {
+        tl::enums::DocumentAttribute::Filename(f) => Some(f.file_name.clone()),
+        _ => None,
+    });
+
+    Some(DocumentInfo {
+        file_name,
+        file_size_bytes: raw.size.max(0) as u64,
         mime_type: Some(raw.mime_type.clone()),
     })
 }

@@ -200,6 +200,7 @@ mod tests {
             reply_to_message_id: None,
             video_info: None,
             audio_info: None,
+            document_info: None,
             grouped_id: None,
             link: format!("https://t.me/testchan/{id}"),
             reactions: None,

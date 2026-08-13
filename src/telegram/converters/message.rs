@@ -4,7 +4,9 @@
 //! detection and video/audio info.
 
 use super::channel::{channel_identity, peer_identity};
-use super::media::{convert_media_to_type, extract_audio_info, extract_video_info};
+use super::media::{
+    convert_media_to_type, extract_audio_info, extract_document_info, extract_video_info,
+};
 use crate::link::MessageLink;
 use crate::telegram::envelope::EntityLookup;
 use crate::telegram::types::{
@@ -269,6 +271,7 @@ pub(crate) fn convert_raw_message(
     // Zero-cost media metadata derived from the in-hand document attributes.
     let video_info = media.as_ref().and_then(extract_video_info);
     let audio_info = media.as_ref().and_then(extract_audio_info);
+    let document_info = media.as_ref().and_then(extract_document_info);
 
     let forwarded_from = raw_forward_header(raw).map(|h| extract_forward_info(h, entities));
 
@@ -302,6 +305,7 @@ pub(crate) fn convert_raw_message(
         reply_to_message_id,
         video_info,
         audio_info,
+        document_info,
         grouped_id: raw_grouped_id(raw),
         link,
         reactions,

@@ -1,9 +1,9 @@
 //! Response types for MCP tools.
 
 use crate::telegram::types::{
-    AlbumInfo, AudioInfo, Channel, ChannelId, ChannelName, ChannelResolution, ForwardInfo,
-    LinkPreview, MediaType, Message, MessageId, MessageReaction, QueryMetadata, SearchResult,
-    UserId, Username, VideoInfo,
+    AlbumInfo, AudioInfo, Channel, ChannelId, ChannelName, ChannelResolution, DocumentInfo,
+    ForwardInfo, LinkPreview, MediaType, Message, MessageId, MessageReaction, QueryMetadata,
+    SearchResult, UserId, Username, VideoInfo,
 };
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
@@ -334,6 +334,8 @@ pub struct MessageResponse {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub audio_info: Option<AudioInfo>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub document_info: Option<DocumentInfo>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub grouped_id: Option<i64>,
     pub link: String,
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -366,6 +368,7 @@ impl From<Message> for MessageResponse {
             reply_to_message_id: m.reply_to_message_id,
             video_info: m.video_info,
             audio_info: m.audio_info,
+            document_info: m.document_info,
             grouped_id: m.grouped_id,
             link: m.link,
             reactions: m.reactions,

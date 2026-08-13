@@ -452,3 +452,82 @@ fn extract_audio_info_none_for_video() {
     let media = video_doc(false, 30.0, 1920, 1080, 5_000_000, "video/mp4", true);
     assert!(extract_audio_info(&media).is_none());
 }
+
+fn plain_doc(file_name: Option<&str>, size: i64, mime: &str) -> Media {
+    let attributes = file_name
+        .map(|name| {
+            vec![tl::enums::DocumentAttribute::Filename(
+                tl::types::DocumentAttributeFilename {
+                    file_name: name.to_string(),
+                },
+            )]
+        })
+        .unwrap_or_default();
+    Media::Document(Document::from_raw_media(tl::types::MessageMediaDocument {
+        nopremium: false,
+        spoiler: false,
+        video: false,
+        round: false,
+        voice: false,
+        document: Some(tl::enums::Document::Document(tl::types::Document {
+            id: 1,
+            access_hash: 0,
+            file_reference: Vec::new(),
+            date: 0,
+            mime_type: mime.to_string(),
+            size,
+            thumbs: None,
+            video_thumbs: None,
+            dc_id: 0,
+            attributes,
+        })),
+        alt_documents: None,
+        video_cover: None,
+        video_timestamp: None,
+        ttl_seconds: None,
+    }))
+}
+
+#[test]
+fn document_info_reads_filename_size_and_mime() {
+    let media = plain_doc(Some("Как мы строим RAG.pdf"), 2_411_008, "application/pdf");
+
+    let info = extract_document_info(&media).expect("document info present");
+
+    assert_eq!(info.file_name.as_deref(), Some("Как мы строим RAG.pdf"));
+    assert_eq!(info.file_size_bytes, 2_411_008);
+    assert_eq!(info.mime_type.as_deref(), Some("application/pdf"));
+}
+
+#[test]
+fn document_info_without_filename_attribute_omits_the_name() {
+    let media = plain_doc(None, 512, "application/zip");
+
+    let info = extract_document_info(&media).expect("document info present");
+
+    assert_eq!(info.file_name, None);
+    assert_eq!(info.file_size_bytes, 512);
+}
+
+#[test]
+fn document_info_is_none_for_video_media() {
+    let media = video_doc(false, 30.0, 1920, 1080, 5_000_000, "video/mp4", true);
+
+    assert!(extract_document_info(&media).is_none());
+}
+
+#[test]
+fn document_info_is_none_for_audio_media() {
+    let media = audio_doc(false, 184, 7_340_032, "audio/mpeg");
+
+    assert!(extract_document_info(&media).is_none());
+}
+
+#[test]
+fn document_info_absent_from_json_when_media_is_not_a_document() {
+    let msg = crate::test_helpers::create_test_message(1, "текст", 100);
+
+    let json = serde_json::to_value(&msg).expect("serializes");
+
+    assert!(json.get("document_info").is_none());
+}

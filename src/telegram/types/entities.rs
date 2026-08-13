@@ -1,7 +1,7 @@
 //! Domain entities: Message and Channel.
 
 use super::ids::{ChannelId, MessageId, UserId};
-use super::media::{AudioInfo, MediaType, VideoInfo};
+use super::media::{AudioInfo, DocumentInfo, MediaType, VideoInfo};
 use super::names::{ChannelName, Username};
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
@@ -34,6 +34,8 @@ pub struct Message {
     pub video_info: Option<VideoInfo>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub audio_info: Option<AudioInfo>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub document_info: Option<DocumentInfo>,
     /// Telegram album (media group) id shared by sibling messages (B5).
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub grouped_id: Option<i64>,
@@ -257,6 +259,7 @@ mod tests {
             reply_to_message_id: None,
             video_info: None,
             audio_info: None,
+            document_info: None,
             grouped_id: None,
             link: "https://t.me/testchan/1".to_string(),
             reactions: None,
