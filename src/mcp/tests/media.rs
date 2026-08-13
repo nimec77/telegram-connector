@@ -50,7 +50,7 @@ async fn photo_returns_image_and_metadata_blocks() {
     let mut mock_limiter = MockRateLimiterTrait::new();
     mock_limiter
         .expect_acquire()
-        .with(eq(5))
+        .with(eq(3))
         .returning(|_| Ok(()));
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));

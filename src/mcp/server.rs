@@ -69,7 +69,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                 observability.max_buffered_payload_bytes,
             )),
             slow_write_threshold: Duration::from_millis(observability.slow_write_threshold_ms),
-            media_download_cost: 5,
+            media_download_cost: 3,
             transcription_cost: 5,
             transcription_default_timeout_secs: 30,
             transcription_max_timeout_secs: 120,
@@ -90,7 +90,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Set the rate-limiter cost charged per get_message_media call
-    /// (`[rate_limiting] media_download_cost`, default 5).
+    /// (`[rate_limiting] media_download_cost`, default 3).
     pub fn with_media_download_cost(mut self, cost: u32) -> Self {
         self.media_download_cost = cost;
         self
