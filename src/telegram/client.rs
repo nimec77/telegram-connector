@@ -71,10 +71,6 @@ pub struct TelegramClient {
     /// Hard cap (bytes) on a single media download (`[telegram] max_download_bytes`, AD-6).
     max_download_bytes: u64,
     /// Wall-clock budget for a search accumulation loop (`[search] deadline_seconds`).
-    //
-    // `dead_code` is allowed only until Task 5 wires this into
-    // `search_messages_impl`; remove this attribute when that lands.
-    #[allow(dead_code)]
     search_deadline_secs: u64,
     /// Cached Premium flag for the connected account (None = not yet determined).
     premium: tokio::sync::RwLock<Option<bool>>,

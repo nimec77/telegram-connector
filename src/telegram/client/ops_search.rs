@@ -3,6 +3,7 @@
 //! Unit of `client` (LM-2).
 
 use super::raw_pager::{RawChannelSearchPager, RawGlobalSearchPager};
+use super::search_budget::SearchBudget;
 use super::*;
 use crate::telegram::albums::{PostCounter, album_key, collapse_albums};
 
@@ -50,7 +51,9 @@ impl TelegramClient {
         };
 
         // If channel_id is specified, search only that channel
-        let (messages, channels_scanned, has_more) = if let Some(channel_id) = &params.channel_id {
+        let (messages, channels_scanned, has_more, budget) = if let Some(channel_id) =
+            &params.channel_id
+        {
             with_timeout(
                 "search_messages_channel",
                 self.timeouts.search_secs,
@@ -59,6 +62,7 @@ impl TelegramClient {
                     let mut channels_scanned = 0u32;
                     let mut has_more = false;
                     let mut counter = PostCounter::default();
+                    let mut budget = SearchBudget::new(self.search_deadline_secs);
                     // Find the channel in our dialogs
                     let mut dialogs = self.client.iter_dialogs();
 
@@ -85,11 +89,22 @@ impl TelegramClient {
                                 pager = pager.filter(convert_media_filter(media_filter));
                             }
 
-                            while let Some((raw_msg, entities)) = pager
-                                .next()
-                                .await
-                                .map_err(|e| Error::TelegramApi(format!("Search failed: {}", e)))?
-                            {
+                            loop {
+                                if budget.expired() {
+                                    break;
+                                }
+                                let next = pager.next().await.map_err(|e| {
+                                    Error::TelegramApi(format!("Search failed: {}", e))
+                                })?;
+                                // Before the `else break`: a round trip that came back
+                                // empty still cost the caller latency, which is what
+                                // the field reports.
+                                if let Some(page_size) = pager.take_last_page_size() {
+                                    budget.record_page(page_size);
+                                }
+                                let Some((raw_msg, entities)) = next else {
+                                    break;
+                                };
                                 if let Some(to) = params.to_date
                                     && timestamp_from_raw(&raw_msg).is_some_and(|t| t > to)
                                 {
@@ -135,12 +150,12 @@ impl TelegramClient {
                             break;
                         }
                     }
-                    Ok((messages, channels_scanned, has_more))
+                    Ok((messages, channels_scanned, has_more, budget))
                 },
             )
             .await
-            .map(|(messages, channels_scanned, has_more)| {
-                (messages, Some(channels_scanned), has_more)
+            .map(|(messages, channels_scanned, has_more, budget)| {
+                (messages, Some(channels_scanned), has_more, budget)
             })?
         } else {
             // Cursors are single-channel only (decision 2): global search has no
@@ -154,11 +169,12 @@ impl TelegramClient {
             }
 
             // Search all channels using global search
-            let (collected, has_more) =
+            let (collected, has_more, budget) =
                 with_timeout("search_all_messages", self.timeouts.search_secs, async {
                     let mut messages = Vec::new();
                     let mut has_more = false;
                     let mut counter = PostCounter::default();
+                    let mut budget = SearchBudget::new(self.search_deadline_secs);
                     // Global search via the raw messages.SearchGlobal pager:
                     // same request as grammers' search_all_messages, but the
                     // response envelope is kept so forwards get attributed
@@ -175,11 +191,22 @@ impl TelegramClient {
                         pager = pager.filter(convert_media_filter(media_filter));
                     }
 
-                    while let Some((raw_msg, entities, chat_peer)) = pager
-                        .next()
-                        .await
-                        .map_err(|e| Error::TelegramApi(format!("Search failed: {}", e)))?
-                    {
+                    loop {
+                        if budget.expired() {
+                            break;
+                        }
+                        let next = pager
+                            .next()
+                            .await
+                            .map_err(|e| Error::TelegramApi(format!("Search failed: {}", e)))?;
+                        // Before the `else break`: a round trip that came back empty
+                        // still cost the caller latency, which is what the field reports.
+                        if let Some(page_size) = pager.take_last_page_size() {
+                            budget.record_page(page_size);
+                        }
+                        let Some((raw_msg, entities, chat_peer)) = next else {
+                            break;
+                        };
                         if let Some(to) = params.to_date
                             && timestamp_from_raw(&raw_msg).is_some_and(|t| t > to)
                         {
@@ -211,11 +238,12 @@ impl TelegramClient {
                             }
                         }
                     }
-                    Ok((messages, has_more))
+                    Ok((messages, has_more, budget))
                 })
                 .await?;
 
-            (collected, None, has_more) // server-side global search: scan scope unknowable
+            // server-side global search: scan scope unknowable
+            (collected, None, has_more, budget)
         };
 
         let mut messages = if params.collapse_albums {
@@ -242,6 +270,9 @@ impl TelegramClient {
             channels_scanned = ?channels_scanned,
             channels_in_results,
             duration_ms = search_time_ms,
+            pages_fetched = budget.pages_fetched(),
+            messages_scanned = budget.messages_scanned(),
+            timed_out = budget.timed_out(),
             "Search completed"
         );
 
@@ -255,10 +286,14 @@ impl TelegramClient {
                 window_to: params.to_date,
                 channels_scanned,
                 channels_in_results,
-                timed_out: false,
-                partial: false,
-                pages_fetched: 0,
-                messages_scanned: 0,
+                timed_out: budget.timed_out(),
+                // Deliberately paired with `timed_out`, and deliberately *not* with
+                // `has_more`: expiry stopped the walk without proving anything lies
+                // beyond the page, and the global path has no cursor to resume from
+                // anyway (see the `before_id`/`after_id` rejection above).
+                partial: budget.timed_out(),
+                pages_fetched: budget.pages_fetched(),
+                messages_scanned: budget.messages_scanned(),
             },
             messages,
         })

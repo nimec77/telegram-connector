@@ -12,10 +12,6 @@ use tokio::time::Instant;
 /// because partial results are strictly more useful than a failure.
 ///
 /// Uses `tokio::time::Instant` so `tokio::time::pause()` drives it in tests.
-//
-// `dead_code` is allowed only until Task 5 wires this into
-// `search_messages_impl`; remove this attribute when that lands.
-#[allow(dead_code)]
 pub(crate) struct SearchBudget {
     /// `None` disables the deadline entirely.
     deadline: Option<Instant>,
@@ -24,7 +20,6 @@ pub(crate) struct SearchBudget {
     messages_scanned: u64,
 }
 
-#[allow(dead_code)]
 impl SearchBudget {
     pub(crate) fn new(deadline_secs: u64) -> Self {
         Self {

@@ -164,8 +164,10 @@ pub struct SearchResult {
     pub messages: Vec<Message>,
     /// Number of messages in this response (page size, not a match count — B6).
     pub returned: u64,
-    /// More qualifying messages exist in the requested window beyond this
-    /// page (limit- or budget-truncated), so paging on can find them (A8).
+    /// A qualifying message was *proven* to exist in the window beyond this
+    /// page — refused by the limit, or dropped by `[limits] response_byte_budget`
+    /// — so paging on can find it (A8). Deadline truncation proves nothing: it
+    /// reports `query_metadata.timed_out`/`partial` and leaves this false.
     pub has_more: bool,
     pub search_time_ms: u64,
     pub query_metadata: QueryMetadata,

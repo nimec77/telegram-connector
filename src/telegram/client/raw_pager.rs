@@ -256,6 +256,9 @@ pub(super) struct RawHistoryPager {
     request: tl::functions::messages::GetHistory,
     buffer: VecDeque<(tl::enums::Message, Arc<EntityLookup>)>,
     last_chunk: bool,
+    /// Messages in the page just fetched, taken exactly once by the caller so a
+    /// round trip is counted once rather than once per yielded message.
+    last_page_size: Option<usize>,
 }
 
 impl RawHistoryPager {
@@ -265,12 +268,17 @@ impl RawHistoryPager {
             request: history_request(peer.into(), 0),
             buffer: VecDeque::new(),
             last_chunk: false,
+            last_page_size: None,
         }
     }
 
     pub(super) fn offset_id(mut self, offset: i32) -> Self {
         self.request.offset_id = offset;
         self
+    }
+
+    pub(super) fn take_last_page_size(&mut self) -> Option<usize> {
+        self.last_page_size.take()
     }
 
     pub(super) async fn next(
@@ -286,6 +294,7 @@ impl RawHistoryPager {
         self.last_chunk = page.last_chunk;
         advance_history_offsets(&mut self.request, &page);
         fill_buffer(&mut self.buffer, page);
+        self.last_page_size = Some(self.buffer.len());
         Ok(self.buffer.pop_front())
     }
 }
@@ -296,6 +305,9 @@ pub(super) struct RawChannelSearchPager {
     request: tl::functions::messages::Search,
     buffer: VecDeque<(tl::enums::Message, Arc<EntityLookup>)>,
     last_chunk: bool,
+    /// Messages in the page just fetched, taken exactly once by the caller so a
+    /// round trip is counted once rather than once per yielded message.
+    last_page_size: Option<usize>,
 }
 
 impl RawChannelSearchPager {
@@ -321,6 +333,7 @@ impl RawChannelSearchPager {
             },
             buffer: VecDeque::new(),
             last_chunk: false,
+            last_page_size: None,
         }
     }
 
@@ -339,6 +352,10 @@ impl RawChannelSearchPager {
         self
     }
 
+    pub(super) fn take_last_page_size(&mut self) -> Option<usize> {
+        self.last_page_size.take()
+    }
+
     pub(super) async fn next(
         &mut self,
     ) -> Result<Option<(tl::enums::Message, Arc<EntityLookup>)>, InvocationError> {
@@ -352,6 +369,7 @@ impl RawChannelSearchPager {
         self.last_chunk = page.last_chunk;
         advance_search_offsets(&mut self.request, &page);
         fill_buffer(&mut self.buffer, page);
+        self.last_page_size = Some(self.buffer.len());
         Ok(self.buffer.pop_front())
     }
 }
@@ -370,6 +388,9 @@ pub(super) struct RawGlobalSearchPager {
         Option<grammers_client::peer::Peer>,
     )>,
     last_chunk: bool,
+    /// Messages in the page just fetched, taken exactly once by the caller so a
+    /// round trip is counted once rather than once per yielded message.
+    last_page_size: Option<usize>,
 }
 
 impl RawGlobalSearchPager {
@@ -393,6 +414,7 @@ impl RawGlobalSearchPager {
             },
             buffer: VecDeque::new(),
             last_chunk: false,
+            last_page_size: None,
         }
     }
 
@@ -414,6 +436,10 @@ impl RawGlobalSearchPager {
         self.request.min_date = min_date;
         self.request.max_date = max_date;
         self
+    }
+
+    pub(super) fn take_last_page_size(&mut self) -> Option<usize> {
+        self.last_page_size.take()
     }
 
     pub(super) async fn next(
@@ -454,6 +480,7 @@ impl RawGlobalSearchPager {
             self.buffer
                 .push_back((message, Arc::clone(&entities), chat));
         }
+        self.last_page_size = Some(self.buffer.len());
         Ok(self.buffer.pop_front())
     }
 }
