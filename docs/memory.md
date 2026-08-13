@@ -3581,8 +3581,8 @@ fields, not new tools.
   attribution needs. Not yet wired to a caller in this commit.
 - **Task 5** (`60832cd`) — wired `get_message_by_link`/`get_messages_batch` onto Task 4's raw
   fetch. The plan called for retyping `require_found` to raw TL; the implementer correctly
-  blocked instead — it has three callers, and `download_message_media`/`transcribe_voice_message`
-  need the high-level wrapper's `.media()`. Controller resolution: add a `require_found_raw` twin
+  blocked instead — it has three callers, and `download_message_media`/`transcribe_audio` need
+  the high-level wrapper's `.media()`. Controller resolution: add a `require_found_raw` twin
   instead, both delegating to a shared `not_found()` error constructor, zero changes to
   `ops_media.rs`/`ops_transcribe.rs`.
 - **Task 6** (`59f2c81`) — `get_channel_stats` moved onto `RawHistoryPager` (behavior-neutral —
