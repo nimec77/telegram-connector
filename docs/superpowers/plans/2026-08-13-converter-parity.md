@@ -24,7 +24,23 @@
 
 ## Verified API facts
 
-These were confirmed against the pinned grammers rev and generated TL. Trust them; do not re-derive.
+> **CORRECTION (2026-08-13, after Task 3).** The poll entries in this block
+> were originally transcribed from the WRONG grammers checkout. The cargo cache
+> holds two:
+> `~/.cargo/git/checkouts/grammers-2861ac880138ee45/fa7692e/` (STALE — do not
+> read) and `~/.cargo/git/checkouts/grammers-8937e3b5288aa015/9fef0ba/` (the
+> pinned rev, authoritative). Generated bindings for the pinned rev are at
+> `target/debug/build/grammers-tl-types/*/out/generated_types.rs`.
+>
+> The poll shapes below have been corrected. The peer/getMessages/response
+> entries were re-verified against the pinned rev and were already correct.
+>
+> **Treat every TL struct field list here as a starting point, not gospel** —
+> flag-gated fields come and go between revs. The compiler is the authority;
+> if a field list does not compile, fix it and note the discrepancy in your
+> report rather than assuming you are wrong.
+
+These were confirmed against the pinned grammers rev and generated TL.
 
 ```rust
 // grammers_session::types
@@ -35,23 +51,34 @@ impl PeerId { pub fn kind(&self) -> PeerKind }
 PeerId::channel_unchecked(i64) / chat_unchecked(i64) / user_unchecked(i64)
 impl From<PeerRef> for tl::enums::InputChannel   // direct, no manual access_hash
 
-// generated TL enum variants (single-constructor types)
+// generated TL enum variants
 tl::enums::Poll::Poll(tl::types::Poll)
-tl::enums::PollResults::Results(tl::types::PollResults)
-tl::enums::PollAnswer::Answer(tl::types::PollAnswer)
+tl::enums::PollResults::Results(Box<tl::types::PollResults>)   // BOXED
+tl::enums::PollAnswer::Answer(tl::types::PollAnswer)           // also: ::InputPollAnswer
 tl::enums::PollAnswerVoters::Voters(tl::types::PollAnswerVoters)
 tl::enums::TextWithEntities::Entities(tl::types::TextWithEntities)
 
-// generated TL struct fields
+// generated TL struct fields — the pinned rev carries MORE required fields
+// than listed here on the poll types; let the compiler enumerate them.
 tl::types::Poll { id, closed, public_voters, multiple_choice, quiz,
                   question: enums::TextWithEntities,
-                  answers: Vec<enums::PollAnswer>, close_period, close_date }
-tl::types::PollAnswer { text: enums::TextWithEntities, option: Vec<u8> }
-tl::types::PollAnswerVoters { chosen, correct, option: Vec<u8>, voters: i32 }
+                  answers: Vec<enums::PollAnswer>, close_period, close_date,
+                  /* + additional flag fields on the pinned rev */ }
+tl::types::PollAnswer { text: enums::TextWithEntities, option: Vec<u8>,
+                        media, added_by, date }
+tl::types::PollAnswerVoters { chosen, correct, option: Vec<u8>,
+                              voters: Option<i32>,      // OPTIONAL — own flag bit
+                              recent_voters: Option<Vec<enums::Peer>> }
 tl::types::PollResults { min, results: Option<Vec<enums::PollAnswerVoters>>,
                          total_voters: Option<i32>, recent_voters, solution,
                          solution_entities }
+tl::types::MessageMediaPoll { poll, results, attached_media }
 tl::types::TextWithEntities { text: String, entities: Vec<enums::MessageEntity> }
+
+// `PollAnswerVoters.voters` being Option is load-bearing: `results` present
+// with an individual count absent is Telegram's partial-disclosure state.
+// Emit `voters: None` there — NEVER default it to 0 (that reports a real
+// zero-vote result where the truth is "not disclosed").
 tl::types::DocumentAttributeFilename { file_name: String }
 tl::types::DocumentAttributeAudio { voice, duration, title: Option<String>,
                                     performer: Option<String>, waveform }
