@@ -1,0 +1,11 @@
+[
+ {"label": "warmup: status",            "name": "check_mcp_status", "arguments": {}},
+ {"label": "global url 24h L20",        "name": "search_messages", "arguments": {"query": "", "media_filter": "url",        "hours_back": 24, "limit": 20}},
+ {"label": "global video 72h L20",      "name": "search_messages", "arguments": {"query": "", "media_filter": "video",      "hours_back": 72, "limit": 20}},
+ {"label": "global voice 72h L20",      "name": "search_messages", "arguments": {"query": "", "media_filter": "voice",      "hours_back": 72, "limit": 20}},
+ {"label": "global video_note 24h L20", "name": "search_messages", "arguments": {"query": "", "media_filter": "video_note", "hours_back": 24, "limit": 20}},
+ {"label": "global document 24h L20",   "name": "search_messages", "arguments": {"query": "", "media_filter": "document",   "hours_back": 24, "limit": 20}},
+ {"label": "DISCRIM document 72h L20",  "name": "search_messages", "arguments": {"query": "", "media_filter": "document",   "hours_back": 72, "limit": 20}},
+ {"label": "DISCRIM document 24h L1",   "name": "search_messages", "arguments": {"query": "", "media_filter": "document",   "hours_back": 24, "limit": 1}},
+ {"label": "DISCRIM document 24h L100", "name": "search_messages", "arguments": {"query": "", "media_filter": "document",   "hours_back": 24, "limit": 100}}
+]
