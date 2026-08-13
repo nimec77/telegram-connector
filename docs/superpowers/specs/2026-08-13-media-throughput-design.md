@@ -69,7 +69,13 @@ async fn download_messages_media(
 
 pub struct MediaFetchOutcome {
     pub message_id: i32,
-    pub result: Result<MediaDownload, Error>,
+    pub result: Result<MediaDownload, MediaFetchError>,
+}
+
+pub enum MediaFetchError {
+    NotFound,
+    NoVisualMedia { media_type: String },
+    Failed(Error),
 }
 ```
 
@@ -79,6 +85,17 @@ succeeded, so failing the call is honest rather than a batch-wide downgrade.
 Per-id failures live in the **inner** `Result`. The shape mirrors
 `fanout::ChannelFetchOutcome`, which already models exactly this
 partial-success case for the `channel_ids` search fan-out.
+
+The inner error is a **typed enum, not `Error`**. §4 requires a stable
+machine-readable reason token per failed id, and not-found is not a distinct
+`Error` variant: `guard::not_found` (`src/telegram/client/guard.rs:18-27`)
+returns `Error::InvalidInput` carrying the reason only in its message text.
+Mapping that to a `not_found` token would mean string-matching prose, coupling
+the wire contract to a log message. `MediaFetchError` discriminates at the
+client layer, where the distinction is structural — `require_found` already
+separates the case, covering both an absent slot and Telegram's `MessageEmpty`
+placeholder. The MCP layer's mapping is then a total match, so a future variant
+is a compile error rather than a silent fall-through.
 
 `download_message_media_impl` splits at the fetch boundary. Everything after
 `require_found` — the `msg.media()` match, the photo-vs-thumbnail rules, the
