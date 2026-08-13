@@ -30,15 +30,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `[search] deadline_seconds` (default 20) bounds a search's accumulation loop.
   On expiry the search returns the results gathered so far with
   `query_metadata.timed_out` and `query_metadata.partial` set — never an error,
-  because partial results beat a failed workflow. Keep it below
-  `[telegram.timeouts] search_secs` (default 120), which still fails the call.
-  The default is a conservative starting point, not a measured value.
+  because partial results beat a failed workflow. Both flags are omitted from
+  JSON when false, so a healthy response's shape on the wire is unchanged.
+  Keep the deadline below `[telegram.timeouts] search_secs` (default 120),
+  which still fails the call. The default is a conservative starting point,
+  not a measured value.
 - `query_metadata.pages_fetched` and `query_metadata.messages_scanned` report
   the round trips issued and raw messages walked, so an expensive search is
   legible to its caller. These replace the work order's suggested
   `dialogs_scanned`: the global path issues one paginated `searchGlobal` and
-  sweeps no dialogs. Both flags are omitted from JSON when false, so existing
-  responses are byte-identical.
+  sweeps no dialogs. Both are new fields, always present on every
+  `search_messages` and `get_recent_messages` response — additive (no
+  existing field is renamed, retyped, or removed), but responses are not
+  byte-identical: every search and history call now carries two more fields
+  than before.
 
 ## [0.20.0] - 2026-08-13
 
