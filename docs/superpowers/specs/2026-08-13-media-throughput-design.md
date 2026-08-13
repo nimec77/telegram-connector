@@ -11,20 +11,30 @@
 covering 10–15 visual posts issues 10–15 separate round trips.
 
 The work order attributes the cost to the rate limiter. That is only the
-visible half, and its arithmetic is based on stale defaults.
+visible half.
 
-### Correcting the work order's premise
+### On the work order's rate-limit figures
 
-The work order states "capacity 30 refilling at 1 token/sec", giving "6 images
-immediately, then one per 5 seconds". The actual defaults are `max_tokens = 50`
-and `refill_rate = 2.0` (`src/config/defaults.rs:34-40`), so the real behaviour
-at `media_download_cost = 5` is **10 images immediately, then one per 2.5 s** —
-about 12.5 s of blocking across 15 images, not "over a minute".
+An earlier revision of this design claimed the work order's "capacity 30
+refilling at 1 token/sec" was stale, on the grounds that
+`src/config/defaults.rs` ships 50 and 2.0. **That objection was wrong**, and is
+recorded here because the mistake is instructive. The deployed
+`config.toml` explicitly sets `max_tokens = 30` and `refill_rate = 1.0`,
+overriding both defaults — verified live via `check_mcp_status`, which reported
+`capacity: 30.0, refill_per_sec: 1.0`. The work order was describing the real
+deployment, not the code defaults.
 
-The rate limiter is therefore a smaller contributor than the work order
-believes. That does not make the retune wrong, but it does mean the retune
-alone would not have delivered the throughput the work order is after. The
-dominant cost is the per-call overhead below.
+Two consequences follow, and both matter more than the correction itself:
+
+- The `max_tokens` 50 → 60 default change has **no effect on this deployment**,
+  because the config pins the value. Only the `media_download_cost` 5 → 3 change
+  takes effect (that key is unset, so it follows the default).
+- At 30 tokens and cost 3, a full 10-image batch costs exactly 30 tokens — the
+  entire bucket, refilling at 1/sec. A deployment that wants to use the batch
+  tool more than once a minute must raise `max_tokens` in its own config.
+
+The general lesson: check a quoted config value against the deployment, not
+just against `defaults.rs`. Both can be right about different things.
 
 ## What the cost actually is
 

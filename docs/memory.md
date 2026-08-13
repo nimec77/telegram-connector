@@ -3729,21 +3729,27 @@ new shrink logic. `[rate_limiting]` retuned `max_tokens` 50 → 60 and `media_do
 (Task 7), so the net charge is per image returned while a rejected acquire still blocks all
 downloads. `check_mcp_status` gains an additive `media` block (Task 8) so a caller can plan a
 batch's limits instead of discovering them by hitting them. Tests 676 → 708 across Tasks 1–8;
-this docs-only Task 9 adds none. Task 10 (live acceptance) has not run this session.
+this docs-only Task 9 adds none. Task 10 (live acceptance) ran and passed — see below.
 
 ### Decisions worth remembering
 
-- **Verify a work order's quoted numbers against the source before designing around them.** The
-  work order's rate-limit premise — capacity 30, refilling at 1 token/sec, giving "6 images
-  immediately, then one per 5 seconds" — did not match `src/config/defaults.rs`, whose actual
-  defaults were `max_tokens = 50` and `refill_rate = 2.0` (10 images immediately, then one per
-  2.5 s). Designing the retune off the stale numbers would have overshot the real gap between old
-  and new behavior and misrepresented the size of the win. The design doc caught this by reading
-  `defaults.rs` directly rather than trusting the work order's arithmetic, and the correction is
-  recorded there (`docs/superpowers/specs/2026-08-13-media-throughput-design.md`, "Correcting the
-  work order's premise") rather than silently fixed in place. Work orders age; the config module
-  that actually ships does not, so it — not a prior document's summary of it — is the thing to
-  re-read before a retune's before/after numbers are written down anywhere, including here.
+- **`defaults.rs` is not the deployment. Check both before calling a quoted number stale.** During
+  design I read the work order's rate-limit premise — capacity 30, refilling at 1 token/sec — saw
+  `src/config/defaults.rs` shipping `max_tokens = 50` and `refill_rate = 2.0`, and recorded a
+  confident correction that the work order was stale. **The correction was wrong.** The deployed
+  `config.toml` explicitly sets `max_tokens = 30` and `refill_rate = 1.0`, overriding both
+  defaults; live `check_mcp_status` reported `capacity: 30.0, refill_per_sec: 1.0`. The work order
+  was describing the running system accurately, and I "corrected" it against a file it was never
+  claiming to quote. Worse, the mistake was self-concealing: an early grep for the config's
+  rate-limit keys filtered on the substring `token`, which silently swallowed the `max_tokens = 30`
+  line and left the wrong conclusion looking confirmed. Two durable lessons. First, a config value
+  has two sources of truth — the default and the deployment — and a claim about "the current
+  value" is only checkable against the running system, which for this project means
+  `check_mcp_status`. Second, when a filter is used to avoid printing secrets, verify the filter
+  did not also remove the evidence: prefer allow-listing the keys you want over deny-listing the
+  ones you don't. The practical fallout here was real but bounded: the `max_tokens` 50 → 60 default
+  change has no effect on this deployment because the config pins it, so only the
+  `media_download_cost` 5 → 3 change actually landed for this user.
 - **A client method that resolves internally pays its resolution cost once per call site, not
   once per logical operation — which is why the batch had to move to the client layer.**
   `resolve_peer` (`src/telegram/client/resolve.rs:13-32`) walks the entire dialog list for a
@@ -3757,16 +3763,29 @@ this docs-only Task 9 adds none. Task 10 (live acceptance) has not run this sess
   resolves internally pays that resolution's cost on every iteration regardless of concurrency: the
   fix is not to parallelize the loop, but to hoist the resolution out of it.
 
-### Standing note
+### Live acceptance — run 2026-08-13, passed
 
-- **Manual acceptance against live Telegram was not run this session.** The design's acceptance
-  criterion (`docs/superpowers/specs/2026-08-13-media-throughput-design.md`, "Verification") is a
-  batch of 10 visual posts from one channel via `get_messages_media_batch` against 10 sequential
-  `get_message_media` calls for the same messages, comparing wall time and confirming the server
-  log shows a single dialog walk (one `resolve_peer`/`find_dialog_peer` pass) for the batch versus
-  ten for the sequential calls. That needs a deployed server with an authenticated Telegram
-  session, which this documentation pass did not have. All eight implementation tasks are covered
-  by the offline test suite (708 passed, 0 failed, 5 ignored); the live comparison is the one thing
-  that suite cannot exercise, and it is also the only source from which a real throughput number for
-  this feature may be written down — none exists yet, and none should be invented before it does.
-  Whoever has a live session next should run it and record the result here.
+Measured against the deployed session, 10 photos per run, each run in a fresh process so both
+start with a full token bucket:
+
+| channel | 10 × `get_message_media` | 1 × `get_messages_media_batch` | speedup |
+|---|---|---|---|
+| `1556054753` | 13.10 s | 2.99 s | 4.4× |
+| `1583175062` | 10.34 s | 1.44 s | 7.2× |
+
+Debug logs confirm the mechanism: the batch spends ~2.0 s on one resolve-and-fetch, then finishes
+all ten downloads in ~1.0 s at concurrency 4. Sequential pays ~1.0 s of resolve-and-fetch per call
+with no download overlap. Payload cap verified live: the same batch that returns 1 365 692 bytes
+uncapped returns 5 images totalling 390 228 bytes under a 400 000-byte cap, the other 5 ids
+reported `payload_cap_reached` in request order, `returned + failed == requested`.
+
+- **The measurement's own trap: order effects dwarfed the effect under test.** The first attempt
+  ran sequential then batch back to back and reported the batch as *slower* — 19.59 s against
+  13.30 s, a 0.7× "speedup". The cause was not the batch: its single `iter_dialogs` walk took
+  ~18 s instead of the ~2 s it takes cold, because ten media downloads had just been pulled through
+  the same account. Telegram evidently throttles dialog enumeration after burst activity. Re-running
+  each arm cold, in a fresh process after a 90 s cooldown, inverted the result to 4.4×. Two things
+  worth keeping: benchmark arms that share a rate-limited upstream must not run back to back, and
+  the fact that the dialog walk degrades under recent load is itself an argument for performing it
+  once per batch rather than once per image — the pathological case is exactly a digest run that has
+  been hammering the account.

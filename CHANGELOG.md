@@ -17,13 +17,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   numeric `channel_id` a resolution is a full dialog walk, which is what made
   the per-call path expensive.
 
+  Measured on a live session, 10 photos per run, each run in a fresh process
+  (so a full token bucket, and rate limiting cannot distort the timing):
+
+  | channel | 10 × `get_message_media` | 1 × `get_messages_media_batch` |
+  |---|---|---|
+  | `1556054753` | 13.10 s | **2.99 s** |
+  | `1583175062` | 10.34 s | **1.44 s** |
+
+  The mechanism is visible in the debug log: the batch spends ~2.0 s on its one
+  resolve-and-fetch, then completes all ten downloads in ~1.0 s at concurrency
+  4. The sequential path pays that ~1.0 s resolve-and-fetch on every single
+  call, and its downloads never overlap.
+
+  One caveat worth recording, because it inverts the result: a batch issued
+  immediately after ten sequential downloads took **19.59 s**, because its
+  single `iter_dialogs` walk took ~18 s instead of ~2 s. Telegram appears to
+  throttle dialog enumeration after burst activity. The dialog walk is the
+  variable-cost part of this path, and it degrades exactly when a digest run
+  has just been hammering the same account — which strengthens rather than
+  weakens the case for performing it once.
+
   Per-id failures — `not_found`, `no_visual_media`, `payload_cap_reached`,
   `download_failed` — are reported in `failed` and never fail the batch.
 
 - `[limits] media_batch_max_total_bytes` (default 8 MiB) caps a batch's total
   image payload, counted in bytes of base64 as sent to the client. Images are
   downscaled progressively to fit; ids that still do not fit are reported as
-  `payload_cap_reached`.
+  `payload_cap_reached`. Verified live: the same 10-photo batch that returns
+  1 365 692 bytes uncapped returns 5 images totalling 390 228 bytes under a
+  400 000-byte cap, with the remaining 5 ids reported as `payload_cap_reached`
+  in request order.
 
 - `check_mcp_status` gains a `media` block (`batch_max_ids`, `max_total_bytes`,
   `per_image_max_bytes`, `default_max_dimension`, `max_dimension_limit`).
@@ -34,8 +58,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is 20 images in a burst then one per 1.5 s, up from 10 then one per 2.5 s.
   Batches acquire for every requested id up front and refund the ids that
   produced no image, so admission control stays real while the net charge is
-  per image returned. Both values are conservative estimates, not calibrated
-  against Telegram's flood thresholds.
+  per image returned. On a whole-call failure (unresolvable channel, fetch RPC
+  error, `FLOOD_WAIT`) the batch refunds all but one token, since the call did
+  perform a channel resolution and a fetch RPC. Both values are conservative
+  estimates, not calibrated against Telegram's flood thresholds.
+
+  These are **defaults**, so a config that sets `max_tokens` explicitly is
+  unaffected by the 50 → 60 change. Note that at a pinned `max_tokens = 30`,
+  one full 10-image batch costs exactly 30 tokens — the whole bucket. Raise
+  `max_tokens` if you intend to run batches back to back.
 
 ## [0.21.0] - 2026-08-13
 
