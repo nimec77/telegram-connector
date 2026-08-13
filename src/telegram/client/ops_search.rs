@@ -6,6 +6,7 @@ use super::raw_pager::{RawChannelSearchPager, RawGlobalSearchPager};
 use super::search_budget::SearchBudget;
 use super::*;
 use crate::telegram::albums::{PostCounter, album_key, collapse_albums};
+use tracing::Instrument;
 
 impl TelegramClient {
     pub(super) async fn search_messages_impl(
@@ -169,8 +170,16 @@ impl TelegramClient {
             }
 
             // Search all channels using global search
-            let (collected, has_more, budget) =
-                with_timeout("search_all_messages", self.timeouts.search_secs, async {
+            let span = tracing::debug_span!(
+                "search_global",
+                query = %params.query,
+                media_filter = ?params.media_filter,
+                window_from = %cutoff_time,
+            );
+            let (collected, has_more, budget) = with_timeout(
+                "search_all_messages",
+                self.timeouts.search_secs,
+                async move {
                     let mut messages = Vec::new();
                     let mut has_more = false;
                     let mut counter = PostCounter::default();
@@ -191,13 +200,6 @@ impl TelegramClient {
                         pager = pager.filter(convert_media_filter(media_filter));
                     }
 
-                    let span = tracing::debug_span!(
-                        "search_global",
-                        query = %params.query,
-                        media_filter = ?params.media_filter,
-                        window_from = %cutoff_time,
-                    );
-                    let _guard = span.enter();
                     let mut mtproto_nanos: u128 = 0;
 
                     loop {
@@ -266,8 +268,10 @@ impl TelegramClient {
                     );
 
                     Ok((messages, has_more, budget))
-                })
-                .await?;
+                }
+                .instrument(span),
+            )
+            .await?;
 
             // server-side global search: scan scope unknowable
             (collected, None, has_more, budget)
