@@ -116,11 +116,26 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             .await
             .map_err(|e| e.to_string())?;
 
-        let outcomes = self
+        let outcomes = match self
             .telegram_client
             .download_messages_media(&request.channel_id, &wire_ids, max_dimension)
             .await
-            .map_err(|e| e.to_string())?;
+        {
+            Ok(outcomes) => outcomes,
+            Err(e) => {
+                // The call still performed a channel resolution and a fetch RPC
+                // against Telegram before failing (channel resolution failure,
+                // network error, or a Telegram-side FLOOD_WAIT) — that work
+                // happened and should not be free, or a caller could hammer an
+                // unresolvable channel at zero cost, which is exactly the flood
+                // behaviour the limiter exists to prevent. Refund everything
+                // except one token: the same cost get_messages_batch already
+                // charges (acquire(1)) for that identical resolve+fetch shape
+                // of work. saturating_sub guards a hypothetical charged of 0.
+                self.rate_limiter.refund(charged.saturating_sub(1));
+                return Err(e.to_string());
+            }
+        };
 
         let mut content = Vec::new();
         let mut failed = Vec::new();

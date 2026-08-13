@@ -173,6 +173,45 @@ async fn channel_level_failure_fails_the_call() {
 }
 
 #[tokio::test]
+async fn channel_level_failure_refunds_all_but_one_token() {
+    // A whole-call failure still performed a channel resolution and a fetch
+    // RPC before it failed, so it is not free: exactly 1 token stays charged
+    // (the same cost get_messages_batch charges for that resolve+fetch
+    // shape), and everything else comes back.
+    let mut client = MockTelegramClientTrait::new();
+    client
+        .expect_download_messages_media()
+        .return_once(|_, _, _| Err(Error::InvalidInput("Channel not found: nope".to_string())));
+
+    let mut limiter = MockRateLimiterTrait::new();
+    // 4 requested x default cost 3 = 12 acquired up front.
+    limiter
+        .expect_acquire()
+        .with(eq(12))
+        .times(1)
+        .returning(|_| Ok(()));
+    // 12 - 1 = 11 refunded; 1 token stays charged for the attempted call.
+    limiter
+        .expect_refund()
+        .with(eq(11))
+        .times(1)
+        .return_const(());
+
+    let server = McpServer::new(Arc::new(client), Arc::new(limiter));
+    let result = server
+        .get_messages_media_batch(
+            Parameters(request("nope", vec![10, 11, 12, 13])),
+            RequestId(NumberOrString::Number(1)),
+        )
+        .await;
+
+    assert!(
+        result.is_err(),
+        "a channel-level failure must still fail the call"
+    );
+}
+
+#[tokio::test]
 async fn empty_message_ids_is_rejected_without_a_network_call() {
     let mut client = MockTelegramClientTrait::new();
     client.expect_download_messages_media().never();
@@ -395,6 +434,51 @@ async fn cap_reached_ids_are_reported_in_request_order() {
         vec![12, 13, 14, 15],
         "cap failures must be exactly these ids, in request order"
     );
+}
+
+#[tokio::test]
+async fn payload_cap_drops_refund_their_cost() {
+    // Same deterministic setup as cap_reached_ids_are_reported_in_request_order:
+    // ids 10 and 11 fit under a 400_000-byte cap, 12-15 are dropped by it.
+    let mut client = MockTelegramClientTrait::new();
+    client
+        .expect_download_messages_media()
+        .return_once(|_, _, _| {
+            Ok(vec![
+                ok_outcome(10, 1200, 1200),
+                ok_outcome(11, 1200, 1200),
+                ok_outcome(12, 1200, 1200),
+                ok_outcome(13, 1200, 1200),
+                ok_outcome(14, 1200, 1200),
+                ok_outcome(15, 1200, 1200),
+            ])
+        });
+
+    let mut limiter = MockRateLimiterTrait::new();
+    // 6 requested x default cost 3 = 18 acquired up front.
+    limiter
+        .expect_acquire()
+        .with(eq(18))
+        .times(1)
+        .returning(|_| Ok(()));
+    // 4 ids dropped by the payload cap (12-15) x 3 = 12 refunded.
+    limiter
+        .expect_refund()
+        .with(eq(12))
+        .times(1)
+        .return_const(());
+
+    let server = McpServer::new(Arc::new(client), Arc::new(limiter))
+        .with_media_batch_max_total_bytes(400_000);
+    let result = server
+        .get_messages_media_batch(
+            Parameters(request("news", vec![10, 11, 12, 13, 14, 15])),
+            RequestId(NumberOrString::Number(1)),
+        )
+        .await
+        .expect("hitting the cap is not an error");
+
+    assert_eq!(summary_of(&result.content).returned, 2);
 }
 
 #[tokio::test]
