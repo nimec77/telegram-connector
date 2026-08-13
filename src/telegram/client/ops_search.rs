@@ -191,18 +191,36 @@ impl TelegramClient {
                         pager = pager.filter(convert_media_filter(media_filter));
                     }
 
+                    let span = tracing::debug_span!(
+                        "search_global",
+                        query = %params.query,
+                        media_filter = ?params.media_filter,
+                        window_from = %cutoff_time,
+                    );
+                    let _guard = span.enter();
+                    let mut mtproto_nanos: u128 = 0;
+
                     loop {
                         if budget.expired() {
                             break;
                         }
+                        let fetch_start = Instant::now();
                         let next = pager
                             .next()
                             .await
                             .map_err(|e| Error::TelegramApi(format!("Search failed: {}", e)))?;
+                        mtproto_nanos += fetch_start.elapsed().as_nanos();
                         // Before the `else break`: a round trip that came back empty
                         // still cost the caller latency, which is what the field reports.
                         if let Some(page_size) = pager.take_last_page_size() {
                             budget.record_page(page_size);
+                            tracing::debug!(
+                                page = budget.pages_fetched(),
+                                messages_in_page = page_size,
+                                messages_scanned = budget.messages_scanned(),
+                                kept = messages.len(),
+                                "Global search page fetched"
+                            );
                         }
                         let Some((raw_msg, entities, chat_peer)) = next else {
                             break;
@@ -238,6 +256,15 @@ impl TelegramClient {
                             }
                         }
                     }
+
+                    tracing::debug!(
+                        pages = budget.pages_fetched(),
+                        messages_scanned = budget.messages_scanned(),
+                        mtproto_ms = (mtproto_nanos / 1_000_000) as u64,
+                        total_ms = start_time.elapsed().as_millis() as u64,
+                        "Global search finished"
+                    );
+
                     Ok((messages, has_more, budget))
                 })
                 .await?;
