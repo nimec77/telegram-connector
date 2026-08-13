@@ -39,7 +39,7 @@ fn collect_refs(value: &Value, refs: &mut Vec<String>) {
 #[test]
 fn every_tool_schema_ref_resolves_locally() {
     let tools = test_server().tools_list_result().tools;
-    assert_eq!(tools.len(), 15, "expected all 15 tools to be listed");
+    assert_eq!(tools.len(), 16, "expected all 16 tools to be listed");
 
     for tool in &tools {
         let schema = Value::Object((*tool.input_schema).clone());

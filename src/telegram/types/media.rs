@@ -181,6 +181,36 @@ pub struct MediaDownload {
     pub largest_height: Option<u32>,
 }
 
+/// Why one id in a batch produced no image.
+///
+/// A typed enum rather than a bare `Error` because the MCP layer must emit a
+/// stable, machine-readable reason token per id, and the not-found case is
+/// otherwise indistinguishable: `guard::not_found` returns
+/// `Error::InvalidInput` with the reason only in its message text, and
+/// sniffing that string would couple the wire contract to prose.
+#[derive(Debug)]
+pub enum MediaFetchError {
+    /// Deleted, never existed, or returned as the `MessageEmpty` placeholder.
+    NotFound,
+    /// The message exists but carries nothing renderable as an image.
+    NoVisualMedia { media_type: String },
+    /// Anything else: oversize, decode failure, RPC error.
+    Failed(crate::error::Error),
+}
+
+/// Per-message result of a batch media download.
+///
+/// The batch call's own `Result` is reserved for channel-level failures — an
+/// unresolvable channel, a failed fetch — where no id could have succeeded.
+/// Anything id-specific lands here instead, so one deleted message cannot fail
+/// a batch of ten. Mirrors `fanout::ChannelFetchOutcome`, which models the same
+/// partial-success shape for the multi-channel search fan-out.
+#[derive(Debug)]
+pub struct MediaFetchOutcome {
+    pub message_id: i32,
+    pub result: Result<MediaDownload, MediaFetchError>,
+}
+
 /// A downloadable size variant of a photo or thumbnail, decoupled from
 /// grammers `PhotoSize` so size selection is a pure, testable function.
 #[derive(Debug, Clone, PartialEq)]

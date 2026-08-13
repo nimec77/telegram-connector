@@ -5,7 +5,8 @@
 use crate::error::Error;
 use crate::telegram::types::{
     Channel, ChannelIdentity, ChannelPage, ChannelResolution, ChannelStats, HistoryParams,
-    MediaDownload, Message, MessageBatch, SearchParams, SearchResult, TranscriptionOutcome,
+    MediaDownload, MediaFetchOutcome, Message, MessageBatch, SearchParams, SearchResult,
+    TranscriptionOutcome,
 };
 
 /// Trait for Telegram client operations (allows mocking in tests)
@@ -88,6 +89,23 @@ pub trait TelegramClientTrait: Send + Sync {
         message_id: i32,
         max_dimension: u32,
     ) -> Result<MediaDownload, Error>;
+
+    /// Download the visual media of several messages from ONE channel.
+    ///
+    /// Resolves the peer once and issues a single `get_messages_by_id` for all
+    /// ids, then downloads with bounded concurrency — so N images cost one
+    /// dialog walk and one fetch RPC rather than N of each.
+    ///
+    /// `Err` means the whole call failed (empty reference, channel not found,
+    /// fetch RPC error). Per-id failures — deleted message, no visual media,
+    /// oversize — are reported in the returned `MediaFetchOutcome`s, one per
+    /// requested id, in request order.
+    async fn download_messages_media(
+        &self,
+        channel_ref: &str,
+        message_ids: &[i32],
+        max_dimension: u32,
+    ) -> Result<Vec<MediaFetchOutcome>, Error>;
 
     /// Transcribe a voice / video-note message's audio via `messages.transcribeAudio`.
     ///

@@ -1,11 +1,12 @@
 //! MCP tool implementations
 //!
-//! This module contains all 15 MCP tools.
+//! This module contains all 16 MCP tools.
 //! Tools are organized in subdirectory for better maintainability.
 
 pub(crate) mod fanout;
 pub mod helpers;
 pub mod image;
+pub(crate) mod media_budget;
 pub(crate) mod shaping;
 pub mod types;
 

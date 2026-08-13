@@ -641,7 +641,7 @@ fn test_observability_partial_table_fills_defaults() {
 #[test]
 fn test_media_download_cost_default() {
     let config: Config = toml::from_str("[telegram]\napi_id = 12345\n").unwrap();
-    assert_eq!(config.rate_limiting.media_download_cost, 5);
+    assert_eq!(config.rate_limiting.media_download_cost, 3);
 }
 
 #[test]
@@ -751,4 +751,64 @@ fn search_config_rejects_deadline_over_one_hour() {
         toml::from_str("[telegram]\napi_id = 123\n\n[search]\ndeadline_seconds = 3601\n")
             .expect("parse");
     assert!(config.search.validate().is_err());
+}
+
+#[test]
+fn retuned_media_rate_limit_defaults() {
+    let config = default_rate_limit_config();
+    assert_eq!(
+        config.max_tokens, 60,
+        "burst capacity raised for batch media"
+    );
+    assert_eq!(config.media_download_cost, 3, "per-image cost lowered");
+    assert_eq!(
+        config.refill_rate, 2.0,
+        "refill rate is deliberately unchanged"
+    );
+}
+
+#[test]
+fn media_batch_payload_cap_defaults_to_eight_mib() {
+    let limits = default_limits_config();
+    assert_eq!(limits.media_batch_max_total_bytes, 8_388_608);
+}
+
+#[test]
+fn zero_media_batch_payload_cap_is_rejected() {
+    let limits = LimitsConfig {
+        response_byte_budget: 40_000,
+        media_batch_max_total_bytes: 0,
+    };
+    let err = limits
+        .validate()
+        .expect_err("a zero cap returns no images at all");
+    assert!(err.to_string().contains("media_batch_max_total_bytes"));
+}
+
+#[test]
+fn below_floor_media_batch_payload_cap_is_rejected() {
+    // Anything below MIN_IMAGE_BASE64_BYTES makes Base64Budget::allowance()
+    // return None on the very first image, so every call would silently
+    // report payload_cap_reached for everything after doing the real
+    // downloads.
+    let limits = LimitsConfig {
+        response_byte_budget: 40_000,
+        media_batch_max_total_bytes: MIN_IMAGE_BASE64_BYTES as u64 - 1,
+    };
+    let err = limits
+        .validate()
+        .expect_err("a cap below the per-image floor makes every image unreturnable");
+    let message = err.to_string();
+    assert!(message.contains("media_batch_max_total_bytes"));
+    assert!(
+        message.contains(&MIN_IMAGE_BASE64_BYTES.to_string()),
+        "error message must name the floor, got: {message}"
+    );
+
+    // The shipped default must stay comfortably above that floor.
+    let default_limits = default_limits_config();
+    assert_eq!(default_limits.media_batch_max_total_bytes, 8_388_608);
+    default_limits
+        .validate()
+        .expect("the shipped default must stay above the per-image floor");
 }

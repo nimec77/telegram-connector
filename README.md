@@ -30,7 +30,7 @@ A Model Context Protocol (MCP) service that enables Claude to search and interac
 └──────────────────────────┬──────────────────────────────────┘
                            │ JSON-RPC over stdio
 ┌──────────────────────────▼──────────────────────────────────┐
-│                     MCP Server Layer (15 tools)              │
+│                     MCP Server Layer (16 tools)              │
 │                    (rmcp + server.rs)                        │
 │                                                             │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────┐    │
@@ -51,9 +51,9 @@ A Model Context Protocol (MCP) service that enables Claude to search and interac
 │  ┌─────────────────────────┐ ┌───────────────────────────┐   │
 │  │get_messages_batch       │ │resolve_channels           │   │
 │  └─────────────────────────┘ └───────────────────────────┘   │
-│  ┌─────────────────────────┐                                 │
-│  │get_channel_stats        │                                 │
-│  └─────────────────────────┘                                 │
+│  ┌─────────────────────────┐ ┌───────────────────────────┐   │
+│  │get_channel_stats        │ │get_messages_media_batch   │   │
+│  └─────────────────────────┘ └───────────────────────────┘   │
 └──────────────────────────┬──────────────────────────────────┘
                            │
 ┌──────────────────────────▼──────────────────────────────────┐
@@ -161,13 +161,14 @@ phone_number = "+1234567890"
 
 [rate_limiting]
 # Optional: token bucket configuration
-# max_tokens = 50
+# max_tokens = 60
 # refill_rate = 2.0
-# media_download_cost = 5                                       # Rate-limit tokens charged per get_message_media call (default: 5)
+# media_download_cost = 3                                       # Rate-limit tokens charged per image returned by get_message_media / get_messages_media_batch (default: 3)
 
 [limits]
 # Optional: response size limits
 # response_byte_budget = 40000                                  # Byte cap on a serialized message-stream response (search_messages/get_recent_messages); over-budget pages drop trailing messages and set has_more/next_cursor
+# media_batch_max_total_bytes = 8388608                          # Cap on a get_messages_media_batch call's total image payload, in bytes of base64 as sent to the client (default: 8388608 / 8 MiB); images are downscaled progressively to fit
 
 [logging]
 # Optional: logging configuration
@@ -263,14 +264,21 @@ Check the connection status and rate limiter state.
 {
   "telegram_connected": true,
   "rate_limiter": {
-    "tokens": 45.5,
-    "capacity": 50.0,
+    "tokens": 54.0,
+    "capacity": 60.0,
     "refill_per_sec": 2.0,
     "costs": {
       "search": 1,
-      "media_download": 5,
+      "media_download": 3,
       "transcription": 5
     }
+  },
+  "media": {
+    "batch_max_ids": 10,
+    "max_total_bytes": 8388608,
+    "per_image_max_bytes": 1572864,
+    "default_max_dimension": 1280,
+    "max_dimension_limit": 2048
   },
   "server_version": "0.1.0"
 }
@@ -278,7 +286,7 @@ Check the connection status and rate limiter state.
 
 > **Note:** `rate_limiter` reports the live token-bucket budget: `tokens`
 > (currently available), `capacity` (bucket size — `[rate_limiting]
-> max_tokens`, default 50), `refill_per_sec` (`[rate_limiting] refill_rate`,
+> max_tokens`, default 60), `refill_per_sec` (`[rate_limiting] refill_rate`,
 > default 2.0), and `costs` (tokens charged per call kind — `media_download`
 > and `transcription` are configurable under `[rate_limiting]`; `search` is
 > the `1`-token cost for the other metered calls — search/history/
@@ -291,11 +299,17 @@ Check the connection status and rate limiter state.
 > without `include_full` — never call `acquire` and cost nothing. **Exception:**
 > `search_messages`/`get_recent_messages` called with `channel_ids` (multi-channel
 > fan-out) acquire `N` tokens — one per deduped channel in the list — instead of
-> the flat `1`, so the deficit error stays accurate for a large fan-out. When a
-> call is rejected for insufficient tokens, the error states the deficit, e.g.
-> `rate limit exceeded: requested 5 tokens, 2.40 available, retry after 2
+> the flat `1`, so the deficit error stays accurate for a large fan-out.
+> `get_messages_media_batch` acquires `media_download_cost × requested ids` up
+> front and refunds the ids that produced no image (see its own section below).
+> When a call is rejected for insufficient tokens, the error states the deficit,
+> e.g. `rate limit exceeded: requested 5 tokens, 2.40 available, retry after 2
 > seconds` (Telegram flood-wait rejections keep their existing wording, with no
-> token arithmetic to show).
+> token arithmetic to show). `media` is a purely additive block of configured
+> media limits — `batch_max_ids`/`max_total_bytes`/`per_image_max_bytes`/
+> `default_max_dimension`/`max_dimension_limit` — so a caller can plan a
+> `get_messages_media_batch` run instead of discovering the limits by hitting
+> them.
 
 **Usage:** Use this tool to verify the connection before performing other operations.
 
@@ -1010,9 +1024,13 @@ Retrieve the visual media from a Telegram message as an MCP **image content bloc
 
 **Size variant selection:** the smallest server-side size variant whose longest side is >= `max_dimension` is chosen before downloading, minimising transfer bytes while guaranteeing the requested resolution.
 
-**Rate limiting:** each call charges `media_download_cost` tokens from the rate limiter (default **5**, versus 1 for searches). Configure under `[rate_limiting] media_download_cost`.
+**Rate limiting:** each call charges `media_download_cost` tokens from the rate limiter (default **3**, versus 1 for searches). Configure under `[rate_limiting] media_download_cost`.
 
 **Timeout:** bounded by `[telegram.timeouts] download_secs` (default 120 s).
+
+**Fetching more than one image from this channel?** Use `get_messages_media_batch`
+below instead of looping this tool — it resolves the channel once and issues one
+fetch round trip for the whole batch, instead of one of each per image.
 
 **Parameters:**
 | Name | Type | Required | Default | Description |
@@ -1051,6 +1069,91 @@ Retrieve the visual media from a Telegram message as an MCP **image content bloc
 ```
 
 **Usage:** Ask Claude to "show me the photo from message 42 in channel technews" or "what does the chart in message 100 of channel @data say?"
+
+---
+
+### 16. get_messages_media_batch
+
+Retrieve the photos (or video/animation/video-note thumbnails) of up to 10 messages from **one** channel in a single call. **This is the preferred path whenever you want more than one image:** the batch resolves the channel once and issues one `get_messages_by_id` fetch for every id, then downloads with bounded concurrency (4) — one channel resolution and one fetch round trip for the whole batch, instead of one of each per `get_message_media` call. For a numeric `channel_id` a resolution is a full dialog walk with no cache, which is exactly what makes the per-call path expensive as the count grows.
+
+**What it returns:** content blocks in request order —
+`[image, metadata, image, metadata, …, summary]`. Each `metadata` block is the
+same `GetMessageMediaResponse` shape `get_message_media` emits (byte-identical
+to it for a batch of 1), positioned immediately after its image so the pairing
+stays unambiguous even when some ids fail. The trailing `summary` block is
+always last, regardless of how many ids failed.
+
+**Per-id failures never fail the batch.** An id with no visual media, a deleted
+id, or an id dropped because the batch's payload cap was reached is reported in
+the summary's `failed` array with a machine-readable `reason` — `not_found`,
+`no_visual_media`, `payload_cap_reached`, or `download_failed: <detail>` —
+never as a call error. Only a channel-level failure (channel not found, a
+resolve or fetch RPC error) fails the whole call, since in that case no id
+could have succeeded.
+
+**Payload cap:** the batch's total base64 payload (all images combined, the
+quantity that actually consumes context) is capped by `[limits]
+media_batch_max_total_bytes` (default 8 MiB), counted in bytes of base64 as
+sent to the client. Images are downscaled progressively to fit the remaining
+budget; ids that still don't fit once the budget is exhausted are reported as
+`payload_cap_reached` rather than shrunk to uselessness.
+
+**Rate limiting:** acquires `media_download_cost × requested ids` up front,
+before any network work, then refunds the cost of every id that produced no
+image — so the net charge is per image actually returned, while admission
+control stays real (the limiter can still refuse a batch it can't afford). On a
+whole-call failure the batch refunds all but **1 token**: the call still
+performed a channel resolution and a fetch RPC before failing, the same cost
+`get_messages_batch` charges for that identical shape of work.
+
+**Parameters:**
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `channel_id` | string | Yes | - | Channel ID or username. Every id in `message_ids` must belong to it |
+| `message_ids` | array of integers | Yes | - | Message IDs to fetch media for in one call (1-10). Duplicates are deduped silently (order preserved) before the 10-id cap is checked |
+| `max_dimension` | integer | No | 1280 | Longest image side in pixels after downscaling (clamped to 64–2048). Images may be downscaled further to fit the batch payload cap |
+
+**Response shape** (four requested ids, one with no visual media, one deleted):
+```
+content: [
+  image   (message 101),
+  text    (GetMessageMediaResponse for message 101),
+  image   (message 102),
+  text    (GetMessageMediaResponse for message 102),
+  text    (MediaBatchSummary — always last)
+]
+```
+
+**Summary (trailing text block):**
+```json
+{
+  "channel_id": "@technews",
+  "requested": 4,
+  "returned": 2,
+  "failed": [
+    { "id": 103, "reason": "no_visual_media" },
+    { "id": 104, "reason": "not_found" }
+  ],
+  "total_base64_bytes": 611820,
+  "max_total_bytes": 8388608
+}
+```
+
+> **Note:** `requested` counts ids after de-duplication; `returned` is the
+> number of image blocks actually produced, always `content.len() / 2`
+> (every image has exactly one metadata block, and the summary is the one
+> extra block). Every requested id ends up counted in exactly one of
+> `returned` / `failed`. `max_total_bytes` echoes the configured cap so a
+> caller can tell a near-miss from comfortable headroom without a separate
+> `check_mcp_status` round trip. `check_mcp_status` also reports the same cap
+> — plus `batch_max_ids`, `per_image_max_bytes`, `default_max_dimension`, and
+> `max_dimension_limit` — under its `media` block (see `check_mcp_status`
+> above), so a caller can plan a run instead of discovering the limits by
+> hitting them.
+
+**Usage:** Ask Claude to "show me the photos from messages 101, 102, 103, and 104 in channel technews" — a single `get_messages_media_batch` call replaces four separate `get_message_media` calls, at the cost of one channel resolution and one fetch round trip instead of four of each.
+
+---
 
 ### 11. transcribe_voice_message
 
@@ -1315,7 +1418,7 @@ Then send via stdin:
 {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"check_mcp_status","arguments":{}}}
 ```
 
-**Expected:** `telegram_connected: true`, `rate_limiter.tokens: 50.0`
+**Expected:** `telegram_connected: true`, `rate_limiter.tokens: 60.0`
 
 ### Test 2: List Channels
 
@@ -1513,7 +1616,7 @@ src/
 ├── test_helpers.rs     # Test fixture factories (cfg(test))
 ├── mcp.rs              # MCP module root
 ├── mcp/
-│   ├── server.rs       # MCP server + all 15 tool handlers
+│   ├── server.rs       # MCP server + all 16 tool handlers
 │   ├── tools.rs        # Re-exports tools + helpers
 │   └── tools/
 │       ├── helpers.rs  # ID parsing helpers

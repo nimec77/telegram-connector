@@ -18,6 +18,9 @@ pub struct StatusResponse {
     #[schemars(description = "Rate-limiter budget: tokens, capacity, refill, per-call costs")]
     pub rate_limiter: RateLimiterStatus,
 
+    #[schemars(description = "Media retrieval limits: batch size, payload caps, dimension bounds")]
+    pub media: MediaLimits,
+
     #[schemars(description = "Server version")]
     pub server_version: String,
 
@@ -72,6 +75,26 @@ pub struct RateLimiterCosts {
 
     #[schemars(description = "transcribe_voice_message calls")]
     pub transcription: u32,
+}
+
+/// Media retrieval limits, so a caller can plan a run instead of discovering
+/// the limits by hitting them (work-order C).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MediaLimits {
+    #[schemars(description = "Maximum message_ids per get_messages_media_batch call")]
+    pub batch_max_ids: usize,
+
+    #[schemars(description = "Cap on a batch's total base64 payload, in bytes")]
+    pub max_total_bytes: u64,
+
+    #[schemars(description = "Cap on one image's base64 payload, in bytes")]
+    pub per_image_max_bytes: usize,
+
+    #[schemars(description = "Longest-side pixel limit applied when max_dimension is omitted")]
+    pub default_max_dimension: u32,
+
+    #[schemars(description = "Largest max_dimension a request may ask for")]
+    pub max_dimension_limit: u32,
 }
 
 /// Response for transcribe_voice_message tool
@@ -273,6 +296,40 @@ pub struct GetMessageMediaResponse {
         description = "Zero-cost video metadata (duration, dimensions, kind); video media only"
     )]
     pub video_info: Option<VideoInfo>,
+}
+
+/// Trailing summary block of a get_messages_media_batch response (work-order C).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MediaBatchSummary {
+    #[schemars(description = "Channel the messages belong to (as passed in the request)")]
+    pub channel_id: String,
+
+    #[schemars(description = "Ids requested, after de-duplication")]
+    pub requested: usize,
+
+    #[schemars(description = "Images actually returned as content blocks")]
+    pub returned: usize,
+
+    #[schemars(description = "Ids that produced no image, with a machine-readable reason each")]
+    pub failed: Vec<MediaBatchFailure>,
+
+    #[schemars(description = "Total base64 payload returned, in bytes")]
+    pub total_base64_bytes: usize,
+
+    #[schemars(description = "Configured cap on total base64 payload, in bytes")]
+    pub max_total_bytes: u64,
+}
+
+/// One id that produced no image.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MediaBatchFailure {
+    #[schemars(description = "The requested message id")]
+    pub id: i64,
+
+    #[schemars(
+        description = "Why no image was returned: not_found, no_visual_media, payload_cap_reached, or download_failed: <detail>"
+    )]
+    pub reason: String,
 }
 
 /// Response-level channel header emitted in compact format (work-order A4).

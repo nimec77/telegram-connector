@@ -334,12 +334,9 @@ mod tests {
     }
 
     #[test]
-    fn a_failed_image_leaves_the_budget_untouched() {
-        // Callers must not call consume() when process_image_with_cap errors;
-        // this pins the invariant that allowance is unchanged without a consume.
-        let budget = Base64Budget::new(500_000);
-        let before = budget.allowance();
-        assert_eq!(budget.allowance(), before);
+    fn allowance_is_none_when_the_budget_starts_below_the_floor() {
+        let budget = Base64Budget::new(MIN_IMAGE_BASE64_BYTES - 1);
+        assert_eq!(budget.allowance(), None);
     }
 }
 ```
@@ -362,6 +359,8 @@ pub(crate) fn process_image_with_cap(
 
 Run: `cargo test media_budget`
 Expected: PASS (5 tests). The module is pure, so the tests go green as soon as it compiles — this is the module's own definition, not implementation-before-test.
+
+The invariant "a failed image leaves the budget untouched" is deliberately NOT tested here: at this layer it would be a tautology (not calling `consume` obviously changes nothing). It is a property of the *caller* and is covered by Task 6's cap tests, which assert `returned + failed == requested`.
 
 - [ ] **Step 4: Write the failing config test**
 
@@ -804,9 +803,10 @@ git commit -m "feat: download_messages_media resolves once and fans out download
 - Modify: `src/mcp/tools/types/requests.rs` (after `GetMessagesBatchRequest`, ends ~line 276)
 - Modify: `src/mcp/tools/types/responses.rs`
 - Modify: `src/mcp/server/impl_media.rs`
-- Modify: `src/mcp/server.rs` (`#[tool]` wrapper, after `get_message_media` at line 384)
+- Modify: `src/mcp/server.rs` (`#[tool]` wrapper after `get_message_media` at line 384; struct field + builder)
 - Create: `src/mcp/tests/media_batch.rs`
 - Modify: `src/mcp/tests.rs`
+- Modify: `src/mcp/tests/server_core.rs:71,99,106` and `src/mcp/tests/schema_integrity.rs:42` (tool count 15 → 16)
 
 **Interfaces:**
 - Consumes: `MediaFetchOutcome`, `TelegramClientTrait::download_messages_media` (Task 4).
@@ -815,10 +815,11 @@ git commit -m "feat: download_messages_media resolves once and fans out download
   - `MediaBatchSummary`, `MediaBatchFailure { id: i64, reason: String }`
   - `McpServer::get_messages_media_batch` tool + `get_messages_media_batch_impl`
   - `impl_media::{DEFAULT_MAX_DIMENSION, MIN_DIMENSION, MAX_DIMENSION, MAX_MEDIA_BATCH_IDS}`
+  - `McpServer::media_batch_max_total_bytes` field + `with_media_batch_max_total_bytes(bytes: u64) -> Self`
 
   Consumed by Tasks 6–8.
 
-This task delivers the tool with the payload cap **not yet applied** (each image gets the plain `process_image`). Task 6 adds the cap. Splitting keeps each diff reviewable.
+This task delivers the tool with the payload cap **reported but not yet enforced**: each image goes through the plain `process_image`, and the summary reports the configured cap truthfully. Task 6 adds enforcement and the config wiring. The server field ships here rather than in Task 6 specifically so no placeholder value ever exists — a summary reporting `max_total_bytes: 0` would be a knowingly-wrong response passing review.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1337,7 +1338,7 @@ Add:
             returned,
             failed,
             total_base64_bytes,
-            max_total_bytes: 0, // wired to config in Task 6
+            max_total_bytes: self.media_batch_max_total_bytes as u64,
         };
         content.push(ContentBlock::text(json_response(&summary)?));
 
@@ -1392,20 +1393,52 @@ fn failure_reason(error: &MediaFetchError) -> String {
 
 Update the tool count in the `src/mcp/tools.rs` doc comment ("all 15 MCP tools" → 16) and in `CLAUDE.md`'s "All 15 tools live in `server.rs`" line.
 
+- [ ] **Step 6b: Add the server field and builder**
+
+`src/mcp/server.rs` — add to `pub struct McpServer` after `response_byte_budget`:
+
+```rust
+    media_batch_max_total_bytes: usize,
+```
+
+Initialize it in `new()` after `response_byte_budget`:
+
+```rust
+            media_batch_max_total_bytes: 8 * 1024 * 1024,
+```
+
+Add the builder next to `with_response_byte_budget`:
+
+```rust
+    /// Set the total base64 payload cap for `get_messages_media_batch`
+    /// (`[limits] media_batch_max_total_bytes`, default 8 MiB).
+    pub fn with_media_batch_max_total_bytes(mut self, bytes: u64) -> Self {
+        self.media_batch_max_total_bytes = bytes as usize;
+        self
+    }
+```
+
+The field is reported in the summary from this task on, so no response ever
+carries a placeholder. Task 6 adds the enforcement that makes it binding.
+
+- [ ] **Step 6c: Update the tool-count assertions**
+
+A new tool legitimately changes these. Update 15 → 16 at:
+`src/mcp/tests/server_core.rs:71`, `:99`, `:106` (and the comment at `:70`),
+and `src/mcp/tests/schema_integrity.rs:42` (including its message text).
+
 - [ ] **Step 7: Run tests to verify they pass**
 
 Run: `cargo test media_batch`
 Expected: PASS, 8 tests.
 
-If `schema_integrity.rs` or `server_core.rs` asserts a tool count, update those assertions — a new tool legitimately changes them.
-
 - [ ] **Step 8: Verify and commit**
 
 Run: `cargo fmt --all && cargo clippy -- -D warnings && cargo test`
-Expected: all green.
+Expected: all green, including the updated tool-count assertions.
 
 ```bash
-git add src/mcp/tools/types/requests.rs src/mcp/tools/types/responses.rs src/mcp/server/impl_media.rs src/mcp/server.rs src/mcp/tests/media_batch.rs src/mcp/tests.rs src/mcp/tools.rs CLAUDE.md
+git add src/mcp/tools/types/requests.rs src/mcp/tools/types/responses.rs src/mcp/server/impl_media.rs src/mcp/server.rs src/mcp/tests/media_batch.rs src/mcp/tests.rs src/mcp/tests/server_core.rs src/mcp/tests/schema_integrity.rs src/mcp/tools.rs CLAUDE.md
 git commit -m "feat: get_messages_media_batch returns up to 10 images per call"
 ```
 
@@ -1531,30 +1564,12 @@ async fn a_generous_cap_returns_every_image() {
 Run: `cargo test media_batch`
 Expected: FAIL — `no method named 'with_media_batch_max_total_bytes'`.
 
-- [ ] **Step 3: Add the server field and builder**
+- [ ] **Step 3: Confirm the server field exists**
 
-`src/mcp/server.rs` — add to `pub struct McpServer` after `response_byte_budget`:
-
-```rust
-    media_batch_max_total_bytes: usize,
-```
-
-Initialize it in `new()` after `response_byte_budget`:
-
-```rust
-            media_batch_max_total_bytes: 8 * 1024 * 1024,
-```
-
-Add the builder next to `with_response_byte_budget`:
-
-```rust
-    /// Set the total base64 payload cap for `get_messages_media_batch`
-    /// (`[limits] media_batch_max_total_bytes`, default 8 MiB).
-    pub fn with_media_batch_max_total_bytes(mut self, bytes: u64) -> Self {
-        self.media_batch_max_total_bytes = bytes as usize;
-        self
-    }
-```
+`McpServer::media_batch_max_total_bytes` and `with_media_batch_max_total_bytes`
+were added in Task 5 so the summary never reported a placeholder. Verify they
+are present in `src/mcp/server.rs`; if so this step is a no-op. This task makes
+the value *binding* rather than merely reported.
 
 - [ ] **Step 4: Apply the budget in the tool**
 
@@ -1596,11 +1611,7 @@ Replace the `process_image` call and what follows it with:
             budget.consume(processed.base64_jpeg.len());
 ```
 
-Set the summary's real cap:
-
-```rust
-            max_total_bytes: self.media_batch_max_total_bytes as u64,
-```
+The summary's `max_total_bytes` already reads the field (Task 5) — leave it.
 
 Import at the top of the file (or rely on `use super::*` if the parent already re-exports them — check first):
 
@@ -1644,10 +1655,26 @@ git commit -m "feat: bound get_messages_media_batch by a total base64 payload ca
 **Files:**
 - Modify: `src/mcp/server/impl_media.rs`
 - Test: `src/mcp/tests/media_batch.rs`
+- Modify: `src/mcp/server.rs:70` and `:90` — see the prerequisite below
+- Modify: `src/mcp/tests/media.rs:53` — see the prerequisite below
 
 **Interfaces:**
 - Consumes: `RateLimiterTrait::refund` (Task 1), `self.media_download_cost` (existing field).
 - Produces: nothing new.
+
+- [ ] **Step 0: Align the in-struct cost fallback with the config default (prerequisite)**
+
+Task 1 changed the `[rate_limiting] media_download_cost` default from 5 to 3, but `McpServer::new` carries its own hardcoded fallback that was not part of that task's scope and is now stale:
+
+- `src/mcp/server.rs:70` — `media_download_cost: 5,` → `media_download_cost: 3,`
+- `src/mcp/server.rs:90` — the doc comment `(…, default 5)` → `(…, default 3)`
+- `src/mcp/tests/media.rs:53` — `.with(eq(5))` → `.with(eq(3))`
+
+This is load-bearing, not cosmetic: every test in this task constructs the server via `McpServer::new` without `.with_media_download_cost(...)`, so the fallback — not the config default — is the cost actually charged. Left at 5, this task's `acquire(15)` expectation would see `acquire(25)` and every charging test would fail for the wrong reason.
+
+Do **not** change the `eq(5)` expectations in `src/mcp/tests/transcription.rs`: those assert `transcription_cost`, which stays 5.
+
+Run `cargo test media` after this step and confirm it is green before writing the new tests.
 
 - [ ] **Step 1: Write the failing charging tests**
 
@@ -1816,6 +1843,7 @@ git commit -m "feat: charge media batches per requested id and refund failures"
 - Modify: `src/mcp/tools/types/responses.rs`
 - Modify: `src/mcp/server/impl_status.rs:13-33`
 - Test: `src/mcp/tests/status.rs`
+- Modify: `src/mcp/tools/types/tests/responses_tests.rs:5` — this file constructs a `StatusResponse` by struct literal, so adding a field breaks it. Add a `MediaLimits` value there; do **not** give the new field `#[serde(default)]` to dodge the compile error, since the field must always be present on the wire.
 
 **Interfaces:**
 - Consumes: `MAX_MEDIA_BATCH_IDS`, `DEFAULT_MAX_DIMENSION`, `MIN_DIMENSION`, `MAX_DIMENSION` (Task 5); `media_batch_max_total_bytes` (Task 6); `image::MAX_BASE64_LEN`.

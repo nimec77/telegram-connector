@@ -1,3 +1,4 @@
+use crate::mcp::tools::media_budget::MIN_IMAGE_BASE64_BYTES;
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -218,13 +219,35 @@ pub struct LimitsConfig {
     /// At least one message is always returned, even over-budget.
     #[serde(default = "default_response_byte_budget")]
     pub response_byte_budget: u64,
+
+    /// Cap (bytes of base64 payload, as sent to the client) on the total image
+    /// payload of one `get_messages_media_batch` call. Base64 is 4/3 the size
+    /// of the underlying JPEG, and base64 is what consumes client context, so
+    /// the budget is counted in base64 bytes.
+    #[serde(default = "default_media_batch_max_total_bytes")]
+    pub media_batch_max_total_bytes: u64,
 }
 
 impl LimitsConfig {
-    /// Reject a zero budget — it would make every response over-cap.
+    /// Reject a zero budget — it would make every response over-cap. Also
+    /// reject a cap below `MIN_IMAGE_BASE64_BYTES`: `Base64Budget::allowance`
+    /// returns `None` once the remaining budget drops under that floor, so a
+    /// cap set below it makes every image in every batch call report
+    /// `payload_cap_reached` after the downloads already happened — a silent,
+    /// costly no-op at runtime. Failing fast at startup is cheaper.
     pub fn validate(&self) -> anyhow::Result<()> {
         if self.response_byte_budget == 0 {
             anyhow::bail!("limits.response_byte_budget must be > 0");
+        }
+        if self.media_batch_max_total_bytes == 0 {
+            anyhow::bail!("limits.media_batch_max_total_bytes must be > 0");
+        }
+        if self.media_batch_max_total_bytes < MIN_IMAGE_BASE64_BYTES as u64 {
+            anyhow::bail!(
+                "limits.media_batch_max_total_bytes must be >= {MIN_IMAGE_BASE64_BYTES} bytes \
+                 (below that floor every image reports payload_cap_reached), got {}",
+                self.media_batch_max_total_bytes
+            );
         }
         Ok(())
     }
