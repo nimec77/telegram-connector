@@ -3687,3 +3687,27 @@ server-side fix doesn't cover. Tests 656 → 676 across Tasks 1–7; this docs-o
   deep window), the same fix — push `min_date`/`max_date` onto `RawChannelSearchPager`'s request
   instead of relying solely on the client-side `continue`/`break` window checks — is the first
   thing to reach for, not a redesign.
+- **`min_date`/`max_date` are documented nowhere as inclusive or exclusive — so `window_bounds`
+  widens by ±1 second and the question stops mattering.** Neither the TL schema nor grammers says
+  which; an exclusive server would drop a message posted on the exact second of an explicit
+  `from_date`/`to_date` (the README's own example is that shape), and the retained client-side
+  guard never sees such a message to recover it. Under rolling `hours_back` the mapping was
+  already safe either way — `cutoff_time` carries sub-second precision and `timestamp()` floors
+  it — which is exactly why the hole was easy to miss. Widening by a second at each end makes the
+  server window a superset under *both* readings, which is what lets the branch's "result sets are
+  unchanged, only the work is" claim actually hold; the client-side checks still filter to the
+  exact bounds. Cost is at most two extra seconds of index. Don't "fix" the ±1 back out on the
+  grounds that it looks like an off-by-one: it is deliberate, and re-deriving the reasoning is the
+  only alternative to keeping it.
+
+### Live acceptance
+
+- **Run against a real session, and it confirms the fix.** The headline case — global
+  `search_messages`, `document` media filter, 24 h window, limit 20 — returned in **0.449 s**,
+  down from **44.86 s** before the change. The **6** messages it returns are unchanged from the
+  pre-fix run: same ids, same order, same content, which is the evidence behind "result sets are
+  unchanged; only the work done to produce them is." `pages_fetched: 2` and
+  `messages_scanned: 9` on that call — the counters that make the difference legible, and the
+  check that they are not firing per message (2 pages for 9 messages, not 9 for 9). No probe in
+  the set tripped `timed_out`; the deadline is the backstop for cases the server-side bound
+  doesn't cover, and none of the measured ones needed it.

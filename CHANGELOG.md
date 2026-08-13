@@ -23,8 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   | global `voice`, 72h | 8.07 s | 0.468 s |
   | global `url`, 24h | 0.46 s | 0.500 s |
 
-  The client-side window checks are retained as defense in depth. Result sets
-  are unchanged; only the work done to produce them is.
+  Both bounds are widened by a second at each end, so the window Telegram
+  applies is a provable superset of the requested one whether it reads
+  `min_date`/`max_date` as inclusive or exclusive — neither the TL schema nor
+  grammers says which. The client-side window checks are retained as defense in
+  depth and still decide the exact edges. Result sets are unchanged; only the
+  work done to produce them is.
 
 ### Added
 - `[search] deadline_seconds` (default 20) bounds a search's accumulation loop.

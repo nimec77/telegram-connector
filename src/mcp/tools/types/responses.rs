@@ -405,8 +405,11 @@ pub struct SearchResponse {
     pub channel_errors: Option<Vec<ChannelFetchError>>,
     pub messages: Vec<MessageResponse>,
     pub returned: u64,
-    /// More qualifying messages exist beyond this page (limit- or
-    /// budget-truncated) — page on via next_cursor (A8/B4).
+    /// A qualifying message was *proven* to exist in the window beyond this
+    /// page — refused by the limit, or dropped by `[limits] response_byte_budget`
+    /// — so paging on via next_cursor can find it (A8/B4). Deadline truncation
+    /// proves nothing: it reports `query_metadata.timed_out`/`partial` and
+    /// leaves this false.
     pub has_more: bool,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub next_cursor: Option<NextCursor>,

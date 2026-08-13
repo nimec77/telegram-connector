@@ -196,7 +196,9 @@ pub struct QueryMetadata {
     /// incompleteness without claiming a timeout.
     #[serde(default, skip_serializing_if = "is_false")]
     pub partial: bool,
-    /// Round trips issued to Telegram for this search.
+    /// Result pages fetched from Telegram. Not every round trip the call made:
+    /// the channel-scoped path's `iter_dialogs` walk — often most of its cost —
+    /// is not counted here.
     #[serde(default)]
     pub pages_fetched: u32,
     /// Raw messages walked, including those filtered out. Together with

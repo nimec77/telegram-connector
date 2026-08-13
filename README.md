@@ -680,10 +680,13 @@ sourced from `forwarded_from.channel_id` or a `resolve_channels` result).
 `messages`, always a number.
 
 `query_metadata.pages_fetched` and `query_metadata.messages_scanned` report the
-round trips issued to Telegram and the raw messages walked (including ones
+result pages fetched from Telegram and the raw messages walked (including ones
 later filtered out or outside the window) to produce this result — both are
 always present, on every `search_messages` and `get_recent_messages` response,
-so an expensive call is legible to its caller. `query_metadata.timed_out` and
+so an expensive call is legible to its caller. They count result pages, not
+every round trip the call made: when `channel_id` is set, `search_messages`
+walks your dialogs to find the channel first, and that walk — often most of the
+call's cost — is not in `pages_fetched`. `query_metadata.timed_out` and
 `query_metadata.partial` are set together, on `search_messages` only, when the
 search hit `[search] deadline_seconds` (default 20) and stopped early with
 whatever it had gathered so far — never an error, because partial results beat
