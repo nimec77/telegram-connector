@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-08-13
+
 ### Fixed
 - `forwarded_from` now carries `channel_name`, `channel_username`, `sender_name`,
   and `post_author` on `get_message_by_link` and `get_messages_batch`, matching
