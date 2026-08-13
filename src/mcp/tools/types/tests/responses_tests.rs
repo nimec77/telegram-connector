@@ -220,6 +220,10 @@ fn search_response_maps_from_search_result() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
 

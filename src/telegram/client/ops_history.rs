@@ -200,6 +200,10 @@ impl TelegramClient {
                 window_to: params.to_date,
                 channels_scanned: Some(1),
                 channels_in_results,
+                timed_out: false,
+                partial: false,
+                pages_fetched: 0,
+                messages_scanned: 0,
             },
             messages,
         })

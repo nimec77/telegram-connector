@@ -25,6 +25,10 @@ fn single_message_result(channel: i64) -> SearchResult {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     }
 }
@@ -382,6 +386,10 @@ async fn search_without_any_channel_scope_stays_global() {
                     window_to: None,
                     channels_scanned: Some(0),
                     channels_in_results: 0,
+                    timed_out: false,
+                    partial: false,
+                    pages_fetched: 0,
+                    messages_scanned: 0,
                 },
             })
         });
@@ -399,4 +407,46 @@ async fn search_without_any_channel_scope_stays_global() {
         .expect("global search with no channel scope must work");
     let json: serde_json::Value = serde_json::from_str(&out).expect("json");
     assert_eq!(json["returned"], 0);
+}
+
+#[test]
+fn fanout_merge_sums_counters_and_ors_flags() {
+    use crate::mcp::tools::fanout::{ChannelFetchOutcome, merge_results};
+    use crate::test_helpers::create_test_search_result;
+    use chrono::Utc;
+
+    let mut clean = create_test_search_result(vec![], "q", 0);
+    clean.query_metadata.pages_fetched = 2;
+    clean.query_metadata.messages_scanned = 150;
+
+    let mut degraded = create_test_search_result(vec![], "q", 0);
+    degraded.query_metadata.pages_fetched = 5;
+    degraded.query_metadata.messages_scanned = 500;
+    degraded.query_metadata.timed_out = true;
+    degraded.query_metadata.partial = true;
+
+    let merged = merge_results(
+        vec![
+            ChannelFetchOutcome {
+                channel: "a".into(),
+                result: Ok(clean),
+            },
+            ChannelFetchOutcome {
+                channel: "b".into(),
+                result: Ok(degraded),
+            },
+        ],
+        20,
+        "q".to_string(),
+        Utc::now(),
+        None,
+    )
+    .expect("merge succeeds");
+
+    // Summed, not dropped — a caller must see the whole fan-out's cost.
+    assert_eq!(merged.query_metadata.pages_fetched, 7);
+    assert_eq!(merged.query_metadata.messages_scanned, 650);
+    // One degraded channel degrades the merged result.
+    assert!(merged.query_metadata.timed_out);
+    assert!(merged.query_metadata.partial);
 }

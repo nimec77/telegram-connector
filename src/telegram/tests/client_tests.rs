@@ -209,6 +209,10 @@ async fn mock_search_messages_returns_results() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     let expected_clone = expected_result.clone();
@@ -265,6 +269,10 @@ async fn mock_search_messages_respects_limit() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     let expected_clone = expected_result.clone();
@@ -302,6 +310,10 @@ async fn mock_search_messages_with_channel_filter() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     let expected_clone = expected_result.clone();
@@ -341,6 +353,10 @@ async fn mock_search_messages_with_media_filter_photo() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     let expected_clone = expected_result.clone();
@@ -385,6 +401,10 @@ async fn mock_search_messages_with_media_filter_document() {
             window_to: None,
             channels_scanned: Some(3),
             channels_in_results: 3,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     let expected_clone = expected_result.clone();
@@ -440,6 +460,10 @@ async fn mock_get_recent_messages_returns_results() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     let expected_clone = expected_result.clone();
@@ -478,6 +502,10 @@ async fn mock_get_recent_messages_with_media_filter() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     let expected_clone = expected_result.clone();
@@ -523,6 +551,10 @@ async fn mock_get_recent_messages_respects_limit() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     let expected_clone = expected_result.clone();
@@ -582,6 +614,10 @@ async fn mock_get_recent_messages_empty_result() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     let expected_clone = expected_result.clone();

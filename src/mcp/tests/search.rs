@@ -54,6 +54,10 @@ async fn search_messages_returns_results() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     let expected = expected_result.clone();
@@ -191,6 +195,10 @@ async fn search_messages_with_channel_filter() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     let expected = expected_result.clone();
@@ -249,6 +257,10 @@ async fn search_messages_applies_limits() {
             window_to: None,
             channels_scanned: Some(0),
             channels_in_results: 0,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     let expected = expected_result.clone();
@@ -332,6 +344,10 @@ async fn search_allows_empty_query_with_media_filter() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     let expected = expected_result.clone();
@@ -387,6 +403,10 @@ async fn search_passes_media_filter_to_params() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     let expected = expected_result.clone();
@@ -483,6 +503,10 @@ async fn search_messages_serializes_enrichment_fields() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
 
@@ -1062,6 +1086,10 @@ async fn search_messages_shapes_response_end_to_end_for_single_channel() {
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
+            timed_out: false,
+            partial: false,
+            pages_fetched: 0,
+            messages_scanned: 0,
         },
     };
     mock_client
