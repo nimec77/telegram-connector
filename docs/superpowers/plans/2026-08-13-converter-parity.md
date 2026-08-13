@@ -877,6 +877,45 @@ fn index_messages_keeps_empty_placeholders_for_the_caller_to_classify() {
 }
 
 #[test]
+fn fetch_decode_builds_an_entity_map_from_the_response_envelope() {
+    // THE load-bearing test for work order A. The bug was that
+    // getMessages responses had their chats/users discarded, leaving
+    // forwards ids-only. This asserts the decode keeps them, so a forward
+    // source the account does not subscribe to is still attributable.
+    let res = tl::enums::messages::Messages::ChannelMessages(
+        tl::types::messages::ChannelMessages {
+            inexact: false,
+            pts: 1,
+            count: 1,
+            offset_id_offset: None,
+            messages: vec![raw_msg(298716, 1_700_000_000, 1912881684)],
+            topics: vec![],
+            // The forward SOURCE — a channel we never asked about, present
+            // only because the envelope names every entity its messages
+            // reference.
+            chats: vec![tl::enums::Chat::Channel(raw_tl_channel(
+                1783384254,
+                "Pavel Zloi",
+                Some("evilfreelancer"),
+            ))],
+            users: vec![],
+        },
+    );
+
+    let page = unpack_page(res, PAGE_LIMIT);
+    let entities = EntityLookup::from_envelope(&page.chats, &page.users);
+
+    let source = tl::enums::Peer::Channel(tl::types::PeerChannel {
+        channel_id: 1783384254,
+    });
+    let info = entities
+        .get(&source)
+        .expect("envelope must name the forward source");
+    assert_eq!(info.display_name.as_deref(), Some("Pavel Zloi"));
+    assert_eq!(info.username.as_deref(), Some("evilfreelancer"));
+}
+
+#[test]
 fn unpack_page_treats_not_modified_as_an_empty_final_page() {
     let page = unpack_page(
         tl::enums::messages::Messages::NotModified(tl::types::messages::MessagesNotModified {
@@ -890,10 +929,12 @@ fn unpack_page_treats_not_modified_as_an_empty_final_page() {
 }
 ```
 
+`EntityLookup` and its `get` are `pub(crate)`, so the test module reaches them; add `use crate::telegram::envelope::EntityLookup;` if `use super::*` does not already bring it in.
+
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `cargo test --lib raw_pager`
-Expected: FAIL — `cannot find function get_messages_request in this scope`.
+Expected: FAIL — `cannot find function get_messages_request in this scope`. Note that `fetch_decode_builds_an_entity_map_from_the_response_envelope` may compile and pass immediately, since it exercises `unpack_page` + `from_envelope`, which already exist. That is expected: it is the characterization test proving the decode path this task builds on preserves the envelope. If it FAILS, stop — the premise of work order A is wrong.
 
 - [ ] **Step 3: Implement the pure helpers**
 
@@ -1352,7 +1393,20 @@ rather than by remembering to ask for it."
 
 ---
 
-### Task 8: Cross-route parity and zero-call invariant
+### Task 8: Response-shaping parity and zero-call invariant
+
+**What this task does and does not prove.** These tests mock
+`TelegramClientTrait`, which sits *above* the layer the bug lived in — every
+tool is handed the same already-enriched domain `Message`, so identical
+serialization is guaranteed by the mock, not by the fix. This task is
+therefore a net for a *different* regression: a DTO mapping or
+`format: "compact"` change that drops `forwarded_from` on one tool's
+response but not another's. That is worth catching and currently untested.
+
+The load-bearing proof of work order A lives in Task 4
+(`fetch_decode_builds_an_entity_map_from_the_response_envelope`) and Task 7
+Step 5 (the compile-fail guard check). Do not weaken those on the theory
+that this task covers them — it does not.
 
 **Files:**
 - Create: `src/mcp/tests/parity.rs`
@@ -1369,11 +1423,14 @@ Create `src/mcp/tests/parity.rs`. One enriched-forward fixture is returned by ea
 Fixture facts (verified): `create_test_message_with_enriched_forward(id, text, channel_id, forwarded_channel_id)` sets `channel_name` to `"Военкор"`, `channel_username` to `"voenkor_ru"`, and `post_author` to `"И. Петров"`.
 
 ```rust
-//! Work-order A parity net: every message-returning tool must emit the same
-//! `forwarded_from` for the same message. The type-level guard in
-//! `envelope.rs` is the primary defense — conversion cannot be reached
-//! without a real response envelope. This catches a regression that
-//! reintroduces a second, weaker conversion path anyway.
+//! Response-shaping parity: given the same domain `Message`, every
+//! message-returning tool must serialize the same `forwarded_from`.
+//!
+//! Scope note — these tests mock `TelegramClientTrait`, which is ABOVE the
+//! conversion layer, so they cannot prove that fetching enriches. That is
+//! covered by `raw_pager`'s envelope-decode test and by the type-level
+//! guard in `envelope.rs`. What this file catches is a DTO or compact-format
+//! change that drops `forwarded_from` on one tool's response shape only.
 
 use crate::mcp::server::McpServer;
 use crate::mcp::tools::types::requests::GetMessagesBatchRequest;
