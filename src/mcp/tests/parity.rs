@@ -8,12 +8,12 @@
 //! change that drops `forwarded_from` on one tool's response shape only.
 
 use crate::mcp::server::McpServer;
-use crate::mcp::tools::types::requests::GetMessagesBatchRequest;
+use crate::mcp::tools::types::requests::{GetMessagesBatchRequest, ResponseFormat};
 use crate::mcp::tools::{GetMessageByLinkRequest, GetRecentMessagesRequest, SearchRequest};
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
-use crate::telegram::types::{Message, MessageBatch, QueryMetadata, SearchResult};
-use crate::test_helpers::create_test_message_with_enriched_forward;
+use crate::telegram::types::{Message, MessageBatch};
+use crate::test_helpers::{create_test_message_with_enriched_forward, create_test_search_result};
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::NumberOrString;
@@ -30,23 +30,6 @@ fn fixture() -> Message {
         CHANNEL_ID,
         FORWARDED_FROM_ID,
     )
-}
-
-fn search_result(messages: Vec<Message>) -> SearchResult {
-    let returned = messages.len() as u64;
-    SearchResult {
-        messages,
-        returned,
-        has_more: false,
-        search_time_ms: 1,
-        query_metadata: QueryMetadata {
-            query: String::new(),
-            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
-            window_to: None,
-            channels_scanned: Some(1),
-            channels_in_results: 1,
-        },
-    }
 }
 
 fn permissive_limiter() -> MockRateLimiterTrait {
@@ -72,7 +55,7 @@ async fn via_get_recent_messages() -> String {
     let mut telegram = MockTelegramClientTrait::new();
     telegram
         .expect_get_recent_messages()
-        .returning(|_| Ok(search_result(vec![fixture()])));
+        .returning(|_| Ok(create_test_search_result(vec![fixture()], "", 1)));
 
     let server = McpServer::new(Arc::new(telegram), Arc::new(permissive_limiter()));
     server
@@ -101,7 +84,7 @@ async fn via_search_messages() -> String {
     let mut telegram = MockTelegramClientTrait::new();
     telegram
         .expect_search_messages()
-        .returning(|_| Ok(search_result(vec![fixture()])));
+        .returning(|_| Ok(create_test_search_result(vec![fixture()], "", 1)));
 
     let server = McpServer::new(Arc::new(telegram), Arc::new(permissive_limiter()));
     // Global search (no channel_id) so no resolve_channel_identity is needed.
@@ -120,6 +103,65 @@ async fn via_search_messages() -> String {
         )
         .await
         .expect("search_messages ok")
+}
+
+async fn via_get_recent_messages_compact() -> String {
+    let mut telegram = MockTelegramClientTrait::new();
+    telegram
+        .expect_get_recent_messages()
+        .returning(|_| Ok(create_test_search_result(vec![fixture()], "", 1)));
+
+    let server = McpServer::new(Arc::new(telegram), Arc::new(permissive_limiter()));
+    server
+        .get_recent_messages(
+            Parameters(GetRecentMessagesRequest {
+                channel_id: Some(CHANNEL_ID.to_string()),
+                channel_ids: None,
+                hours_back: None,
+                limit: None,
+                media_filter: None,
+                from_date: None,
+                to_date: None,
+                collapse_albums: None,
+                before_id: None,
+                after_id: None,
+                max_text_length: None,
+                format: Some(ResponseFormat::Compact),
+            }),
+            RequestId(NumberOrString::Number(1)),
+        )
+        .await
+        .expect("get_recent_messages compact ok")
+}
+
+async fn via_search_messages_compact() -> String {
+    let mut telegram = MockTelegramClientTrait::new();
+    telegram
+        .expect_search_messages()
+        .returning(|_| Ok(create_test_search_result(vec![fixture()], "", 1)));
+
+    let server = McpServer::new(Arc::new(telegram), Arc::new(permissive_limiter()));
+    // channel_id is numeric here, so search_channel_id() takes the
+    // digit-only branch and no resolve_channel_identity call is needed
+    // (mirrors search.rs's convention). compact format requires a
+    // single-channel scope, so channel_id must be Some, unlike
+    // via_search_messages above.
+    server
+        .search_messages(
+            Parameters(SearchRequest {
+                query: "переслано".to_string(),
+                channel_id: Some(CHANNEL_ID.to_string()),
+                channel_ids: None,
+                hours_back: None,
+                limit: None,
+                media_filter: None,
+                format: Some(ResponseFormat::Compact),
+                ..Default::default()
+            }),
+            RequestId(NumberOrString::Number(1)),
+        )
+        .await
+        .expect("search_messages compact ok")
 }
 
 async fn via_get_message_by_link() -> String {
@@ -184,6 +226,52 @@ async fn forwarded_from_is_identical_across_every_message_returning_tool() {
         forward_json(&via_get_messages_batch().await),
         expected,
         "get_messages_batch diverged"
+    );
+}
+
+/// `compact_response` (`src/mcp/tools/shaping.rs`) hoists a message's OWN
+/// `channel_id`/`channel_name`/`channel_username` into a response-level
+/// header and strips them off the message. Forward attribution carries its
+/// own, differently-scoped copies of those same field names nested inside
+/// `forwarded_from` (the forward SOURCE's identity, not the hosting
+/// channel's). A future edit that broadens the stripping — or reuses a
+/// field-name list across both structs — could plausibly take the nested
+/// ones with it. This pins that the two are independent: compacting a
+/// message's own channel identity must not disturb its forward's.
+#[tokio::test]
+async fn forwarded_from_survives_compaction_for_search_and_recent_messages() {
+    let expected = forward_json(&via_get_recent_messages().await);
+
+    let recent_compact = via_get_recent_messages_compact().await;
+    let recent_json: serde_json::Value = serde_json::from_str(&recent_compact).expect("valid JSON");
+    assert_compaction_actually_ran(&recent_json, "get_recent_messages (compact)");
+    assert_eq!(
+        recent_json["messages"][0]["forwarded_from"], expected,
+        "get_recent_messages: compaction disturbed forwarded_from"
+    );
+
+    let search_compact = via_search_messages_compact().await;
+    let search_json: serde_json::Value = serde_json::from_str(&search_compact).expect("valid JSON");
+    assert_compaction_actually_ran(&search_json, "search_messages (compact)");
+    assert_eq!(
+        search_json["messages"][0]["forwarded_from"], expected,
+        "search_messages: compaction disturbed forwarded_from"
+    );
+}
+
+/// Guard the guard: if compaction silently stopped running, the message's
+/// own `channel_id` would still be present and `forwarded_from` would never
+/// have been touched — making the equality assertions above pass for the
+/// wrong reason. Confirm the response-level header was actually hoisted and
+/// the per-message field actually stripped.
+fn assert_compaction_actually_ran(response: &serde_json::Value, label: &str) {
+    assert_eq!(
+        response["channel"]["id"], CHANNEL_ID,
+        "{label}: compact header must carry the channel id, else compaction never ran"
+    );
+    assert!(
+        response["messages"][0].get("channel_id").is_none(),
+        "{label}: message-level channel_id must be stripped under compact format"
     );
 }
 
