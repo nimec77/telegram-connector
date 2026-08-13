@@ -759,3 +759,89 @@ fn poll_option_omits_absent_voters_from_json() {
     assert!(json["options"][0].get("voters").is_none());
     assert!(json.get("total_voters").is_none());
 }
+
+#[test]
+fn poll_info_omits_voters_for_an_option_whose_count_is_undisclosed() {
+    // `PollAnswerVoters.voters` carries its own disclosure flag, independent
+    // of whether `results` is populated at all: Telegram's partial-
+    // disclosure case reveals which option is chosen/correct while still
+    // withholding that option's vote count. A `None` there must degrade to
+    // an absent `voters` on the option — never a fabricated `0`.
+    let text = |s: &str| {
+        tl::enums::TextWithEntities::Entities(tl::types::TextWithEntities {
+            text: s.to_string(),
+            entities: Vec::new(),
+        })
+    };
+    let raw_answers = ["Rust", "Go"]
+        .into_iter()
+        .enumerate()
+        .map(|(i, a)| {
+            tl::enums::PollAnswer::Answer(tl::types::PollAnswer {
+                text: text(a),
+                option: vec![i as u8],
+                media: None,
+                added_by: None,
+                date: None,
+            })
+        })
+        .collect();
+    let results = vec![
+        tl::enums::PollAnswerVoters::Voters(tl::types::PollAnswerVoters {
+            chosen: false,
+            correct: false,
+            option: vec![0u8],
+            voters: Some(287),
+            recent_voters: None,
+        }),
+        // Same wire shape as above, but the count itself is undisclosed.
+        tl::enums::PollAnswerVoters::Voters(tl::types::PollAnswerVoters {
+            chosen: false,
+            correct: false,
+            option: vec![1u8],
+            voters: None,
+            recent_voters: None,
+        }),
+    ];
+    let media = Media::Poll(Poll::from_raw_media(tl::types::MessageMediaPoll {
+        poll: tl::enums::Poll::Poll(tl::types::Poll {
+            id: 1,
+            closed: false,
+            public_voters: false,
+            multiple_choice: false,
+            quiz: false,
+            open_answers: false,
+            revoting_disabled: false,
+            shuffle_answers: false,
+            hide_results_until_close: false,
+            creator: false,
+            subscribers_only: false,
+            question: text("Какой стек выбрать?"),
+            answers: raw_answers,
+            close_period: None,
+            close_date: None,
+            countries_iso2: None,
+            hash: 0,
+        }),
+        results: tl::enums::PollResults::Results(Box::new(tl::types::PollResults {
+            min: false,
+            has_unread_votes: false,
+            can_view_stats: false,
+            results: Some(results),
+            total_voters: Some(412),
+            recent_voters: None,
+            solution: None,
+            solution_entities: None,
+            solution_media: None,
+        })),
+        attached_media: None,
+    }));
+
+    let info = extract_poll_info(&media).expect("poll info present");
+
+    assert_eq!(info.options[0].text, "Rust");
+    assert_eq!(info.options[0].voters, Some(287));
+    assert_eq!(info.options[1].text, "Go");
+    assert_eq!(info.options[1].voters, None);
+    assert_eq!(info.total_voters, Some(412));
+}

@@ -235,9 +235,14 @@ pub fn extract_poll_info(media: &Media) -> Option<PollInfo> {
         .iter_voters_summary()
         .map(|voters| {
             voters
-                .map(|v| {
-                    let count = v.voters.and_then(|n| u64::try_from(n).ok()).unwrap_or(0);
-                    (v.option.as_slice(), count)
+                .filter_map(|v| {
+                    // `voters` carries its own disclosure flag independent of
+                    // whether `results` is populated at all (Telegram's
+                    // partial-disclosure case: which option is chosen/correct
+                    // is known, the vote count is not yet). A `None` here
+                    // must stay absent, never fabricated as a zero.
+                    let count = u64::try_from(v.voters?).ok()?;
+                    Some((v.option.as_slice(), count))
                 })
                 .collect()
         })
