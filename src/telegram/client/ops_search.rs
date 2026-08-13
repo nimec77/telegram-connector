@@ -333,6 +333,12 @@ impl TelegramClient {
                 // `has_more`: expiry stopped the walk without proving anything lies
                 // beyond the page, and the global path has no cursor to resume from
                 // anyway (see the `before_id`/`after_id` rejection above).
+                //
+                // Can be a conservative false positive: the deadline is checked at the
+                // top of an iteration, so expiry landing on what would have been the
+                // terminal iteration reports a complete result set as partial. Avoiding
+                // that needs lookahead the loop does not have, and the error is in the
+                // safe direction — it is not a bug to go fix later.
                 partial: budget.timed_out(),
                 pages_fetched: budget.pages_fetched(),
                 messages_scanned: budget.messages_scanned(),

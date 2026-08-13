@@ -426,14 +426,16 @@ fn fanout_merge_sums_counters_and_ors_flags() {
     degraded.query_metadata.partial = true;
 
     let merged = merge_results(
+        // Degraded first, deliberately: with the `true` flags last, a
+        // last-channel-wins overwrite (`=` where `|=` is meant) would pass.
         vec![
             ChannelFetchOutcome {
                 channel: "a".into(),
-                result: Ok(clean),
+                result: Ok(degraded),
             },
             ChannelFetchOutcome {
                 channel: "b".into(),
-                result: Ok(degraded),
+                result: Ok(clean),
             },
         ],
         20,

@@ -12,6 +12,10 @@ use tokio::time::Instant;
 /// because partial results are strictly more useful than a failure.
 ///
 /// Uses `tokio::time::Instant` so `tokio::time::pause()` drives it in tests.
+/// Note that `ops_search.rs`'s `start_time`/`fetch_start` use
+/// `std::time::Instant` — correct in production, where both clocks advance
+/// together, but a future integration test under `tokio::time::pause()` would
+/// see the budget expire while `search_time_ms` still reports 0.
 pub(crate) struct SearchBudget {
     /// `None` disables the deadline entirely.
     deadline: Option<Instant>,
@@ -33,6 +37,11 @@ impl SearchBudget {
 
     /// True once the budget is spent. Latches `timed_out`, so a caller cannot
     /// act on expiry without the response reporting it.
+    ///
+    /// Latching is provable by inspection rather than by test: `timed_out` has
+    /// exactly one write site — the line below — and it writes `true`. Under a
+    /// monotonic clock no test can distinguish a latched flag from a stateless
+    /// recompute, so the guarantee rests on that single write.
     pub(crate) fn expired(&mut self) -> bool {
         if self.deadline.is_some_and(|d| Instant::now() >= d) {
             self.timed_out = true;
