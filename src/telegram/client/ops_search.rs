@@ -260,10 +260,10 @@ impl TelegramClient {
                     }
 
                     tracing::debug!(
-                        pages = budget.pages_fetched(),
+                        pages_fetched = budget.pages_fetched(),
                         messages_scanned = budget.messages_scanned(),
                         mtproto_ms = (mtproto_nanos / 1_000_000) as u64,
-                        total_ms = start_time.elapsed().as_millis() as u64,
+                        duration_ms = start_time.elapsed().as_millis() as u64,
                         "Global search finished"
                     );
 
