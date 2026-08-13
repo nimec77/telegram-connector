@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `get_messages_media_batch` returns the images of up to 10 messages from one
+  channel in a single call — image block plus metadata block per message, then
+  a summary carrying `requested`/`returned`/`failed`/`total_base64_bytes`.
+  The batch resolves the channel once and issues one `get_messages_by_id` for
+  every id, then downloads with bounded concurrency (4), so N images cost one
+  channel resolution and one fetch round trip instead of N of each. For a
+  numeric `channel_id` a resolution is a full dialog walk, which is what made
+  the per-call path expensive.
+
+  Per-id failures — `not_found`, `no_visual_media`, `payload_cap_reached`,
+  `download_failed` — are reported in `failed` and never fail the batch.
+
+- `[limits] media_batch_max_total_bytes` (default 8 MiB) caps a batch's total
+  image payload, counted in bytes of base64 as sent to the client. Images are
+  downscaled progressively to fit; ids that still do not fit are reported as
+  `payload_cap_reached`.
+
+- `check_mcp_status` gains a `media` block (`batch_max_ids`, `max_total_bytes`,
+  `per_image_max_bytes`, `default_max_dimension`, `max_dimension_limit`).
+
+### Changed
+- `[rate_limiting]` defaults retuned for batch media: `max_tokens` 50 → 60 and
+  `media_download_cost` 5 → 3. At the unchanged `refill_rate` of 2.0/sec that
+  is 20 images in a burst then one per 1.5 s, up from 10 then one per 2.5 s.
+  Batches acquire for every requested id up front and refund the ids that
+  produced no image, so admission control stays real while the net charge is
+  per image returned. Both values are conservative estimates, not calibrated
+  against Telegram's flood thresholds.
+
 ## [0.21.0] - 2026-08-13
 
 ### Fixed

@@ -3711,3 +3711,62 @@ server-side fix doesn't cover. Tests 656 → 676 across Tasks 1–7; this docs-o
   check that they are not firing per message (2 pages for 9 messages, not 9 for 9). No probe in
   the set tripped `timed_out`; the deadline is the backstop for cases the server-side bound
   doesn't cover, and none of the measured ones needed it.
+
+## Media throughput (work order C) — 2026-08-13
+
+Ten-task SDD plan (`docs/superpowers/plans/2026-08-13-media-throughput.md`, design:
+`docs/superpowers/specs/2026-08-13-media-throughput-design.md`) closing the gap the work order
+attributed to the rate limiter alone: a digest run over 10–15 visual posts issued 10–15 separate
+`get_message_media` round trips, each re-resolving the channel and re-fetching one message. The
+16th tool, `get_messages_media_batch` (`f5280a4`…`a75f764`), resolves the channel once and issues
+one `get_messages_by_id` for up to 10 ids from that channel, then downloads with bounded
+concurrency (4, the existing `channel_ids` fan-out constant) — N images now cost one channel
+resolution and one fetch round trip instead of N of each. A new `Base64Budget` (Task 2) caps the
+batch's total base64 payload (`[limits] media_batch_max_total_bytes`, default 8 MiB) and
+downscales progressively to fit, via the pre-existing `process_image_with_cap` shrink loop — no
+new shrink logic. `[rate_limiting]` retuned `max_tokens` 50 → 60 and `media_download_cost` 5 → 3
+(Task 1); a batch acquires for every requested id up front and refunds ids that produced no image
+(Task 7), so the net charge is per image returned while a rejected acquire still blocks all
+downloads. `check_mcp_status` gains an additive `media` block (Task 8) so a caller can plan a
+batch's limits instead of discovering them by hitting them. Tests 676 → 708 across Tasks 1–8;
+this docs-only Task 9 adds none. Task 10 (live acceptance) has not run this session.
+
+### Decisions worth remembering
+
+- **Verify a work order's quoted numbers against the source before designing around them.** The
+  work order's rate-limit premise — capacity 30, refilling at 1 token/sec, giving "6 images
+  immediately, then one per 5 seconds" — did not match `src/config/defaults.rs`, whose actual
+  defaults were `max_tokens = 50` and `refill_rate = 2.0` (10 images immediately, then one per
+  2.5 s). Designing the retune off the stale numbers would have overshot the real gap between old
+  and new behavior and misrepresented the size of the win. The design doc caught this by reading
+  `defaults.rs` directly rather than trusting the work order's arithmetic, and the correction is
+  recorded there (`docs/superpowers/specs/2026-08-13-media-throughput-design.md`, "Correcting the
+  work order's premise") rather than silently fixed in place. Work orders age; the config module
+  that actually ships does not, so it — not a prior document's summary of it — is the thing to
+  re-read before a retune's before/after numbers are written down anywhere, including here.
+- **A client method that resolves internally pays its resolution cost once per call site, not
+  once per logical operation — which is why the batch had to move to the client layer.**
+  `resolve_peer` (`src/telegram/client/resolve.rs:13-32`) walks the entire dialog list for a
+  numeric channel id with no cache; `download_message_media` calls it on every invocation. An MCP
+  tool built by looping the existing single-message tool with bounded concurrency — the design's
+  first-considered, rejected option — would parallelize that per-call dialog walk without removing
+  it: N concurrent calls still issue N dialog walks and N one-message fetch RPCs, just overlapped
+  in time instead of serialized. Removing the duplicated resolution work is only possible below
+  the tool boundary, where one function can resolve once and fetch once for every id in the batch
+  before any per-id work starts. The general shape: a per-message loop over any client method that
+  resolves internally pays that resolution's cost on every iteration regardless of concurrency: the
+  fix is not to parallelize the loop, but to hoist the resolution out of it.
+
+### Standing note
+
+- **Manual acceptance against live Telegram was not run this session.** The design's acceptance
+  criterion (`docs/superpowers/specs/2026-08-13-media-throughput-design.md`, "Verification") is a
+  batch of 10 visual posts from one channel via `get_messages_media_batch` against 10 sequential
+  `get_message_media` calls for the same messages, comparing wall time and confirming the server
+  log shows a single dialog walk (one `resolve_peer`/`find_dialog_peer` pass) for the batch versus
+  ten for the sequential calls. That needs a deployed server with an authenticated Telegram
+  session, which this documentation pass did not have. All eight implementation tasks are covered
+  by the offline test suite (708 passed, 0 failed, 5 ignored); the live comparison is the one thing
+  that suite cannot exercise, and it is also the only source from which a real throughput number for
+  this feature may be written down — none exists yet, and none should be invented before it does.
+  Whoever has a live session next should run it and record the result here.
