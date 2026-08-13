@@ -106,6 +106,16 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             .unwrap_or(DEFAULT_MAX_DIMENSION)
             .clamp(MIN_DIMENSION, MAX_DIMENSION);
 
+        // Acquire pessimistically for every requested id BEFORE any network
+        // work: charging only for what succeeds would mean the limiter could
+        // never refuse a batch, since the downloads would already have happened.
+        // One atomic acquire keeps the D5 deficit message accurate.
+        let charged = self.media_download_cost * unique.len() as u32;
+        self.rate_limiter
+            .acquire(charged)
+            .await
+            .map_err(|e| e.to_string())?;
+
         let outcomes = self
             .telegram_client
             .download_messages_media(&request.channel_id, &wire_ids, max_dimension)
@@ -165,6 +175,14 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         }
 
         let returned = content.len() / 2;
+
+        // Ids that produced no image cost nothing — hand their tokens back.
+        // The bucket clamps at capacity, so this can never inflate it.
+        // unique.len() >= returned always holds (`returned` counts a subset
+        // of the requested ids), so this subtraction cannot underflow.
+        let refunded = self.media_download_cost * (unique.len() - returned) as u32;
+        self.rate_limiter.refund(refunded);
+
         tracing::info!(
             channel = %request.channel_id,
             requested = unique.len(),

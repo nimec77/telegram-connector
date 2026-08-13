@@ -418,3 +418,119 @@ async fn a_generous_cap_returns_every_image() {
     assert_eq!(summary.returned, 2);
     assert!(summary.failed.is_empty());
 }
+
+use mockall::predicate::eq;
+
+#[tokio::test]
+async fn charges_for_every_requested_id_then_refunds_the_failures() {
+    let mut client = MockTelegramClientTrait::new();
+    client
+        .expect_download_messages_media()
+        .return_once(|_, _, _| {
+            Ok(vec![
+                ok_outcome(10, 80, 80),
+                no_media(11),
+                ok_outcome(12, 80, 80),
+                not_found(13),
+                ok_outcome(14, 80, 80),
+            ])
+        });
+
+    let mut limiter = MockRateLimiterTrait::new();
+    // 5 requested x default cost 3 = 15 acquired up front.
+    limiter
+        .expect_acquire()
+        .with(eq(15))
+        .times(1)
+        .returning(|_| Ok(()));
+    // 2 produced nothing x 3 = 6 refunded.
+    limiter
+        .expect_refund()
+        .with(eq(6))
+        .times(1)
+        .return_const(());
+
+    let server = McpServer::new(Arc::new(client), Arc::new(limiter));
+    let result = server
+        .get_messages_media_batch(
+            Parameters(request("news", vec![10, 11, 12, 13, 14])),
+            RequestId(NumberOrString::Number(1)),
+        )
+        .await
+        .expect("tool should succeed");
+
+    assert_eq!(summary_of(&result.content).returned, 3);
+}
+
+#[tokio::test]
+async fn a_fully_successful_batch_refunds_nothing() {
+    let mut client = MockTelegramClientTrait::new();
+    client
+        .expect_download_messages_media()
+        .return_once(|_, _, _| Ok(vec![ok_outcome(10, 80, 80), ok_outcome(11, 80, 80)]));
+
+    let mut limiter = MockRateLimiterTrait::new();
+    limiter
+        .expect_acquire()
+        .with(eq(6))
+        .times(1)
+        .returning(|_| Ok(()));
+    limiter
+        .expect_refund()
+        .with(eq(0))
+        .times(1)
+        .return_const(());
+
+    let server = McpServer::new(Arc::new(client), Arc::new(limiter));
+    let result = server
+        .get_messages_media_batch(
+            Parameters(request("news", vec![10, 11])),
+            RequestId(NumberOrString::Number(1)),
+        )
+        .await;
+
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn a_rejected_acquire_performs_no_download() {
+    let mut client = MockTelegramClientTrait::new();
+    client.expect_download_messages_media().never();
+
+    let mut limiter = MockRateLimiterTrait::new();
+    limiter.expect_acquire().returning(|_| {
+        Err(Error::RateLimit {
+            retry_after_seconds: 4,
+            detail: ": requested 30 tokens, 12.00 available".to_string(),
+        })
+    });
+    limiter.expect_refund().never();
+
+    let server = McpServer::new(Arc::new(client), Arc::new(limiter));
+    let result = server
+        .get_messages_media_batch(
+            Parameters(request("news", (1..=10).collect())),
+            RequestId(NumberOrString::Number(1)),
+        )
+        .await;
+
+    let err = result.expect_err("an unaffordable batch must be refused before any work");
+    assert!(
+        err.contains("retry after 4 seconds"),
+        "the rate-limit error must carry the wait hint: {err}"
+    );
+}
+
+#[test]
+fn rate_limit_errors_carry_a_retry_hint() {
+    // Pre-existing behaviour (src/error.rs). Pinned here because batch callers
+    // are the ones most likely to hit the limiter and need a precise wait.
+    let error = Error::RateLimit {
+        retry_after_seconds: 7,
+        detail: ": requested 30 tokens, 9.00 available".to_string(),
+    };
+    assert_eq!(
+        error.to_string(),
+        "rate limit exceeded: requested 30 tokens, 9.00 available, retry after 7 seconds"
+    );
+}
