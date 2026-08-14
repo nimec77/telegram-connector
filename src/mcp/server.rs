@@ -18,8 +18,8 @@ use crate::mcp::tools::{
     MessagesBatchResponse, MissingMessageEntry, OpenMessageRequest, RateLimiterCosts,
     RateLimiterStatus, ResolveChannelsRequest, ResolveChannelsResponse, ResponseFormat,
     SearchPublicChannelsRequest, SearchRequest, SearchResponse, StatusResponse,
-    TranscribeVoiceMessageRequest, TranscribeVoiceMessageResponse, json_response, parse_channel_id,
-    parse_message_id, parse_optional_utc, validate_date_window,
+    TranscribeVoiceMessageRequest, TranscribeVoiceMessageResponse, dedupe_and_validate_ids,
+    json_response, parse_channel_id, parse_message_id, parse_optional_utc, validate_date_window,
 };
 // Constructed only inside open_message_in_telegram's macOS-only body; an
 // unconditional import is an unused-import error on Linux builds.
