@@ -4,12 +4,8 @@
 //! client's context, and 4/3 the size of the underlying JPEG bytes. Pure: no
 //! I/O, no image decoding.
 
+use crate::config::MIN_IMAGE_BASE64_BYTES;
 use crate::mcp::tools::image::MAX_BASE64_LEN;
-
-/// Floor below which an image would be downscaled past usefulness. Once the
-/// remaining budget drops under this, the batch stops rather than emitting
-/// unreadable thumbnails.
-pub(crate) const MIN_IMAGE_BASE64_BYTES: usize = 32_768;
 
 /// Greedy allocator over a batch's total base64 payload budget.
 #[derive(Debug)]
