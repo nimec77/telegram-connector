@@ -4,7 +4,7 @@
 //! delegate to them. Split out per LM-3 (`server.rs` was 880 lines).
 
 use super::*;
-use crate::mcp::tools::image::{ProcessedImage, process_image_with_cap};
+use crate::mcp::tools::image::{ProcessedImage, process_image, process_image_with_cap};
 use crate::mcp::tools::media_budget::Base64Budget;
 use crate::telegram::types::MediaDownload;
 
@@ -33,13 +33,17 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             .await
             .map_err(|e| e.to_string())?;
 
-        let download = self
+        let mut download = self
             .telegram_client
             .download_message_media(&request.channel_id, message_id.get() as i32, max_dimension)
             .await
             .map_err(|e| e.to_string())?;
 
-        let processed = process_image(&download.bytes, max_dimension).map_err(|e| e.to_string())?;
+        let bytes = std::mem::take(&mut download.bytes);
+        let processed = tokio::task::spawn_blocking(move || process_image(&bytes, max_dimension))
+            .await
+            .map_err(|e| format!("image encode task failed: {e}"))?
+            .map_err(|e| e.to_string())?;
         let metadata = media_metadata(
             request.channel_id.clone(),
             message_id.get(),
@@ -75,31 +79,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             return Err("message_ids must contain at least one id".to_string());
         }
 
-        // Dedupe silently, preserving first-seen order (same rule as
-        // get_messages_batch).
-        let mut seen = std::collections::HashSet::new();
-        let unique: Vec<i64> = request
-            .message_ids
-            .iter()
-            .copied()
-            .filter(|id| seen.insert(*id))
-            .collect();
-        if unique.len() > MAX_MEDIA_BATCH_IDS {
-            return Err(format!(
-                "message_ids accepts at most {MAX_MEDIA_BATCH_IDS} ids per call, got {}",
-                unique.len()
-            ));
-        }
-
-        let mut wire_ids = Vec::with_capacity(unique.len());
-        for id in &unique {
-            let parsed = parse_message_id(*id)?;
-            wire_ids.push(
-                parsed.as_i32().ok_or_else(|| {
-                    format!("message_id {} exceeds Telegram's message id range", id)
-                })?,
-            );
-        }
+        let (unique, wire_ids) =
+            dedupe_and_validate_ids(&request.message_ids, MAX_MEDIA_BATCH_IDS)?;
 
         let max_dimension = request
             .max_dimension
@@ -140,11 +121,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         let mut content = Vec::new();
         let mut failed = Vec::new();
         let mut total_base64_bytes = 0usize;
+        let mut returned = 0usize;
         let mut budget = Base64Budget::new(self.media_batch_max_total_bytes);
 
         for outcome in outcomes {
             let id = i64::from(outcome.message_id);
-            let download = match outcome.result {
+            let mut download = match outcome.result {
                 Ok(download) => download,
                 Err(e) => {
                     failed.push(MediaBatchFailure {
@@ -168,15 +150,36 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             // process_image_with_cap already shrinks the target dimension
             // iteratively until the encoded payload fits — that is the
             // progressive downscaling, no second implementation needed.
-            let processed = match process_image_with_cap(&download.bytes, max_dimension, allowance)
-            {
-                Ok(processed) => processed,
-                Err(e) => {
-                    // Budget deliberately untouched: a failed image cost nothing,
-                    // so later ids keep their full allowance.
+            //
+            // Encode on a blocking thread: a Lanczos3 resize plus JPEG encode is
+            // hundreds of milliseconds of pure CPU, and ten of them back to back
+            // would pin a tokio worker for the whole batch. The loop stays
+            // sequential and in request order so budget allocation remains
+            // deterministic — only the CPU leaves the async worker.
+            let bytes = std::mem::take(&mut download.bytes);
+            let encode = tokio::task::spawn_blocking(move || {
+                process_image_with_cap(&bytes, max_dimension, allowance)
+            })
+            .await;
+
+            let processed = match encode {
+                Ok(Ok(processed)) => processed,
+                Ok(Err(e)) => {
+                    // Budget deliberately untouched: nothing was emitted, so
+                    // later ids keep their full allowance.
                     failed.push(MediaBatchFailure {
                         id,
-                        reason: format!("download_failed: {e}"),
+                        reason: post_download_failure_reason(&e),
+                    });
+                    continue;
+                }
+                Err(join_error) => {
+                    // The blocking task panicked or was cancelled. Report the id
+                    // rather than failing the batch, so the other ids' work and
+                    // their token charges are not thrown away.
+                    failed.push(MediaBatchFailure {
+                        id,
+                        reason: format!("internal_error: {join_error}"),
                     });
                     continue;
                 }
@@ -192,12 +195,15 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             let metadata_json = match json_response(&metadata) {
                 Ok(json) => json,
                 Err(e) => {
-                    // Budget deliberately untouched, same reasoning as the
-                    // process_image_with_cap failure above: nothing was returned,
-                    // so nothing was spent.
+                    // Neither a download failure nor a cap drop: serializing the
+                    // metadata failed. Unreachable today (the response type has
+                    // no map keys or floats, the only things that make
+                    // serde_json::to_string fail) but not a compile-time
+                    // guarantee, so it gets an honest token of its own.
+                    // Budget deliberately untouched, same reasoning as above.
                     failed.push(MediaBatchFailure {
                         id,
-                        reason: format!("download_failed: {e}"),
+                        reason: format!("internal_error: {e}"),
                     });
                     continue;
                 }
@@ -207,15 +213,16 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             total_base64_bytes += processed.base64_jpeg.len();
             content.push(ContentBlock::image(processed.base64_jpeg, "image/jpeg"));
             content.push(ContentBlock::text(metadata_json));
+            returned += 1;
         }
-
-        let returned = content.len() / 2;
 
         // Ids that produced no image cost nothing — hand their tokens back.
         // The bucket clamps at capacity, so this can never inflate it.
         // unique.len() >= returned always holds (`returned` counts a subset
         // of the requested ids), so this subtraction cannot underflow.
-        let refunded = self.media_download_cost * (unique.len() - returned) as u32;
+        let refunded = self
+            .media_download_cost
+            .saturating_mul(unique.len().saturating_sub(returned) as u32);
         self.rate_limiter.refund(refunded);
 
         tracing::info!(
@@ -348,5 +355,40 @@ fn failure_reason(error: &MediaFetchError) -> String {
         MediaFetchError::NotFound => "not_found".to_string(),
         MediaFetchError::NoVisualMedia { .. } => "no_visual_media".to_string(),
         MediaFetchError::Failed(inner) => format!("download_failed: {inner}"),
+    }
+}
+
+/// Map a failure that happened *after* a successful download to a stable,
+/// machine-readable reason token.
+///
+/// Unlike `failure_reason`, this matches a catch-all: `Error` is the crate-wide
+/// enum with sixteen variants, only one of which is meaningful to a caller
+/// here. Enumerating the rest would be noise, and `download_failed` with the
+/// error's text attached is the honest default for all of them.
+fn post_download_failure_reason(error: &Error) -> String {
+    match error {
+        Error::PayloadCapExceeded { .. } => "payload_cap_reached".to_string(),
+        other => format!("download_failed: {other}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cap_exhaustion_maps_to_the_payload_cap_token() {
+        let reason = post_download_failure_reason(&Error::PayloadCapExceeded { limit: 32_768 });
+        assert_eq!(
+            reason, "payload_cap_reached",
+            "an image that downloaded fine but could not be shrunk is a cap drop, \
+             not a download failure"
+        );
+    }
+
+    #[test]
+    fn a_real_failure_still_maps_to_the_download_failed_token() {
+        let reason = post_download_failure_reason(&Error::DownloadFailed("boom".to_string()));
+        assert_eq!(reason, "download_failed: media download failed: boom");
     }
 }

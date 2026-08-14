@@ -1,9 +1,8 @@
-use crate::mcp::tools::media_budget::MIN_IMAGE_BASE64_BYTES;
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use std::path::PathBuf;
 
-mod defaults;
+pub(crate) mod defaults;
 mod env;
 
 use defaults::*;
@@ -147,6 +146,12 @@ where
 /// which is the actual practical ceiling.
 const MAX_SEARCH_DEADLINE_SECONDS: u64 = 3600;
 
+/// Floor below which an image would be downscaled past usefulness. Once a
+/// batch's remaining budget drops under this, `Base64Budget::allowance`
+/// returns `None` rather than emitting an unreadable thumbnail — which is why
+/// `limits.media_batch_max_total_bytes` is validated against it here.
+pub(crate) const MIN_IMAGE_BASE64_BYTES: usize = 32_768;
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct SearchConfig {
     #[serde(default = "default_hours_back")]
@@ -195,6 +200,32 @@ pub struct RateLimitConfig {
     /// transcription quota makes these calls precious; searches cost 1).
     #[serde(default = "default_transcription_cost")]
     pub transcription_cost: u32,
+}
+
+impl RateLimitConfig {
+    /// Reject a per-call cost the bucket can never satisfy. A cost above
+    /// `max_tokens` means every call of that kind fails on a full bucket —
+    /// a configuration that is not merely tight but unsatisfiable. It also
+    /// keeps per-call costs proportionate to the bucket's capacity.
+    pub fn validate(&self) -> anyhow::Result<()> {
+        if self.media_download_cost > self.max_tokens {
+            anyhow::bail!(
+                "rate_limiting.media_download_cost ({}) exceeds max_tokens ({}), \
+                 so every media call would fail even on a full bucket",
+                self.media_download_cost,
+                self.max_tokens
+            );
+        }
+        if self.transcription_cost > self.max_tokens {
+            anyhow::bail!(
+                "rate_limiting.transcription_cost ({}) exceeds max_tokens ({}), \
+                 so every transcription call would fail even on a full bucket",
+                self.transcription_cost,
+                self.max_tokens
+            );
+        }
+        Ok(())
+    }
 }
 
 /// Bounds for the `transcribe_voice_message` `timeout_seconds` request param.
@@ -353,6 +384,11 @@ impl Config {
             .search
             .validate()
             .context("invalid search configuration")?;
+
+        config
+            .rate_limiting
+            .validate()
+            .context("invalid rate_limiting configuration")?;
 
         Ok(config)
     }

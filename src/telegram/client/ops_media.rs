@@ -5,6 +5,13 @@
 use super::guard::require_found;
 use super::*;
 
+/// Concurrent media downloads in flight within one batch call.
+///
+/// Deliberately owned by this layer rather than shared with the MCP fan-out
+/// constant it currently equals: these are multi-hundred-KB binary transfers,
+/// not small JSON round trips, and the two should be tunable apart.
+pub(crate) const MEDIA_DOWNLOAD_CONCURRENCY: usize = 4;
+
 impl TelegramClient {
     pub(super) async fn download_message_media_impl(
         &self,
@@ -83,8 +90,26 @@ impl TelegramClient {
         })
         .await?;
 
-        // grammers returns one slot per requested id, in request order; a None
-        // slot is a deleted or inaccessible message.
+        // grammers returns exactly one slot per requested id, in request order
+        // (pinned rev 9fef0ba, client/messages.rs:1144 collects
+        // `message_ids.iter().map(|id| map.remove(id))`), so the lengths match
+        // by construction. A None slot is a deleted or inaccessible message.
+        //
+        // Both the assertion and the pad below are deliberate, and neither
+        // makes the other redundant: `debug_assert_eq!` compiles out in
+        // release builds, so it documents and loudly enforces the contract in
+        // dev/test but guarantees nothing in production. The `chain` pads any
+        // shortfall with `None`, which keeps a plain `zip` from silently
+        // truncating message_ids to the shorter side — without it, if
+        // grammers ever returned fewer slots than requested, the trailing ids
+        // would vanish from both `content` and `failed` in a release build,
+        // violating the invariant that every requested id ends up in exactly
+        // one of them. Do not remove either half of this pair.
+        debug_assert_eq!(
+            messages.len(),
+            message_ids.len(),
+            "grammers must return one slot per requested id"
+        );
         let slots: Vec<(i32, Option<_>)> = message_ids
             .iter()
             .copied()
@@ -110,7 +135,7 @@ impl TelegramClient {
                 };
                 MediaFetchOutcome { message_id, result }
             }))
-            .buffered(crate::mcp::tools::fanout::FANOUT_CONCURRENCY)
+            .buffered(MEDIA_DOWNLOAD_CONCURRENCY)
             .collect::<Vec<_>>()
             .await;
 

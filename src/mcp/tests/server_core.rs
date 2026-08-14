@@ -111,3 +111,35 @@ fn tools_list_hints_gated_on_protocol_version() {
     assert_eq!(unversioned.ttl_ms, None);
     assert!(unversioned.cache_scope.is_none());
 }
+
+#[test]
+fn server_defaults_match_the_shipped_config_defaults() {
+    // The bug this guards: changing a default in config/defaults.rs while
+    // server.rs keeps a hand-copied number desyncs every construction path
+    // that does not call the matching with_* builder.
+    use crate::config::defaults::*;
+
+    let server = McpServer::new(
+        Arc::new(MockTelegramClientTrait::new()),
+        Arc::new(MockRateLimiterTrait::new()),
+    );
+
+    assert_eq!(server.media_download_cost(), default_media_download_cost());
+    assert_eq!(server.transcription_cost(), default_transcription_cost());
+    assert_eq!(
+        server.response_byte_budget() as u64,
+        default_response_byte_budget()
+    );
+    assert_eq!(
+        server.media_batch_max_total_bytes() as u64,
+        default_media_batch_max_total_bytes()
+    );
+    assert_eq!(
+        server.transcription_default_timeout_secs(),
+        default_transcription_default_timeout()
+    );
+    assert_eq!(
+        server.transcription_max_timeout_secs(),
+        default_transcription_max_timeout()
+    );
+}

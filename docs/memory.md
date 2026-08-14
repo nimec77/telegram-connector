@@ -1,6 +1,6 @@
 # Development Memory - Telegram MCP Connector
 
-**Last Updated:** Live acceptance closure — search deadline path + `poll_info` verified against a real session, 2026-08-14
+**Last Updated:** Media batch review fixes — ten review findings closed across eleven tasks, v0.22.1 released, 2026-08-14
 
 ---
 
@@ -3822,3 +3822,36 @@ reported `payload_cap_reached` in request order, `returned + failed == requested
   the fact that the dialog walk degrades under recent load is itself an argument for performing it
   once per batch rather than once per image — the pathological case is exactly a digest run that has
   been hammering the account.
+
+## Media batch review fixes — 2026-08-14
+
+Twelve-task SDD plan (`docs/superpowers/plans/2026-08-14-media-batch-review-fixes.md`, design:
+`docs/superpowers/specs/2026-08-14-media-batch-review-fixes-design.md`) closing ten findings from a
+code review of the media-batch feature (Phase 36), on `fix/media-batch-review` cut from master at
+`bf047bb`. `Error::PayloadCapExceeded` now carries cap exhaustion separately from
+`Error::DownloadFailed` (Task 1), so a batch id whose image downloaded fine but couldn't be shrunk
+under its remaining allowance is classified `payload_cap_reached` instead of `download_failed`
+(Task 2) — a client branching on the token was previously told to retry something that could never
+succeed. The batch refund saturates like the charge it reverses (Task 4); rate-limit costs above
+`max_tokens` are rejected at startup (Task 5); image encoding moved off the async worker onto a
+blocking thread while the batch loop stays sequential and in request order (Task 6); both
+module-layering inversions are gone — `src/telegram/` no longer reaches into `crate::mcp` for its
+download concurrency constant (Task 7), and `config.rs` no longer imports a validation bound from
+the MCP layer (Task 9); `McpServer::new` now builds its defaults from `config::defaults` instead of
+six hand-copied literals, with a test that fails if the two desync (Task 10); id dedupe/validation
+is shared between the two batch tools (Task 11). Tests 709 → 722 across Tasks 1–11; Task 12
+(this entry) is docs-only and adds none. Released as v0.22.1.
+
+### Decisions worth remembering
+
+- **One error variant serving two failure modes makes a caller-facing contract unimplementable.**
+  The review found the symptom at the call site (`download_failed` where the docs promised
+  `payload_cap_reached`) but the cause was in the callee's type: `process_image_with_cap` returned
+  `Error::DownloadFailed` for both cap exhaustion and decode failure, so no amount of care at the
+  call site could have labelled them apart. When a reason token looks wrong, check whether the
+  callee can even express the distinction before fixing the caller.
+- **A constant's home determines the dependency direction.** Three separate findings — a
+  `telegram → mcp` import, a `config → mcp` import, and six hand-copied default values — were all
+  one misplacement each. The `defaults` case is the sharpest: every function in the module was
+  already `pub(crate)`, and only the module declaration's privacy forced the duplication. Before
+  copying a value across a module boundary, check whether the boundary is the thing that's wrong.

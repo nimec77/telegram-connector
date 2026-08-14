@@ -48,6 +48,37 @@ pub fn parse_message_id(id: i64) -> Result<MessageId, String> {
     MessageId::new(id).map_err(|e| format!("Invalid message_id: {}", error_detail(e)))
 }
 
+/// Dedupe message ids (silently, preserving first-seen order), enforce a
+/// per-call cap, and validate each id's sign and i32 range.
+///
+/// Shared by `get_messages_batch` and `get_messages_media_batch`, which differ
+/// only in their cap. Returns the deduped ids alongside their wire (`i32`)
+/// forms, in the same order. Dedupe runs before the cap check, so a caller
+/// repeating an id is not penalised for it.
+pub fn dedupe_and_validate_ids(ids: &[i64], cap: usize) -> Result<(Vec<i64>, Vec<i32>), String> {
+    let mut seen = std::collections::HashSet::new();
+    let unique: Vec<i64> = ids.iter().copied().filter(|id| seen.insert(*id)).collect();
+
+    if unique.len() > cap {
+        return Err(format!(
+            "message_ids accepts at most {cap} ids per call, got {}",
+            unique.len()
+        ));
+    }
+
+    let mut wire_ids = Vec::with_capacity(unique.len());
+    for id in &unique {
+        let parsed = parse_message_id(*id)?;
+        wire_ids.push(
+            parsed
+                .as_i32()
+                .ok_or_else(|| format!("message_id {} exceeds Telegram's message id range", id))?,
+        );
+    }
+
+    Ok((unique, wire_ids))
+}
+
 /// Parse an optional channel ID string to an optional ChannelId.
 ///
 /// # Arguments
@@ -172,6 +203,36 @@ mod tests {
         assert_eq!(
             err,
             "Invalid message_id: Message ID must be positive, got -5"
+        );
+    }
+
+    #[test]
+    fn dedupe_preserves_first_seen_order() {
+        let (unique, wire) = dedupe_and_validate_ids(&[3, 1, 3, 2, 1], 10).expect("valid ids");
+        assert_eq!(unique, vec![3, 1, 2]);
+        assert_eq!(wire, vec![3, 1, 2]);
+    }
+
+    #[test]
+    fn over_cap_is_rejected_with_the_cap_in_the_message() {
+        let err = dedupe_and_validate_ids(&[1, 2, 3], 2).expect_err("over cap");
+        assert_eq!(err, "message_ids accepts at most 2 ids per call, got 3");
+    }
+
+    #[test]
+    fn dedupe_happens_before_the_cap_check() {
+        // Three ids but two distinct: under a cap of 2 this must be accepted.
+        let (unique, _) = dedupe_and_validate_ids(&[7, 7, 8], 2).expect("duplicates do not count");
+        assert_eq!(unique, vec![7, 8]);
+    }
+
+    #[test]
+    fn an_id_beyond_the_i32_range_is_rejected() {
+        let err =
+            dedupe_and_validate_ids(&[i64::from(i32::MAX) + 1], 10).expect_err("out of range");
+        assert!(
+            err.contains("exceeds Telegram's message id range"),
+            "got: {err}"
         );
     }
 

@@ -1108,19 +1108,28 @@ stays unambiguous even when some ids fail. The trailing `summary` block is
 always last, regardless of how many ids failed.
 
 **Per-id failures never fail the batch.** An id with no visual media, a deleted
-id, or an id dropped because the batch's payload cap was reached is reported in
-the summary's `failed` array with a machine-readable `reason` — `not_found`,
-`no_visual_media`, `payload_cap_reached`, or `download_failed: <detail>` —
-never as a call error. Only a channel-level failure (channel not found, a
-resolve or fetch RPC error) fails the whole call, since in that case no id
-could have succeeded.
+id, or an id dropped by the batch's payload cap is reported in the summary's
+`failed` array with a machine-readable `reason` — `not_found`,
+`no_visual_media`, `payload_cap_reached`, `download_failed: <detail>`, or
+`internal_error: <detail>` — never as a call error. `payload_cap_reached`
+covers two distinct causes: the batch's total base64 budget was already
+exhausted before this id, **or** the image downloaded fine but could not be
+shrunk under its remaining allowance — either way, retrying this id alone will
+not help; raise `[limits] media_batch_max_total_bytes` or request fewer ids
+instead. `internal_error: <detail>` means the download succeeded but the id
+failed afterwards inside the server — the image-encode task panicked or was
+cancelled, or the metadata could not be serialized — not reachable in normal
+operation; report it if seen. Only a channel-level failure (channel not
+found, a resolve or fetch RPC error) fails the whole call, since in that case
+no id could have succeeded.
 
 **Payload cap:** the batch's total base64 payload (all images combined, the
 quantity that actually consumes context) is capped by `[limits]
 media_batch_max_total_bytes` (default 8 MiB), counted in bytes of base64 as
 sent to the client. Images are downscaled progressively to fit the remaining
-budget; ids that still don't fit once the budget is exhausted are reported as
-`payload_cap_reached` rather than shrunk to uselessness.
+budget; an id whose budget is already exhausted, or whose image still doesn't
+fit after shrinking, is reported as `payload_cap_reached` rather than shrunk
+to uselessness.
 
 **Rate limiting:** acquires `media_download_cost × requested ids` up front,
 before any network work, then refunds the cost of every id that produced no

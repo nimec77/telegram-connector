@@ -1,9 +1,13 @@
 use crate::config::ObservabilityConfig;
+use crate::config::defaults::{
+    default_media_batch_max_total_bytes, default_media_download_cost, default_response_byte_budget,
+    default_transcription_cost, default_transcription_default_timeout,
+    default_transcription_max_timeout,
+};
 use crate::error::Error;
 use crate::link::{ChannelRef, MessageLink, parse_telegram_link};
 use crate::mcp::observability::{InstrumentedTransport, ResponseBuffer, SessionMetrics};
 use crate::mcp::tools::fanout;
-use crate::mcp::tools::image::process_image;
 use crate::mcp::tools::shaping;
 use crate::mcp::tools::{
     BufferedResponseEntry, ChannelsResponse, GenerateLinkRequest, GetChannelInfoRequest,
@@ -14,8 +18,8 @@ use crate::mcp::tools::{
     MessagesBatchResponse, MissingMessageEntry, OpenMessageRequest, RateLimiterCosts,
     RateLimiterStatus, ResolveChannelsRequest, ResolveChannelsResponse, ResponseFormat,
     SearchPublicChannelsRequest, SearchRequest, SearchResponse, StatusResponse,
-    TranscribeVoiceMessageRequest, TranscribeVoiceMessageResponse, json_response, parse_channel_id,
-    parse_message_id, parse_optional_utc, validate_date_window,
+    TranscribeVoiceMessageRequest, TranscribeVoiceMessageResponse, dedupe_and_validate_ids,
+    json_response, parse_channel_id, parse_message_id, parse_optional_utc, validate_date_window,
 };
 // Constructed only inside open_message_in_telegram's macOS-only body; an
 // unconditional import is an unused-import error on Linux builds.
@@ -36,16 +40,6 @@ use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ServerHandler, ServiceExt, tool, tool_handler, tool_router};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-
-/// Default serialized-response byte cap for message-stream tools
-/// (`[limits] response_byte_budget`, work-order B4).
-const DEFAULT_RESPONSE_BYTE_BUDGET: usize = 40_000;
-
-/// Default total base64 payload cap for `get_messages_media_batch`
-/// (`[limits] media_batch_max_total_bytes`, work-order C). Mirrors
-/// `default_media_batch_max_total_bytes()` in `config/defaults.rs`, which is
-/// unreachable from here — that module is private to `config`.
-const DEFAULT_MEDIA_BATCH_MAX_TOTAL_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Clone)]
 pub struct McpServer<T: TelegramClientTrait, R: RateLimiterTrait> {
@@ -75,12 +69,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                 observability.max_buffered_payload_bytes,
             )),
             slow_write_threshold: Duration::from_millis(observability.slow_write_threshold_ms),
-            media_download_cost: 3,
-            transcription_cost: 5,
-            transcription_default_timeout_secs: 30,
-            transcription_max_timeout_secs: 120,
-            response_byte_budget: DEFAULT_RESPONSE_BYTE_BUDGET,
-            media_batch_max_total_bytes: DEFAULT_MEDIA_BATCH_MAX_TOTAL_BYTES,
+            media_download_cost: default_media_download_cost(),
+            transcription_cost: default_transcription_cost(),
+            transcription_default_timeout_secs: default_transcription_default_timeout(),
+            transcription_max_timeout_secs: default_transcription_max_timeout(),
+            response_byte_budget: default_response_byte_budget() as usize,
+            media_batch_max_total_bytes: default_media_batch_max_total_bytes() as usize,
             tool_router: Self::tool_router(),
         }
     }
@@ -129,6 +123,36 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     pub fn with_media_batch_max_total_bytes(mut self, bytes: u64) -> Self {
         self.media_batch_max_total_bytes = bytes as usize;
         self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn media_download_cost(&self) -> u32 {
+        self.media_download_cost
+    }
+
+    #[cfg(test)]
+    pub(crate) fn transcription_cost(&self) -> u32 {
+        self.transcription_cost
+    }
+
+    #[cfg(test)]
+    pub(crate) fn response_byte_budget(&self) -> usize {
+        self.response_byte_budget
+    }
+
+    #[cfg(test)]
+    pub(crate) fn media_batch_max_total_bytes(&self) -> usize {
+        self.media_batch_max_total_bytes
+    }
+
+    #[cfg(test)]
+    pub(crate) fn transcription_default_timeout_secs(&self) -> u32 {
+        self.transcription_default_timeout_secs
+    }
+
+    #[cfg(test)]
+    pub(crate) fn transcription_max_timeout_secs(&self) -> u32 {
+        self.transcription_max_timeout_secs
     }
 
     /// Session metrics handle (shared with the transport; used for shutdown logging).
@@ -416,7 +440,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
     /// Tool 16: get_messages_media_batch - Return several messages' images in one call
     #[tool(
-        description = "Get the photos (or video/animation/video-note thumbnails) of up to 10 messages from ONE channel in a single call, as image blocks the model can see, each followed by its JSON metadata and a trailing batch summary. Far cheaper than N get_message_media calls: one channel resolution and one fetch round trip for the whole batch. Ids with no visual media, deleted ids, and ids dropped at the total payload cap are reported in the summary's `failed` array rather than failing the call. Charged media_download_cost tokens per image actually returned."
+        description = "Get the photos (or video/animation/video-note thumbnails) of up to 10 messages from ONE channel in a single call, as image blocks the model can see, each followed by its JSON metadata and a trailing batch summary. Far cheaper than N get_message_media calls: one channel resolution and one fetch round trip for the whole batch. Ids with no visual media, deleted ids, ids dropped because the total payload cap was exhausted or an image could not be shrunk to fit (retrying that id alone will not help), ids that hit a download or encode failure (download_failed), and the rare id that fails after a successful download due to an image-encode task panic or a metadata-serialization failure (internal_error), are reported in the summary's `failed` array rather than failing the call. Charged media_download_cost tokens per image actually returned."
     )]
     pub async fn get_messages_media_batch(
         &self,

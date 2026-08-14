@@ -618,3 +618,32 @@ fn rate_limit_errors_carry_a_retry_hint() {
         "rate limit exceeded: requested 30 tokens, 9.00 available, retry after 7 seconds"
     );
 }
+
+#[tokio::test]
+async fn an_enormous_media_cost_refunds_without_overflowing() {
+    // Every id fails, so the refund multiplies the cost by the full request
+    // size. With an unchecked `*` this panics in debug builds.
+    let mut client = MockTelegramClientTrait::new();
+    client
+        .expect_download_messages_media()
+        .return_once(|_, _, _| Ok(vec![not_found(10), not_found(11), not_found(12)]));
+
+    let mut limiter = MockRateLimiterTrait::new();
+    limiter.expect_acquire().times(1).returning(|_| Ok(()));
+    limiter.expect_refund().times(1).return_const(());
+
+    let server =
+        McpServer::new(Arc::new(client), Arc::new(limiter)).with_media_download_cost(u32::MAX / 2);
+
+    let result = server
+        .get_messages_media_batch(
+            Parameters(request("chan", vec![10, 11, 12])),
+            RequestId(NumberOrString::Number(1)),
+        )
+        .await;
+
+    assert!(
+        result.is_ok(),
+        "a huge configured cost must not panic the call"
+    );
+}
