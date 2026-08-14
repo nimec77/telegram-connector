@@ -812,3 +812,50 @@ fn below_floor_media_batch_payload_cap_is_rejected() {
         .validate()
         .expect("the shipped default must stay above the per-image floor");
 }
+
+// ========================================================================
+// RateLimitConfig Validation Tests (media-batch-review-fixes, Task 5)
+// ========================================================================
+
+#[test]
+fn a_media_cost_above_the_bucket_capacity_is_rejected() {
+    let config = RateLimitConfig {
+        max_tokens: 10,
+        refill_rate: 2.0,
+        media_download_cost: 11,
+        transcription_cost: 5,
+    };
+    let err = config
+        .validate()
+        .expect_err("an unsatisfiable cost must be rejected");
+    assert!(
+        err.to_string().contains("media_download_cost"),
+        "the error must name the offending key, got: {err}"
+    );
+}
+
+#[test]
+fn a_transcription_cost_above_the_bucket_capacity_is_rejected() {
+    let config = RateLimitConfig {
+        max_tokens: 10,
+        refill_rate: 2.0,
+        media_download_cost: 3,
+        transcription_cost: 11,
+    };
+    let err = config
+        .validate()
+        .expect_err("an unsatisfiable cost must be rejected");
+    assert!(err.to_string().contains("transcription_cost"), "got: {err}");
+}
+
+#[test]
+fn costs_equal_to_capacity_are_accepted() {
+    // Exactly-capacity is satisfiable from a full bucket, so it is legal.
+    let config = RateLimitConfig {
+        max_tokens: 10,
+        refill_rate: 2.0,
+        media_download_cost: 10,
+        transcription_cost: 10,
+    };
+    assert!(config.validate().is_ok());
+}
