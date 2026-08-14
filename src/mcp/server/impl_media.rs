@@ -79,31 +79,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             return Err("message_ids must contain at least one id".to_string());
         }
 
-        // Dedupe silently, preserving first-seen order (same rule as
-        // get_messages_batch).
-        let mut seen = std::collections::HashSet::new();
-        let unique: Vec<i64> = request
-            .message_ids
-            .iter()
-            .copied()
-            .filter(|id| seen.insert(*id))
-            .collect();
-        if unique.len() > MAX_MEDIA_BATCH_IDS {
-            return Err(format!(
-                "message_ids accepts at most {MAX_MEDIA_BATCH_IDS} ids per call, got {}",
-                unique.len()
-            ));
-        }
-
-        let mut wire_ids = Vec::with_capacity(unique.len());
-        for id in &unique {
-            let parsed = parse_message_id(*id)?;
-            wire_ids.push(
-                parsed.as_i32().ok_or_else(|| {
-                    format!("message_id {} exceeds Telegram's message id range", id)
-                })?,
-            );
-        }
+        let (unique, wire_ids) =
+            dedupe_and_validate_ids(&request.message_ids, MAX_MEDIA_BATCH_IDS)?;
 
         let max_dimension = request
             .max_dimension

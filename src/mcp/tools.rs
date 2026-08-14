@@ -13,5 +13,8 @@ pub mod types;
 // Re-export types for convenience
 pub use types::*;
 // Re-export helpers for convenience
-pub use helpers::{json_response, parse_channel_id, parse_message_id, parse_optional_channel_id};
+pub use helpers::{
+    dedupe_and_validate_ids, json_response, parse_channel_id, parse_message_id,
+    parse_optional_channel_id,
+};
 pub(crate) use helpers::{parse_optional_utc, validate_date_window};
