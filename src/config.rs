@@ -1,4 +1,3 @@
-use crate::mcp::tools::media_budget::MIN_IMAGE_BASE64_BYTES;
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -146,6 +145,12 @@ where
 /// a useful value sits well below `[telegram.timeouts] search_secs` (default 120),
 /// which is the actual practical ceiling.
 const MAX_SEARCH_DEADLINE_SECONDS: u64 = 3600;
+
+/// Floor below which an image would be downscaled past usefulness. Once a
+/// batch's remaining budget drops under this, `Base64Budget::allowance`
+/// returns `None` rather than emitting an unreadable thumbnail — which is why
+/// `limits.media_batch_max_total_bytes` is validated against it here.
+pub(crate) const MIN_IMAGE_BASE64_BYTES: usize = 32_768;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct SearchConfig {
