@@ -87,9 +87,9 @@ pub(crate) fn process_image_with_cap(
         target = (f64::from(target) * ratio).floor().max(1.0) as u32;
     }
 
-    Err(Error::DownloadFailed(format!(
-        "image could not be reduced below the {max_base64_len}-byte payload cap"
-    )))
+    Err(Error::PayloadCapExceeded {
+        limit: max_base64_len,
+    })
 }
 
 fn downscale(img: &DynamicImage, max_dimension: u32) -> DynamicImage {
@@ -195,5 +195,28 @@ mod tests {
             .decode(&processed.base64_jpeg)
             .unwrap();
         assert_eq!(&decoded[..2], [0xFF, 0xD8], "output must be JPEG");
+    }
+
+    #[test]
+    fn cap_exhaustion_returns_payload_cap_exceeded_not_download_failed() {
+        // A 100-byte cap is unreachable: even a heavily downscaled JPEG carries
+        // several hundred bytes of headers, so the shrink loop provably exhausts.
+        // The passthrough branch is skipped too (its base64 length exceeds 100).
+        let jpeg = create_test_jpeg(64, 64);
+        let err = process_image_with_cap(&jpeg, 64, 100).expect_err("cap is unreachable");
+        assert!(
+            matches!(err, Error::PayloadCapExceeded { limit: 100 }),
+            "cap exhaustion must be its own variant, got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn a_corrupt_image_is_still_a_download_failure_not_a_cap_failure() {
+        let err = process_image_with_cap(b"not an image", 1280, 1_572_864)
+            .expect_err("undecodable bytes must fail");
+        assert!(
+            matches!(err, Error::DownloadFailed(_)),
+            "a decode failure must not be reported as a cap failure, got: {err:?}"
+        );
     }
 }
