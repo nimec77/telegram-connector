@@ -25,6 +25,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   phase-36 test count corrected to 709; `docs/phase-20-plan.md` verification checklist
   closed retroactively.
 
+## [0.22.1] - 2026-08-14
+
+### Fixed
+- `get_messages_media_batch` now reports an image that downloaded successfully
+  but could not be shrunk under its remaining payload allowance as
+  `payload_cap_reached`, not `download_failed`. The cause was one error variant
+  (`Error::DownloadFailed`) serving two distinct failure modes; cap exhaustion
+  now has its own `Error::PayloadCapExceeded`. A client branching on the token
+  was being told to retry something that could never succeed.
+- The batch refund now uses saturating multiplication, matching the charge it
+  reverses. With a large configured `media_download_cost` the old unchecked
+  multiply could panic in debug builds or wrap in release.
+- Rate-limit costs are validated at startup: a `media_download_cost` or
+  `transcription_cost` above `max_tokens` is rejected, since such a call could
+  never be served even from a full bucket.
+
+### Changed
+- `get_message_media`'s error text for a payload-cap failure lost its
+  `"media download failed: "` prefix: it now reads `"image could not be
+  reduced below the N-byte payload cap"` instead of `"media download failed:
+  image could not be reduced below the N-byte payload cap"`. Deliberate — the
+  old text announced a download failure when the download had actually
+  succeeded. This is prose returned to the client on the single-message path,
+  not one of the batch tool's machine-readable `reason` tokens.
+- Image encoding runs on a blocking thread instead of the async worker. The
+  batch loop stays sequential and in request order, so payload-budget
+  allocation is unchanged and deterministic.
+- A metadata-serialization failure inside a batch is reported as
+  `internal_error: <detail>` rather than being mislabelled a download failure.
+  Not reachable in normal operation.
+
+### Internal
+- Removed both module-layering inversions: `src/telegram/` no longer reaches up
+  into `crate::mcp` for its download concurrency, and `config.rs` no longer
+  imports a validation bound from the MCP layer.
+- `McpServer::new` builds its defaults from `config::defaults` instead of six
+  hand-copied numbers; a test now fails if the two desync.
+- Shared id dedupe/validation between the two batch tools; explicit success
+  counter in place of `content.len() / 2`; grammers' slot-count contract is
+  asserted rather than padded for.
+
+## [0.22.0] - 2026-08-14
+
 ### Added
 - `get_messages_media_batch` returns the images of up to 10 messages from one
   channel in a single call — image block plus metadata block per message, then
