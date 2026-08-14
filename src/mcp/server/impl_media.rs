@@ -172,11 +172,11 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             {
                 Ok(processed) => processed,
                 Err(e) => {
-                    // Budget deliberately untouched: a failed image cost nothing,
-                    // so later ids keep their full allowance.
+                    // Budget deliberately untouched: nothing was emitted, so
+                    // later ids keep their full allowance.
                     failed.push(MediaBatchFailure {
                         id,
-                        reason: format!("download_failed: {e}"),
+                        reason: post_download_failure_reason(&e),
                     });
                     continue;
                 }
@@ -192,12 +192,15 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             let metadata_json = match json_response(&metadata) {
                 Ok(json) => json,
                 Err(e) => {
-                    // Budget deliberately untouched, same reasoning as the
-                    // process_image_with_cap failure above: nothing was returned,
-                    // so nothing was spent.
+                    // Neither a download failure nor a cap drop: serializing the
+                    // metadata failed. Unreachable today (the response type has
+                    // no map keys or floats, the only things that make
+                    // serde_json::to_string fail) but not a compile-time
+                    // guarantee, so it gets an honest token of its own.
+                    // Budget deliberately untouched, same reasoning as above.
                     failed.push(MediaBatchFailure {
                         id,
-                        reason: format!("download_failed: {e}"),
+                        reason: format!("internal_error: {e}"),
                     });
                     continue;
                 }
@@ -348,5 +351,40 @@ fn failure_reason(error: &MediaFetchError) -> String {
         MediaFetchError::NotFound => "not_found".to_string(),
         MediaFetchError::NoVisualMedia { .. } => "no_visual_media".to_string(),
         MediaFetchError::Failed(inner) => format!("download_failed: {inner}"),
+    }
+}
+
+/// Map a failure that happened *after* a successful download to a stable,
+/// machine-readable reason token.
+///
+/// Unlike `failure_reason`, this matches a catch-all: `Error` is the crate-wide
+/// enum with sixteen variants, only one of which is meaningful to a caller
+/// here. Enumerating the rest would be noise, and `download_failed` with the
+/// error's text attached is the honest default for all of them.
+fn post_download_failure_reason(error: &Error) -> String {
+    match error {
+        Error::PayloadCapExceeded { .. } => "payload_cap_reached".to_string(),
+        other => format!("download_failed: {other}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cap_exhaustion_maps_to_the_payload_cap_token() {
+        let reason = post_download_failure_reason(&Error::PayloadCapExceeded { limit: 32_768 });
+        assert_eq!(
+            reason, "payload_cap_reached",
+            "an image that downloaded fine but could not be shrunk is a cap drop, \
+             not a download failure"
+        );
+    }
+
+    #[test]
+    fn a_real_failure_still_maps_to_the_download_failed_token() {
+        let reason = post_download_failure_reason(&Error::DownloadFailed("boom".to_string()));
+        assert_eq!(reason, "download_failed: media download failed: boom");
     }
 }
