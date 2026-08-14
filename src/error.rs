@@ -41,6 +41,13 @@ pub enum Error {
     #[error("media download failed: {0}")]
     DownloadFailed(String),
 
+    /// An image downloaded successfully but could not be shrunk under the
+    /// caller's base64 payload cap. Distinct from `DownloadFailed` because
+    /// the MCP batch tool reports the two with different machine-readable
+    /// reason tokens, and a retry helps only one of them.
+    #[error("image could not be reduced below the {limit}-byte payload cap")]
+    PayloadCapExceeded { limit: usize },
+
     #[error("transcription requires Telegram Premium on the connected account")]
     PremiumRequired,
 
