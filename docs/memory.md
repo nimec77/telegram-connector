@@ -1,6 +1,6 @@
 # Development Memory - Telegram MCP Connector
 
-**Last Updated:** Refactor roadmap COMPLETE — Phase D data honesty (CQ-4/5), 2026-06-20
+**Last Updated:** Live acceptance closure — search deadline path + `poll_info` verified against a real session, 2026-08-14
 
 ---
 
@@ -3637,17 +3637,30 @@ fields, not new tools.
   author already suspected was the risk — it cannot catch a risk the author didn't think to name,
   which is exactly the class of bug a second reader is for.
 
-### Standing note
+### Standing note — CLOSED 2026-08-14, live acceptance run and passed
 
-- **Manual acceptance against live Telegram was not run this session.** The work order's
-  acceptance criteria — channel `1912881684` message `298716` returning
-  `"channel_name":"Pavel Zloi"` identically across `get_recent_messages`, `get_message_by_link`,
-  and `get_messages_batch`; channel `2246801752` message `198` returning a populated
-  `document_info.file_name` — need a deployed server with an authenticated Telegram session, which
-  this documentation pass did not have. All eight implementation tasks are covered by the offline
-  test suite (656 passed, 0 failed, 5 ignored); the live check is the one thing that suite cannot
-  exercise. Whoever has a live session next should run both checks before considering this work
-  order fully closed, and update this note with the result.
+- Originally: manual acceptance against live Telegram was not run in the implementation session.
+  Run 2026-08-14 against the deployed session (repo-built release binary v0.22.0, scratch config
+  pointing at the deployed `session.bin`), all criteria pass:
+  - **Forward-attribution parity:** channel `1912881684` message `298716` returns a byte-identical
+    `forwarded_from` — `{"channel_id": 1783384254, "channel_name": "Pavel Zloi",
+    "channel_username": "evilfreelancer", "original_date": "2026-08-12T14:29:17Z",
+    "original_message_id": 1863}` — across all three of `get_message_by_link`,
+    `get_messages_batch`, and `get_recent_messages` (the last pinned to the id via
+    `before_id: 298717`).
+  - **`document_info`:** channel `2246801752` message `198` returns a fully populated
+    `document_info` (`file_name` = a real `.pdf` name, `file_size_bytes: 8744782`,
+    `mime_type: "application/pdf"`).
+  - **`poll_info`** — the one field the original criteria could not cover for want of a live
+    poll — verified against a real poll (channel `1734769861` message `46611`,
+    `media_type: "poll"`): `question`, 8 `options` each with a per-option `voters` count,
+    `total_voters: 373`, `closed: false`, `multiple_choice: true`, `quiz: false`. The option
+    votes sum to 455 > 373 total voters, which is exactly what `multiple_choice: true` predicts —
+    the counts are real disclosed data, not fabricated zeros. The same message fetched through
+    `get_messages_batch` (the raw envelope-preserving path this work order built) and
+    `get_recent_messages` serializes an identical `poll_info`. No `Poll` variant exists in
+    Telegram's `MessagesFilter` TL, so finding one means scanning recent history of poll-likely
+    (chat-style) dialogs — that is why this stayed unverified until now.
 
 ## Global search latency (work order B) — 2026-08-13
 
@@ -3711,6 +3724,21 @@ server-side fix doesn't cover. Tests 656 → 676 across Tasks 1–7; this docs-o
   check that they are not firing per message (2 pages for 9 messages, not 9 for 9). No probe in
   the set tripped `timed_out`; the deadline is the backstop for cases the server-side bound
   doesn't cover, and none of the measured ones needed it.
+- **Deadline path exercised live — 2026-08-14, passed.** The expiry path itself (not just the
+  fast path around it) was forced on a real session by running the repo-built v0.22.0 binary with
+  a scratch config setting `[search] deadline_seconds = 1`. A channel-scoped search
+  (`channel_id: 1556054753`, `media_filter: photo`, 72 h, limit 50) returned in **1.053 s** with
+  `timed_out: true`, `partial: true`, `pages_fetched: 1`, `messages_scanned: 100`, one message
+  returned, `has_more: false` and no `next_cursor` — a graceful partial result, never an error,
+  exactly as designed. The trip point was the post-page budget check: the dialog walk found the
+  channel and one 100-message page landed before expiry. The global branch would not trip even at
+  a 1 s deadline (deep 3-month `document` window, limit 100: 2 pages, 200 scanned, 0.597 s) —
+  live confirmation that the server-side `min_date`/`max_date` fix keeps the deadline a backstop,
+  not a working limit; the global branch's expiry behavior stays covered by the deterministic
+  `tokio::time::pause` tests. Separately observed while probing: after a burst of dialog-walking
+  calls, Telegram itself starts failing `messages.getDialogs` with `RPC_CALL_FAIL 500` — that
+  surfaces as a telegram API *error*, which is correct and distinct from the deadline path (the
+  deadline covers slow work; a failing RPC propagates as the error it is).
 
 ## Media throughput (work order C) — 2026-08-13
 
@@ -3728,8 +3756,10 @@ new shrink logic. `[rate_limiting]` retuned `max_tokens` 50 → 60 and `media_do
 (Task 1); a batch acquires for every requested id up front and refunds ids that produced no image
 (Task 7), so the net charge is per image returned while a rejected acquire still blocks all
 downloads. `check_mcp_status` gains an additive `media` block (Task 8) so a caller can plan a
-batch's limits instead of discovering them by hitting them. Tests 676 → 708 across Tasks 1–8;
-this docs-only Task 9 adds none. Task 10 (live acceptance) ran and passed — see below.
+batch's limits instead of discovering them by hitting them. Tests 676 → 709 across Tasks 1–8 plus
+the post-review hardening commit (`d19f74b` added `below_floor_media_batch_payload_cap_is_rejected`
+after this entry was first written); this docs-only Task 9 adds none. Task 10 (live acceptance)
+ran and passed — see below.
 
 ### Decisions worth remembering
 
@@ -3749,7 +3779,10 @@ this docs-only Task 9 adds none. Task 10 (live acceptance) ran and passed — se
   did not also remove the evidence: prefer allow-listing the keys you want over deny-listing the
   ones you don't. The practical fallout here was real but bounded: the `max_tokens` 50 → 60 default
   change has no effect on this deployment because the config pins it, so only the
-  `media_download_cost` 5 → 3 change actually landed for this user.
+  `media_download_cost` 5 → 3 change actually landed for this user. *(Follow-up 2026-08-14: the
+  deployed `config.toml` was refreshed after the v0.22.0 release and now sets only the credential
+  keys — the `max_tokens = 30` / `refill_rate = 1.0` pins are gone, so the deployment now runs the
+  shipped defaults, 60 / 2.0. The lesson stands; the deployment it described has moved.)*
 - **A client method that resolves internally pays its resolution cost once per call site, not
   once per logical operation — which is why the batch had to move to the client layer.**
   `resolve_peer` (`src/telegram/client/resolve.rs:13-32`) walks the entire dialog list for a

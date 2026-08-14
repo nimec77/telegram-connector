@@ -280,7 +280,7 @@ Check the connection status and rate limiter state.
     "default_max_dimension": 1280,
     "max_dimension_limit": 2048
   },
-  "server_version": "0.1.0"
+  "server_version": "0.22.0"
 }
 ```
 
@@ -953,6 +953,30 @@ Get recent messages from a channel by time window, without requiring a search qu
 
 ---
 
+### 8. get_message_by_link
+
+Get a specific Telegram message by its t.me link.
+
+**Parameters:**
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `link` | string | Yes | - | Telegram message link. Supported formats: `https://t.me/username/12345`, `https://t.me/c/channel_id/12345`, `t.me/username/12345` |
+
+**Example:**
+```json
+{"link": "https://t.me/durov/123"}
+```
+
+**Response:** a single message object in the same shape as `search_messages` /
+`get_recent_messages` results (text, media metadata, `forwarded_from`
+attribution, views, etc.).
+
+**Usage:** Resolve a link someone shared straight to its content without knowing
+the channel id, or refetch one known message. Costs 1 rate-limit token (same
+resolve+fetch work as a one-id `get_messages_batch`).
+
+---
+
 ### 9. get_last_responses
 
 Debug/recovery tool: replay the last N tool responses that were written to stdout, so a response lost in transit (client crash, truncated read, etc.) can be recovered without re-querying Telegram or spending rate-limit budget.
@@ -1608,7 +1632,7 @@ src/
 ├── lib.rs              # Library root, public API exports
 ├── main.rs             # CLI entry point, signal handling
 ├── cli.rs              # CLI argument parsing (clap)
-├── config.rs           # Configuration loading & validation
+├── config.rs           # Configuration loading & validation (+ config/ submodules)
 ├── error.rs            # Error types (thiserror)
 ├── logging.rs          # Dual-layer tracing (stderr + file), log cleanup
 ├── rate_limiter.rs     # Token bucket rate limiting
@@ -1616,26 +1640,39 @@ src/
 ├── test_helpers.rs     # Test fixture factories (cfg(test))
 ├── mcp.rs              # MCP module root
 ├── mcp/
-│   ├── server.rs       # MCP server + all 16 tool handlers
+│   ├── server.rs       # McpServer + the #[tool_router] block (all 16 tool wrappers)
+│   ├── server/         # impl_*.rs — one file per tool-implementation group
+│   ├── observability.rs # + observability/ — InstrumentedTransport, metrics, response buffer
 │   ├── tools.rs        # Re-exports tools + helpers
 │   └── tools/
 │       ├── helpers.rs  # ID parsing helpers
+│       ├── fanout.rs   # Bounded-concurrency channel fan-out
+│       ├── image.rs    # Image downscale/encode pipeline
+│       ├── media_budget.rs # Base64 payload budget for media batches
+│       ├── shaping.rs  # Response byte-budget shaping
 │       └── types/
 │           ├── requests.rs     # Tool request types
 │           ├── responses.rs    # Tool response types
 │           └── serde_helpers.rs # Custom deserializers
 ├── telegram.rs         # Telegram module root
 └── telegram/
-    ├── client.rs       # Telegram client (grammers wrapper)
-    ├── trait_def.rs     # TelegramClientTrait + mock generation
-    ├── converters.rs    # Type converters (grammers → domain)
-    ├── auth.rs          # Authentication & 2FA flow
+    ├── client.rs       # TelegramClient dispatch (+ client/ ops_*.rs submodules)
+    ├── client/         # lifecycle, resolve, raw_pager, search_budget, per-op files
+    ├── trait_def.rs    # TelegramClientTrait + mock generation
+    ├── converters.rs   # Type converters (grammers → domain, + converters/ submodules)
+    ├── envelope.rs     # EntityLookup — response-envelope entity attribution
+    ├── albums.rs       # Album (grouped-media) collapsing
+    ├── auth.rs         # Authentication & 2FA flow
+    ├── timeout.rs      # with_timeout budgets for grammers calls
+    ├── transcription.rs # Voice transcription support
     └── types/
-        ├── ids.rs       # ChannelId, MessageId, UserId
-        ├── names.rs     # Username, ChannelName
-        ├── media.rs     # MediaType, MediaFilter
-        ├── entities.rs  # Message, Channel
-        └── params.rs    # SearchParams, HistoryParams, SearchResult
+        ├── ids.rs      # ChannelId, MessageId, UserId
+        ├── names.rs    # Username, ChannelName
+        ├── media.rs    # MediaType, MediaFilter
+        ├── entities.rs # Message, Channel
+        ├── stats.rs    # Channel stats types
+        ├── transcription.rs # Transcription types
+        └── params.rs   # SearchParams, HistoryParams, SearchResult
 ```
 
 ## License

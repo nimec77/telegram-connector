@@ -67,11 +67,11 @@ pub mod tools;
 - **Add context** with `.context()` for better error messages
 
 ```rust
-// Library errors
+// Library errors (real variants live in src/error.rs)
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error("session expired")]
-    SessionExpired,
+    #[error("invalid input: {0}")]
+    InvalidInput(String),
 }
 
 // Application errors
@@ -101,8 +101,9 @@ pub trait TelegramClientTrait: Send + Sync {
 Shared state via `Arc<T>`:
 
 ```rust
-let client = Arc::new(TelegramClient::new(&config).await?);
-let server = McpServer::new(Arc::clone(&client));
+let client = Arc::new(TelegramClient::new(&config.telegram, &config.search).await?);
+let limiter = Arc::new(RateLimiter::new(&config.rate_limiting));
+let server = McpServer::new(Arc::clone(&client), Arc::clone(&limiter));
 ```
 
 ---

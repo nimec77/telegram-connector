@@ -33,6 +33,11 @@ phone_number = "+1234567890"
 # resolve_secs = 30   # resolve_username + iter_dialogs lookups
 # history_secs = 60   # iter_messages / get_messages_by_id
 # search_secs  = 120  # search_messages (single-channel and global)
+# download_secs = 120 # media downloads (get_message_media / get_messages_media_batch)
+
+# [server]
+# Optional: graceful-shutdown budget (seconds) for in-flight work on SIGINT/SIGTERM.
+# shutdown_timeout_seconds = 5             # Default: 5
 
 [search]
 # Optional: Search defaults
@@ -96,6 +101,9 @@ phone_number = "+1234567890"
 # Transport observability. All fields optional.
 # slow_write_threshold_ms: WARN when a stdout write+flush exceeds this (0 = warn on every write).
 # response_buffer_size: responses kept for the get_last_responses recovery tool (0 = disabled).
+# max_buffered_payload_bytes: responses larger than this are stubbed in the
+#   get_last_responses buffer (image payloads replaced with {omitted, ...} stubs).
 # [observability]
 # slow_write_threshold_ms = 500
 # response_buffer_size = 10
+# max_buffered_payload_bytes = 262144      # Default: 262144 (256 KiB)
