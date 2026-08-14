@@ -134,4 +134,12 @@ fn server_defaults_match_the_shipped_config_defaults() {
         server.media_batch_max_total_bytes() as u64,
         default_media_batch_max_total_bytes()
     );
+    assert_eq!(
+        server.transcription_default_timeout_secs(),
+        default_transcription_default_timeout()
+    );
+    assert_eq!(
+        server.transcription_max_timeout_secs(),
+        default_transcription_max_timeout()
+    );
 }

@@ -145,6 +145,16 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         self.media_batch_max_total_bytes
     }
 
+    #[cfg(test)]
+    pub(crate) fn transcription_default_timeout_secs(&self) -> u32 {
+        self.transcription_default_timeout_secs
+    }
+
+    #[cfg(test)]
+    pub(crate) fn transcription_max_timeout_secs(&self) -> u32 {
+        self.transcription_max_timeout_secs
+    }
+
     /// Session metrics handle (shared with the transport; used for shutdown logging).
     pub fn metrics(&self) -> Arc<SessionMetrics> {
         Arc::clone(&self.metrics)
@@ -430,7 +440,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
     /// Tool 16: get_messages_media_batch - Return several messages' images in one call
     #[tool(
-        description = "Get the photos (or video/animation/video-note thumbnails) of up to 10 messages from ONE channel in a single call, as image blocks the model can see, each followed by its JSON metadata and a trailing batch summary. Far cheaper than N get_message_media calls: one channel resolution and one fetch round trip for the whole batch. Ids with no visual media, deleted ids, ids dropped because the total payload cap was exhausted or an image could not be shrunk to fit (retrying that id alone will not help), and the rare id whose downloaded image failed metadata serialization (internal_error) are reported in the summary's `failed` array rather than failing the call. Charged media_download_cost tokens per image actually returned."
+        description = "Get the photos (or video/animation/video-note thumbnails) of up to 10 messages from ONE channel in a single call, as image blocks the model can see, each followed by its JSON metadata and a trailing batch summary. Far cheaper than N get_message_media calls: one channel resolution and one fetch round trip for the whole batch. Ids with no visual media, deleted ids, ids dropped because the total payload cap was exhausted or an image could not be shrunk to fit (retrying that id alone will not help), ids that hit a download or encode failure (download_failed), and the rare id that fails after a successful download due to an image-encode task panic or a metadata-serialization failure (internal_error), are reported in the summary's `failed` array rather than failing the call. Charged media_download_cost tokens per image actually returned."
     )]
     pub async fn get_messages_media_batch(
         &self,

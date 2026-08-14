@@ -7,24 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Documentation
-- Live acceptance closure (2026-08-14, real session): the `[search] deadline_seconds`
-  expiry path was exercised live for the first time (forced with a 1 s deadline: graceful
-  partial result with `timed_out`/`partial` set, no error), and `poll_info` was verified
-  against a real poll — full question/options/per-option voters/`total_voters`/flags,
-  identical through `get_messages_batch` (raw envelope path) and `get_recent_messages`.
-  The work-order-A standing note (forward-attribution parity, `document_info`) is closed:
-  all criteria pass. Recorded in `docs/memory.md` and `docs/tasklist.md`.
-- Docs-vs-code audit fixes: README gains the missing `get_message_by_link` tool section
-  (tool 8) and a current project-structure tree; the stale `server_version` example is
-  bumped; `config.example.toml` documents the missing `[server] shutdown_timeout_seconds`,
-  `[telegram.timeouts] download_secs`, and `[observability] max_buffered_payload_bytes`
-  keys; CLAUDE.md notes both media tools return `CallToolResult` and lists the full serde
-  helper set; `docs/conventions.md` examples match the real constructor signatures and
-  error variants; stale "11 tools" references in `.claude/` rules/skills corrected to 16;
-  phase-36 test count corrected to 709; `docs/phase-20-plan.md` verification checklist
-  closed retroactively.
-
 ## [0.22.1] - 2026-08-14
 
 ### Fixed
@@ -52,9 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Image encoding runs on a blocking thread instead of the async worker. The
   batch loop stays sequential and in request order, so payload-budget
   allocation is unchanged and deterministic.
-- A metadata-serialization failure inside a batch is reported as
-  `internal_error: <detail>` rather than being mislabelled a download failure.
-  Not reachable in normal operation.
+- A metadata-serialization failure inside a batch, or a panicked/cancelled
+  image-encode task, is reported as `internal_error: <detail>` rather than
+  being mislabelled a download failure. Not reachable in normal operation.
 
 ### Internal
 - Removed both module-layering inversions: `src/telegram/` no longer reaches up
@@ -65,6 +47,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Shared id dedupe/validation between the two batch tools; explicit success
   counter in place of `content.len() / 2`; grammers' slot-count contract is
   asserted rather than padded for.
+
+### Documentation
+- Live acceptance closure (2026-08-14, real session): the `[search] deadline_seconds`
+  expiry path was exercised live for the first time (forced with a 1 s deadline: graceful
+  partial result with `timed_out`/`partial` set, no error), and `poll_info` was verified
+  against a real poll — full question/options/per-option voters/`total_voters`/flags,
+  identical through `get_messages_batch` (raw envelope path) and `get_recent_messages`.
+  The work-order-A standing note (forward-attribution parity, `document_info`) is closed:
+  all criteria pass. Recorded in `docs/memory.md` and `docs/tasklist.md`.
+- Docs-vs-code audit fixes: README gains the missing `get_message_by_link` tool section
+  (tool 8) and a current project-structure tree; the stale `server_version` example is
+  bumped; `config.example.toml` documents the missing `[server] shutdown_timeout_seconds`,
+  `[telegram.timeouts] download_secs`, and `[observability] max_buffered_payload_bytes`
+  keys; CLAUDE.md notes both media tools return `CallToolResult` and lists the full serde
+  helper set; `docs/conventions.md` examples match the real constructor signatures and
+  error variants; stale "11 tools" references in `.claude/` rules/skills corrected to 16;
+  phase-36 test count corrected to 709; `docs/phase-20-plan.md` verification checklist
+  closed retroactively.
 
 ## [0.22.0] - 2026-08-14
 

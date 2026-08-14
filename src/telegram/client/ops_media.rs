@@ -94,12 +94,27 @@ impl TelegramClient {
         // (pinned rev 9fef0ba, client/messages.rs:1144 collects
         // `message_ids.iter().map(|id| map.remove(id))`), so the lengths match
         // by construction. A None slot is a deleted or inaccessible message.
+        //
+        // Both the assertion and the pad below are deliberate, and neither
+        // makes the other redundant: `debug_assert_eq!` compiles out in
+        // release builds, so it documents and loudly enforces the contract in
+        // dev/test but guarantees nothing in production. The `chain` pads any
+        // shortfall with `None`, which keeps a plain `zip` from silently
+        // truncating message_ids to the shorter side — without it, if
+        // grammers ever returned fewer slots than requested, the trailing ids
+        // would vanish from both `content` and `failed` in a release build,
+        // violating the invariant that every requested id ends up in exactly
+        // one of them. Do not remove either half of this pair.
         debug_assert_eq!(
             messages.len(),
             message_ids.len(),
             "grammers must return one slot per requested id"
         );
-        let slots: Vec<(i32, Option<_>)> = message_ids.iter().copied().zip(messages).collect();
+        let slots: Vec<(i32, Option<_>)> = message_ids
+            .iter()
+            .copied()
+            .zip(messages.into_iter().chain(std::iter::repeat_with(|| None)))
+            .collect();
 
         let outcomes =
             futures::stream::iter(slots.into_iter().map(|(message_id, slot)| async move {

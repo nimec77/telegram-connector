@@ -1116,11 +1116,12 @@ covers two distinct causes: the batch's total base64 budget was already
 exhausted before this id, **or** the image downloaded fine but could not be
 shrunk under its remaining allowance — either way, retrying this id alone will
 not help; raise `[limits] media_batch_max_total_bytes` or request fewer ids
-instead. `internal_error: <detail>` means the image was produced but its
-metadata could not be serialized — not reachable in normal operation; report
-it if seen. Only a channel-level failure (channel not found, a resolve or
-fetch RPC error) fails the whole call, since in that case no id could have
-succeeded.
+instead. `internal_error: <detail>` means the download succeeded but the id
+failed afterwards inside the server — the image-encode task panicked or was
+cancelled, or the metadata could not be serialized — not reachable in normal
+operation; report it if seen. Only a channel-level failure (channel not
+found, a resolve or fetch RPC error) fails the whole call, since in that case
+no id could have succeeded.
 
 **Payload cap:** the batch's total base64 payload (all images combined, the
 quantity that actually consumes context) is capped by `[limits]
