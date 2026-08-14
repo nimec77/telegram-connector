@@ -140,6 +140,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         let mut content = Vec::new();
         let mut failed = Vec::new();
         let mut total_base64_bytes = 0usize;
+        let mut returned = 0usize;
         let mut budget = Base64Budget::new(self.media_batch_max_total_bytes);
 
         for outcome in outcomes {
@@ -210,9 +211,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             total_base64_bytes += processed.base64_jpeg.len();
             content.push(ContentBlock::image(processed.base64_jpeg, "image/jpeg"));
             content.push(ContentBlock::text(metadata_json));
+            returned += 1;
         }
-
-        let returned = content.len() / 2;
 
         // Ids that produced no image cost nothing — hand their tokens back.
         // The bucket clamps at capacity, so this can never inflate it.
