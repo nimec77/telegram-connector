@@ -90,13 +90,16 @@ impl TelegramClient {
         })
         .await?;
 
-        // grammers returns one slot per requested id, in request order; a None
-        // slot is a deleted or inaccessible message.
-        let slots: Vec<(i32, Option<_>)> = message_ids
-            .iter()
-            .copied()
-            .zip(messages.into_iter().chain(std::iter::repeat_with(|| None)))
-            .collect();
+        // grammers returns exactly one slot per requested id, in request order
+        // (pinned rev 9fef0ba, client/messages.rs:1145 collects
+        // `message_ids.iter().map(|id| map.remove(id))`), so the lengths match
+        // by construction. A None slot is a deleted or inaccessible message.
+        debug_assert_eq!(
+            messages.len(),
+            message_ids.len(),
+            "grammers must return one slot per requested id"
+        );
+        let slots: Vec<(i32, Option<_>)> = message_ids.iter().copied().zip(messages).collect();
 
         let outcomes =
             futures::stream::iter(slots.into_iter().map(|(message_id, slot)| async move {
