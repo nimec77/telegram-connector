@@ -197,6 +197,32 @@ pub struct RateLimitConfig {
     pub transcription_cost: u32,
 }
 
+impl RateLimitConfig {
+    /// Reject a per-call cost the bucket can never satisfy. A cost above
+    /// `max_tokens` means every call of that kind fails on a full bucket —
+    /// a configuration that is not merely tight but unsatisfiable. It also
+    /// keeps the batch charge/refund arithmetic far from `u32` overflow.
+    pub fn validate(&self) -> anyhow::Result<()> {
+        if self.media_download_cost > self.max_tokens {
+            anyhow::bail!(
+                "rate_limiting.media_download_cost ({}) exceeds max_tokens ({}), \
+                 so every media call would fail even on a full bucket",
+                self.media_download_cost,
+                self.max_tokens
+            );
+        }
+        if self.transcription_cost > self.max_tokens {
+            anyhow::bail!(
+                "rate_limiting.transcription_cost ({}) exceeds max_tokens ({}), \
+                 so every transcription call would fail even on a full bucket",
+                self.transcription_cost,
+                self.max_tokens
+            );
+        }
+        Ok(())
+    }
+}
+
 /// Bounds for the `transcribe_voice_message` `timeout_seconds` request param.
 ///
 /// Sibling of the `transcription_cost` rate-limit knob; previously these were
@@ -353,6 +379,11 @@ impl Config {
             .search
             .validate()
             .context("invalid search configuration")?;
+
+        config
+            .rate_limiting
+            .validate()
+            .context("invalid rate_limiting configuration")?;
 
         Ok(config)
     }
