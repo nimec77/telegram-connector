@@ -218,7 +218,9 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         // The bucket clamps at capacity, so this can never inflate it.
         // unique.len() >= returned always holds (`returned` counts a subset
         // of the requested ids), so this subtraction cannot underflow.
-        let refunded = self.media_download_cost * (unique.len() - returned) as u32;
+        let refunded = self
+            .media_download_cost
+            .saturating_mul((unique.len() - returned) as u32);
         self.rate_limiter.refund(refunded);
 
         tracing::info!(
