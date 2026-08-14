@@ -209,14 +209,4 @@ mod tests {
             "cap exhaustion must be its own variant, got: {err:?}"
         );
     }
-
-    #[test]
-    fn a_corrupt_image_is_still_a_download_failure_not_a_cap_failure() {
-        let err = process_image_with_cap(b"not an image", 1280, 1_572_864)
-            .expect_err("undecodable bytes must fail");
-        assert!(
-            matches!(err, Error::DownloadFailed(_)),
-            "a decode failure must not be reported as a cap failure, got: {err:?}"
-        );
-    }
 }

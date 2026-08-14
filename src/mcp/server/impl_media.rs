@@ -222,7 +222,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         // of the requested ids), so this subtraction cannot underflow.
         let refunded = self
             .media_download_cost
-            .saturating_mul((unique.len() - returned) as u32);
+            .saturating_mul(unique.len().saturating_sub(returned) as u32);
         self.rate_limiter.refund(refunded);
 
         tracing::info!(
