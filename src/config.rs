@@ -2,7 +2,7 @@ use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use std::path::PathBuf;
 
-mod defaults;
+pub(crate) mod defaults;
 mod env;
 
 use defaults::*;
