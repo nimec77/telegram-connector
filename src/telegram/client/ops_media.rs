@@ -5,6 +5,13 @@
 use super::guard::require_found;
 use super::*;
 
+/// Concurrent media downloads in flight within one batch call.
+///
+/// Deliberately owned by this layer rather than shared with the MCP fan-out
+/// constant it currently equals: these are multi-hundred-KB binary transfers,
+/// not small JSON round trips, and the two should be tunable apart.
+pub(crate) const MEDIA_DOWNLOAD_CONCURRENCY: usize = 4;
+
 impl TelegramClient {
     pub(super) async fn download_message_media_impl(
         &self,
@@ -110,7 +117,7 @@ impl TelegramClient {
                 };
                 MediaFetchOutcome { message_id, result }
             }))
-            .buffered(crate::mcp::tools::fanout::FANOUT_CONCURRENCY)
+            .buffered(MEDIA_DOWNLOAD_CONCURRENCY)
             .collect::<Vec<_>>()
             .await;
 
