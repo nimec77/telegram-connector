@@ -69,6 +69,9 @@ phone_number = "+1234567890"
 # media_download_cost = 3                  # Default: 3 tokens per image
 # transcription_cost = 5                   # Default: 5 (Telegram's weekly quota is scarce)
 
+# Costs are validated at startup: a cost above max_tokens is rejected, since
+# such a call could never be served even from a full bucket.
+
 [limits]
 # Byte cap on a serialized message-stream response. When a page would exceed
 # it, trailing messages are dropped and has_more/next_cursor are set.

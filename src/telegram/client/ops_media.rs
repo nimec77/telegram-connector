@@ -91,7 +91,7 @@ impl TelegramClient {
         .await?;
 
         // grammers returns exactly one slot per requested id, in request order
-        // (pinned rev 9fef0ba, client/messages.rs:1145 collects
+        // (pinned rev 9fef0ba, client/messages.rs:1144 collects
         // `message_ids.iter().map(|id| map.remove(id))`), so the lengths match
         // by construction. A None slot is a deleted or inaccessible message.
         debug_assert_eq!(

@@ -430,7 +430,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
     /// Tool 16: get_messages_media_batch - Return several messages' images in one call
     #[tool(
-        description = "Get the photos (or video/animation/video-note thumbnails) of up to 10 messages from ONE channel in a single call, as image blocks the model can see, each followed by its JSON metadata and a trailing batch summary. Far cheaper than N get_message_media calls: one channel resolution and one fetch round trip for the whole batch. Ids with no visual media, deleted ids, and ids dropped at the total payload cap are reported in the summary's `failed` array rather than failing the call. Charged media_download_cost tokens per image actually returned."
+        description = "Get the photos (or video/animation/video-note thumbnails) of up to 10 messages from ONE channel in a single call, as image blocks the model can see, each followed by its JSON metadata and a trailing batch summary. Far cheaper than N get_message_media calls: one channel resolution and one fetch round trip for the whole batch. Ids with no visual media, deleted ids, ids dropped because the total payload cap was exhausted or an image could not be shrunk to fit (retrying that id alone will not help), and the rare id whose downloaded image failed metadata serialization (internal_error) are reported in the summary's `failed` array rather than failing the call. Charged media_download_cost tokens per image actually returned."
     )]
     pub async fn get_messages_media_batch(
         &self,

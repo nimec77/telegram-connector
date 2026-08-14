@@ -327,7 +327,7 @@ pub struct MediaBatchFailure {
     pub id: i64,
 
     #[schemars(
-        description = "Why no image was returned: not_found, no_visual_media, payload_cap_reached, or download_failed: <detail>"
+        description = "Why no image was returned: not_found, no_visual_media, payload_cap_reached, download_failed: <detail>, or internal_error: <detail>"
     )]
     pub reason: String,
 }

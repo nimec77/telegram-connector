@@ -206,7 +206,7 @@ impl RateLimitConfig {
     /// Reject a per-call cost the bucket can never satisfy. A cost above
     /// `max_tokens` means every call of that kind fails on a full bucket —
     /// a configuration that is not merely tight but unsatisfiable. It also
-    /// keeps the batch charge/refund arithmetic far from `u32` overflow.
+    /// keeps per-call costs proportionate to the bucket's capacity.
     pub fn validate(&self) -> anyhow::Result<()> {
         if self.media_download_cost > self.max_tokens {
             anyhow::bail!(
