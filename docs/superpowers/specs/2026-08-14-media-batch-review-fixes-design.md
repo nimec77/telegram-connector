@@ -59,9 +59,18 @@ are indistinguishable at the type level today. That is the actual work in this g
    PayloadCapExceeded { limit: usize },
    ```
 
-   The `Display` text is deliberately identical to the string the shrink loop
-   formats today, so the single-message path's user-facing error message does not
-   change — only its type does.
+   **Corrected during execution (was wrong as first written).** The original spec claimed this
+   `Display` text made the single-message path's message identical to before. It does not:
+   `DownloadFailed(String)` renders with its own `"media download failed: "` prefix, so the old
+   rendered text was `"media download failed: image could not be reduced below the N-byte payload
+   cap"` and the new variant drops that prefix.
+
+   That change is kept deliberately. Preserving the prefix would make a variant named
+   `PayloadCapExceeded` announce a download failure when the download succeeded — the exact lie
+   this change exists to remove. The affected string is human-facing prose returned by the
+   single-message path, not a machine-readable token (the batch `reason` tokens are the contract,
+   and they are fixed properly in Group A). It is recorded as a user-visible change in the
+   0.22.1 CHANGELOG.
 
 2. `process_image_with_cap` returns `Error::PayloadCapExceeded { limit: max_base64_len }`
    on loop exhaustion. Every other failure path keeps its current variant.
