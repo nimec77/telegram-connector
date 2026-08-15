@@ -309,6 +309,22 @@ async fn refund_of_zero_is_a_no_op() {
 }
 
 // ========================================
+// Poison Recovery Tests
+// ========================================
+
+#[test]
+fn a_poisoned_bucket_lock_recovers_instead_of_panicking() {
+    let limiter = Arc::new(RateLimiter::new(&test_config(5, 1.0)));
+    let poisoner = Arc::clone(&limiter);
+    let _ = std::thread::spawn(move || {
+        let _guard = poisoner.bucket.lock().unwrap();
+        panic!("poison the bucket lock");
+    })
+    .join();
+    assert_eq!(limiter.available_tokens(), 5.0);
+}
+
+// ========================================
 // Property-Based Tests (using proptest)
 // ========================================
 
