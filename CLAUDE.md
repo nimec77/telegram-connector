@@ -39,7 +39,7 @@ The same commands are available as `just` recipes (see `justfile`): run `just` t
 
 **Config resolution:** `TELEGRAM_MCP_CONFIG` env var → `~/.config/telegram-connector/config.toml`. Supports `${VAR}` env var expansion in TOML values (pure-integer values are auto-unquoted for TOML type compatibility).
 
-**Flexible scalar coercion at the MCP boundary:** Request structs in `src/mcp/tools/types/requests.rs` tolerate cross-type scalars from lenient clients (numeric string `"10"` for an integer, JSON number for a string, `"true"`/`1` for a bool) via `#[serde(deserialize_with = "...")]` helpers in `src/mcp/tools/types/serde_helpers.rs` (`flexible_opt_u32`, `flexible_i64`, `flexible_opt_i64`, `flexible_string`, `flexible_opt_string`, `flexible_opt_bool`). Field *types* and the advertised `JsonSchema` are unchanged — leniency is a deserialization anti-corruption layer at the transport boundary; the domain layer (`params.rs`, newtypes) stays strict. Design: `docs/superpowers/specs/2026-05-31-flexible-scalar-coercion-design.md`.
+**Flexible scalar coercion at the MCP boundary:** Request structs in `src/mcp/tools/types/requests.rs` tolerate cross-type scalars from lenient clients (numeric string `"10"` for an integer, JSON number for a string, `"true"`/`1` for a bool) via `#[serde(deserialize_with = "...")]` helpers in `src/mcp/tools/types/serde_helpers.rs` (`flexible_opt_u32`, `flexible_i64`, `flexible_opt_i64`, `flexible_string`, `flexible_opt_string`, `flexible_opt_bool`). Field *types* and the advertised `JsonSchema` are unchanged — leniency is a deserialization anti-corruption layer at the transport boundary; the domain layer (`params.rs`, newtypes) stays strict. (Vec-element scalars deliberately get no coercion — scalar-only scope.)
 
 **Timeout budgets:** `TimeoutConfig` in `src/config.rs` (`[timeouts]` TOML table, plus `shutdown_timeout_seconds`) sets per-call-type timeout budgets applied to `grammers` network operations in `src/telegram/client.rs`, so a hung MTProto call cannot stall the server. All fields have `#[serde(default)]`.
 
@@ -66,7 +66,7 @@ Full detail in `docs/conventions.md`. Key rules:
 
 This repo is set up for in-house team development using the **superpowers** skill-driven flow — there is no manual approval gate, and git operations (branch, commit, PR) are expected as part of normal work.
 
-- **brainstorming → writing-plans** — explore intent first, then write the plan. Design docs and implementation plans land in `docs/superpowers/specs/` and `docs/superpowers/plans/` (one dated file per change).
+- **brainstorming → writing-plans** — explore intent first, then write the plan. Design docs and implementation plans land in `docs/superpowers/specs/` and `docs/superpowers/plans/` (one dated file per change). **Delete-on-merge:** once a change is merged, delete its plan/spec files — git history is the archive; only active (unmerged or still-pending) documents stay in the tree.
 - **test-driven-development** — write the failing test first; no production code without a preceding test.
 - **requesting-code-review** — request review before merging a branch.
 - **git** — branch, commit, and open PRs freely; use feature branches (and worktrees) to isolate work. History follows conventional-commit style (`feat:`, `fix:`, `chore:`, `docs:`).
@@ -79,9 +79,8 @@ cargo fmt --check && cargo clippy -- -D warnings && cargo test
 
 ### Project Tracking
 
-- `docs/tasklist.md` — phase checklist and task details
-- `docs/memory.md` — patterns, decisions, and lessons learned (local project journal; keep project knowledge here, not in global Claude memory)
-- `docs/superpowers/plans/` & `docs/superpowers/specs/` — per-change implementation plans and designs
+- `docs/memory.md` — distilled project knowledge: current state, open items, durable decisions, gotchas (keep project knowledge here, not in global Claude memory; add only durable facts, dedupe on write, delete what stops being true)
+- `docs/superpowers/plans/` & `docs/superpowers/specs/` — active-only per-change plans and designs (delete-on-merge; merged ones live in git history)
 - `docs/conventions.md` — full coding conventions
 
-**Session start:** skim `docs/tasklist.md` for current phase and open tasks before picking up work.
+**Session start:** skim `docs/memory.md` ("Current state" and "Open items") before picking up work.
