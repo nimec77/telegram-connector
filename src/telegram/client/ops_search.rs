@@ -5,7 +5,7 @@
 use super::raw_pager::{RawChannelSearchPager, RawGlobalSearchPager};
 use super::search_budget::SearchBudget;
 use super::*;
-use crate::telegram::albums::{PostCounter, album_key, collapse_albums};
+use crate::telegram::albums::PageAccumulator;
 use tracing::Instrument;
 
 impl TelegramClient {
@@ -35,17 +35,14 @@ impl TelegramClient {
         let (before_offset, after_bound) = cursor_wire_bounds(params.before_id, params.after_id)?;
 
         // If channel_id is specified, search only that channel
-        let (messages, channels_scanned, has_more, budget) = if let Some(channel_id) =
-            &params.channel_id
-        {
+        let (page, channels_scanned, budget) = if let Some(channel_id) = &params.channel_id {
             with_timeout(
                 "search_messages_channel",
                 self.timeouts.search_secs,
                 async {
-                    let mut messages = Vec::new();
+                    let mut page =
+                        PageAccumulator::new(params.collapse_albums, params.limit as usize);
                     let mut channels_scanned = 0u32;
-                    let mut has_more = false;
-                    let mut counter = PostCounter::default();
                     let mut budget = SearchBudget::new(self.search_deadline_secs);
                     // Find the channel in our dialogs
                     let mut dialogs = self.client.iter_dialogs();
@@ -116,41 +113,19 @@ impl TelegramClient {
                                 }
                                 if let Some(converted) =
                                     convert_raw_message(&raw_msg, peer, &entities)
+                                    && !page.push(converted)
                                 {
-                                    if params.collapse_albums {
-                                        // Post-level limit: stop only when a NEW post
-                                        // would overflow; trailing siblings of admitted
-                                        // albums pass.
-                                        if !counter
-                                            .admit(album_key(&converted), params.limit as usize)
-                                        {
-                                            has_more = true;
-                                            break;
-                                        }
-                                        messages.push(converted);
-                                    } else {
-                                        // Refuse the overflow message instead of pushing
-                                        // the limit-th and breaking blind: refusing
-                                        // proves a qualifying message exists beyond the
-                                        // page (A8).
-                                        if messages.len() >= params.limit as usize {
-                                            has_more = true;
-                                            break;
-                                        }
-                                        messages.push(converted);
-                                    }
+                                    break;
                                 }
                             }
                             break;
                         }
                     }
-                    Ok((messages, channels_scanned, has_more, budget))
+                    Ok((page, channels_scanned, budget))
                 },
             )
             .await
-            .map(|(messages, channels_scanned, has_more, budget)| {
-                (messages, Some(channels_scanned), has_more, budget)
-            })?
+            .map(|(page, channels_scanned, budget)| (page, Some(channels_scanned), budget))?
         } else {
             // Cursors are single-channel only (decision 2): global search has no
             // per-channel offset_id to ride, and no way to bound it client-side
@@ -169,13 +144,12 @@ impl TelegramClient {
                 media_filter = ?params.media_filter,
                 window_from = %cutoff_time,
             );
-            let (collected, has_more, budget) = with_timeout(
+            let (page, budget) = with_timeout(
                 "search_all_messages",
                 self.timeouts.search_secs,
                 async move {
-                    let mut messages = Vec::new();
-                    let mut has_more = false;
-                    let mut counter = PostCounter::default();
+                    let mut page =
+                        PageAccumulator::new(params.collapse_albums, params.limit as usize);
                     let mut budget = SearchBudget::new(self.search_deadline_secs);
                     // Global search via the raw messages.SearchGlobal pager:
                     // same request as grammers' search_all_messages, but the
@@ -214,7 +188,7 @@ impl TelegramClient {
                                 page = budget.pages_fetched(),
                                 messages_in_page = page_size,
                                 messages_scanned = budget.messages_scanned(),
-                                kept = messages.len(),
+                                kept = page.len(),
                                 "Global search page fetched"
                             );
                         }
@@ -231,25 +205,9 @@ impl TelegramClient {
                         }
                         if let Some(peer) = chat_peer.as_ref()
                             && let Some(converted) = convert_raw_message(&raw_msg, peer, &entities)
+                            && !page.push(converted)
                         {
-                            if params.collapse_albums {
-                                // Post-level limit: stop only when a NEW post would
-                                // overflow; trailing siblings of admitted albums pass.
-                                if !counter.admit(album_key(&converted), params.limit as usize) {
-                                    has_more = true;
-                                    break;
-                                }
-                                messages.push(converted);
-                            } else {
-                                // Refuse the overflow message instead of pushing the
-                                // limit-th and breaking blind: refusing proves a
-                                // qualifying message exists beyond the page (A8).
-                                if messages.len() >= params.limit as usize {
-                                    has_more = true;
-                                    break;
-                                }
-                                messages.push(converted);
-                            }
+                            break;
                         }
                     }
 
@@ -261,21 +219,18 @@ impl TelegramClient {
                         "Global search finished"
                     );
 
-                    Ok((messages, has_more, budget))
+                    Ok((page, budget))
                 }
                 .instrument(span),
             )
             .await?;
 
             // server-side global search: scan scope unknowable
-            (collected, None, has_more, budget)
+            (page, None, budget)
         };
 
-        let mut messages = if params.collapse_albums {
-            collapse_albums(messages)
-        } else {
-            messages
-        };
+        let has_more = page.has_more();
+        let mut messages = page.into_messages();
 
         // Sort by timestamp (newest first)
         messages.sort_by_key(|b| std::cmp::Reverse(b.timestamp));
