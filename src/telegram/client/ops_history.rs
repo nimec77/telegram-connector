@@ -5,7 +5,7 @@
 use super::raw_pager::RawHistoryPager;
 use super::search_budget::SearchBudget;
 use super::*;
-use crate::telegram::albums::{PostCounter, album_key, collapse_albums};
+use crate::telegram::albums::PageAccumulator;
 
 impl TelegramClient {
     pub(super) async fn get_recent_messages_impl(
@@ -83,91 +83,70 @@ impl TelegramClient {
         // through the existing error path (A8).
         let (before_offset, after_bound) = cursor_wire_bounds(params.before_id, params.after_id)?;
 
-        let (messages, has_more, budget) =
-            with_timeout("iter_messages", self.timeouts.history_secs, async {
-                let mut messages = Vec::new();
-                let mut has_more = false;
-                let mut counter = PostCounter::default();
-                // counters only — the spec scopes the deadline to search
-                let mut budget = SearchBudget::new(0);
-                // Raw GetHistory pager instead of grammers' iter_messages: same
-                // request, but it keeps the response envelope so forwards get
-                // attributed from data already in hand (zero extra calls).
-                let mut pager = RawHistoryPager::new(&self.client, peer_ref);
-                if let Some(before) = before_offset {
-                    pager = pager.offset_id(before);
+        let (page, budget) = with_timeout("iter_messages", self.timeouts.history_secs, async {
+            let mut page = PageAccumulator::new(params.collapse_albums, params.limit as usize);
+            // counters only — the spec scopes the deadline to search
+            let mut budget = SearchBudget::new(0);
+            // Raw GetHistory pager instead of grammers' iter_messages: same
+            // request, but it keeps the response envelope so forwards get
+            // attributed from data already in hand (zero extra calls).
+            let mut pager = RawHistoryPager::new(&self.client, peer_ref);
+            if let Some(before) = before_offset {
+                pager = pager.offset_id(before);
+            }
+
+            loop {
+                let next = pager.next().await.map_err(|e| {
+                    Error::TelegramApi(format!("Failed to iterate messages: {}", e))
+                })?;
+                // Before the `else break`: a round trip that came back empty still
+                // cost the caller latency, which is what the field reports.
+                if let Some(page_size) = pager.take_last_page_size() {
+                    budget.record_page(page_size);
+                }
+                let Some((raw_msg, entities)) = next else {
+                    break;
+                };
+                if let Some(to) = params.to_date
+                    && timestamp_from_raw(&raw_msg).is_some_and(|t| t > to)
+                {
+                    continue; // newer than the requested window; keep iterating toward it
                 }
 
-                loop {
-                    let next = pager.next().await.map_err(|e| {
-                        Error::TelegramApi(format!("Failed to iterate messages: {}", e))
-                    })?;
-                    // Before the `else break`: a round trip that came back empty still
-                    // cost the caller latency, which is what the field reports.
-                    if let Some(page_size) = pager.take_last_page_size() {
-                        budget.record_page(page_size);
-                    }
-                    let Some((raw_msg, entities)) = next else {
-                        break;
-                    };
-                    if let Some(to) = params.to_date
-                        && timestamp_from_raw(&raw_msg).is_some_and(|t| t > to)
-                    {
-                        continue; // newer than the requested window; keep iterating toward it
-                    }
-
-                    // Check time filter - messages are in reverse chronological order
-                    if timestamp_from_raw(&raw_msg).is_none_or(|t| t < cutoff_time) {
-                        break;
-                    }
-
-                    // Exclusive lower cursor bound: everything from here on
-                    // is older (reverse chronological), so stop (A8).
-                    if let Some(after) = after_bound
-                        && raw_msg.id() <= after
-                    {
-                        break;
-                    }
-
-                    // Apply media filter client-side (GetHistory has no server-side filtering)
-                    if params
-                        .media_filter
-                        .as_ref()
-                        .is_some_and(|filter| !matches_media_filter_raw(&raw_msg, filter))
-                    {
-                        continue;
-                    }
-
-                    if let Some(converted) = convert_raw_message(&raw_msg, &peer, &entities) {
-                        if params.collapse_albums {
-                            // Post-level limit: stop only when a NEW post would
-                            // overflow; trailing siblings of admitted albums pass.
-                            if !counter.admit(album_key(&converted), params.limit as usize) {
-                                has_more = true;
-                                break;
-                            }
-                            messages.push(converted);
-                        } else {
-                            // Refuse the overflow message instead of pushing the
-                            // limit-th and breaking blind: refusing proves a
-                            // qualifying message exists beyond the page (A8).
-                            if messages.len() >= params.limit as usize {
-                                has_more = true;
-                                break;
-                            }
-                            messages.push(converted);
-                        }
-                    }
+                // Check time filter - messages are in reverse chronological order
+                if timestamp_from_raw(&raw_msg).is_none_or(|t| t < cutoff_time) {
+                    break;
                 }
-                Ok((messages, has_more, budget))
-            })
-            .await?;
 
-        let messages = if params.collapse_albums {
-            collapse_albums(messages)
-        } else {
-            messages
-        };
+                // Exclusive lower cursor bound: everything from here on
+                // is older (reverse chronological), so stop (A8).
+                if let Some(after) = after_bound
+                    && raw_msg.id() <= after
+                {
+                    break;
+                }
+
+                // Apply media filter client-side (GetHistory has no server-side filtering)
+                if params
+                    .media_filter
+                    .as_ref()
+                    .is_some_and(|filter| !matches_media_filter_raw(&raw_msg, filter))
+                {
+                    continue;
+                }
+
+                if let Some(converted) = convert_raw_message(&raw_msg, &peer, &entities)
+                    && !page.push(converted)
+                {
+                    break;
+                }
+            }
+            Ok((page, budget))
+        })
+        .await?;
+
+        let has_more = page.has_more();
+        let messages = page.into_messages();
 
         let search_time_ms = start_time.elapsed().as_millis() as u64;
         let returned = messages.len() as u64;

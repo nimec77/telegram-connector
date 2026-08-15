@@ -51,6 +51,68 @@ impl PostCounter {
     }
 }
 
+/// Accumulates one result page inside a fetch loop, owning the post-level
+/// limit decision the three fetch loops used to hand-inline (audit S3.2):
+/// with `collapse_albums`, a message that would START a post beyond `limit`
+/// is refused (trailing siblings of admitted albums pass — A2); without it,
+/// the limit-th overflow message is refused instead of pushed blind, proving
+/// a qualifying message exists beyond the page (A8). A refusal latches
+/// `has_more`.
+#[derive(Debug)]
+pub(crate) struct PageAccumulator {
+    messages: Vec<Message>,
+    counter: PostCounter,
+    collapse: bool,
+    limit: usize,
+    has_more: bool,
+}
+
+impl PageAccumulator {
+    pub(crate) fn new(collapse_albums: bool, limit: usize) -> Self {
+        Self {
+            messages: Vec::new(),
+            counter: PostCounter::default(),
+            collapse: collapse_albums,
+            limit,
+            has_more: false,
+        }
+    }
+
+    /// Admit `message` into the page. Returns `false` when the page is full —
+    /// the caller stops fetching.
+    pub(crate) fn push(&mut self, message: Message) -> bool {
+        let admitted = if self.collapse {
+            self.counter.admit(album_key(&message), self.limit)
+        } else {
+            self.messages.len() < self.limit
+        };
+        if !admitted {
+            self.has_more = true;
+            return false;
+        }
+        self.messages.push(message);
+        true
+    }
+
+    pub(crate) fn has_more(&self) -> bool {
+        self.has_more
+    }
+
+    /// Messages admitted so far (pre-collapse) — used by progress logging.
+    pub(crate) fn len(&self) -> usize {
+        self.messages.len()
+    }
+
+    /// Finish the page: collapse album siblings when enabled.
+    pub(crate) fn into_messages(self) -> Vec<Message> {
+        if self.collapse {
+            collapse_albums(self.messages)
+        } else {
+            self.messages
+        }
+    }
+}
+
 /// Collapse album siblings (same `grouped_id`) into one post-level `Message`
 /// (B5). Order-preserving on each group's first occurrence. The representative
 /// is the lowest-id sibling (stable referencing); `text` comes from whichever
@@ -211,5 +273,35 @@ mod tests {
             collapsed.iter().all(|m| m.album.is_none()),
             "each is a lone member, stays plain"
         );
+    }
+
+    #[test]
+    fn accumulator_admits_album_siblings_beyond_limit_and_latches_has_more() {
+        let mut page = PageAccumulator::new(true, 1);
+        assert!(page.push(album_member(1, 7, "caption")));
+        assert!(
+            page.push(album_member(2, 7, "")),
+            "sibling passes beyond limit"
+        );
+        assert!(!page.push(create_test_message(3, "next post", 100)));
+        assert!(page.has_more());
+        assert_eq!(page.into_messages().len(), 1, "album collapsed to one post");
+    }
+
+    #[test]
+    fn accumulator_without_collapse_refuses_at_limit() {
+        let mut page = PageAccumulator::new(false, 2);
+        assert!(page.push(create_test_message(1, "a", 100)));
+        assert!(page.push(create_test_message(2, "b", 100)));
+        assert!(!page.push(create_test_message(3, "c", 100)));
+        assert!(page.has_more());
+        assert_eq!(page.into_messages().len(), 2);
+    }
+
+    #[test]
+    fn accumulator_reports_no_has_more_when_nothing_refused() {
+        let mut page = PageAccumulator::new(true, 5);
+        assert!(page.push(create_test_message(1, "a", 100)));
+        assert!(!page.has_more());
     }
 }
