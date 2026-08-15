@@ -3,7 +3,12 @@
 //! These hold the real tool logic; the `#[tool]` wrappers in `server.rs`
 //! delegate to them. Split out per LM-3 (`server.rs` was 880 lines).
 
-use super::*;
+use super::McpServer;
+use crate::mcp::tools::{
+    ChannelsResponse, GetChannelInfoRequest, GetChannelsRequest, json_response,
+};
+use crate::rate_limiter::RateLimiterTrait;
+use crate::telegram::TelegramClientTrait;
 
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {
     pub(super) async fn get_subscribed_channels_impl(

@@ -1,6 +1,9 @@
 //! `McpServer` inherent `*_impl` method: resolve_channels (work-order A7).
 
-use super::*;
+use super::McpServer;
+use crate::mcp::tools::{ResolveChannelsRequest, ResolveChannelsResponse, json_response};
+use crate::rate_limiter::RateLimiterTrait;
+use crate::telegram::TelegramClientTrait;
 
 /// Hard cap on identifiers per resolve call (roadmap: capped at 20).
 pub(super) const MAX_RESOLVE_IDENTIFIERS: usize = 20;

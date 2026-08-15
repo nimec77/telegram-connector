@@ -3,8 +3,17 @@
 //! These hold the real tool logic; the `#[tool]` wrappers in `server.rs`
 //! delegate to them. Split out per LM-3 (`server.rs` was 880 lines).
 
-use super::*;
+use super::McpServer;
+use crate::link::{ChannelRef, parse_telegram_link};
 use crate::mcp::tools::helpers::{parse_cursor_bounds, wire_message_id};
+use crate::mcp::tools::{
+    GetMessageByLinkRequest, GetRecentMessagesRequest, MessageResponse, ResponseFormat,
+    SearchRequest, SearchResponse, fanout, json_response, parse_channel_id, parse_optional_utc,
+    shaping, validate_date_window,
+};
+use crate::rate_limiter::RateLimiterTrait;
+use crate::telegram::TelegramClientTrait;
+use crate::telegram::types::{ChannelId, HistoryParams, SearchParams};
 
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {
     pub(super) async fn search_messages_impl(

@@ -3,11 +3,20 @@
 //! These hold the real tool logic; the `#[tool]` wrappers in `server.rs`
 //! delegate to them. Split out per LM-3 (`server.rs` was 880 lines).
 
-use super::*;
+use super::McpServer;
+use crate::error::Error;
 use crate::mcp::tools::helpers::wire_message_id;
 use crate::mcp::tools::image::{ProcessedImage, process_image, process_image_with_cap};
 use crate::mcp::tools::media_budget::Base64Budget;
-use crate::telegram::types::{MediaDownload, MediaFetchOutcome};
+use crate::mcp::tools::{
+    GetMessageMediaRequest, GetMessageMediaResponse, GetMessagesMediaBatchRequest,
+    MediaBatchFailure, MediaBatchSummary, TranscribeVoiceMessageRequest,
+    TranscribeVoiceMessageResponse, dedupe_and_validate_ids, json_response, parse_message_id,
+};
+use crate::rate_limiter::RateLimiterTrait;
+use crate::telegram::TelegramClientTrait;
+use crate::telegram::types::{MediaDownload, MediaFetchError, MediaFetchOutcome};
+use rmcp::model::{CallToolResult, ContentBlock};
 
 /// Longest-side pixel limit applied when a request omits `max_dimension`.
 pub(super) const DEFAULT_MAX_DIMENSION: u32 = 1280;
