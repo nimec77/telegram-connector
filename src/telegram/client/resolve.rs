@@ -88,11 +88,7 @@ impl TelegramClient {
         &self,
         channel_ref: &str,
     ) -> Result<ChannelIdentity, Error> {
-        if channel_ref.is_empty() {
-            return Err(Error::InvalidInput(
-                "Channel reference cannot be empty".to_string(),
-            ));
-        }
+        validate_channel_identifier(channel_ref)?;
         let peer = self.resolve_peer(channel_ref).await?;
         channel_identity(&peer).ok_or_else(|| {
             Error::TelegramApi(format!(

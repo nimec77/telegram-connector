@@ -12,11 +12,7 @@ impl TelegramClient {
         channel_ref: &str,
         message_id: i32,
     ) -> Result<crate::telegram::Message, Error> {
-        if channel_ref.is_empty() {
-            return Err(Error::InvalidInput(
-                "Channel reference cannot be empty".to_string(),
-            ));
-        }
+        validate_channel_identifier(channel_ref)?;
 
         // Resolve the channel peer (same pattern as get_channel_info). The resolve /
         // dialog-walk paths share the same hang exposure as the other tools, so they
@@ -65,11 +61,7 @@ impl TelegramClient {
         channel_ref: &str,
         message_ids: &[i32],
     ) -> Result<crate::telegram::MessageBatch, Error> {
-        if channel_ref.is_empty() {
-            return Err(Error::InvalidInput(
-                "Channel reference cannot be empty".to_string(),
-            ));
-        }
+        validate_channel_identifier(channel_ref)?;
         if message_ids.is_empty() {
             return Err(Error::InvalidInput(
                 "message_ids cannot be empty".to_string(),

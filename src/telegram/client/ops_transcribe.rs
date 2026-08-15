@@ -16,11 +16,7 @@ impl TelegramClient {
             POLL_INTERVAL_SECS, ensure_transcribable, poll_until_complete,
         };
 
-        if channel_ref.is_empty() {
-            return Err(Error::InvalidInput(
-                "Channel reference cannot be empty".to_string(),
-            ));
-        }
+        validate_channel_identifier(channel_ref)?;
 
         // Resolve once; reuse the InputPeer for every poll (no repeated dialog walk).
         let peer = self.resolve_peer(channel_ref).await?;

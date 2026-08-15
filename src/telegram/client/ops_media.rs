@@ -19,11 +19,7 @@ impl TelegramClient {
         message_id: i32,
         max_dimension: u32,
     ) -> Result<MediaDownload, Error> {
-        if channel_ref.is_empty() {
-            return Err(Error::InvalidInput(
-                "Channel reference cannot be empty".to_string(),
-            ));
-        }
+        validate_channel_identifier(channel_ref)?;
 
         let peer = self.resolve_peer(channel_ref).await?;
         let peer_ref = peer_to_ref(&peer).await?;
@@ -62,11 +58,7 @@ impl TelegramClient {
     ) -> Result<Vec<MediaFetchOutcome>, Error> {
         use futures::StreamExt as _;
 
-        if channel_ref.is_empty() {
-            return Err(Error::InvalidInput(
-                "Channel reference cannot be empty".to_string(),
-            ));
-        }
+        validate_channel_identifier(channel_ref)?;
 
         // One resolve and one fetch for the whole batch — the point of this
         // method. A numeric channel_ref costs a full dialog walk, so doing it
