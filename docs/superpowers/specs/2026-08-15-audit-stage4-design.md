@@ -15,6 +15,13 @@ movement is a consequence, not the target — there is no percentage to hit.
 tests) and the `impl_message_batch.rs` / `impl_media.rs` six-line precheck duplication
 (the audit spec itself rates it "barely worth it").
 
+**The hygiene backlog is a separate branch and PR**, not part of stage 4 — eleven
+mechanical one-liners reviewed alongside a refactor of this size would drown. Its work
+list lives in the audit spec's "Hygiene backlog" section, re-verified against the tree at
+`5013672`. Two items there touch files stage 4 also edits (`server.rs`'s tool numbering,
+`trait_def.rs`'s doc text); neither collides with stage 4's changes, but land hygiene
+first if both are in flight.
+
 ---
 
 ## Why the ops layer is at 0%
@@ -195,30 +202,6 @@ All three, all small:
 - Rename the global-search tracing field `page` → `page_no`. It collides with the `page`
   accumulator local; Section 1 puts the two in the same scope, so this stops being cosmetic.
 
-## Section 5 — hygiene backlog
-
-Re-verified against the tree at `5013672`. The audit spec's list had two stale entries and
-three that had drifted; those corrections land in the audit spec as part of this change.
-
-| item | location | action |
-|---|---|---|
-| `ProjectDirs…expect()` | `config/defaults.rs:14,56` | return an error, as `config.rs:426` does |
-| `auth_credentials()` `expect()` | `config.rs:117,121` | return `Option` |
-| init errors all swallowed | `logging.rs` — `result.or(Ok(()))` | swallow double-init only |
-| `process::exit(0)` skips destructors | `main.rs:69` | return, or document why not |
-| base64 size underflow | `impl_status.rs:105` — `data.len() / 4 * 3 - padding` | `saturating_sub`; reachable on a malformed 2-char payload |
-| trait docs leak internal names | `trait_def.rs:57,64` | the leak is `raw_fetch::fetch_messages_by_id`, **not** `raw_pager` as the audit spec says |
-| tool doc-comment numbering | `server.rs:426` | Tool 16's comment sits between Tool 10 (`:405`) and Tool 11 (`:447`) |
-| `parse_args` wrapper | `cli.rs:35` (audit spec says `:33`) | drop the wrapper |
-| `tokio features = ["full"]` | `Cargo.toml:28` | narrow to what is used |
-| `redact_phone` ≤6 threshold | `logging.rs:85` | a 7-char phone renders `1234***567` — every character. Raise the threshold and update the test that documents the current behaviour |
-| Vec-element scalars get no coercion | — | deliberate; document in the coercion design notes |
-
-**Stale — remove from the audit spec, do not action:**
-
-- `rate_limiter.rs:81,114,124,129` `lock().unwrap()` and the duplicated `available_tokens`.
-  Fixed in `2072a67`; one `.lock()` remains at `:91`, with poison recovery.
-
 ## Risks
 
 - **`WalkConfig` grows an eighth axis.** The design rests on the seven-axis table above
@@ -232,8 +215,17 @@ three that had drifted; those corrections land in the audit spec as part of this
 
 ## Sequencing
 
-`chore: release v0.22.3` is unmerged on `chore/audit-stage3-cleanup`; master requires PRs,
-so it goes up first. Stage 4 branches from master afterwards.
+Three PRs, in this order:
+
+1. **`chore: release v0.22.3`** — already committed on `chore/audit-stage3-cleanup` but
+   unmerged; master requires PRs.
+2. **Hygiene batch** — own branch off master, work list in the audit spec. Mechanical,
+   fast to review, and it clears the two files stage 4 also touches.
+3. **Stage 4** — own branch off master, this design.
+
+Stage 4 does not depend on the hygiene PR; the ordering is about review load, not
+correctness. If they run concurrently, rebase stage 4 on the hygiene branch so the
+`server.rs` and `trait_def.rs` doc edits resolve once.
 
 `docs/memory.md` needs two corrections in the same change: the v0.22.2 open item
 (`Cargo.toml` is now 0.22.3) and the stage-3 status.
