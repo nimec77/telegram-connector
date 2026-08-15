@@ -10,6 +10,15 @@ use crate::mcp::tools::types::responses::{
 /// Default per-message text cap in characters (work-order B4).
 pub(crate) const DEFAULT_MAX_TEXT_LENGTH: u32 = 2000;
 
+/// Resolve the effective `max_text_length`: default when omitted, rejecting 0.
+pub(crate) fn resolve_max_text_length(requested: Option<u32>) -> Result<u32, String> {
+    let max_text_length = requested.unwrap_or(DEFAULT_MAX_TEXT_LENGTH);
+    if max_text_length == 0 {
+        return Err("max_text_length must be greater than 0".to_string());
+    }
+    Ok(max_text_length)
+}
+
 /// Cut `text` to `max_chars` characters, flagging the cut. Counts
 /// characters, not bytes: the corpus is largely Cyrillic UTF-8, where a
 /// byte cap would halve the visible text and could split a code point.
@@ -404,5 +413,21 @@ mod tests {
         assert!(!omitted.is_empty());
         // Tail (highest fixture ids) got popped; survivors keep request order.
         assert_eq!(resp.messages.first().expect("some").id.get(), 1);
+    }
+
+    #[test]
+    fn resolve_max_text_length_defaults_when_omitted() {
+        assert_eq!(resolve_max_text_length(None), Ok(DEFAULT_MAX_TEXT_LENGTH));
+    }
+
+    #[test]
+    fn resolve_max_text_length_passes_explicit_value() {
+        assert_eq!(resolve_max_text_length(Some(64)), Ok(64));
+    }
+
+    #[test]
+    fn resolve_max_text_length_rejects_zero() {
+        let err = resolve_max_text_length(Some(0)).unwrap_err();
+        assert!(err.contains("greater than 0"), "got: {err}");
     }
 }
