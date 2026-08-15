@@ -3855,3 +3855,40 @@ is shared between the two batch tools (Task 11). Tests 709 → 722 across Tasks 
   one misplacement each. The `defaults` case is the sharpest: every function in the module was
   already `pub(crate)`, and only the module declaration's privacy forced the duplication. Before
   copying a value across a module boundary, check whether the boundary is the thing that's wrong.
+
+---
+
+## Phase 38: Audit Stage 1 — Correctness Fixes + Dead Code (2026-08-15)
+
+Full-codebase audit (spec: `docs/superpowers/specs/2026-08-15-project-audit.md`, four staged
+work packages; stage-1 plan: `docs/superpowers/plans/2026-08-15-audit-stage1-correctness.md`).
+Coverage baseline measured with `cargo llvm-cov`: **75.1% lines** — near-100% on domain
+types/converters/shaping, **0% on the production `TelegramClient` ops layer** (the DI seam swaps
+exactly that code out for mocks).
+
+Stage 1 shipped on `fix/audit-stage1-correctness`:
+
+- **Plain `cargo test` is now race-free.** The 11 env-mutating config tests hold a shared
+  `ENV_LOCK` (`src/config/tests.rs`); the `just test-config` serial recipe and every
+  `--test-threads=1` mention in live docs are retired. The race never fired in 10 sampled runs
+  (69 tests, 0.01 s window) but was real by inspection — two tests set `TEST_PHONE` to
+  different values.
+- **`redact_phone` is char-aware** (byte slicing panicked mid-codepoint) and `interactive_auth`
+  logs through it instead of hand-slicing `&phone[..4]` (a panic path + a redaction bypass).
+- **`wire_message_id`** (helpers.rs) replaces three silent `message_id.get() as i32` casts in
+  `get_message_media` / `transcribe_voice_message` / `get_message_by_link`; conversion runs
+  before any rate-limiter/client call, matching the batch path's existing error text.
+- **Dead code deleted:** `TelegramClient::sign_in` (bypassed by `interactive_auth` since the
+  wrapper discarded the 2FA token), `parse_optional_channel_id`, `matches_media_filter`
+  (superseded by the `_raw` twin in Phase 33), placeholder `test_auth_module_compiles`;
+  `PostCounter::overflowed` gated `#[cfg(test)]`.
+
+Tests 722 → 723 (+3 wire-range tool tests, +2 unit, +1 multibyte redaction, −3 deleted).
+
+### Decisions worth remembering
+
+- **A test-only invariant ("run these serially") that lives in a recipe/doc instead of the code
+  is a latent race.** The mandated pre-merge gate itself (`cargo test`) violated the invariant.
+  If tests need serialization, the test module must enforce it (lock), not the invocation.
+- **21 of `client_tests.rs`'s 25 tests assert on the mockall mock itself** — flagged for
+  deletion in stage 2; they inflate the test count without exercising production code.
