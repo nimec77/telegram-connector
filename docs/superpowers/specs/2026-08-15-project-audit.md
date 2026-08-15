@@ -8,7 +8,8 @@ cited lines.
 **Verdict:** architecture is sound — layering holds in both directions (zero `grammers`
 imports in `src/mcp/`, zero `crate::mcp` imports in `src/telegram/`), `server.rs` tool
 extraction is complete, response types are well shared, no production `unwrap()` outside
-four rate-limiter mutex locks. The work splits into four stages, each its own plan/branch.
+four rate-limiter mutex locks. The work splits into four stages plus a hygiene batch, each
+its own plan/branch.
 
 ---
 
@@ -62,24 +63,29 @@ Designed: `docs/superpowers/specs/2026-08-15-audit-stage4-design.md`. The goal t
   the DI seam); rename the global-search tracing field `page` to `page_no`
   (`ops_search.rs` — clashes with the `page` accumulator local).
 
-## Hygiene backlog (batch into any stage's PR)
+## Hygiene backlog — its own branch and PR
 
-Line numbers re-verified at `5013672`; corrections marked. Scheduled into stage 4 — see
-that design doc's Section 5.
+Eleven mechanical fixes, deliberately *not* folded into stage 4: reviewed alongside a
+refactor of that size they would drown. Line numbers re-verified against the tree at
+`5013672`; three entries had drifted from the original audit and are corrected here.
 
-`config/defaults.rs:14,56` `ProjectDirs…expect()` panics where `config.rs:426` errors;
-`config.rs:117,121` `auth_credentials()` `expect()` → return `Option`; `logging.rs`
-`result.or(Ok(()))` swallows all init errors, not just double-init; `main.rs:69`
-`process::exit(0)` skips destructors (comment or return); `impl_status.rs:105` base64 size
-underflow → `saturating_sub`; trait docs leak internal names (`trait_def.rs:57,64` — the
-leak is `raw_fetch::fetch_messages_by_id`, *not* `raw_pager`); `tokio` `features=["full"]`;
-`cli.rs:35` `parse_args` wrapper (was cited as `:33`); "Tool 16" doc-comment numbering
-drift (`server.rs:426`, between Tool 10 at `:405` and Tool 11 at `:447` — was cited as
-`:441`); `impl_message_batch.rs` vs `impl_media.rs` 6-line precheck duplication (barely
-worth it — deliberately skipped); Vec-element scalars get no flexible coercion (deliberate
-scalar scope — document in the coercion design doc); `redact_phone`'s ≤6-char threshold
-leaves a 7-char phone fully visible (`logging.rs:85` — first 4 + last 3 is the whole
-string; documented by an existing test, but the threshold should arguably be higher).
+| item | location | action |
+|---|---|---|
+| `ProjectDirs…expect()` | `config/defaults.rs:14,56` | return an error, as `config.rs:426` does |
+| `auth_credentials()` `expect()` | `config.rs:117,121` | return `Option` |
+| init errors all swallowed | `logging.rs`, `result.or(Ok(()))` | swallow double-init only |
+| `process::exit(0)` skips destructors | `main.rs:69` | return, or document why not |
+| base64 size underflow | `impl_status.rs:105`, `data.len() / 4 * 3 - padding` | `saturating_sub` — reachable on a malformed 2-char payload |
+| trait docs leak internal names | `trait_def.rs:57,64` | **correction:** the leak is `raw_fetch::fetch_messages_by_id`, not `raw_pager` |
+| tool doc-comment numbering drift | `server.rs:426` | **correction:** was cited as `:441`. Tool 16's comment sits between Tool 10 (`:405`) and Tool 11 (`:447`) |
+| `parse_args` wrapper | `cli.rs:35` | **correction:** was cited as `:33`. Drop the wrapper |
+| `tokio features = ["full"]` | `Cargo.toml:28` | narrow to what is used |
+| `redact_phone` ≤6 threshold | `logging.rs:85` | a 7-char phone renders `1234***567` — the whole string. Raise the threshold and update the test documenting current behaviour |
+| Vec-element scalars get no coercion | — | deliberate scalar scope; document in the coercion design notes |
+
+**Deliberately skipped:** `impl_message_batch.rs` vs `impl_media.rs` 6-line precheck
+duplication — the original audit already rated it "barely worth it".
 
 **Done, not outstanding:** `rate_limiter.rs` `lock().unwrap()` ×4 and the verbatim-
-duplicated `available_tokens` were fixed in `2072a67` (stage 3).
+duplicated `available_tokens` were fixed in `2072a67` (stage 3). One `.lock()` remains at
+`:91`, with poison recovery.
