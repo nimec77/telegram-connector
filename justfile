@@ -14,10 +14,6 @@ release:
 test:
     cargo test
 
-# Run config tests serially (env var mutation)
-test-config:
-    cargo test config -- --test-threads=1
-
 # Format all code
 fmt:
     cargo fmt --all

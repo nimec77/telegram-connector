@@ -1,6 +1,18 @@
 use super::*;
 use std::env;
 use std::fs;
+use std::sync::{Mutex, MutexGuard, PoisonError};
+
+/// Serializes tests that mutate process environment variables. The test
+/// harness runs tests on parallel threads within one process and the
+/// environment is process-global, so every test that calls
+/// `env::set_var`/`env::remove_var` must hold this lock for its whole body.
+/// A poisoned lock is safe to reuse: each test restores the vars it set.
+static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+fn env_lock() -> MutexGuard<'static, ()> {
+    ENV_LOCK.lock().unwrap_or_else(PoisonError::into_inner)
+}
 
 #[test]
 fn test_expand_env_vars_no_variables() {
@@ -10,6 +22,7 @@ fn test_expand_env_vars_no_variables() {
 
 #[test]
 fn test_expand_env_vars_single_variable() {
+    let _env = env_lock();
     unsafe {
         env::set_var("TEST_VAR", "test_value");
     }
@@ -22,6 +35,7 @@ fn test_expand_env_vars_single_variable() {
 
 #[test]
 fn test_expand_env_vars_multiple_variables() {
+    let _env = env_lock();
     unsafe {
         env::set_var("VAR1", "value1");
         env::set_var("VAR2", "value2");
@@ -47,6 +61,7 @@ fn test_expand_env_vars_missing_variable_returns_error() {
 
 #[test]
 fn test_expand_env_vars_no_recursive_expansion() {
+    let _env = env_lock();
     // If a var's value contains ${...}, it should NOT be expanded further
     unsafe {
         env::set_var("OUTER_VAR", "${INNER_VAR}");
@@ -71,6 +86,7 @@ fn test_expand_env_vars_incomplete_syntax() {
 
 #[test]
 fn test_expand_env_vars_numeric_unquoting() {
+    let _env = env_lock();
     // When a quoted TOML value contains only an env var with a pure numeric value,
     // it should be unquoted to allow parsing as integer
     unsafe {
@@ -208,6 +224,7 @@ fn test_auth_credentials_getter() {
 #[ignore = "for CI/CD passing tests"]
 #[test]
 fn test_load_valid_config() {
+    let _env = env_lock();
     let temp_dir = env::temp_dir();
     let config_path = temp_dir.join("test_config.toml");
     let config_content = r#"
@@ -253,6 +270,7 @@ format = "compact"
 #[ignore = "for CI/CD passing tests"]
 #[test]
 fn test_load_config_with_env_vars() {
+    let _env = env_lock();
     let temp_dir = env::temp_dir();
     let config_path = temp_dir.join("test_config_env.toml");
     // Test that ALL fields can use ${VAR} syntax, including numeric api_id
@@ -314,6 +332,7 @@ format = "compact"
 
 #[test]
 fn test_load_missing_config() {
+    let _env = env_lock();
     unsafe {
         env::set_var("TELEGRAM_MCP_CONFIG", "/nonexistent/path/config.toml");
     }
@@ -327,6 +346,7 @@ fn test_load_missing_config() {
 
 #[test]
 fn test_load_invalid_toml() {
+    let _env = env_lock();
     let temp_dir = env::temp_dir();
     let config_path = temp_dir.join("test_invalid.toml");
     fs::write(&config_path, "this is not valid TOML {{{}}}").unwrap();
@@ -346,6 +366,7 @@ fn test_load_invalid_toml() {
 #[ignore = "for CI/CD passing tests"]
 #[test]
 fn test_resolve_path_from_env() {
+    let _env = env_lock();
     unsafe {
         env::set_var("TELEGRAM_MCP_CONFIG", "/custom/path/config.toml");
     }
@@ -360,6 +381,7 @@ fn test_resolve_path_from_env() {
 #[ignore = "for CI/CD passing tests"]
 #[test]
 fn test_resolve_path_default() {
+    let _env = env_lock();
     unsafe {
         env::remove_var("TELEGRAM_MCP_CONFIG");
     }
@@ -567,6 +589,7 @@ fn test_timeout_config_validate_accepts_defaults() {
 #[ignore = "for CI/CD passing tests"]
 #[test]
 fn test_load_config_with_file_logging_options() {
+    let _env = env_lock();
     let temp_dir = env::temp_dir();
     let config_path = temp_dir.join("test_file_logging_config.toml");
     let config_content = r#"

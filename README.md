@@ -1615,7 +1615,7 @@ cargo test
 # Specific module
 cargo test mcp
 cargo test telegram
-cargo test config -- --test-threads=1
+cargo test config
 
 # With output
 cargo test -- --nocapture
