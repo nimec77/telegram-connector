@@ -175,3 +175,7 @@ pub(super) fn chat_peer_for_message(
         }),
     }
 }
+
+#[cfg(test)]
+#[path = "tests/raw_page_tests.rs"]
+mod tests;

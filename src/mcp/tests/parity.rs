@@ -3,7 +3,7 @@
 //!
 //! Scope note — these tests mock `TelegramClientTrait`, which is ABOVE the
 //! conversion layer, so they cannot prove that fetching enriches. That is
-//! covered by `raw_pager`'s envelope-decode test and by the type-level
+//! covered by `raw_page`'s envelope-decode test and by the type-level
 //! guard in `envelope.rs`. What this file catches is a DTO or compact-format
 //! change that drops `forwarded_from` on one tool's response shape only.
 
