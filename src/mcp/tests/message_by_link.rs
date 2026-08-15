@@ -184,3 +184,24 @@ async fn get_message_by_link_rate_limited() {
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("rate limit"));
 }
+
+#[tokio::test]
+async fn rejects_link_with_message_id_beyond_wire_range() {
+    // 2147483648 = i32::MAX + 1. No expectations: nothing may be called
+    // for an id that cannot exist on the wire.
+    let mock_client = MockTelegramClientTrait::new();
+    let mock_limiter = MockRateLimiterTrait::new();
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+
+    let request = GetMessageByLinkRequest {
+        link: "https://t.me/swodki/2147483648".to_string(),
+    };
+    let result = server
+        .get_message_by_link(Parameters(request), RequestId(NumberOrString::Number(1)))
+        .await;
+    let err = result.expect_err("out-of-range id must be rejected");
+    assert!(
+        err.contains("exceeds Telegram's message id range"),
+        "got: {err}"
+    );
+}

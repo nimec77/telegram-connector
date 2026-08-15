@@ -252,3 +252,21 @@ async fn clamps_request_timeout_to_configured_max() {
         .await
         .expect("should succeed");
 }
+
+#[tokio::test]
+async fn rejects_message_id_beyond_wire_range() {
+    // No expectations: neither premium check, rate limiter, nor the RPC
+    // may run for an id that cannot exist on the wire.
+    let server = server(MockTelegramClientTrait::new(), MockRateLimiterTrait::new());
+    let result = server
+        .transcribe_voice_message(
+            Parameters(request("news", i64::from(i32::MAX) + 1, None)),
+            RequestId(NumberOrString::Number(1)),
+        )
+        .await;
+    let err = result.expect_err("out-of-range id must be rejected");
+    assert!(
+        err.contains("exceeds Telegram's message id range"),
+        "got: {err}"
+    );
+}

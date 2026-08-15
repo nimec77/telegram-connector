@@ -421,3 +421,25 @@ async fn media_metadata_uses_variant_naming_and_reports_largest() {
         "original_size_bytes should be renamed to source_variant_size_bytes (D3)"
     );
 }
+
+#[tokio::test]
+async fn rejects_message_id_beyond_wire_range() {
+    // No expectations: neither the rate limiter nor the client may be
+    // called for an id that cannot exist on the wire.
+    let mock_client = MockTelegramClientTrait::new();
+    let mock_limiter = MockRateLimiterTrait::new();
+
+    let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+    let result = server
+        .get_message_media(
+            Parameters(request("news", i64::from(i32::MAX) + 1, None)),
+            RequestId(NumberOrString::Number(1)),
+        )
+        .await;
+
+    let err = result.expect_err("out-of-range id must be rejected");
+    assert!(
+        err.contains("exceeds Telegram's message id range"),
+        "got: {err}"
+    );
+}

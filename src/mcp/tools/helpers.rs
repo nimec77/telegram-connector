@@ -69,14 +69,21 @@ pub fn dedupe_and_validate_ids(ids: &[i64], cap: usize) -> Result<(Vec<i64>, Vec
     let mut wire_ids = Vec::with_capacity(unique.len());
     for id in &unique {
         let parsed = parse_message_id(*id)?;
-        wire_ids.push(
-            parsed
-                .as_i32()
-                .ok_or_else(|| format!("message_id {} exceeds Telegram's message id range", id))?,
-        );
+        wire_ids.push(wire_message_id(parsed)?);
     }
 
     Ok((unique, wire_ids))
+}
+
+/// A validated [`MessageId`] as Telegram's wire (`i32`) form, or a
+/// caller-facing error naming the id when it exceeds the wire range.
+pub(crate) fn wire_message_id(id: MessageId) -> Result<i32, String> {
+    id.as_i32().ok_or_else(|| {
+        format!(
+            "message_id {} exceeds Telegram's message id range",
+            id.get()
+        )
+    })
 }
 
 /// Parse an optional channel ID string to an optional ChannelId.
@@ -204,6 +211,19 @@ mod tests {
             err,
             "Invalid message_id: Message ID must be positive, got -5"
         );
+    }
+
+    #[test]
+    fn wire_message_id_rejects_beyond_i32() {
+        let id = parse_message_id(i64::from(i32::MAX) + 1).expect("positive id parses");
+        let err = wire_message_id(id).expect_err("must reject");
+        assert!(err.contains("exceeds Telegram's message id range"));
+    }
+
+    #[test]
+    fn wire_message_id_passes_in_range() {
+        let id = parse_message_id(42).expect("valid id");
+        assert_eq!(wire_message_id(id), Ok(42));
     }
 
     #[test]
