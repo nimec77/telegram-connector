@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `get_message_media`, `transcribe_voice_message`, and `get_message_by_link`
+  now reject a `message_id` beyond Telegram's `i32` wire range with
+  `message_id N exceeds Telegram's message id range` (the same error the batch
+  tools already used) instead of silently wrapping the id — worst case the
+  wrapped id could fetch an unrelated message. The check runs before any
+  rate-limiter charge or RPC.
+- Setup mode (`--setup`) no longer panics on a phone number shorter than
+  4 bytes or containing multibyte characters; the login-code log line now
+  goes through the standard redaction helper.
+
 ## [0.22.1] - 2026-08-14
 
 ### Fixed

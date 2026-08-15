@@ -51,7 +51,7 @@ real split.
 | `mcp/server.rs` | 649 | Already fine (macro-bound boilerplate); optional: `ToolInvocation` (~50 lines) → `server/invocation.rs` |
 | `mcp/tests/search.rs` | 1217 | → `search_core.rs` / `search_dates.rs` / `search_shaping.rs` |
 | `mcp/tests/history.rs` | 962 | → `history_core.rs` / `history_dates.rs` / `history_paging.rs`; delete local `create_test_message` duplicate (:17-44) |
-| `config/tests.rs` | 861 | → `tests/env_tests.rs` / `load_tests.rs` (all env-mutating loaders in one auditable place) / `validation_tests.rs` / `defaults_tests.rs` |
+| `config/tests.rs` | 861 | → `tests/env_tests.rs` / `load_tests.rs` (all env-mutating loaders in one auditable place) / `validation_tests.rs` / `defaults_tests.rs`. Fold in an `EnvGuard` drop-guard (stage-1 review): `remove_var` cleanup currently runs only on the success path, so a failing assertion leaks vars into subsequent locked tests |
 | `telegram/tests/converters_tests.rs` | 847 | → thumb/forward, av, doc/poll files |
 | `telegram/tests/client_tests.rs` | 710 | **Prune, don't split**: 21 `mock_*` tests assert on the mockall mock itself (zero production code under test, ~550 lines); keep the 6 `username_to_resolve` tests |
 | `mcp/tests/media_batch.rs` | 649 | → core/budget + shared fixtures (`permissive_limiter` → `test_helpers`) |
@@ -100,4 +100,6 @@ base64 size underflow → `saturating_sub`; trait docs leak `raw_pager` names
 (`trait_def.rs:57,64`); `tokio` `features=["full"]`; `cli.rs:33` `parse_args` wrapper;
 "Tool 16" doc-comment numbering drift (`server.rs:441`); `impl_message_batch.rs:14-19` vs
 `impl_media.rs:75-80` 6-line precheck duplication (barely worth it); Vec-element scalars
-get no flexible coercion (deliberate scalar scope — document in the coercion design doc).
+get no flexible coercion (deliberate scalar scope — document in the coercion design doc);
+`redact_phone`'s ≤6-char threshold leaves a 7-char phone fully visible (first 4 + last 3 is the
+whole string — documented by an existing test, but the threshold should arguably be higher).
