@@ -8,20 +8,19 @@
 //! forward attribution (see `telegram/envelope.rs`).
 
 use super::raw_page::{
-    RawPage, chat_peer_for_message, fill_buffer, input_peer_for_message, raw_peer_id, unpack_page,
+    RawPage, chat_peer_for_message, fill_buffer, input_peer_for_message, unpack_page,
 };
 use crate::telegram::envelope::EntityLookup;
 use chrono::{DateTime, Utc};
 use grammers_client::Client;
 use grammers_client::tl;
 use grammers_mtsender::InvocationError;
-use grammers_session::types::{PeerId, PeerKind, PeerRef};
-use std::collections::HashMap;
+use grammers_session::types::PeerRef;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
 /// grammers' MAX_LIMIT: server pages cap at 100 messages.
-const PAGE_LIMIT: i32 = 100;
+pub(super) const PAGE_LIMIT: i32 = 100;
 
 /// Raw date of a message (0 for Empty — mirrors grammers `date_timestamp`).
 fn raw_date(raw: &tl::enums::Message) -> i32 {
@@ -100,68 +99,6 @@ fn apply_window(
     let (min_date, max_date) = window_bounds(from, to);
     request.min_date = min_date;
     request.max_date = max_date;
-}
-
-/// Which RPC a peer's messages must be fetched with. Channel-namespace peers
-/// require `channels.GetMessages`; `messages.GetMessages` resolves bare ids
-/// across the account's dialogs and would return the wrong chat's message.
-/// Mirrors grammers `client/messages.rs::get_messages_by_id` in the pinned rev.
-pub(super) enum GetMessagesRequest {
-    Channel(tl::functions::channels::GetMessages),
-    Plain(tl::functions::messages::GetMessages),
-}
-
-fn get_messages_request(peer: PeerRef, ids: &[i32]) -> GetMessagesRequest {
-    let id = ids
-        .iter()
-        .map(|&id| tl::enums::InputMessage::Id(tl::types::InputMessageId { id }))
-        .collect();
-    if peer.id.kind() == PeerKind::Channel {
-        GetMessagesRequest::Channel(tl::functions::channels::GetMessages {
-            channel: peer.into(),
-            id,
-        })
-    } else {
-        GetMessagesRequest::Plain(tl::functions::messages::GetMessages { id })
-    }
-}
-
-/// Key a response's messages by id, dropping any that belong to a different
-/// peer (grammers applies the same guard). `MessageEmpty` placeholders are
-/// kept: the caller distinguishes "deleted" from "wrong peer", and both map
-/// to missing anyway (work-order B1 guard).
-fn index_messages(
-    messages: Vec<tl::enums::Message>,
-    peer: PeerRef,
-) -> HashMap<i32, tl::enums::Message> {
-    messages
-        .into_iter()
-        .filter(|raw| raw_peer_id(raw).is_none_or(|p| PeerId::from(p.clone()) == peer.id))
-        .map(|raw| (raw.id(), raw))
-        .collect()
-}
-
-/// Raw `getMessages` preserving the response envelope (get_message_by_link /
-/// get_messages_batch path).
-///
-/// Same request and same RPC count as grammers' `get_messages_by_id`, but it
-/// keeps the `chats`+`users` arrays that forward attribution reads instead of
-/// collapsing them into a crate-private `PeerMap` (see `telegram/envelope.rs`).
-/// Zero additional network calls.
-pub(super) async fn fetch_messages_by_id(
-    client: &Client,
-    peer: PeerRef,
-    ids: &[i32],
-) -> Result<(HashMap<i32, tl::enums::Message>, Arc<EntityLookup>), InvocationError> {
-    let response = match get_messages_request(peer, ids) {
-        GetMessagesRequest::Channel(request) => client.invoke(&request).await?,
-        GetMessagesRequest::Plain(request) => client.invoke(&request).await?,
-    };
-    // `limit` only drives the pager's last-chunk rule, which getMessages has
-    // no use for; PAGE_LIMIT keeps the single decode path.
-    let page = unpack_page(response, PAGE_LIMIT);
-    let entities = Arc::new(EntityLookup::from_envelope(&page.chats, &page.users));
-    Ok((index_messages(page.messages, peer), entities))
 }
 
 /// Raw `messages.GetHistory` pager (get_recent_messages path).
@@ -412,7 +349,6 @@ mod tests {
     use crate::test_helpers::{raw_tl_message, raw_tl_messages_slice};
     use chrono::DateTime;
     use grammers_client::tl;
-    use grammers_session::types::PeerAuth;
 
     #[test]
     fn unpack_slice_computes_last_chunk_and_keeps_envelope() {
@@ -657,82 +593,6 @@ mod tests {
         apply_window(&mut request, from, Some(to));
         assert_eq!(request.min_date, 1_699_999_999, "lower bound is min_date");
         assert_eq!(request.max_date, 1_700_086_401, "upper bound is max_date");
-    }
-
-    fn channel_ref(id: i64) -> PeerRef {
-        PeerRef {
-            id: PeerId::channel_unchecked(id),
-            auth: PeerAuth::from_hash(0),
-        }
-    }
-
-    fn chat_ref(id: i64) -> PeerRef {
-        PeerRef {
-            id: PeerId::chat_unchecked(id),
-            auth: PeerAuth::default(),
-        }
-    }
-
-    #[test]
-    fn channel_peer_routes_to_channels_get_messages() {
-        let request = get_messages_request(channel_ref(1144180066), &[610121, 610122]);
-
-        match request {
-            GetMessagesRequest::Channel(r) => assert_eq!(r.id.len(), 2),
-            GetMessagesRequest::Plain(_) => panic!("channel peer must use channels.GetMessages"),
-        }
-    }
-
-    #[test]
-    fn non_channel_peer_routes_to_messages_get_messages() {
-        let request = get_messages_request(chat_ref(521440428), &[7]);
-
-        match request {
-            GetMessagesRequest::Plain(r) => assert_eq!(r.id.len(), 1),
-            GetMessagesRequest::Channel(_) => panic!("chat peer must use messages.GetMessages"),
-        }
-    }
-
-    #[test]
-    fn index_messages_keys_by_id_regardless_of_response_order() {
-        let messages = vec![
-            raw_tl_message(610122, 1_700_000_100, 1144180066),
-            raw_tl_message(610121, 1_700_000_000, 1144180066),
-        ];
-
-        let indexed = index_messages(messages, channel_ref(1144180066));
-
-        assert_eq!(indexed.len(), 2);
-        assert_eq!(indexed[&610121].id(), 610121);
-        assert_eq!(indexed[&610122].id(), 610122);
-    }
-
-    #[test]
-    fn index_messages_drops_a_message_from_a_different_peer() {
-        // messages.GetMessages resolves bare ids across every dialog, so a
-        // response can name a chat we did not ask about.
-        let messages = vec![
-            raw_tl_message(610121, 1_700_000_000, 1144180066),
-            raw_tl_message(610122, 1_700_000_100, 999_999),
-        ];
-
-        let indexed = index_messages(messages, channel_ref(1144180066));
-
-        assert_eq!(indexed.len(), 1);
-        assert!(indexed.contains_key(&610121));
-        assert!(!indexed.contains_key(&610122));
-    }
-
-    #[test]
-    fn index_messages_keeps_empty_placeholders_for_the_caller_to_classify() {
-        let messages = vec![tl::enums::Message::Empty(tl::types::MessageEmpty {
-            id: 609784,
-            peer_id: None,
-        })];
-
-        let indexed = index_messages(messages, channel_ref(1144180066));
-
-        assert!(indexed.contains_key(&609784));
     }
 
     #[test]

@@ -41,6 +41,7 @@ mod ops_resolve;
 mod ops_search;
 mod ops_stats;
 mod ops_transcribe;
+mod raw_fetch;
 mod raw_page;
 mod raw_pager;
 mod resolve;

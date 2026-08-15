@@ -41,7 +41,7 @@ pub(super) fn require_found(
 }
 
 /// Raw-TL twin for the envelope-preserving fetch path, which never
-/// materializes a high-level `Message` (see `raw_pager::fetch_messages_by_id`).
+/// materializes a high-level `Message` (see `raw_fetch::fetch_messages_by_id`).
 pub(super) fn require_found_raw(
     fetched: Option<tl::enums::Message>,
     channel_ref: &str,
