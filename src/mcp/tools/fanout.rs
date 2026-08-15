@@ -5,6 +5,8 @@
 use crate::mcp::tools::types::responses::{ChannelFetchError, MessageResponse, SearchResponse};
 use crate::telegram::types::{QueryMetadata, SearchResult};
 use chrono::{DateTime, Utc};
+use futures::StreamExt;
+use std::future::Future;
 
 /// Hard cap on channels per fan-out call (rate cost is 1 token/channel
 /// against a default 30-token bucket).
@@ -18,6 +20,28 @@ pub(crate) const FANOUT_CONCURRENCY: usize = 4;
 pub(crate) struct ChannelFetchOutcome {
     pub channel: String,
     pub result: Result<SearchResult, String>,
+}
+
+/// Fetch every channel in `list` through `fetch` with bounded concurrency
+/// (`FANOUT_CONCURRENCY`), pairing each reference with its outcome. Outcome
+/// order follows `list` (buffered preserves order).
+pub(crate) async fn run<F, Fut>(list: Vec<String>, fetch: F) -> Vec<ChannelFetchOutcome>
+where
+    F: Fn(String) -> Fut,
+    Fut: Future<Output = Result<SearchResult, String>>,
+{
+    futures::stream::iter(list.into_iter().map(|reference| {
+        let result = fetch(reference.clone());
+        async move {
+            ChannelFetchOutcome {
+                channel: reference,
+                result: result.await,
+            }
+        }
+    }))
+    .buffered(FANOUT_CONCURRENCY)
+    .collect()
+    .await
 }
 
 /// Merge per-channel results into one newest-first page of at most `limit`
@@ -323,5 +347,22 @@ mod tests {
         let list: Vec<String> = (0..21).map(|i| i.to_string()).collect();
         let err = validate_channel_scope(&None, &Some(list)).unwrap_err();
         assert!(err.contains("20"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn run_pairs_each_channel_with_its_outcome_in_list_order() {
+        let outcomes = run(vec!["a".into(), "b".into()], |reference| async move {
+            if reference == "a" {
+                Ok(result_with(&[(1, 5)], 1, false))
+            } else {
+                Err(format!("boom {reference}"))
+            }
+        })
+        .await;
+        assert_eq!(outcomes.len(), 2);
+        assert_eq!(outcomes[0].channel, "a");
+        assert!(outcomes[0].result.is_ok());
+        assert_eq!(outcomes[1].channel, "b");
+        assert_eq!(outcomes[1].result.as_ref().unwrap_err(), "boom b");
     }
 }
