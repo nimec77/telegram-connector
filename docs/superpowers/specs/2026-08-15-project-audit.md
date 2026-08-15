@@ -54,6 +54,11 @@ consolidated into `test_helpers.rs`. Accepted overshoots: `server.rs` (macro-bou
 - `telegram/auth.rs` effectively untested (placeholder only, removed in stage 1).
 - `config.rs` 69.6% despite 861 test lines — file-loading error branches untested.
 - `serde_helpers.rs` 81.5%, `mcp/server.rs` 79.6% (tool wrapper log paths).
+- Stage 3 follow-ups (from the stage-3 final review): add `#[must_use]` to
+  `PageAccumulator::push`; add a collapse=false album-sibling `into_messages` test
+  (albums.rs unit tests are the only pin on `PageAccumulator` — the ops loops sit below
+  the DI seam); rename the global-search tracing field `page` to `page_no`
+  (`ops_search.rs` — clashes with the `page` accumulator local).
 
 ## Hygiene backlog (batch into any stage's PR)
 
