@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.2] - 2026-08-15
+
 ### Fixed
 - `get_message_media`, `transcribe_voice_message`, and `get_message_by_link`
   now reject a `message_id` beyond Telegram's `i32` wire range with
