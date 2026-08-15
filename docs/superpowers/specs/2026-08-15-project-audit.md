@@ -12,54 +12,21 @@ four rate-limiter mutex locks. The work splits into four stages, each its own pl
 
 ---
 
-## Stage 1 — Correctness fixes + dead code (plan: `../plans/2026-08-15-audit-stage1-correctness.md`)
+## Stage 1 — Correctness fixes + dead code ✅ (merged)
 
-1. **Pre-merge gate races itself.** `just check` → plain parallel `cargo test`, but
-   `src/config/tests.rs` mutates env vars (`TELEGRAM_MCP_CONFIG`, `TEST_PHONE`, …) at 17
-   sites with no lock; the serial-run guarantee lives only in the separate `test-config`
-   recipe and doc notes. Fix: a shared `ENV_LOCK` mutex inside the test module; retire the
-   special-case invocation everywhere it is documented (`CLAUDE.md:12,50`, `justfile:19`,
-   `README.md:1618`, `docs/workflow.md:78`).
-2. **Panic path + hand-rolled redaction in auth.** `src/telegram/auth.rs:21` logs
-   `&phone[..4]` — panics on phones < 4 bytes or non-ASCII boundaries, and bypasses
-   `logging::redact_phone`. `redact_phone` itself (`logging.rs:85-98`) byte-slices too and
-   has the same latent multibyte panic. Fix both: char-aware `redact_phone`, used by auth.
-3. **Silent i64→i32 id truncation.** `impl_media.rs:38` (get_message_media),
-   `impl_media.rs:279` (transcribe), `impl_search.rs:465` (get_message_by_link — id comes
-   from a caller-supplied t.me link) all do `message_id.get() as i32`. The batch path
-   (`helpers.rs:74`) already uses `MessageId::as_i32()` with a proper error. Fix: shared
-   `wire_message_id` helper at all four places.
-4. **Dead code:** `TelegramClient::sign_in` (`client/auth.rs:21-39`, zero callers —
-   `interactive_auth` bypasses it via `client.client()` because the wrapper discards the
-   2FA token); `parse_optional_channel_id` (`helpers.rs:91` + tests + `tools.rs:18`
-   re-export); `matches_media_filter` (`converters/media.rs:320` + `converters.rs:17`
-   re-export; only the `_raw` twin is used); `PostCounter::overflowed`
-   (`albums.rs:50`, `#[allow(dead_code)]`, exercised only by tests → gate `#[cfg(test)]`);
-   placeholder `test_auth_module_compiles` (`auth.rs:71`).
+Done: `ENV_LOCK` + `EnvGuard` serialize env-mutating config tests (plain `cargo test` is
+safe); char-aware `redact_phone` used by auth (panic path removed); shared `wire_message_id`
+helper replaced the silent i64→i32 truncations; dead code removed (`sign_in`,
+`parse_optional_channel_id`, `matches_media_filter`, `PostCounter::overflowed` gated,
+placeholder auth test).
 
-## Stage 2 — Module splits & test extraction (mechanical, no behavior change)
+## Stage 2 — Module splits & test extraction ✅ (merged via PR #40)
 
-Most >500-line files overshoot because of in-file `#[cfg(test)]` modules; the repo's
-`#[path]`-included test-file convention is the remedy. Only one production file needs a
-real split.
-
-| File | Lines | Action |
-|---|---|---|
-| `telegram/client/raw_pager.rs` | 976 | Real split: `raw_page.rs` (envelope interpretation ~215: `RawPage`, `unpack_page`, `channel_access_hash`, `input_peer_for_message`, `fill_buffer`, `chat_peer_for_message`), `raw_fetch.rs` (~75: `GetMessagesRequest`, `get_messages_request`, `index_messages`, `fetch_messages_by_id`; update `ops_message.rs:6`), pagers stay; 409-line test block → `client/tests/` |
-| `telegram/converters/message.rs` | 843 | Production is cohesive — do NOT split; move 522-line test module → `telegram/tests/message_tests.rs` |
-| `telegram/client/channels.rs` | 518 | Test extraction alone → ~310 lines (discovery-vs-subscription production split exists but KISS says skip) |
-| `mcp/server.rs` | 649 | Already fine (macro-bound boilerplate); optional: `ToolInvocation` (~50 lines) → `server/invocation.rs` |
-| `mcp/tests/search.rs` | 1217 | → `search_core.rs` / `search_dates.rs` / `search_shaping.rs` |
-| `mcp/tests/history.rs` | 962 | → `history_core.rs` / `history_dates.rs` / `history_paging.rs`; delete local `create_test_message` duplicate (:17-44) |
-| `config/tests.rs` | 861 | → `tests/env_tests.rs` / `load_tests.rs` (all env-mutating loaders in one auditable place) / `validation_tests.rs` / `defaults_tests.rs`. Fold in an `EnvGuard` drop-guard (stage-1 review): `remove_var` cleanup currently runs only on the success path, so a failing assertion leaks vars into subsequent locked tests |
-| `telegram/tests/converters_tests.rs` | 847 | → thumb/forward, av, doc/poll files |
-| `telegram/tests/client_tests.rs` | 710 | **Prune, don't split**: 21 `mock_*` tests assert on the mockall mock itself (zero production code under test, ~550 lines); keep the 6 `username_to_resolve` tests |
-| `mcp/tests/media_batch.rs` | 649 | → core/budget + shared fixtures (`permissive_limiter` → `test_helpers`) |
-| `mcp/tests/channels.rs` | 511 | 2% over — leave |
-
-Also: fixture duplication `test_helpers.rs` should own (`create_test_message`/
-`create_test_channel` re-implemented locally in 2 files each; all-`None` request literal
-repeated 22×/20× in search/history tests; `expect_acquire().returning(|_| Ok(()))` ~60×).
+Done: `raw_pager.rs` split into `raw_page.rs`/`raw_fetch.rs`; oversized in-file
+`#[cfg(test)]` modules moved to `#[path]`-included siblings (`mcp/tests/`,
+`telegram/tests/`, `config/tests/`); mock-only client tests pruned; shared fixtures
+consolidated into `test_helpers.rs`. Accepted overshoots: `server.rs` (macro-bound),
+`test_helpers.rs`, `telegram/tests/message_tests.rs`.
 
 ## Stage 3 — Duplication / KISS refactors
 
