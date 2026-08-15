@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.3] - 2026-08-15
+
+### Fixed
+- The rate limiter now recovers from a poisoned lock instead of panicking:
+  the bucket state is a pair of plain numbers that is valid after any
+  interleaving, so a panic in another lock holder cannot leave it
+  inconsistent. Previously a single panicked holder would poison the mutex
+  and turn every subsequent tool call into a panic.
+
+### Internal
+- Audit stage 3 refactors, behavior-preserving: each server submodule gets
+  explicit imports instead of the `super::*` prelude;
+  `validate_channel_identifier` promoted to a client-wide guard;
+  `search_messages_impl` split into channel and global paths;
+  `PageAccumulator` owns the previously triplicated admit/limit/has_more
+  block; `cursor_wire_bounds` shared across search and history ops;
+  per-outcome handling extracted from the media batch loop; `available_tokens`
+  deduplicated between the inherent impl and the trait impl; vestigial serde
+  re-export dropped.
+
+## [0.22.2] - 2026-08-15
+
 ### Fixed
 - `get_message_media`, `transcribe_voice_message`, and `get_message_by_link`
   now reject a `message_id` beyond Telegram's `i32` wire range with
