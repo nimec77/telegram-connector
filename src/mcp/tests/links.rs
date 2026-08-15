@@ -5,9 +5,11 @@ use crate::mcp::server::McpServer;
 #[cfg(target_os = "macos")]
 use crate::mcp::tools::OpenMessageResponse;
 use crate::mcp::tools::{GenerateLinkRequest, MessageLinkResponse, OpenMessageRequest};
+#[cfg(not(target_os = "macos"))]
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::{ChannelId, ChannelIdentity};
+use crate::test_helpers::permissive_limiter;
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::NumberOrString;
@@ -30,8 +32,7 @@ async fn generate_message_link_public_channel_returns_public_forms() {
     mock_client
         .expect_resolve_channel_identity()
         .return_once(|_| Ok(identity(1144180066, Some("swodki"))));
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GenerateLinkRequest {
@@ -64,8 +65,7 @@ async fn generate_message_link_accepts_username_input() {
         .expect_resolve_channel_identity()
         .withf(|channel_ref| channel_ref == "swodki")
         .return_once(|_| Ok(identity(1144180066, Some("swodki"))));
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GenerateLinkRequest {
@@ -90,8 +90,7 @@ async fn generate_message_link_private_chat_returns_internal_forms() {
     mock_client
         .expect_resolve_channel_identity()
         .return_once(|_| Ok(identity(521440428, None)));
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GenerateLinkRequest {
@@ -120,8 +119,7 @@ async fn generate_message_link_without_tg_protocol() {
     mock_client
         .expect_resolve_channel_identity()
         .return_once(|_| Ok(identity(999, None)));
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GenerateLinkRequest {
@@ -146,8 +144,7 @@ async fn generate_message_link_unknown_channel_errors() {
     mock_client
         .expect_resolve_channel_identity()
         .return_once(|_| Err(Error::InvalidInput("Channel not found: @nope".to_string())));
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GenerateLinkRequest {
@@ -183,8 +180,7 @@ async fn open_message_in_telegram_unknown_channel_errors() {
                 "Channel not found: invalid".to_string(),
             ))
         });
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = OpenMessageRequest {
@@ -212,8 +208,7 @@ async fn open_message_in_telegram_uses_public_tg_form_by_default() {
     mock_client
         .expect_resolve_channel_identity()
         .return_once(|_| Ok(identity(1144180066, Some("swodki"))));
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = OpenMessageRequest {
@@ -238,8 +233,7 @@ async fn open_message_in_telegram_uses_https_when_requested() {
     mock_client
         .expect_resolve_channel_identity()
         .return_once(|_| Ok(identity(123456, None)));
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = OpenMessageRequest {

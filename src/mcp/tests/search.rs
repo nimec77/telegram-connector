@@ -8,7 +8,7 @@ use crate::telegram::types::{
     ChannelId, ChannelIdentity, ChannelName, MediaFilter, MediaType, Message, MessageId,
     QueryMetadata, SearchResult, Username,
 };
-use crate::test_helpers::{create_test_message, create_test_search_result};
+use crate::test_helpers::{create_test_message, create_test_search_result, permissive_limiter};
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::NumberOrString;
@@ -66,8 +66,7 @@ async fn search_messages_returns_results() {
         .expect_search_messages()
         .returning(move |_| Ok(expected.clone()));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -212,8 +211,7 @@ async fn search_messages_with_channel_filter() {
             Ok(expected.clone())
         });
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -274,8 +272,7 @@ async fn search_messages_applies_limits() {
             Ok(expected.clone())
         });
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -356,8 +353,7 @@ async fn search_allows_empty_query_with_media_filter() {
         .expect_search_messages()
         .returning(move |_| Ok(expected.clone()));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -419,8 +415,7 @@ async fn search_passes_media_filter_to_params() {
             Ok(expected.clone())
         });
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -514,8 +509,7 @@ async fn search_messages_serializes_enrichment_fields() {
         .expect_search_messages()
         .returning(move |_| Ok(enriched.clone()));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -576,8 +570,7 @@ async fn search_messages_serializes_enriched_forward_without_resolve_calls() {
     // get_channel_info: mockall panics if any of them is called — the
     // zero-resolve guarantee for the enrichment path.
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -626,8 +619,7 @@ async fn search_passes_date_range_to_client() {
         })
         .returning(move |_| Ok(create_test_search_result(vec![], "q", 0)));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -739,8 +731,7 @@ async fn search_accepts_equal_from_and_to_date() {
         })
         .returning(move |_| Ok(create_test_search_result(vec![], "q", 0)));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -818,8 +809,7 @@ async fn search_accepts_to_date_inside_hours_back_window() {
         .expect_search_messages()
         .returning(move |_| Ok(create_test_search_result(vec![], "q", 0)));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -889,8 +879,7 @@ async fn search_accepts_padded_from_date() {
         .withf(|p| p.from_date == Some("2026-08-01T00:00:00Z".parse().unwrap()))
         .returning(move |_| Ok(create_test_search_result(vec![], "q", 0)));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -927,8 +916,7 @@ async fn search_response_reports_window_and_returned() {
         .expect_search_messages()
         .returning(move |_| Ok(create_test_search_result(vec![msg.clone()], "q", 1)));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -1052,8 +1040,7 @@ async fn search_accepts_username_channel_id() {
         .expect_search_messages()
         .withf(|p| p.channel_id.map(|c| c.get()) == Some(1144180066))
         .returning(|_| Ok(create_test_search_result(vec![], "тест", 0)));
-    let mut limiter = MockRateLimiterTrait::new();
-    limiter.expect_acquire().returning(|_| Ok(()));
+    let limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(telegram), Arc::new(limiter));
 
     let request = SearchRequest {
@@ -1096,8 +1083,7 @@ async fn search_messages_shapes_response_end_to_end_for_single_channel() {
         .expect_search_messages()
         .returning(move |_| Ok(result.clone()));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -1168,8 +1154,7 @@ async fn timed_out_search_returns_partial_results_not_an_error() {
         .expect_search_messages()
         .returning(move |_| Ok(degraded.clone()));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -1198,8 +1183,7 @@ async fn healthy_search_omits_the_degradation_flags() {
         .expect_search_messages()
         .returning(move |_| Ok(expected.clone()));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 

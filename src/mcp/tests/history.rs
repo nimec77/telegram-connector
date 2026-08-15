@@ -5,7 +5,7 @@ use crate::mcp::tools::{GetRecentMessagesRequest, ResponseFormat, SearchResponse
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::{MediaFilter, Message, QueryMetadata, SearchResult};
-use crate::test_helpers::{create_test_message, create_test_search_result};
+use crate::test_helpers::{create_test_message, create_test_search_result, permissive_limiter};
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::NumberOrString;
@@ -41,8 +41,7 @@ async fn get_recent_messages_returns_results() {
         .expect_get_recent_messages()
         .returning(move |_| Ok(expected.clone()));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -137,8 +136,7 @@ async fn get_recent_messages_with_media_filter() {
         .withf(|params| params.media_filter == Some(MediaFilter::Photo))
         .returning(move |_| Ok(expected.clone()));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -200,8 +198,7 @@ async fn get_recent_messages_applies_limits() {
         .withf(|params| params.limit == 3 && params.hours_back == 72)
         .returning(move |_| Ok(expected.clone()));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -266,8 +263,7 @@ async fn get_recent_messages_with_username_passes_identifier_without_pre_resolvi
         })
         .returning(move |_| Ok(expected.clone()));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -350,8 +346,7 @@ async fn get_recent_messages_passes_date_range_to_client() {
         })
         .returning(move |_| Ok(create_test_search_result(vec![], "", 1)));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -392,8 +387,7 @@ async fn get_recent_messages_accepts_equal_from_and_to_date() {
         })
         .returning(move |_| Ok(create_test_search_result(vec![], "", 1)));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -501,8 +495,7 @@ async fn get_recent_messages_accepts_to_date_inside_hours_back_window() {
         .expect_get_recent_messages()
         .returning(move |_| Ok(create_test_search_result(vec![], "", 1)));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -568,8 +561,7 @@ async fn collapse_albums_flag_reaches_params() {
         .withf(|p| !p.collapse_albums)
         .returning(move |_| Ok(create_test_search_result(vec![], "", 0)));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -604,8 +596,7 @@ async fn collapse_albums_defaults_to_true() {
         .withf(|p| p.collapse_albums)
         .returning(move |_| Ok(create_test_search_result(vec![], "", 0)));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -659,8 +650,7 @@ async fn get_recent_messages_emits_next_cursor_when_limit_truncates() {
         .expect_get_recent_messages()
         .withf(|p| p.before_id.is_none() && p.after_id.is_none())
         .returning(move |_| Ok(result.clone()));
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GetRecentMessagesRequest {
@@ -698,8 +688,7 @@ async fn get_recent_messages_passes_cursor_params_to_client() {
                 && p.after_id.map(|id| id.get()) == Some(600_000)
         })
         .returning(move |_| Ok(create_test_search_result(vec![], "", 1)));
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GetRecentMessagesRequest {
@@ -777,8 +766,7 @@ async fn get_recent_messages_truncates_long_text() {
     mock_client
         .expect_get_recent_messages()
         .returning(move |_| Ok(result.clone()));
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GetRecentMessagesRequest {
@@ -832,8 +820,7 @@ async fn get_recent_messages_compact_hoists_channel_header() {
     mock_client
         .expect_get_recent_messages()
         .returning(move |_| Ok(result.clone()));
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GetRecentMessagesRequest {
@@ -894,8 +881,7 @@ async fn get_recent_messages_oversized_page_stays_under_budget() {
     mock_client
         .expect_get_recent_messages()
         .returning(move |_| Ok(result.clone()));
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GetRecentMessagesRequest {

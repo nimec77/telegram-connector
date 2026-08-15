@@ -6,7 +6,7 @@ use crate::mcp::tools::GetMessageByLinkRequest;
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::Message;
-use crate::test_helpers::create_test_message;
+use crate::test_helpers::{create_test_message, permissive_limiter};
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::NumberOrString;
@@ -24,8 +24,7 @@ async fn get_message_by_link_public_link_returns_message() {
         .withf(|channel_ref, msg_id| channel_ref == "swodki" && *msg_id == 575403)
         .return_once(move |_, _| Ok(expected));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -57,8 +56,7 @@ async fn get_message_by_link_private_link_returns_message() {
         .withf(|channel_ref, msg_id| channel_ref == "1234567" && *msg_id == 42)
         .return_once(move |_, _| Ok(expected));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -109,8 +107,7 @@ async fn get_message_by_link_channel_not_found() {
         ))
     });
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -138,8 +135,7 @@ async fn get_message_by_link_message_not_found() {
         ))
     });
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 

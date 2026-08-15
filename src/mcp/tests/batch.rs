@@ -5,7 +5,7 @@ use crate::mcp::tools::types::requests::GetMessagesBatchRequest;
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::MessageBatch;
-use crate::test_helpers::create_test_message;
+use crate::test_helpers::{create_test_message, permissive_limiter};
 use std::sync::Arc;
 
 fn request(ids: Vec<i64>) -> GetMessagesBatchRequest {
@@ -75,8 +75,7 @@ async fn batch_dedupes_ids_preserving_order() {
                 missing_ids: vec![7, 3],
             })
         });
-    let mut limiter = MockRateLimiterTrait::new();
-    limiter.expect_acquire().returning(|_| Ok(()));
+    let limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(telegram), Arc::new(limiter));
     server
         .get_messages_batch_impl(request(vec![7, 3, 7]))

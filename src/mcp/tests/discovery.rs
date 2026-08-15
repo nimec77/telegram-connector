@@ -4,7 +4,7 @@ use crate::mcp::server::McpServer;
 use crate::mcp::tools::{ChannelsResponse, SearchPublicChannelsRequest};
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
-use crate::test_helpers::create_test_channel_named;
+use crate::test_helpers::{create_test_channel_named, permissive_limiter};
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::NumberOrString;
@@ -87,8 +87,7 @@ async fn search_public_channels_truncates_to_requested_limit() {
                 .collect())
         });
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -132,8 +131,7 @@ async fn discovery_has_more_is_unknown_at_limit() {
         .withf(|q, limit| q == "rust" && *limit == 1)
         .return_once(|_, _| Ok(vec![create_test_channel_named(42, "Rust News", false)]));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
@@ -169,8 +167,7 @@ async fn discovery_has_more_false_under_limit() {
         .withf(|q, limit| q == "rust" && *limit == 10)
         .return_once(|_, _| Ok(vec![create_test_channel_named(42, "Rust News", false)]));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 

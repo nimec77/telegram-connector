@@ -6,7 +6,7 @@ use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::Username;
 use crate::telegram::{Channel, ChannelId, ChannelName, ChannelPage, ChatType};
-use crate::test_helpers::create_test_channel_named;
+use crate::test_helpers::{create_test_channel_named, permissive_limiter};
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::NumberOrString;
@@ -276,8 +276,7 @@ async fn include_full_routes_to_full_channel_info() {
         });
 
     // The full path meters its extra RPC.
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GetChannelInfoRequest {
@@ -477,8 +476,7 @@ async fn include_full_passes_last_message_date_through() {
         .with(mockall::predicate::eq("@news"))
         .return_once(|_| Ok(channel));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GetChannelInfoRequest {

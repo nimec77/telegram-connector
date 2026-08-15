@@ -6,7 +6,7 @@ use crate::mcp::tools::{GetMessageMediaRequest, GetMessageMediaResponse};
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::{MediaDownload, MediaType};
-use crate::test_helpers::create_test_jpeg;
+use crate::test_helpers::{create_test_jpeg, permissive_limiter};
 use base64::Engine as _;
 use mockall::predicate::eq;
 use rmcp::handler::server::common::RequestId;
@@ -109,8 +109,7 @@ async fn video_thumbnail_sets_is_thumbnail() {
             })
         });
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
     let result = server
@@ -162,8 +161,7 @@ async fn video_metadata_included_in_response() {
             })
         });
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
     let result = server
@@ -196,8 +194,7 @@ async fn no_visual_media_returns_structured_error() {
             })
         });
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
     let result = server
@@ -224,8 +221,7 @@ async fn oversize_media_is_rejected() {
             })
         });
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
     let result = server
@@ -248,8 +244,7 @@ async fn max_dimension_is_clamped_to_2048() {
         .withf(|_, _, max_dim| *max_dim == 2048)
         .return_once(|_, _, _| Ok(photo_download(64, 64)));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
     let result = server
@@ -269,8 +264,7 @@ async fn max_dimension_is_clamped_up_to_64() {
         .withf(|_, _, max_dim| *max_dim == 64)
         .return_once(|_, _, _| Ok(photo_download(64, 64)));
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
     let result = server
@@ -351,8 +345,7 @@ async fn corrupt_image_bytes_return_decode_error() {
             })
         });
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
     let result = server
@@ -388,8 +381,7 @@ async fn media_metadata_uses_variant_naming_and_reports_largest() {
             })
         });
 
-    let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_acquire().returning(|_| Ok(()));
+    let mock_limiter = permissive_limiter();
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
     let result = server
