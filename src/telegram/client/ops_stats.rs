@@ -13,11 +13,7 @@ impl TelegramClient {
         channel_ref: &str,
         days_back: u32,
     ) -> Result<ChannelStats, Error> {
-        if channel_ref.is_empty() {
-            return Err(Error::InvalidInput(
-                "Channel reference cannot be empty".to_string(),
-            ));
-        }
+        validate_channel_identifier(channel_ref)?;
         if days_back == 0 {
             return Err(Error::InvalidInput(
                 "days_back must be greater than 0".to_string(),

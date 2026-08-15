@@ -93,6 +93,19 @@ fn cursor_wire_bounds(
     Ok((wire("before_id", before_id)?, wire("after_id", after_id)?))
 }
 
+/// Reject an empty channel identifier before it reaches peer resolution.
+///
+/// Shared client-wide so every entry point reports the same error for the
+/// same caller mistake.
+fn validate_channel_identifier(identifier: &str) -> Result<(), Error> {
+    if identifier.is_empty() {
+        return Err(Error::InvalidInput(
+            "Channel identifier cannot be empty".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 /// Telegram client wrapping grammers-client
 pub struct TelegramClient {
     client: Client,

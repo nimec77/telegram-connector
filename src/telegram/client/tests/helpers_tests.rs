@@ -29,3 +29,18 @@ fn cursor_wire_bounds_rejects_beyond_i32_naming_the_field() {
     let err = cursor_wire_bounds(None, Some(mid(big))).unwrap_err();
     assert!(err.to_string().contains("after_id"), "got: {err}");
 }
+
+#[test]
+fn empty_channel_identifier_is_rejected() {
+    let err = validate_channel_identifier("").expect_err("empty must be rejected");
+    assert!(
+        err.to_string()
+            .contains("Channel identifier cannot be empty"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn non_empty_channel_identifier_passes() {
+    assert!(validate_channel_identifier("durov").is_ok());
+}

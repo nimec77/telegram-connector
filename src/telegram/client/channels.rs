@@ -232,19 +232,6 @@ impl TelegramClient {
     }
 }
 
-/// Reject an empty channel identifier before it reaches peer resolution.
-///
-/// Shared by the basic and the `include_full` lookup paths so both report the
-/// same error for the same caller mistake.
-fn validate_channel_identifier(identifier: &str) -> Result<(), Error> {
-    if identifier.is_empty() {
-        return Err(Error::InvalidInput(
-            "Channel identifier cannot be empty".to_string(),
-        ));
-    }
-    Ok(())
-}
-
 /// Whether `channels.GetFullChannel` applies to this peer.
 ///
 /// "Channel-kind" in TL terms covers broadcasts *and* megagroups. grammers routes
