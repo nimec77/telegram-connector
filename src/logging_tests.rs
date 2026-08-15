@@ -43,6 +43,13 @@ fn redact_phone_empty_string() {
     assert_eq!(redacted, "[REDACTED]");
 }
 
+#[test]
+fn redact_phone_multibyte_input_does_not_panic() {
+    // 8 chars but 24 bytes: byte index 4 is not a char boundary, so the old
+    // byte-slicing implementation panicked here.
+    assert_eq!(redact_phone("€€€€€€€€"), "€€€€***€€€");
+}
+
 // ========================================================================
 // API Hash Redaction Tests
 // ========================================================================

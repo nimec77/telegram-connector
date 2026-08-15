@@ -1,4 +1,5 @@
 use crate::error::Error;
+use crate::logging::redact_phone;
 use crate::telegram::client::TelegramClient;
 use dialoguer::{Input, Password};
 use grammers_client::SignInError;
@@ -10,16 +11,22 @@ use grammers_client::SignInError;
 /// - 2FA password (if enabled on account)
 ///
 /// Returns Ok(()) if authentication succeeds.
+///
+/// # Manual testing
+///
+/// Requires a real Telegram client and credentials:
+/// 1. `cargo run --bin telegram-mcp -- --setup`
+/// 2. Enter phone number when prompted
+/// 3. Enter the code received on Telegram
+/// 4. If 2FA is enabled, enter password
+/// 5. Verify session is saved to `~/.config/telegram-connector/session.db`
 pub async fn interactive_auth(
     client: &TelegramClient,
     phone: &str,
     api_hash: &str,
 ) -> Result<(), Error> {
     // Request login code
-    tracing::info!(
-        "Requesting login code for phone: {}...[redacted]",
-        &phone[..4]
-    );
+    tracing::info!("Requesting login code for phone: {}", redact_phone(phone));
     let token = client.request_login_code(phone, api_hash).await?;
 
     // Prompt for code
@@ -53,24 +60,5 @@ pub async fn interactive_auth(
             Ok(())
         }
         Err(e) => Err(Error::Auth(format!("Sign in failed: {}", e))),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    // Note: Authentication tests require a real Telegram client
-    // and are tested manually or via integration tests with real credentials
-    //
-    // To test manually:
-    // 1. cargo run --bin telegram-mcp -- --setup
-    // 2. Enter phone number when prompted
-    // 3. Enter the code received on Telegram
-    // 4. If 2FA is enabled, enter password
-    // 5. Verify session is saved to ~/.config/telegram-connector/session.db
-
-    #[test]
-    fn test_auth_module_compiles() {
-        // Placeholder test to verify module compiles
-        // Real authentication tests require Telegram API access
     }
 }

@@ -83,18 +83,16 @@ where
 /// Shows first 4 chars + last 3 chars, hides middle
 /// Returns "[REDACTED]" for strings ≤6 characters
 pub fn redact_phone(phone: &str) -> String {
-    if phone.len() <= 6 {
+    // Char-aware: byte slicing panics mid-codepoint, and a config-supplied
+    // phone string is not guaranteed to be ASCII.
+    let chars: Vec<char> = phone.chars().collect();
+    if chars.len() <= 6 {
         return "[REDACTED]".to_string();
     }
 
-    let visible_start = 4;
-    let visible_end = 3;
-
-    format!(
-        "{}***{}",
-        &phone[..visible_start],
-        &phone[phone.len() - visible_end..]
-    )
+    let start: String = chars[..4].iter().collect();
+    let end: String = chars[chars.len() - 3..].iter().collect();
+    format!("{start}***{end}")
 }
 
 /// Redact API hash for safe logging
