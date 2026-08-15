@@ -73,18 +73,7 @@ async fn search_messages_returns_results() {
     // When: Search messages
     let request = SearchRequest {
         query: "AI".to_string(),
-        channel_id: None,
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     let result = server
@@ -107,19 +96,8 @@ async fn search_messages_empty_query_fails() {
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = SearchRequest {
-        query: "   ".to_string(), // whitespace only
-        channel_id: None,
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None, // no filter either = error
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        query: "   ".to_string(), // whitespace only; no media_filter either = error
+        ..Default::default()
     };
 
     // When: Search messages
@@ -153,18 +131,7 @@ async fn search_messages_rate_limited() {
 
     let request = SearchRequest {
         query: "test".to_string(),
-        channel_id: None,
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     // When: Search messages
@@ -219,17 +186,9 @@ async fn search_messages_with_channel_filter() {
     let request = SearchRequest {
         query: "test".to_string(),
         channel_id: Some("999".to_string()),
-        channel_ids: None,
         hours_back: Some(24),
         limit: Some(50),
-        media_filter: None,
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     let result = server
@@ -279,18 +238,9 @@ async fn search_messages_applies_limits() {
     // When: Search with values exceeding limits
     let request = SearchRequest {
         query: "test".to_string(),
-        channel_id: None,
-        channel_ids: None,
         hours_back: Some(1000), // exceeds MAX_HOURS_BACK (72)
         limit: Some(500),       // exceeds MAX_LIMIT (100)
-        media_filter: None,
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     let result = server
@@ -359,19 +309,9 @@ async fn search_allows_empty_query_with_media_filter() {
 
     // When: Search with empty query but media_filter set
     let request = SearchRequest {
-        query: "".to_string(), // empty query is OK
-        channel_id: None,
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
+        query: "".to_string(),                     // empty query is OK
         media_filter: Some(MediaFilter::Document), // filter by documents
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     let result = server
@@ -422,18 +362,8 @@ async fn search_passes_media_filter_to_params() {
     // When: Search with media_filter
     let request = SearchRequest {
         query: "AI news".to_string(),
-        channel_id: None,
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
         media_filter: Some(MediaFilter::Photo),
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     let result = server
@@ -515,18 +445,7 @@ async fn search_messages_serializes_enrichment_fields() {
 
     let request = SearchRequest {
         query: "x".to_string(),
-        channel_id: None,
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     let result = server
@@ -576,18 +495,7 @@ async fn search_messages_serializes_enriched_forward_without_resolve_calls() {
 
     let request = SearchRequest {
         query: "x".to_string(),
-        channel_id: None,
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     let result = server
@@ -626,18 +534,9 @@ async fn search_passes_date_range_to_client() {
     // When: Search with an explicit date range
     let request = SearchRequest {
         query: "q".to_string(),
-        channel_id: None,
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
         from_date: Some("2026-08-01T00:00:00Z".to_string()),
         to_date: Some("2026-08-05T00:00:00Z".to_string()),
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     let result = server
@@ -657,18 +556,8 @@ async fn search_rejects_invalid_from_date() {
 
     let request = SearchRequest {
         query: "q".to_string(),
-        channel_id: None,
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
         from_date: Some("not-a-date".to_string()),
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     // When: Search with a malformed from_date
@@ -690,18 +579,9 @@ async fn search_rejects_inverted_range() {
 
     let request = SearchRequest {
         query: "q".to_string(),
-        channel_id: None,
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
         from_date: Some("2026-08-05T00:00:00Z".to_string()),
         to_date: Some("2026-08-01T00:00:00Z".to_string()),
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     // When: Search with from_date after to_date
@@ -737,18 +617,9 @@ async fn search_accepts_equal_from_and_to_date() {
 
     let request = SearchRequest {
         query: "q".to_string(),
-        channel_id: None,
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
         from_date: Some("2026-08-01T00:00:00Z".to_string()),
         to_date: Some("2026-08-01T00:00:00Z".to_string()),
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     let result = server
@@ -775,18 +646,8 @@ async fn search_rejects_to_date_older_than_hours_back_window() {
 
     let request = SearchRequest {
         query: "q".to_string(),
-        channel_id: None,
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
-        from_date: None,
         to_date: Some(long_ago.to_rfc3339()),
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     let result = server
@@ -817,18 +678,8 @@ async fn search_accepts_to_date_inside_hours_back_window() {
 
     let request = SearchRequest {
         query: "q".to_string(),
-        channel_id: None,
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
-        from_date: None,
         to_date: Some(recent.to_rfc3339()),
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     let result = server
@@ -848,18 +699,8 @@ async fn search_rejects_blank_from_date() {
 
     let request = SearchRequest {
         query: "q".to_string(),
-        channel_id: None,
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
         from_date: Some("   ".to_string()),
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     let result = server
@@ -885,18 +726,8 @@ async fn search_accepts_padded_from_date() {
 
     let request = SearchRequest {
         query: "q".to_string(),
-        channel_id: None,
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
         from_date: Some(" 2026-08-01T00:00:00Z ".to_string()),
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     let result = server
@@ -922,18 +753,7 @@ async fn search_response_reports_window_and_returned() {
 
     let request = SearchRequest {
         query: "q".to_string(),
-        channel_id: None,
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     let result_string = server
@@ -967,18 +787,8 @@ async fn search_messages_rejects_cursors_without_channel() {
 
     let request = SearchRequest {
         query: "новости".to_string(),
-        channel_id: None,
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
         before_id: Some(100),
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
     let out = server
         .search_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
@@ -998,18 +808,8 @@ async fn search_messages_rejects_compact_without_channel() {
 
     let request = SearchRequest {
         query: "тест".to_string(),
-        channel_id: None,
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
         format: Some(ResponseFormat::Compact),
+        ..Default::default()
     };
     let out = server
         .search_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
@@ -1091,17 +891,9 @@ async fn search_messages_shapes_response_end_to_end_for_single_channel() {
     let request = SearchRequest {
         query: "тест".to_string(),
         channel_id: Some("123".to_string()),
-        channel_ids: None,
-        hours_back: None,
         limit: Some(3),
-        media_filter: None,
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
         format: Some(ResponseFormat::Compact),
+        ..Default::default()
     };
 
     let out = server
@@ -1118,25 +910,6 @@ async fn search_messages_shapes_response_end_to_end_for_single_channel() {
     assert_eq!(v["channel"]["id"], serde_json::json!(123));
     for m in v["messages"].as_array().expect("messages array") {
         assert!(m.get("channel_id").is_none());
-    }
-}
-
-/// All-`None` request body; only `query` varies in these two tests.
-fn search_request(query: &str) -> SearchRequest {
-    SearchRequest {
-        query: query.to_string(),
-        channel_id: None,
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
     }
 }
 
@@ -1160,7 +933,10 @@ async fn timed_out_search_returns_partial_results_not_an_error() {
 
     let result = server
         .search_messages(
-            Parameters(search_request("rare")),
+            Parameters(SearchRequest {
+                query: "rare".to_string(),
+                ..Default::default()
+            }),
             RequestId(NumberOrString::Number(1)),
         )
         .await;
@@ -1189,7 +965,10 @@ async fn healthy_search_omits_the_degradation_flags() {
 
     let result = server
         .search_messages(
-            Parameters(search_request("common")),
+            Parameters(SearchRequest {
+                query: "common".to_string(),
+                ..Default::default()
+            }),
             RequestId(NumberOrString::Number(1)),
         )
         .await;

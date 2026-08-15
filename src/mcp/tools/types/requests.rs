@@ -172,7 +172,7 @@ pub struct SearchRequest {
 }
 
 /// Request for get_recent_messages tool
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, JsonSchema, Default)]
 pub struct GetRecentMessagesRequest {
     #[schemars(description = "Channel ID or username. Required unless channel_ids is set.")]
     #[serde(default, deserialize_with = "flexible_opt_string")]

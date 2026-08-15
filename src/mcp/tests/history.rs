@@ -48,17 +48,7 @@ async fn get_recent_messages_returns_results() {
     // When: Get recent messages
     let request = GetRecentMessagesRequest {
         channel_id: Some("123".to_string()),
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     let result = server
@@ -84,17 +74,7 @@ async fn get_recent_messages_missing_channel_id_fails() {
 
     let request = GetRecentMessagesRequest {
         channel_id: None,
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     // When: Get recent messages
@@ -143,17 +123,9 @@ async fn get_recent_messages_with_media_filter() {
     // When: Get recent messages with photo filter
     let request = GetRecentMessagesRequest {
         channel_id: Some("123".to_string()),
-        channel_ids: None,
         hours_back: Some(24),
-        limit: None,
         media_filter: Some(MediaFilter::Photo),
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     let result = server
@@ -205,17 +177,9 @@ async fn get_recent_messages_applies_limits() {
     // When: Get recent messages with custom limits
     let request = GetRecentMessagesRequest {
         channel_id: Some("123".to_string()),
-        channel_ids: None,
         hours_back: Some(72),
         limit: Some(3),
-        media_filter: None,
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     let result = server
@@ -270,17 +234,7 @@ async fn get_recent_messages_with_username_passes_identifier_without_pre_resolvi
     // When: Get recent messages using username
     let request = GetRecentMessagesRequest {
         channel_id: Some("tech_news".to_string()), // username, not numeric ID
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     let result = server
@@ -309,17 +263,7 @@ async fn get_recent_messages_rate_limited() {
 
     let request = GetRecentMessagesRequest {
         channel_id: Some("123".to_string()),
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     // When: Get recent messages when rate limited
@@ -353,17 +297,9 @@ async fn get_recent_messages_passes_date_range_to_client() {
     // When: Get recent messages with an explicit date range
     let request = GetRecentMessagesRequest {
         channel_id: Some("123".to_string()),
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
         from_date: Some("2026-08-01T00:00:00Z".to_string()),
         to_date: Some("2026-08-05T00:00:00Z".to_string()),
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     let result = server
@@ -393,17 +329,9 @@ async fn get_recent_messages_accepts_equal_from_and_to_date() {
 
     let request = GetRecentMessagesRequest {
         channel_id: Some("123".to_string()),
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
         from_date: Some("2026-08-01T00:00:00Z".to_string()),
         to_date: Some("2026-08-01T00:00:00Z".to_string()),
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     let result = server
@@ -425,17 +353,9 @@ async fn get_recent_messages_rejects_inverted_range() {
 
     let request = GetRecentMessagesRequest {
         channel_id: Some("123".to_string()),
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
         from_date: Some("2026-08-05T00:00:00Z".to_string()),
         to_date: Some("2026-08-01T00:00:00Z".to_string()),
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     let result = server
@@ -463,17 +383,8 @@ async fn get_recent_messages_rejects_to_date_older_than_hours_back_window() {
 
     let request = GetRecentMessagesRequest {
         channel_id: Some("123".to_string()),
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
-        from_date: None,
         to_date: Some(long_ago.to_rfc3339()),
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     let result = server
@@ -503,17 +414,8 @@ async fn get_recent_messages_accepts_to_date_inside_hours_back_window() {
 
     let request = GetRecentMessagesRequest {
         channel_id: Some("123".to_string()),
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
-        from_date: None,
         to_date: Some(recent.to_rfc3339()),
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     let result = server
@@ -531,17 +433,8 @@ async fn get_recent_messages_rejects_blank_to_date() {
 
     let request = GetRecentMessagesRequest {
         channel_id: Some("123".to_string()),
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
-        from_date: None,
         to_date: Some("".to_string()),
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     let result = server
@@ -567,17 +460,8 @@ async fn collapse_albums_flag_reaches_params() {
 
     let request = GetRecentMessagesRequest {
         channel_id: Some("123".to_string()),
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
-        from_date: None,
-        to_date: None,
         collapse_albums: Some(false),
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     let result = server
@@ -602,17 +486,7 @@ async fn collapse_albums_defaults_to_true() {
 
     let request = GetRecentMessagesRequest {
         channel_id: Some("123".to_string()),
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
 
     let result = server
@@ -655,17 +529,7 @@ async fn get_recent_messages_emits_next_cursor_when_limit_truncates() {
 
     let request = GetRecentMessagesRequest {
         channel_id: Some("123".to_string()),
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
     let out = server
         .get_recent_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
@@ -693,17 +557,9 @@ async fn get_recent_messages_passes_cursor_params_to_client() {
 
     let request = GetRecentMessagesRequest {
         channel_id: Some("123".to_string()),
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
         before_id: Some(610_119),
         after_id: Some(600_000),
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
     let out = server
         .get_recent_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
@@ -719,17 +575,9 @@ async fn get_recent_messages_rejects_inverted_cursor_range() {
 
     let request = GetRecentMessagesRequest {
         channel_id: Some("123".to_string()),
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
         before_id: Some(100),
         after_id: Some(100),
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
     let out = server
         .get_recent_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
@@ -771,17 +619,8 @@ async fn get_recent_messages_truncates_long_text() {
 
     let request = GetRecentMessagesRequest {
         channel_id: Some("123".to_string()),
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None, // default 2000 applies
-        format: None,
+        // max_text_length left at default (2000)
+        ..Default::default()
     };
     let out = server
         .get_recent_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
@@ -825,17 +664,8 @@ async fn get_recent_messages_compact_hoists_channel_header() {
 
     let request = GetRecentMessagesRequest {
         channel_id: Some("123".to_string()),
-        channel_ids: None,
-        hours_back: None,
-        limit: None,
-        media_filter: None,
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
         format: Some(ResponseFormat::Compact),
+        ..Default::default()
     };
     let out = server
         .get_recent_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
@@ -886,17 +716,8 @@ async fn get_recent_messages_oversized_page_stays_under_budget() {
 
     let request = GetRecentMessagesRequest {
         channel_id: Some("123".to_string()),
-        channel_ids: None,
-        hours_back: None,
         limit: Some(100),
-        media_filter: None,
-        from_date: None,
-        to_date: None,
-        collapse_albums: None,
-        before_id: None,
-        after_id: None,
-        max_text_length: None,
-        format: None,
+        ..Default::default()
     };
     let out = server
         .get_recent_messages(Parameters(request), RequestId(NumberOrString::Number(1)))
