@@ -75,6 +75,34 @@ pub fn dedupe_and_validate_ids(ids: &[i64], cap: usize) -> Result<(Vec<i64>, Vec
     Ok((unique, wire_ids))
 }
 
+/// Parse and cross-validate the optional cursor bounds (A8). Both ids parse
+/// via `parse_message_id`; when both are present, `before_id` must exceed
+/// `after_id` — the page covers `after_id < id < before_id`.
+pub(crate) fn parse_cursor_bounds(
+    before_id: Option<i64>,
+    after_id: Option<i64>,
+) -> Result<(Option<MessageId>, Option<MessageId>), String> {
+    let before = before_id
+        .map(parse_message_id)
+        .transpose()
+        .map_err(|e| format!("before_id: {}", e))?;
+    let after = after_id
+        .map(parse_message_id)
+        .transpose()
+        .map_err(|e| format!("after_id: {}", e))?;
+    if let (Some(b), Some(a)) = (before, after)
+        && b.get() <= a.get()
+    {
+        return Err(format!(
+            "before_id ({}) must be greater than after_id ({}): the page covers after_id \
+             < id < before_id",
+            b.get(),
+            a.get()
+        ));
+    }
+    Ok((before, after))
+}
+
 /// A validated [`MessageId`] as Telegram's wire (`i32`) form, or a
 /// caller-facing error naming the id when it exceeds the wire range.
 pub(crate) fn wire_message_id(id: MessageId) -> Result<i32, String> {
@@ -335,5 +363,38 @@ mod tests {
             )
             .is_ok()
         );
+    }
+
+    #[test]
+    fn parse_cursor_bounds_passes_valid_pair() {
+        let (before, after) = parse_cursor_bounds(Some(10), Some(5)).expect("valid");
+        assert_eq!(before.map(|b| b.get()), Some(10));
+        assert_eq!(after.map(|a| a.get()), Some(5));
+    }
+
+    #[test]
+    fn parse_cursor_bounds_none_stays_none() {
+        let (before, after) = parse_cursor_bounds(None, None).expect("valid");
+        assert!(before.is_none() && after.is_none());
+    }
+
+    #[test]
+    fn parse_cursor_bounds_rejects_crossed_pair_naming_both_ids() {
+        let err = parse_cursor_bounds(Some(5), Some(10)).unwrap_err();
+        assert!(err.contains("before_id (5)"), "got: {err}");
+        assert!(err.contains("after_id (10)"), "got: {err}");
+    }
+
+    #[test]
+    fn parse_cursor_bounds_rejects_equal_pair() {
+        assert!(parse_cursor_bounds(Some(7), Some(7)).is_err());
+    }
+
+    #[test]
+    fn parse_cursor_bounds_prefixes_the_failing_field() {
+        let err = parse_cursor_bounds(Some(-1), None).unwrap_err();
+        assert!(err.starts_with("before_id:"), "got: {err}");
+        let err = parse_cursor_bounds(None, Some(-1)).unwrap_err();
+        assert!(err.starts_with("after_id:"), "got: {err}");
     }
 }

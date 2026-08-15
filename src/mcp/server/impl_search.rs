@@ -4,7 +4,7 @@
 //! delegate to them. Split out per LM-3 (`server.rs` was 880 lines).
 
 use super::*;
-use crate::mcp::tools::helpers::wire_message_id;
+use crate::mcp::tools::helpers::{parse_cursor_bounds, wire_message_id};
 
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {
     pub(super) async fn search_messages_impl(
@@ -61,34 +61,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         let from_date = parse_optional_utc("from_date", &request.from_date)?;
         let to_date = parse_optional_utc("to_date", &request.to_date)?;
 
-        // Parse and cross-validate the cursor bounds (A8).
-        let before_id = request
-            .before_id
-            .map(parse_message_id)
-            .transpose()
-            .map_err(|e| format!("before_id: {}", e))?;
-        let after_id = request
-            .after_id
-            .map(parse_message_id)
-            .transpose()
-            .map_err(|e| format!("after_id: {}", e))?;
-        if let (Some(before), Some(after)) = (before_id, after_id)
-            && before.get() <= after.get()
-        {
-            return Err(format!(
-                "before_id ({}) must be greater than after_id ({}): the page covers after_id \
-                 < id < before_id",
-                before.get(),
-                after.get()
-            ));
-        }
-
-        let max_text_length = request
-            .max_text_length
-            .unwrap_or(shaping::DEFAULT_MAX_TEXT_LENGTH);
-        if max_text_length == 0 {
-            return Err("max_text_length must be greater than 0".to_string());
-        }
+        let (before_id, after_id) = parse_cursor_bounds(request.before_id, request.after_id)?;
+        let max_text_length = shaping::resolve_max_text_length(request.max_text_length)?;
 
         // Shared parameter template; the channel target (channel_id) is filled
         // in per-path below: once for the single-channel/global path, once per
@@ -267,34 +241,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         let from_date = parse_optional_utc("from_date", &request.from_date)?;
         let to_date = parse_optional_utc("to_date", &request.to_date)?;
 
-        // Parse and cross-validate the cursor bounds (A8).
-        let before_id = request
-            .before_id
-            .map(parse_message_id)
-            .transpose()
-            .map_err(|e| format!("before_id: {}", e))?;
-        let after_id = request
-            .after_id
-            .map(parse_message_id)
-            .transpose()
-            .map_err(|e| format!("after_id: {}", e))?;
-        if let (Some(before), Some(after)) = (before_id, after_id)
-            && before.get() <= after.get()
-        {
-            return Err(format!(
-                "before_id ({}) must be greater than after_id ({}): the page covers after_id \
-                 < id < before_id",
-                before.get(),
-                after.get()
-            ));
-        }
-
-        let max_text_length = request
-            .max_text_length
-            .unwrap_or(shaping::DEFAULT_MAX_TEXT_LENGTH);
-        if max_text_length == 0 {
-            return Err("max_text_length must be greater than 0".to_string());
-        }
+        let (before_id, after_id) = parse_cursor_bounds(request.before_id, request.after_id)?;
+        let max_text_length = shaping::resolve_max_text_length(request.max_text_length)?;
 
         let format = request.format.unwrap_or_default();
 
