@@ -28,21 +28,17 @@ Done: `raw_pager.rs` split into `raw_page.rs`/`raw_fetch.rs`; oversized in-file
 consolidated into `test_helpers.rs`. Accepted overshoots: `server.rs` (macro-bound),
 `test_helpers.rs`, `telegram/tests/message_tests.rs`.
 
-## Stage 3 — Duplication / KISS refactors
+## Stage 3 — Duplication / KISS refactors ✅ (merged via PR #42)
 
-1. `impl_search.rs`: ~150 structurally identical lines between `search_messages_impl`
-   (:9-230) and `get_recent_messages_impl` (:245-440) — extract `parse_cursor_bounds`,
-   `resolve_max_text_length`, and a `fanout::run` scaffold.
-2. Telegram mirror: 18-line cursor→i32 block duplicated (`ops_search.rs:35` /
-   `ops_history.rs:84`); ~20-line album-admit/limit/`has_more` block **triplicated**
-   (`ops_search.rs:137,252`, `ops_history.rs:159`) — accumulator next to `PostCounter`.
-3. `ops_search::search_messages_impl` is 337 lines — split channel path vs global path.
-4. `serde_helpers.rs`: two copy-paste deserializer pairs (~60 lines via one generic each).
-5. Empty-reference guard hand-inlined in 7 client files with wording drift — promote
-   `channels.rs::validate_channel_identifier` (:239) to a client-wide guard.
-6. Smaller: `shaping.rs:106` vs `fanout.rs:84` channel-count recompute; `server.rs:1-42`
-   implicit prelude for nine submodules (each `impl_*.rs` should import its own deps);
-   `impl_media.rs:71-248` batch loop body (~90 lines) → private per-id fn.
+Done: shared `parse_cursor_bounds`/`resolve_max_text_length` + `fanout::run` scaffold
+(MCP list-tool prologues/fan-out); telegram `cursor_wire_bounds` + `PageAccumulator`
+(triplicated admit/limit/`has_more`); `search_messages_impl` split into channel/global
+paths; serde copy-paste pairs → `flexible_opt_int`/`flexible_opt_enum`; client-wide
+`validate_channel_identifier` (7 inline guards replaced); `unique_channel_count`;
+media-batch per-outcome fn; explicit imports in the nine server submodules; rate-limiter
+poison recovery + `available_tokens` dedup. Three deliberate behavior deltas documented
+in PR #42 (guard wording, `search_global` debug-log timing scope, enum-coercion error
+text).
 
 ## Stage 4 — Coverage (75.1% overall; the distribution is the story)
 
