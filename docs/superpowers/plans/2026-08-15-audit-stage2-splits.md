@@ -424,9 +424,7 @@ Expected: green, **704 passed** (−19). `cargo test username_to_resolve 2>&1 | 
 git add -A && git commit -m "test: prune mock-only client tests (asserted on the mock, not production code)"
 ```
 
----
-
-### Task 8: Split `telegram/tests/converters_tests.rs` three ways
+---### Task 8: Split `telegram/tests/converters_tests.rs` three ways
 
 **Files:**
 - Create: `src/telegram/tests/converters_thumb_forward_tests.rs`
