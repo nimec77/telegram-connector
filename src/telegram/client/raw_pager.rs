@@ -569,51 +569,17 @@ fn chat_peer_for_message(
 mod tests {
     use super::*;
     use crate::test_helpers::raw_tl_channel;
+    use crate::test_helpers::{raw_tl_message, raw_tl_messages_slice};
     use chrono::DateTime;
     use grammers_client::tl;
     use grammers_session::types::PeerAuth;
 
-    fn raw_msg(id: i32, date: i32, channel_id: i64) -> tl::enums::Message {
-        tl::enums::Message::Service(tl::types::MessageService {
-            out: false,
-            mentioned: false,
-            media_unread: false,
-            reactions_are_possible: false,
-            silent: false,
-            post: true,
-            legacy: false,
-            id,
-            from_id: None,
-            peer_id: tl::enums::Peer::Channel(tl::types::PeerChannel { channel_id }),
-            saved_peer_id: None,
-            reply_to: None,
-            date,
-            action: tl::enums::MessageAction::Empty,
-            reactions: None,
-            ttl_period: None,
-        })
-    }
-
-    fn slice(
-        messages: Vec<tl::enums::Message>,
-        next_rate: Option<i32>,
-    ) -> tl::enums::messages::Messages {
-        tl::enums::messages::Messages::Slice(tl::types::messages::MessagesSlice {
-            inexact: false,
-            count: 1000,
-            next_rate,
-            offset_id_offset: None,
-            search_flood: None,
-            messages,
-            topics: vec![],
-            chats: vec![tl::enums::Chat::Channel(raw_tl_channel(11, "Канал", None))],
-            users: vec![],
-        })
-    }
-
     #[test]
     fn unpack_slice_computes_last_chunk_and_keeps_envelope() {
-        let page = unpack_page(slice(vec![raw_msg(500, 1_700_000_000, 11)], Some(7)), 100);
+        let page = unpack_page(
+            raw_tl_messages_slice(vec![raw_tl_message(500, 1_700_000_000, 11)], Some(7)),
+            100,
+        );
         assert!(
             !page.last_chunk,
             "id 500 > limit 100 → more pages may exist"
@@ -622,20 +588,23 @@ mod tests {
         assert_eq!(page.messages.len(), 1);
         assert_eq!(page.chats.len(), 1);
 
-        let tail = unpack_page(slice(vec![raw_msg(90, 1_700_000_000, 11)], None), 100);
+        let tail = unpack_page(
+            raw_tl_messages_slice(vec![raw_tl_message(90, 1_700_000_000, 11)], None),
+            100,
+        );
         assert!(
             tail.last_chunk,
             "highest id <= limit → nothing older can exist"
         );
 
-        let empty = unpack_page(slice(vec![], None), 100);
+        let empty = unpack_page(raw_tl_messages_slice(vec![], None), 100);
         assert!(empty.last_chunk);
     }
 
     #[test]
     fn unpack_messages_variant_is_always_last_chunk() {
         let res = tl::enums::messages::Messages::Messages(tl::types::messages::Messages {
-            messages: vec![raw_msg(3, 1_700_000_000, 11)],
+            messages: vec![raw_tl_message(3, 1_700_000_000, 11)],
             topics: vec![],
             chats: vec![],
             users: vec![],
@@ -647,10 +616,10 @@ mod tests {
     fn history_offsets_advance_from_last_message() {
         let mut request = history_request(tl::enums::InputPeer::Empty, 0);
         let page = unpack_page(
-            slice(
+            raw_tl_messages_slice(
                 vec![
-                    raw_msg(500, 1_700_000_500, 11),
-                    raw_msg(499, 1_700_000_400, 11),
+                    raw_tl_message(500, 1_700_000_500, 11),
+                    raw_tl_message(499, 1_700_000_400, 11),
                 ],
                 None,
             ),
@@ -663,7 +632,10 @@ mod tests {
 
     #[test]
     fn global_offset_peer_resolves_access_hash_from_envelope() {
-        let page = unpack_page(slice(vec![raw_msg(500, 1_700_000_000, 11)], Some(9)), 100);
+        let page = unpack_page(
+            raw_tl_messages_slice(vec![raw_tl_message(500, 1_700_000_000, 11)], Some(9)),
+            100,
+        );
         let input = input_peer_for_message(&page.messages[0], &page);
         match input {
             tl::enums::InputPeer::Channel(c) => assert_eq!(c.channel_id, 11),
@@ -671,7 +643,7 @@ mod tests {
         }
 
         // Envelope miss → Empty, mirroring grammers' unwrap_or fallback.
-        let missing = raw_msg(501, 1_700_000_000, 999);
+        let missing = raw_tl_message(501, 1_700_000_000, 999);
         assert!(matches!(
             input_peer_for_message(&missing, &page),
             tl::enums::InputPeer::Empty
@@ -684,7 +656,7 @@ mod tests {
         // page ending in one must still produce a real offset peer, not
         // Empty (would drift SearchGlobal pagination).
         let community_page = RawPage {
-            messages: vec![raw_msg(500, 1_700_000_000, 21)],
+            messages: vec![raw_tl_message(500, 1_700_000_000, 21)],
             chats: vec![tl::enums::Chat::Community(
                 crate::test_helpers::raw_tl_community(21, "Группа"),
             )],
@@ -698,7 +670,7 @@ mod tests {
         }
 
         let forbidden_page = RawPage {
-            messages: vec![raw_msg(501, 1_700_000_000, 22)],
+            messages: vec![raw_tl_message(501, 1_700_000_000, 22)],
             chats: vec![tl::enums::Chat::ChannelForbidden(
                 tl::types::ChannelForbidden {
                     broadcast: true,
@@ -743,10 +715,10 @@ mod tests {
             hash: 0,
         };
         let page = unpack_page(
-            slice(
+            raw_tl_messages_slice(
                 vec![
-                    raw_msg(500, 1_700_000_500, 11),
-                    raw_msg(499, 1_700_000_400, 11),
+                    raw_tl_message(500, 1_700_000_500, 11),
+                    raw_tl_message(499, 1_700_000_400, 11),
                 ],
                 None,
             ),
@@ -884,8 +856,8 @@ mod tests {
     #[test]
     fn index_messages_keys_by_id_regardless_of_response_order() {
         let messages = vec![
-            raw_msg(610122, 1_700_000_100, 1144180066),
-            raw_msg(610121, 1_700_000_000, 1144180066),
+            raw_tl_message(610122, 1_700_000_100, 1144180066),
+            raw_tl_message(610121, 1_700_000_000, 1144180066),
         ];
 
         let indexed = index_messages(messages, channel_ref(1144180066));
@@ -900,8 +872,8 @@ mod tests {
         // messages.GetMessages resolves bare ids across every dialog, so a
         // response can name a chat we did not ask about.
         let messages = vec![
-            raw_msg(610121, 1_700_000_000, 1144180066),
-            raw_msg(610122, 1_700_000_100, 999_999),
+            raw_tl_message(610121, 1_700_000_000, 1144180066),
+            raw_tl_message(610122, 1_700_000_100, 999_999),
         ];
 
         let indexed = index_messages(messages, channel_ref(1144180066));
@@ -935,7 +907,7 @@ mod tests {
                 pts: 1,
                 count: 1,
                 offset_id_offset: None,
-                messages: vec![raw_msg(298716, 1_700_000_000, 1912881684)],
+                messages: vec![raw_tl_message(298716, 1_700_000_000, 1912881684)],
                 topics: vec![],
                 // The forward SOURCE — a channel we never asked about, present
                 // only because the envelope names every entity its messages

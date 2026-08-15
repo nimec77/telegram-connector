@@ -392,6 +392,46 @@ pub fn raw_tl_user(
     }
 }
 
+/// Raw-TL message for pager/envelope tests.
+pub fn raw_tl_message(id: i32, date: i32, channel_id: i64) -> tl::enums::Message {
+    tl::enums::Message::Service(tl::types::MessageService {
+        out: false,
+        mentioned: false,
+        media_unread: false,
+        reactions_are_possible: false,
+        silent: false,
+        post: true,
+        legacy: false,
+        id,
+        from_id: None,
+        peer_id: tl::enums::Peer::Channel(tl::types::PeerChannel { channel_id }),
+        saved_peer_id: None,
+        reply_to: None,
+        date,
+        action: tl::enums::MessageAction::Empty,
+        reactions: None,
+        ttl_period: None,
+    })
+}
+
+/// Raw-TL messages.ChannelMessages slice wrapping the given messages.
+pub fn raw_tl_messages_slice(
+    messages: Vec<tl::enums::Message>,
+    next_rate: Option<i32>,
+) -> tl::enums::messages::Messages {
+    tl::enums::messages::Messages::Slice(tl::types::messages::MessagesSlice {
+        inexact: false,
+        count: 1000,
+        next_rate,
+        offset_id_offset: None,
+        search_flood: None,
+        messages,
+        topics: vec![],
+        chats: vec![tl::enums::Chat::Channel(raw_tl_channel(11, "Канал", None))],
+        users: vec![],
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
