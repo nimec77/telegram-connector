@@ -5,9 +5,9 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 
 /// Serializes tests that mutate process environment variables. The test
 /// harness runs tests on parallel threads within one process and the
-/// environment is process-global, so every test that calls
-/// `env::set_var`/`env::remove_var` must hold this lock for its whole body.
-/// A poisoned lock is safe to reuse: each test restores the vars it set.
+/// environment is process-global. Tests never take this lock directly —
+/// construct an `EnvGuard`, which holds the lock and restores every touched
+/// variable on drop, even on panic.
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 fn env_lock() -> MutexGuard<'static, ()> {
@@ -21,6 +21,9 @@ fn env_lock() -> MutexGuard<'static, ()> {
 /// it, and `Drop` restores every touched variable — so a failing assertion
 /// cannot leak env state into subsequent tests (before this guard, cleanup
 /// ran only on the success path).
+///
+/// Note: never construct two guards in one scope — `new()` takes the
+/// non-reentrant `ENV_LOCK`, so nesting self-deadlocks.
 struct EnvGuard {
     saved: Vec<(&'static str, Option<OsString>)>,
     _lock: MutexGuard<'static, ()>,

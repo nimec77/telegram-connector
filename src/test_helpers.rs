@@ -431,7 +431,7 @@ pub fn raw_tl_message(id: i32, date: i32, channel_id: i64) -> tl::enums::Message
     })
 }
 
-/// Raw-TL messages.ChannelMessages slice wrapping the given messages.
+/// Raw-TL messages.MessagesSlice wrapping the given messages.
 pub fn raw_tl_messages_slice(
     messages: Vec<tl::enums::Message>,
     next_rate: Option<i32>,

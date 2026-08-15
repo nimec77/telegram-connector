@@ -116,6 +116,9 @@ fn test_resolve_path_default() {
 
 #[test]
 fn env_guard_restores_env_on_panic() {
+    // This test panics on purpose inside `catch_unwind`, so the panic message
+    // and backtrace printed to test output for this test are expected, not a
+    // failure signal.
     let result = std::panic::catch_unwind(|| {
         let mut env_guard = EnvGuard::new();
         env_guard.set("ENV_GUARD_PANIC_PROBE", "leaked?");

@@ -3892,3 +3892,46 @@ Tests 722 → 723 (+3 wire-range tool tests, +2 unit, +1 multibyte redaction, �
   If tests need serialization, the test module must enforce it (lock), not the invocation.
 - **21 of `client_tests.rs`'s 25 tests assert on the mockall mock itself** — flagged for
   deletion in stage 2; they inflate the test count without exercising production code.
+
+## Phase 39: Audit Stage 2 — Module & Test Splits (2026-08-15)
+
+Stage 2 of the full-codebase audit (plan: `docs/superpowers/plans/2026-08-15-audit-stage2-splits.md`,
+spec: stage 2 of `docs/superpowers/specs/2026-08-15-project-audit.md`). `client/raw_pager.rs` split
+into `raw_page.rs` (envelope interpretation) and `raw_fetch.rs` (by-id fetch), leaving the pagers
+themselves in `raw_pager.rs`. Test files followed the same shape: `client/tests/` now has
+`raw_pager_tests.rs`/`raw_page_tests.rs`/`raw_fetch_tests.rs`/`channels_tests.rs`; `converters`
+tests split into `converters_av_tests.rs`/`converters_doc_poll_tests.rs`/`converters_thumb_forward_tests.rs`;
+`mcp/tests` search/history/media_batch each split three ways
+(`search_core`/`search_dates`/`search_shaping`; `history_core`/`history_dates`/`history_paging`;
+`media_batch_core`/`media_batch_budget`/`media_batch_fixtures`); `config/tests.rs` split into
+`defaults_tests.rs`/`env_tests.rs`/`load_tests.rs`/`validation_tests.rs`. The stage-1 review's
+19-mock-only-test prune landed against `client_tests.rs` (21 originally flagged; re-verifying the
+prune list at head of stage 2 found 19 exhaustive — the other 6 `username_to_resolve` tests
+exercise real resolution logic through the mock, not the mock itself, and were kept). A new
+`EnvGuard` RAII drop-guard (`src/config/tests.rs`) now restores every env var it touched on drop,
+even on panic — closing the stage-1 finding that cleanup only ran on the success path. Fixture
+consolidation added `raw_tl_message`/`raw_tl_messages_slice`/`create_test_channel_named`/
+`permissive_limiter` to `test_helpers.rs`, replacing 57 inline permissive-limiter construction
+sites; all-`None` request literals collapsed via `..Default::default()`, adding one production
+`Default` derive (`GetRecentMessagesRequest`). Tests 723 → 705 (−19 pruned mock-only tests, +1 new
+`EnvGuard` panic test).
+
+### Decisions worth remembering
+
+- **`#[path = "..."]` resolves relative to the *declaring file's* directory, not the crate root
+  or the module tree's logical position.** A submodule declared in `src/telegram/converters/message.rs`
+  with `#[path = "tests.rs"]` would look for `src/telegram/converters/tests.rs`, not
+  `src/telegram/tests.rs` — even though `message` is logically nested under `telegram`. Get this
+  wrong and the build fails with a missing-file error at the `#[path]` line, not somewhere more
+  informative.
+- **The `../tests/` idiom, introduced for `converters/message.rs`:** its test module is declared
+  as `#[path = "../tests/message_tests.rs"] mod message_tests;`, which — resolved relative to
+  `src/telegram/converters/`, per the rule above — lands the file at
+  `src/telegram/tests/message_tests.rs`. This avoids creating a one-off `converters/tests/`
+  directory for a single test file and instead reuses the existing `telegram/tests/` directory
+  that already holds `client_tests.rs`/`timeout_tests.rs`. Use `../tests/<name>.rs` whenever a
+  submodule's tests belong in a sibling module's existing `tests/` directory rather than a new one.
+- **`EnvGuard` cannot be nested.** `EnvGuard::new()` takes the non-reentrant `ENV_LOCK` for the
+  guard's lifetime; constructing a second `EnvGuard` while the first is still in scope on the same
+  thread self-deadlocks (the lock is a plain `Mutex<()>`, not reentrant). Every env-mutating test
+  must construct exactly one `EnvGuard` per test body.
