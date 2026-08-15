@@ -86,22 +86,6 @@ pub(crate) fn wire_message_id(id: MessageId) -> Result<i32, String> {
     })
 }
 
-/// Parse an optional channel ID string to an optional ChannelId.
-///
-/// # Arguments
-/// * `id_str` - Optional string representation of channel ID
-///
-/// # Returns
-/// * `Ok(Some(ChannelId))` - Valid channel ID when input is Some
-/// * `Ok(None)` - When input is None
-/// * `Err(String)` - Error message when parsing fails
-pub fn parse_optional_channel_id(id_str: &Option<String>) -> Result<Option<ChannelId>, String> {
-    match id_str {
-        Some(id) => parse_channel_id(id).map(Some),
-        None => Ok(None),
-    }
-}
-
 /// Parse an optional RFC 3339 datetime request field into UTC.
 ///
 /// The value is trimmed first, so a padded-but-valid date parses. A
@@ -263,26 +247,6 @@ mod tests {
             err,
             "Invalid channel_id: Channel ID must be positive, got -1"
         );
-    }
-
-    #[test]
-    fn parse_optional_channel_id_some_valid() {
-        let result = parse_optional_channel_id(&Some("123".to_string()));
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().unwrap().get(), 123);
-    }
-
-    #[test]
-    fn parse_optional_channel_id_none() {
-        let result = parse_optional_channel_id(&None);
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_none());
-    }
-
-    #[test]
-    fn parse_optional_channel_id_some_invalid() {
-        let result = parse_optional_channel_id(&Some("invalid".to_string()));
-        assert!(result.is_err());
     }
 
     #[test]
