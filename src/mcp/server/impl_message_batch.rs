@@ -1,6 +1,13 @@
 //! `McpServer` inherent `*_impl` method: get_messages_batch (work-order A1).
 
-use super::*;
+use super::McpServer;
+use crate::mcp::tools::{
+    GetMessagesBatchRequest, MessageResponse, MessagesBatchResponse, MissingMessageEntry,
+    dedupe_and_validate_ids, json_response, shaping,
+};
+use crate::rate_limiter::RateLimiterTrait;
+use crate::telegram::TelegramClientTrait;
+use crate::telegram::types::MessageId;
 
 /// Hard cap on ids per batch call (one `channels.GetMessages` RPC).
 pub(super) const MAX_BATCH_IDS: usize = 50;

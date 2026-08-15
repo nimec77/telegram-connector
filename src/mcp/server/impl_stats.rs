@@ -1,6 +1,9 @@
 //! `McpServer` inherent `*_impl` method: get_channel_stats (work-order A5).
 
-use super::*;
+use super::McpServer;
+use crate::mcp::tools::{GetChannelStatsRequest, json_response};
+use crate::rate_limiter::RateLimiterTrait;
+use crate::telegram::TelegramClientTrait;
 use crate::telegram::types::stats::ChannelStats;
 
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {

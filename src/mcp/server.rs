@@ -4,35 +4,21 @@ use crate::config::defaults::{
     default_transcription_cost, default_transcription_default_timeout,
     default_transcription_max_timeout,
 };
-use crate::error::Error;
-use crate::link::{ChannelRef, MessageLink, parse_telegram_link};
 use crate::mcp::observability::{InstrumentedTransport, ResponseBuffer, SessionMetrics};
-use crate::mcp::tools::fanout;
-use crate::mcp::tools::shaping;
 use crate::mcp::tools::{
-    BufferedResponseEntry, ChannelsResponse, GenerateLinkRequest, GetChannelInfoRequest,
-    GetChannelStatsRequest, GetChannelsRequest, GetLastResponsesRequest, GetMessageByLinkRequest,
-    GetMessageMediaRequest, GetMessageMediaResponse, GetMessagesBatchRequest,
-    GetMessagesMediaBatchRequest, GetRecentMessagesRequest, LastResponsesResponse,
-    MediaBatchFailure, MediaBatchSummary, MediaLimits, MessageLinkResponse, MessageResponse,
-    MessagesBatchResponse, MissingMessageEntry, OpenMessageRequest, RateLimiterCosts,
-    RateLimiterStatus, ResolveChannelsRequest, ResolveChannelsResponse, ResponseFormat,
-    SearchPublicChannelsRequest, SearchRequest, SearchResponse, StatusResponse,
-    TranscribeVoiceMessageRequest, TranscribeVoiceMessageResponse, dedupe_and_validate_ids,
-    json_response, parse_channel_id, parse_message_id, parse_optional_utc, validate_date_window,
+    GenerateLinkRequest, GetChannelInfoRequest, GetChannelStatsRequest, GetChannelsRequest,
+    GetLastResponsesRequest, GetMessageByLinkRequest, GetMessageMediaRequest,
+    GetMessagesBatchRequest, GetMessagesMediaBatchRequest, GetRecentMessagesRequest,
+    OpenMessageRequest, ResolveChannelsRequest, SearchPublicChannelsRequest, SearchRequest,
+    TranscribeVoiceMessageRequest,
 };
-// Constructed only inside open_message_in_telegram's macOS-only body; an
-// unconditional import is an unused-import error on Linux builds.
-#[cfg(target_os = "macos")]
-use crate::mcp::tools::OpenMessageResponse;
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
-use crate::telegram::types::{ChannelId, HistoryParams, MediaFetchError, MessageId, SearchParams};
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
-    CacheScope, CallToolResult, ContentBlock, Implementation, InitializeResult, ListToolsResult,
+    CacheScope, CallToolResult, Implementation, InitializeResult, ListToolsResult,
     PaginatedRequestParams, ServerCapabilities,
 };
 use rmcp::service::{RequestContext, RoleServer};

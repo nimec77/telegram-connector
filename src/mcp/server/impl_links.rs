@@ -3,7 +3,17 @@
 //! These hold the real tool logic; the `#[tool]` wrappers in `server.rs`
 //! delegate to them. Split out per LM-3 (`server.rs` was 880 lines).
 
-use super::*;
+use super::McpServer;
+use crate::link::MessageLink;
+use crate::mcp::tools::{
+    GenerateLinkRequest, MessageLinkResponse, OpenMessageRequest, json_response, parse_message_id,
+};
+// Constructed only inside open_message_in_telegram_impl's macOS-only body; an
+// unconditional import is an unused-import error on Linux builds.
+#[cfg(target_os = "macos")]
+use crate::mcp::tools::OpenMessageResponse;
+use crate::rate_limiter::RateLimiterTrait;
+use crate::telegram::TelegramClientTrait;
 
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {
     pub(super) async fn generate_message_link_impl(

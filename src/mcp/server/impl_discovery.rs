@@ -1,6 +1,9 @@
 //! `McpServer` inherent `*_impl` method: public channel discovery.
 
-use super::*;
+use super::McpServer;
+use crate::mcp::tools::{ChannelsResponse, SearchPublicChannelsRequest, json_response};
+use crate::rate_limiter::RateLimiterTrait;
+use crate::telegram::TelegramClientTrait;
 
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {
     pub(super) async fn search_public_channels_impl(
