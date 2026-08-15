@@ -9,8 +9,12 @@ mod batch;
 mod channels;
 #[path = "tests/discovery.rs"]
 mod discovery;
-#[path = "tests/history.rs"]
-mod history;
+#[path = "tests/history_core.rs"]
+mod history_core;
+#[path = "tests/history_dates.rs"]
+mod history_dates;
+#[path = "tests/history_paging.rs"]
+mod history_paging;
 #[path = "tests/last_responses.rs"]
 mod last_responses;
 #[path = "tests/links.rs"]
