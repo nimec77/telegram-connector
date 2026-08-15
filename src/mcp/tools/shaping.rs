@@ -5,6 +5,7 @@
 use crate::mcp::tools::types::requests::ResponseFormat;
 use crate::mcp::tools::types::responses::{
     ChannelHeader, MessageResponse, MessagesBatchResponse, NextCursor, SearchResponse,
+    unique_channel_count,
 };
 
 /// Default per-message text cap in characters (work-order B4).
@@ -112,13 +113,9 @@ fn fit_to_budget(
         if cursor_eligible && let Some(last) = resp.messages.last() {
             resp.next_cursor = Some(NextCursor { before_id: last.id });
         }
-        let unique: std::collections::HashSet<i64> = resp
-            .messages
-            .iter()
-            .filter_map(|m| m.channel_id.as_ref().map(|c| c.get()))
-            .collect();
-        if !unique.is_empty() {
-            resp.query_metadata.channels_in_results = unique.len() as u32;
+        let count = unique_channel_count(&resp.messages);
+        if count > 0 {
+            resp.query_metadata.channels_in_results = count;
         }
     }
     Ok(())
