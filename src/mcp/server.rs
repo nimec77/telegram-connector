@@ -28,7 +28,6 @@ use crate::mcp::tools::OpenMessageResponse;
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
 use crate::telegram::types::{ChannelId, HistoryParams, MediaFetchError, MessageId, SearchParams};
-use futures::StreamExt;
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;

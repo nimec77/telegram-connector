@@ -105,10 +105,10 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                 .await
                 .map_err(|e| e.to_string())?;
 
-            let outcomes = futures::stream::iter(list.into_iter().map(|reference| {
+            let outcomes = fanout::run(list, |reference| {
                 let base = params_template.clone(); // SearchParams minus channel_id
                 async move {
-                    let result = match self.search_channel_id(&reference).await {
+                    match self.search_channel_id(&reference).await {
                         Ok(channel_id) => {
                             let params = SearchParams {
                                 channel_id: Some(channel_id),
@@ -120,15 +120,9 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                                 .map_err(|e| e.to_string())
                         }
                         Err(e) => Err(e),
-                    };
-                    fanout::ChannelFetchOutcome {
-                        channel: reference,
-                        result,
                     }
                 }
-            }))
-            .buffered(fanout::FANOUT_CONCURRENCY)
-            .collect::<Vec<_>>()
+            })
             .await;
 
             let mut response = fanout::merge_results(
@@ -287,32 +281,25 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                 .await
                 .map_err(|e| e.to_string())?;
 
-            let outcomes = futures::stream::iter(list.into_iter().map(|reference| {
-                let client = Arc::clone(&self.telegram_client);
+            let outcomes = fanout::run(list, |reference| {
                 let base = params_template.clone(); // HistoryParams minus target
                 async move {
-                    let result = match history_target(&reference) {
+                    match history_target(&reference) {
                         Ok((channel_id, channel_identifier)) => {
                             let params = HistoryParams {
                                 channel_id,
                                 channel_identifier,
                                 ..base
                             };
-                            client
+                            self.telegram_client
                                 .get_recent_messages(&params)
                                 .await
                                 .map_err(|e| e.to_string())
                         }
                         Err(e) => Err(e),
-                    };
-                    fanout::ChannelFetchOutcome {
-                        channel: reference,
-                        result,
                     }
                 }
-            }))
-            .buffered(fanout::FANOUT_CONCURRENCY)
-            .collect::<Vec<_>>()
+            })
             .await;
 
             let mut response = fanout::merge_results(
