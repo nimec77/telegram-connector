@@ -42,6 +42,11 @@ text).
 
 ## Stage 4 — Coverage (75.1% overall; the distribution is the story)
 
+Designed: `docs/superpowers/specs/2026-08-15-audit-stage4-design.md`. The goal there is
+*verified ops behavior*, not a coverage percentage. Scope is the message-fetch core
+(`ops_search`, `ops_history`, `ops_message`, `resolve`, `channels`); `ops_media`,
+`ops_stats`, `ops_transcribe`, `lifecycle`, `client/auth` are deferred.
+
 - Production `TelegramClient` ops layer at **0%**: `ops_search` / `ops_media` /
   `ops_history` / `ops_message` / `ops_stats` / `ops_transcribe` / `lifecycle` /
   `client/auth`; `resolve.rs` 12%, `channels.rs` 45%, `raw_pager.rs` 61%. Structural: the
@@ -49,7 +54,8 @@ text).
   logic (as `albums.rs`, `search_budget.rs`, paging math already were).
 - `telegram/auth.rs` effectively untested (placeholder only, removed in stage 1).
 - `config.rs` 69.6% despite 861 test lines — file-loading error branches untested.
-- `serde_helpers.rs` 81.5%, `mcp/server.rs` 79.6% (tool wrapper log paths).
+- `serde_helpers.rs` 81.5%, `mcp/server.rs` 79.6% (tool wrapper log paths — needs a
+  `RequestContext<RoleServer>`, which is not constructible in unit tests; deferred).
 - Stage 3 follow-ups (from the stage-3 final review): add `#[must_use]` to
   `PageAccumulator::push`; add a collapse=false album-sibling `into_messages` test
   (albums.rs unit tests are the only pin on `PageAccumulator` — the ops loops sit below
@@ -58,16 +64,22 @@ text).
 
 ## Hygiene backlog (batch into any stage's PR)
 
-`rate_limiter.rs:81,114,124,129` `lock().unwrap()` (use
-`unwrap_or_else(PoisonError::into_inner)`) + verbatim-duplicated `available_tokens`
-(:80-85 vs :128-132); `config/defaults.rs:12-16,54-58` `ProjectDirs…expect()` panics where
-`config.rs:426` errors; `config.rs:113-124` `auth_credentials()` `expect()` → return
-`Option`; `logging.rs:26-33` swallows all init errors, not just double-init;
-`main.rs:69` `process::exit(0)` skips destructors (comment or return); `impl_status.rs:99`
-base64 size underflow → `saturating_sub`; trait docs leak `raw_pager` names
-(`trait_def.rs:57,64`); `tokio` `features=["full"]`; `cli.rs:33` `parse_args` wrapper;
-"Tool 16" doc-comment numbering drift (`server.rs:441`); `impl_message_batch.rs:14-19` vs
-`impl_media.rs:75-80` 6-line precheck duplication (barely worth it); Vec-element scalars
-get no flexible coercion (deliberate scalar scope — document in the coercion design doc);
-`redact_phone`'s ≤6-char threshold leaves a 7-char phone fully visible (first 4 + last 3 is the
-whole string — documented by an existing test, but the threshold should arguably be higher).
+Line numbers re-verified at `5013672`; corrections marked. Scheduled into stage 4 — see
+that design doc's Section 5.
+
+`config/defaults.rs:14,56` `ProjectDirs…expect()` panics where `config.rs:426` errors;
+`config.rs:117,121` `auth_credentials()` `expect()` → return `Option`; `logging.rs`
+`result.or(Ok(()))` swallows all init errors, not just double-init; `main.rs:69`
+`process::exit(0)` skips destructors (comment or return); `impl_status.rs:105` base64 size
+underflow → `saturating_sub`; trait docs leak internal names (`trait_def.rs:57,64` — the
+leak is `raw_fetch::fetch_messages_by_id`, *not* `raw_pager`); `tokio` `features=["full"]`;
+`cli.rs:35` `parse_args` wrapper (was cited as `:33`); "Tool 16" doc-comment numbering
+drift (`server.rs:426`, between Tool 10 at `:405` and Tool 11 at `:447` — was cited as
+`:441`); `impl_message_batch.rs` vs `impl_media.rs` 6-line precheck duplication (barely
+worth it — deliberately skipped); Vec-element scalars get no flexible coercion (deliberate
+scalar scope — document in the coercion design doc); `redact_phone`'s ≤6-char threshold
+leaves a 7-char phone fully visible (`logging.rs:85` — first 4 + last 3 is the whole
+string; documented by an existing test, but the threshold should arguably be higher).
+
+**Done, not outstanding:** `rate_limiter.rs` `lock().unwrap()` ×4 and the verbatim-
+duplicated `available_tokens` were fixed in `2072a67` (stage 3).
