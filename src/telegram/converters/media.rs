@@ -314,14 +314,9 @@ fn media_matches_filter(
     }
 }
 
-/// Check if a message's media matches the given filter (for client-side filtering)
-///
-/// Used by `get_recent_messages` since `iter_messages` doesn't support server-side filtering.
-pub fn matches_media_filter(msg: &grammers_client::message::Message, filter: &MediaFilter) -> bool {
-    media_matches_filter(msg.media().as_ref(), msg.text(), msg.pinned(), filter)
-}
-
-/// Raw-message twin of [`matches_media_filter`], for the raw history pager path.
+/// Check if a raw message's media matches the given filter, for the raw
+/// history pager path (client-side filtering — `messages.GetHistory` has no
+/// server-side filter).
 pub(crate) fn matches_media_filter_raw(raw: &tl::enums::Message, filter: &MediaFilter) -> bool {
     let (media, text, pinned) = match raw {
         tl::enums::Message::Message(m) => (

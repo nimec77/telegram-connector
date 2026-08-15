@@ -42,12 +42,10 @@ impl PostCounter {
 
     /// True iff `admit` ever refused a message — i.e. a qualifying post
     /// existed beyond the limit, so the caller's result page is not the
-    /// end of the window (work-order A8 `has_more`). Fetch loops currently
-    /// capture the refusal inline at the `admit` call site instead of
-    /// polling this after the loop; kept as the documented accessor for
-    /// `overflowed` (exercised directly by tests) since callers outside
-    /// this crate never see `PostCounter`.
-    #[allow(dead_code)]
+    /// end of the window (work-order A8 `has_more`). Fetch loops capture
+    /// the refusal inline at the `admit` call site, so production code
+    /// never reads this back; test-only accessor.
+    #[cfg(test)]
     pub(crate) fn overflowed(&self) -> bool {
         self.overflowed
     }
