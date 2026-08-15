@@ -79,26 +79,9 @@ impl TelegramClient {
         // Use iter_messages to get message history (no search query)
         let peer_ref = peer_to_ref(&peer).await?;
 
-        // Convert cursor bounds once, outside the timeout closure, so `?` maps
+        // Convert cursor bounds once, outside the timeout closures, so `?` maps
         // through the existing error path (A8).
-        let before_offset = match params.before_id {
-            Some(id) => Some(id.as_i32().ok_or_else(|| {
-                Error::InvalidInput(format!(
-                    "before_id {} exceeds Telegram's message id range",
-                    id.get()
-                ))
-            })?),
-            None => None,
-        };
-        let after_bound = match params.after_id {
-            Some(id) => Some(id.as_i32().ok_or_else(|| {
-                Error::InvalidInput(format!(
-                    "after_id {} exceeds Telegram's message id range",
-                    id.get()
-                ))
-            })?),
-            None => None,
-        };
+        let (before_offset, after_bound) = cursor_wire_bounds(params.before_id, params.after_id)?;
 
         let (messages, has_more, budget) =
             with_timeout("iter_messages", self.timeouts.history_secs, async {
