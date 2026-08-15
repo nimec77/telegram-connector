@@ -1,8 +1,8 @@
 //! Request types for MCP tools.
 
 use super::serde_helpers::{
-    deserialize_optional_media_filter, deserialize_optional_response_format, flexible_i64,
-    flexible_opt_bool, flexible_opt_i64, flexible_opt_string, flexible_opt_u32, flexible_string,
+    flexible_i64, flexible_opt_bool, flexible_opt_enum, flexible_opt_int, flexible_opt_string,
+    flexible_string,
 };
 use crate::telegram::types::MediaFilter;
 use schemars::JsonSchema;
@@ -25,11 +25,11 @@ pub enum ResponseFormat {
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct GetChannelsRequest {
     #[schemars(description = "Maximum number of channels to return (default: 50, max: 500)")]
-    #[serde(default, deserialize_with = "flexible_opt_u32")]
+    #[serde(default, deserialize_with = "flexible_opt_int")]
     pub limit: Option<u32>,
 
     #[schemars(description = "Offset for pagination (default: 0)")]
-    #[serde(default, deserialize_with = "flexible_opt_u32")]
+    #[serde(default, deserialize_with = "flexible_opt_int")]
     pub offset: Option<u32>,
 }
 
@@ -55,7 +55,7 @@ pub struct SearchPublicChannelsRequest {
     pub query: String,
 
     #[schemars(description = "Maximum results to return (default: 10, max: 50)")]
-    #[serde(default, deserialize_with = "flexible_opt_u32")]
+    #[serde(default, deserialize_with = "flexible_opt_int")]
     pub limit: Option<u32>,
 }
 
@@ -111,17 +111,17 @@ pub struct SearchRequest {
     pub channel_ids: Option<Vec<String>>,
 
     #[schemars(description = "How many hours back to search (default: 48, max: 72)")]
-    #[serde(default, deserialize_with = "flexible_opt_u32")]
+    #[serde(default, deserialize_with = "flexible_opt_int")]
     pub hours_back: Option<u32>,
 
     #[schemars(description = "Maximum results to return (default: 20, max: 100)")]
-    #[serde(default, deserialize_with = "flexible_opt_u32")]
+    #[serde(default, deserialize_with = "flexible_opt_int")]
     pub limit: Option<u32>,
 
     #[schemars(
         description = "Optional: Filter by media type. This is metadata-based filtering (filters by attachment type), NOT content recognition. No OCR, no speech-to-text. Example: 'photo' returns messages WITH photos attached."
     )]
-    #[serde(default, deserialize_with = "deserialize_optional_media_filter")]
+    #[serde(default, deserialize_with = "flexible_opt_enum")]
     pub media_filter: Option<MediaFilter>,
 
     #[schemars(
@@ -149,25 +149,25 @@ pub struct SearchRequest {
     #[schemars(
         description = "Optional: exclusive upper message-id bound — return only messages with id < before_id. Use next_cursor.before_id from a previous response to fetch the next (older) page without offset drift. Requires channel_id."
     )]
-    #[serde(default, deserialize_with = "flexible_opt_i64")]
+    #[serde(default, deserialize_with = "flexible_opt_int")]
     pub before_id: Option<i64>,
 
     #[schemars(
         description = "Optional: exclusive lower message-id bound — stop before messages with id <= after_id. Bounds a page at ids newer than a known message. Requires channel_id."
     )]
-    #[serde(default, deserialize_with = "flexible_opt_i64")]
+    #[serde(default, deserialize_with = "flexible_opt_int")]
     pub after_id: Option<i64>,
 
     #[schemars(
         description = "Optional: maximum text length in characters per message (default: 2000). Longer texts are cut and flagged with text_truncated plus text_full_length; refetch the single message to get full text."
     )]
-    #[serde(default, deserialize_with = "flexible_opt_u32")]
+    #[serde(default, deserialize_with = "flexible_opt_int")]
     pub max_text_length: Option<u32>,
 
     #[schemars(
         description = "Optional: response shape — 'full' (default) repeats channel fields on every message; 'compact' hoists them into one response-level channel header. compact requires a single-channel scope."
     )]
-    #[serde(default, deserialize_with = "deserialize_optional_response_format")]
+    #[serde(default, deserialize_with = "flexible_opt_enum")]
     pub format: Option<ResponseFormat>,
 }
 
@@ -185,17 +185,17 @@ pub struct GetRecentMessagesRequest {
     pub channel_ids: Option<Vec<String>>,
 
     #[schemars(description = "Hours of history to retrieve (default: 48, max: 168)")]
-    #[serde(default, deserialize_with = "flexible_opt_u32")]
+    #[serde(default, deserialize_with = "flexible_opt_int")]
     pub hours_back: Option<u32>,
 
     #[schemars(description = "Maximum messages to return (default: 20, max: 100)")]
-    #[serde(default, deserialize_with = "flexible_opt_u32")]
+    #[serde(default, deserialize_with = "flexible_opt_int")]
     pub limit: Option<u32>,
 
     #[schemars(
         description = "Optional: Filter by media type. Applied client-side. Example: 'photo' returns only messages with photos."
     )]
-    #[serde(default, deserialize_with = "deserialize_optional_media_filter")]
+    #[serde(default, deserialize_with = "flexible_opt_enum")]
     pub media_filter: Option<MediaFilter>,
 
     #[schemars(
@@ -223,25 +223,25 @@ pub struct GetRecentMessagesRequest {
     #[schemars(
         description = "Optional: exclusive upper message-id bound — return only messages with id < before_id. Use next_cursor.before_id from a previous response to fetch the next (older) page without offset drift."
     )]
-    #[serde(default, deserialize_with = "flexible_opt_i64")]
+    #[serde(default, deserialize_with = "flexible_opt_int")]
     pub before_id: Option<i64>,
 
     #[schemars(
         description = "Optional: exclusive lower message-id bound — stop before messages with id <= after_id. Bounds a page at ids newer than a known message."
     )]
-    #[serde(default, deserialize_with = "flexible_opt_i64")]
+    #[serde(default, deserialize_with = "flexible_opt_int")]
     pub after_id: Option<i64>,
 
     #[schemars(
         description = "Optional: maximum text length in characters per message (default: 2000). Longer texts are cut and flagged with text_truncated plus text_full_length; refetch the single message to get full text."
     )]
-    #[serde(default, deserialize_with = "flexible_opt_u32")]
+    #[serde(default, deserialize_with = "flexible_opt_int")]
     pub max_text_length: Option<u32>,
 
     #[schemars(
         description = "Optional: response shape — 'full' (default) repeats channel fields on every message; 'compact' hoists them into one response-level channel header. compact requires a single-channel scope."
     )]
-    #[serde(default, deserialize_with = "deserialize_optional_response_format")]
+    #[serde(default, deserialize_with = "flexible_opt_enum")]
     pub format: Option<ResponseFormat>,
 }
 
@@ -270,7 +270,7 @@ pub struct GetMessagesBatchRequest {
     #[schemars(
         description = "Optional: maximum text length in characters per message (default: 2000). This tool is the designated full-text path: pass a large value with few ids to fetch untruncated text."
     )]
-    #[serde(default, deserialize_with = "flexible_opt_u32")]
+    #[serde(default, deserialize_with = "flexible_opt_int")]
     pub max_text_length: Option<u32>,
 }
 
@@ -289,7 +289,7 @@ pub struct GetMessagesMediaBatchRequest {
     #[schemars(
         description = "Optional: longest-side pixel limit per image (default: 1280, clamped 64-2048). Images may be downscaled below this to fit the batch payload cap."
     )]
-    #[serde(default, deserialize_with = "flexible_opt_u32")]
+    #[serde(default, deserialize_with = "flexible_opt_int")]
     pub max_dimension: Option<u32>,
 }
 
@@ -316,7 +316,7 @@ pub struct GetMessageMediaRequest {
     #[schemars(
         description = "Longest image side in pixels after downscaling (default: 1280, clamped to 64-2048)"
     )]
-    #[serde(default, deserialize_with = "flexible_opt_u32")]
+    #[serde(default, deserialize_with = "flexible_opt_int")]
     pub max_dimension: Option<u32>,
 }
 
@@ -334,7 +334,7 @@ pub struct TranscribeVoiceMessageRequest {
     #[schemars(
         description = "Seconds to wait for transcription to complete (default: 30, max: 120)"
     )]
-    #[serde(default, deserialize_with = "flexible_opt_u32")]
+    #[serde(default, deserialize_with = "flexible_opt_int")]
     pub timeout_seconds: Option<u32>,
 }
 
@@ -342,7 +342,7 @@ pub struct TranscribeVoiceMessageRequest {
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct GetLastResponsesRequest {
     #[schemars(description = "How many recent responses to return (default: all buffered)")]
-    #[serde(default, deserialize_with = "flexible_opt_u32")]
+    #[serde(default, deserialize_with = "flexible_opt_int")]
     pub n: Option<u32>,
 
     #[schemars(
@@ -362,7 +362,7 @@ pub struct GetChannelStatsRequest {
     #[schemars(
         description = "Days of history to sample (default: 7, max: 30). The sweep also caps at 500 raw messages; sample.complete reports whether the full window was covered."
     )]
-    #[serde(default, deserialize_with = "flexible_opt_u32")]
+    #[serde(default, deserialize_with = "flexible_opt_int")]
     pub days_back: Option<u32>,
 }
 

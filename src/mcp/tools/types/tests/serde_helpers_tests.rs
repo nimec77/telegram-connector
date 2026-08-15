@@ -1,9 +1,11 @@
 use super::*;
+use crate::mcp::tools::types::requests::ResponseFormat;
+use crate::telegram::types::MediaFilter;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
 struct OptU32T {
-    #[serde(default, deserialize_with = "flexible_opt_u32")]
+    #[serde(default, deserialize_with = "flexible_opt_int")]
     v: Option<u32>,
 }
 
@@ -75,6 +77,40 @@ fn opt_u32_float_number_errors() {
 }
 
 #[derive(Deserialize)]
+struct OptIntBothT {
+    #[serde(default, deserialize_with = "flexible_opt_int")]
+    small: Option<u32>,
+    #[serde(default, deserialize_with = "flexible_opt_int")]
+    wide: Option<i64>,
+}
+
+#[test]
+fn flexible_opt_int_serves_both_widths() {
+    let t: OptIntBothT = serde_json::from_str(r#"{"small": "10", "wide": -5}"#).unwrap();
+    assert_eq!(t.small, Some(10));
+    assert_eq!(t.wide, Some(-5));
+    assert!(serde_json::from_str::<OptIntBothT>(r#"{"small": -1}"#).is_err());
+}
+
+#[derive(Deserialize)]
+struct OptEnumBothT {
+    #[serde(default, deserialize_with = "flexible_opt_enum")]
+    format: Option<ResponseFormat>,
+    #[serde(default, deserialize_with = "flexible_opt_enum")]
+    filter: Option<MediaFilter>,
+}
+
+#[test]
+fn flexible_opt_enum_serves_both_enums() {
+    let t: OptEnumBothT =
+        serde_json::from_str(r#"{"format": "compact", "filter": "photo"}"#).unwrap();
+    assert_eq!(t.format, Some(ResponseFormat::Compact));
+    assert_eq!(t.filter, Some(MediaFilter::Photo));
+    let empty: OptEnumBothT = serde_json::from_str(r#"{"format": "", "filter": ""}"#).unwrap();
+    assert!(empty.format.is_none() && empty.filter.is_none());
+}
+
+#[derive(Deserialize)]
 struct I64T {
     #[serde(deserialize_with = "flexible_i64")]
     v: i64,
@@ -124,12 +160,12 @@ fn i64_float_number_errors() {
 }
 
 #[test]
-fn flexible_opt_i64_accepts_number_string_and_null() {
+fn flexible_opt_int_accepts_number_string_and_null() {
     #[derive(serde::Deserialize)]
     struct Probe {
         #[serde(
             default,
-            deserialize_with = "crate::mcp::tools::types::serde_helpers::flexible_opt_i64"
+            deserialize_with = "crate::mcp::tools::types::serde_helpers::flexible_opt_int"
         )]
         v: Option<i64>,
     }
@@ -147,7 +183,7 @@ fn flexible_opt_i64_accepts_number_string_and_null() {
 
 #[derive(Deserialize)]
 struct TestStruct {
-    #[serde(default, deserialize_with = "deserialize_optional_media_filter")]
+    #[serde(default, deserialize_with = "flexible_opt_enum")]
     media_filter: Option<MediaFilter>,
 }
 

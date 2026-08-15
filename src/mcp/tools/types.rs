@@ -24,4 +24,4 @@ pub use responses::{
     RateLimiterCosts, RateLimiterStatus, ResolveChannelsResponse, SearchResponse, StatusResponse,
     TranscribeVoiceMessageResponse,
 };
-pub use serde_helpers::{deserialize_optional_media_filter, deserialize_optional_response_format};
+pub use serde_helpers::flexible_opt_enum;
