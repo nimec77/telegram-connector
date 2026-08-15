@@ -45,7 +45,7 @@ The same commands are available as `just` recipes (see `justfile`): run `just` t
 
 ### Test Organization
 
-- Env-mutating config tests self-serialize via `ENV_LOCK` (`src/config/tests.rs`); plain `cargo test` is safe
+- Env-mutating config tests self-serialize through the `EnvGuard` drop-guard (`ENV_LOCK` in `src/config/tests.rs`), which also restores variables on panic; plain `cargo test` is safe
 
 ## Coding Conventions
 

@@ -205,6 +205,23 @@ pub fn create_test_channel_detailed(
     }
 }
 
+/// Create a test channel with an explicit display name and subscription
+/// state (fixed username "testchannel").
+pub fn create_test_channel_named(id: i64, name: &str, is_subscribed: bool) -> Channel {
+    Channel {
+        id: ChannelId::new(id).expect("Test channel ID must be positive"),
+        name: ChannelName::new(name).expect("Valid channel name"),
+        username: Some(Username::new("testchannel").expect("Valid username")),
+        chat_type: ChatType::Channel,
+        description: Some("Test channel".to_string()),
+        member_count: Some(1000),
+        is_verified: false,
+        is_public: true,
+        is_subscribed,
+        last_message_date: None,
+    }
+}
+
 /// Create a test search result with the given messages.
 pub fn create_test_search_result(
     messages: Vec<Message>,
@@ -390,6 +407,56 @@ pub fn raw_tl_user(
         send_paid_messages_stars: None,
         linked_community_id: None,
     }
+}
+
+/// Raw-TL message for pager/envelope tests.
+pub fn raw_tl_message(id: i32, date: i32, channel_id: i64) -> tl::enums::Message {
+    tl::enums::Message::Service(tl::types::MessageService {
+        out: false,
+        mentioned: false,
+        media_unread: false,
+        reactions_are_possible: false,
+        silent: false,
+        post: true,
+        legacy: false,
+        id,
+        from_id: None,
+        peer_id: tl::enums::Peer::Channel(tl::types::PeerChannel { channel_id }),
+        saved_peer_id: None,
+        reply_to: None,
+        date,
+        action: tl::enums::MessageAction::Empty,
+        reactions: None,
+        ttl_period: None,
+    })
+}
+
+/// Raw-TL messages.MessagesSlice wrapping the given messages.
+pub fn raw_tl_messages_slice(
+    messages: Vec<tl::enums::Message>,
+    next_rate: Option<i32>,
+) -> tl::enums::messages::Messages {
+    tl::enums::messages::Messages::Slice(tl::types::messages::MessagesSlice {
+        inexact: false,
+        count: 1000,
+        next_rate,
+        offset_id_offset: None,
+        search_flood: None,
+        messages,
+        topics: vec![],
+        chats: vec![tl::enums::Chat::Channel(raw_tl_channel(11, "Канал", None))],
+        users: vec![],
+    })
+}
+
+/// A rate limiter that accepts every acquire and swallows refunds — for
+/// tests where limiting is not the subject.
+#[cfg(test)]
+pub fn permissive_limiter() -> crate::rate_limiter::MockRateLimiterTrait {
+    let mut limiter = crate::rate_limiter::MockRateLimiterTrait::new();
+    limiter.expect_acquire().returning(|_| Ok(()));
+    limiter.expect_refund().return_const(());
+    limiter
 }
 
 #[cfg(test)]

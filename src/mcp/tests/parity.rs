@@ -3,17 +3,18 @@
 //!
 //! Scope note — these tests mock `TelegramClientTrait`, which is ABOVE the
 //! conversion layer, so they cannot prove that fetching enriches. That is
-//! covered by `raw_pager`'s envelope-decode test and by the type-level
+//! covered by `raw_page`'s envelope-decode test and by the type-level
 //! guard in `envelope.rs`. What this file catches is a DTO or compact-format
 //! change that drops `forwarded_from` on one tool's response shape only.
 
 use crate::mcp::server::McpServer;
 use crate::mcp::tools::types::requests::{GetMessagesBatchRequest, ResponseFormat};
 use crate::mcp::tools::{GetMessageByLinkRequest, GetRecentMessagesRequest, SearchRequest};
-use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::{Message, MessageBatch};
-use crate::test_helpers::{create_test_message_with_enriched_forward, create_test_search_result};
+use crate::test_helpers::{
+    create_test_message_with_enriched_forward, create_test_search_result, permissive_limiter,
+};
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::NumberOrString;
@@ -30,12 +31,6 @@ fn fixture() -> Message {
         CHANNEL_ID,
         FORWARDED_FROM_ID,
     )
-}
-
-fn permissive_limiter() -> MockRateLimiterTrait {
-    let mut limiter = MockRateLimiterTrait::new();
-    limiter.expect_acquire().returning(|_| Ok(()));
-    limiter
 }
 
 /// The `forwarded_from` object as it appears on the wire. Handles both

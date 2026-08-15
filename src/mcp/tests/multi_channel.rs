@@ -7,7 +7,7 @@ use crate::mcp::tools::types::requests::{GetRecentMessagesRequest, ResponseForma
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::{QueryMetadata, SearchResult};
-use crate::test_helpers::create_test_message;
+use crate::test_helpers::{create_test_message, permissive_limiter};
 use std::sync::Arc;
 
 /// A single-message `SearchResult` for `channel`, mirroring
@@ -393,8 +393,7 @@ async fn search_without_any_channel_scope_stays_global() {
                 },
             })
         });
-    let mut limiter = MockRateLimiterTrait::new();
-    limiter.expect_acquire().returning(|_| Ok(()));
+    let limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(telegram), Arc::new(limiter));
 
     let request = SearchRequest {

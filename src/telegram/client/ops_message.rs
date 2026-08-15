@@ -3,7 +3,7 @@
 //! Unit of `client` (LM-2).
 
 use super::guard::{is_empty_variant, require_found_raw};
-use super::raw_pager::fetch_messages_by_id;
+use super::raw_fetch::fetch_messages_by_id;
 use super::*;
 
 impl TelegramClient {
