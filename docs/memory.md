@@ -3925,7 +3925,7 @@ sites; all-`None` request literals collapsed via `..Default::default()`, adding 
   wrong and the build fails with a missing-file error at the `#[path]` line, not somewhere more
   informative.
 - **The `../tests/` idiom, introduced for `converters/message.rs`:** its test module is declared
-  as `#[path = "../tests/message_tests.rs"] mod message_tests;`, which — resolved relative to
+  as `#[path = "../tests/message_tests.rs"] mod tests;`, which — resolved relative to
   `src/telegram/converters/`, per the rule above — lands the file at
   `src/telegram/tests/message_tests.rs`. This avoids creating a one-off `converters/tests/`
   directory for a single test file and instead reuses the existing `telegram/tests/` directory
