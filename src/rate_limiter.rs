@@ -78,9 +78,18 @@ impl RateLimiter {
 
     /// Get the number of available tokens (after refill)
     pub fn available_tokens(&self) -> f64 {
-        let mut bucket = self.bucket.lock().unwrap();
+        let mut bucket = self.bucket();
         bucket.refill();
         bucket.available()
+    }
+
+    /// Lock the bucket, recovering from a poisoned lock: the bucket state is
+    /// a pair of plain numbers that is valid after any interleaving, so a
+    /// panic in another holder cannot leave it inconsistent.
+    fn bucket(&self) -> std::sync::MutexGuard<'_, TokenBucket> {
+        self.bucket
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 
@@ -111,7 +120,7 @@ pub trait RateLimiterTrait: Send + Sync {
 #[async_trait::async_trait]
 impl RateLimiterTrait for RateLimiter {
     async fn acquire(&self, tokens: u32) -> Result<(), Error> {
-        let mut bucket = self.bucket.lock().unwrap();
+        let mut bucket = self.bucket();
         bucket
             .try_acquire(tokens)
             .map_err(|(available, retry_after_seconds)| Error::RateLimit {
@@ -121,14 +130,11 @@ impl RateLimiterTrait for RateLimiter {
     }
 
     fn refund(&self, tokens: u32) {
-        let mut bucket = self.bucket.lock().unwrap();
-        bucket.refund(tokens);
+        self.bucket().refund(tokens);
     }
 
     fn available_tokens(&self) -> f64 {
-        let mut bucket = self.bucket.lock().unwrap();
-        bucket.refill();
-        bucket.available()
+        RateLimiter::available_tokens(self)
     }
 
     fn capacity(&self) -> f64 {
