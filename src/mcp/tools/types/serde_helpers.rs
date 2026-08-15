@@ -1,89 +1,43 @@
 //! Custom serde deserializers for MCP tool types.
 
-use super::requests::ResponseFormat;
-use crate::telegram::types::MediaFilter;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
-/// Deserialize Option<MediaFilter> treating empty strings as None.
-/// This handles MCP clients that send `"media_filter": ""` instead of omitting the field.
-pub fn deserialize_optional_media_filter<'de, D>(
-    deserializer: D,
-) -> Result<Option<MediaFilter>, D::Error>
+/// Deserialize an optional string-encoded enum, treating empty strings and
+/// JSON `null` as `None`. Handles MCP clients that send `"field": ""`
+/// instead of omitting the field. Non-empty values parse with `T`'s own
+/// `Deserialize`, so `T`'s error text is preserved.
+pub fn flexible_opt_enum<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
 where
     D: Deserializer<'de>,
+    T: serde::de::DeserializeOwned,
 {
-    // First try to deserialize as an Option<String> to check for empty string
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum StringOrMediaFilter {
-        String(String),
-        MediaFilter(MediaFilter),
-        Null,
-    }
-
-    match Option::<StringOrMediaFilter>::deserialize(deserializer)? {
-        None => Ok(None),
-        Some(StringOrMediaFilter::Null) => Ok(None),
-        Some(StringOrMediaFilter::String(s)) if s.is_empty() => Ok(None),
-        Some(StringOrMediaFilter::String(s)) => {
-            // Try to parse non-empty string as MediaFilter
-            serde_json::from_value(serde_json::Value::String(s))
-                .map(Some)
-                .map_err(serde::de::Error::custom)
-        }
-        Some(StringOrMediaFilter::MediaFilter(f)) => Ok(Some(f)),
+    match Option::<serde_json::Value>::deserialize(deserializer)? {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(serde_json::Value::String(s)) if s.is_empty() => Ok(None),
+        Some(value) => serde_json::from_value(value)
+            .map(Some)
+            .map_err(Error::custom),
     }
 }
 
-/// Deserialize Option<ResponseFormat> treating empty strings as None.
-/// This handles MCP clients that send `"format": ""` instead of omitting the field.
-pub fn deserialize_optional_response_format<'de, D>(
-    deserializer: D,
-) -> Result<Option<ResponseFormat>, D::Error>
+/// Deserialize `Option<T>` for an integer `T`, accepting either a JSON number
+/// or a numeric string. The string form is trimmed before parsing. An
+/// empty/whitespace string or a JSON `null` becomes `None`. Floats,
+/// negatives (for unsigned `T`), out-of-range, and non-numeric values error.
+pub fn flexible_opt_int<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
 where
     D: Deserializer<'de>,
-{
-    // First try to deserialize as an Option<String> to check for empty string
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum StringOrResponseFormat {
-        String(String),
-        ResponseFormat(ResponseFormat),
-        Null,
-    }
-
-    match Option::<StringOrResponseFormat>::deserialize(deserializer)? {
-        None => Ok(None),
-        Some(StringOrResponseFormat::Null) => Ok(None),
-        Some(StringOrResponseFormat::String(s)) if s.is_empty() => Ok(None),
-        Some(StringOrResponseFormat::String(s)) => {
-            // Try to parse non-empty string as ResponseFormat
-            serde_json::from_value(serde_json::Value::String(s))
-                .map(Some)
-                .map_err(serde::de::Error::custom)
-        }
-        Some(StringOrResponseFormat::ResponseFormat(f)) => Ok(Some(f)),
-    }
-}
-
-/// Deserialize `Option<u32>` accepting either a JSON number or a numeric string.
-///
-/// The string form is trimmed before parsing. An empty/whitespace string or a
-/// JSON `null` becomes `None`. Floats, negatives, out-of-range, and non-numeric
-/// values produce an error.
-pub fn flexible_opt_u32<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
-where
-    D: Deserializer<'de>,
+    T: Deserialize<'de> + std::str::FromStr,
 {
     #[derive(Deserialize)]
     #[serde(untagged)]
-    enum NumOrStr {
-        Num(u32),
+    enum NumOrStr<T> {
+        Num(T),
         Str(String),
     }
 
-    match Option::<NumOrStr>::deserialize(deserializer)? {
+    match Option::<NumOrStr<T>>::deserialize(deserializer)? {
         None => Ok(None),
         Some(NumOrStr::Num(n)) => Ok(Some(n)),
         Some(NumOrStr::Str(s)) => {
@@ -92,7 +46,7 @@ where
                 return Ok(None);
             }
             trimmed
-                .parse::<u32>()
+                .parse::<T>()
                 .map(Some)
                 .map_err(|_| Error::custom(format!("expected an integer, got '{}'", s)))
         }
@@ -120,37 +74,6 @@ where
             .trim()
             .parse::<i64>()
             .map_err(|_| Error::custom(format!("expected an integer, got '{}'", s))),
-    }
-}
-
-/// Deserialize `Option<i64>` accepting either a JSON number or a numeric string.
-///
-/// The string form is trimmed before parsing. An empty/whitespace string or a
-/// JSON `null` becomes `None`. Floats and non-numeric values produce an error.
-pub fn flexible_opt_i64<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum NumOrStr {
-        Num(i64),
-        Str(String),
-    }
-
-    match Option::<NumOrStr>::deserialize(deserializer)? {
-        None => Ok(None),
-        Some(NumOrStr::Num(n)) => Ok(Some(n)),
-        Some(NumOrStr::Str(s)) => {
-            let trimmed = s.trim();
-            if trimmed.is_empty() {
-                return Ok(None);
-            }
-            trimmed
-                .parse::<i64>()
-                .map(Some)
-                .map_err(|_| Error::custom(format!("expected an integer, got '{}'", s)))
-        }
     }
 }
 
