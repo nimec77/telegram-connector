@@ -29,8 +29,12 @@ mod parity;
 mod resolve;
 #[path = "tests/schema_integrity.rs"]
 mod schema_integrity;
-#[path = "tests/search.rs"]
-mod search;
+#[path = "tests/search_core.rs"]
+mod search_core;
+#[path = "tests/search_dates.rs"]
+mod search_dates;
+#[path = "tests/search_shaping.rs"]
+mod search_shaping;
 #[path = "tests/server_core.rs"]
 mod server_core;
 #[path = "tests/stats.rs"]
