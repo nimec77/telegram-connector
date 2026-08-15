@@ -20,5 +20,11 @@ pub use media::{
 pub(crate) use message::{convert_raw_message, message_timestamp, timestamp_from_raw};
 
 #[cfg(test)]
-#[path = "tests/converters_tests.rs"]
-mod tests;
+#[path = "tests/converters_av_tests.rs"]
+mod av_tests;
+#[cfg(test)]
+#[path = "tests/converters_doc_poll_tests.rs"]
+mod doc_poll_tests;
+#[cfg(test)]
+#[path = "tests/converters_thumb_forward_tests.rs"]
+mod thumb_forward_tests;
