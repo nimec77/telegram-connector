@@ -17,8 +17,8 @@ use crate::telegram::timeout::with_timeout;
 use crate::telegram::trait_def::TelegramClientTrait;
 use crate::telegram::types::{
     ChannelId, ChannelIdentity, HistoryParams, MediaDownload, MediaFetchError, MediaFetchOutcome,
-    MediaType, QueryMetadata, SearchParams, SearchResult, TranscriptionOutcome, TranscriptionState,
-    Username,
+    MediaType, MessageId, QueryMetadata, SearchParams, SearchResult, TranscriptionOutcome,
+    TranscriptionState, Username,
 };
 use grammers_client::Client;
 use grammers_client::media::Media;
@@ -47,6 +47,10 @@ mod raw_pager;
 mod resolve;
 mod search_budget;
 
+#[cfg(test)]
+#[path = "client/tests/helpers_tests.rs"]
+mod helpers_tests;
+
 pub(crate) use resolve::username_to_resolve;
 
 /// Convert a resolved peer into the `PeerRef` that grammers RPC calls take.
@@ -63,6 +67,30 @@ async fn peer_to_ref(
         .ok_or_else(|| {
             Error::TelegramApi("Peer has no PeerRef (not in the session cache)".to_string())
         })
+}
+
+/// Convert the optional cursor bounds to Telegram's `i32` wire ids (A8).
+/// MTProto message ids are `i32`; an out-of-range cursor cannot be sent, so
+/// it is rejected with the field name in the error.
+fn cursor_wire_bounds(
+    before_id: Option<MessageId>,
+    after_id: Option<MessageId>,
+) -> Result<(Option<i32>, Option<i32>), Error> {
+    fn wire(field: &str, id: Option<MessageId>) -> Result<Option<i32>, Error> {
+        match id {
+            Some(id) => id
+                .as_i32()
+                .ok_or_else(|| {
+                    Error::InvalidInput(format!(
+                        "{field} {} exceeds Telegram's message id range",
+                        id.get()
+                    ))
+                })
+                .map(Some),
+            None => Ok(None),
+        }
+    }
+    Ok((wire("before_id", before_id)?, wire("after_id", after_id)?))
 }
 
 /// Telegram client wrapping grammers-client
