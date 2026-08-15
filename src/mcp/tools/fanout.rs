@@ -2,7 +2,9 @@
 //! bounded-concurrency fetch outcomes merged into one flat, newest-first
 //! response. Pure over wire/domain types so merging is unit-testable.
 
-use crate::mcp::tools::types::responses::{ChannelFetchError, MessageResponse, SearchResponse};
+use crate::mcp::tools::types::responses::{
+    ChannelFetchError, MessageResponse, SearchResponse, unique_channel_count,
+};
 use crate::telegram::types::{QueryMetadata, SearchResult};
 use chrono::{DateTime, Utc};
 use futures::StreamExt;
@@ -105,10 +107,7 @@ pub(crate) fn merge_results(
         has_more = true;
     }
 
-    let unique: std::collections::HashSet<i64> = messages
-        .iter()
-        .filter_map(|m| m.channel_id.as_ref().map(|c| c.get()))
-        .collect();
+    let channels_in_results = unique_channel_count(&messages);
 
     Ok(SearchResponse {
         channel: None,
@@ -122,7 +121,7 @@ pub(crate) fn merge_results(
             window_from,
             window_to,
             channels_scanned: Some(attempted),
-            channels_in_results: unique.len() as u32,
+            channels_in_results,
             timed_out,
             partial,
             pages_fetched,

@@ -490,6 +490,17 @@ impl From<SearchResult> for SearchResponse {
     }
 }
 
+/// Distinct channel ids across a shaped message list. Multi-channel counts
+/// recompute from the messages because compact hoisting may have cleared
+/// per-message channel fields (`channel_id: None` entries are skipped).
+pub(crate) fn unique_channel_count(messages: &[MessageResponse]) -> u32 {
+    messages
+        .iter()
+        .filter_map(|m| m.channel_id.as_ref().map(|c| c.get()))
+        .collect::<std::collections::HashSet<i64>>()
+        .len() as u32
+}
+
 #[cfg(test)]
 #[path = "tests/responses_tests.rs"]
 mod tests;

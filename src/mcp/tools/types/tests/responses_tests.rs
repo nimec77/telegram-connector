@@ -240,3 +240,20 @@ fn search_response_maps_from_search_result() {
     let json = serde_json::to_value(&dto).unwrap();
     assert_eq!(json["query_metadata"]["query"], "x");
 }
+
+#[test]
+fn unique_channel_count_dedupes_and_skips_missing_ids() {
+    use crate::test_helpers::create_test_message;
+
+    let mut hoisted = MessageResponse::from(create_test_message(4, "d", 300));
+    hoisted.channel_id = None; // compact hoisting cleared the per-message field
+
+    let messages = vec![
+        MessageResponse::from(create_test_message(1, "a", 100)),
+        MessageResponse::from(create_test_message(2, "b", 100)),
+        MessageResponse::from(create_test_message(3, "c", 200)),
+        hoisted,
+    ];
+    assert_eq!(unique_channel_count(&messages), 2);
+    assert_eq!(unique_channel_count(&[]), 0);
+}
