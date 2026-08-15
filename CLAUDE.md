@@ -9,8 +9,6 @@ Telegram MCP Connector — a Model Context Protocol (MCP) service that enables C
 ## Build & Test Commands
 
 ```bash
-cargo test config -- --test-threads=1  # Config tests MUST run serial (env var mutation)
-
 # Pre-commit (all must pass)
 cargo fmt --check && cargo clippy -- -D warnings && cargo test
 ```
@@ -47,7 +45,7 @@ The same commands are available as `just` recipes (see `justfile`): run `just` t
 
 ### Test Organization
 
-- Config tests require `--test-threads=1` due to `env::set_var()` race conditions
+- Env-mutating config tests self-serialize via `ENV_LOCK` (`src/config/tests.rs`); plain `cargo test` is safe
 
 ## Coding Conventions
 

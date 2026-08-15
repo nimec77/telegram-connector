@@ -75,7 +75,7 @@ All must pass before merging:
 cargo fmt --check && cargo clippy -- -D warnings && cargo test
 ```
 
-(Config tests mutate env vars — run them serially: `cargo test config -- --test-threads=1`.)
+(Env-mutating config tests hold an internal lock — `ENV_LOCK` in `src/config/tests.rs` — so plain `cargo test` runs them safely in parallel.)
 
 ---
 
