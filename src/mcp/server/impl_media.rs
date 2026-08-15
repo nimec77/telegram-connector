@@ -7,7 +7,7 @@ use super::*;
 use crate::mcp::tools::helpers::wire_message_id;
 use crate::mcp::tools::image::{ProcessedImage, process_image, process_image_with_cap};
 use crate::mcp::tools::media_budget::Base64Budget;
-use crate::telegram::types::MediaDownload;
+use crate::telegram::types::{MediaDownload, MediaFetchOutcome};
 
 /// Longest-side pixel limit applied when a request omits `max_dimension`.
 pub(super) const DEFAULT_MAX_DIMENSION: u32 = 1280;
@@ -128,94 +128,19 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
         for outcome in outcomes {
             let id = i64::from(outcome.message_id);
-            let mut download = match outcome.result {
-                Ok(download) => download,
-                Err(e) => {
-                    failed.push(MediaBatchFailure {
-                        id,
-                        reason: failure_reason(&e),
-                    });
-                    continue;
+            // Encoding runs in request order, so budget allocation is
+            // deterministic no matter which download finished first.
+            match process_media_outcome(&request.channel_id, max_dimension, &mut budget, outcome)
+                .await
+            {
+                Ok((base64_jpeg, metadata_json)) => {
+                    total_base64_bytes += base64_jpeg.len();
+                    content.push(ContentBlock::image(base64_jpeg, "image/jpeg"));
+                    content.push(ContentBlock::text(metadata_json));
+                    returned += 1;
                 }
-            };
-
-            // Encoding runs in request order, so allocation is deterministic no
-            // matter which download finished first.
-            let Some(allowance) = budget.allowance() else {
-                failed.push(MediaBatchFailure {
-                    id,
-                    reason: "payload_cap_reached".to_string(),
-                });
-                continue;
-            };
-
-            // process_image_with_cap already shrinks the target dimension
-            // iteratively until the encoded payload fits — that is the
-            // progressive downscaling, no second implementation needed.
-            //
-            // Encode on a blocking thread: a Lanczos3 resize plus JPEG encode is
-            // hundreds of milliseconds of pure CPU, and ten of them back to back
-            // would pin a tokio worker for the whole batch. The loop stays
-            // sequential and in request order so budget allocation remains
-            // deterministic — only the CPU leaves the async worker.
-            let bytes = std::mem::take(&mut download.bytes);
-            let encode = tokio::task::spawn_blocking(move || {
-                process_image_with_cap(&bytes, max_dimension, allowance)
-            })
-            .await;
-
-            let processed = match encode {
-                Ok(Ok(processed)) => processed,
-                Ok(Err(e)) => {
-                    // Budget deliberately untouched: nothing was emitted, so
-                    // later ids keep their full allowance.
-                    failed.push(MediaBatchFailure {
-                        id,
-                        reason: post_download_failure_reason(&e),
-                    });
-                    continue;
-                }
-                Err(join_error) => {
-                    // The blocking task panicked or was cancelled. Report the id
-                    // rather than failing the batch, so the other ids' work and
-                    // their token charges are not thrown away.
-                    failed.push(MediaBatchFailure {
-                        id,
-                        reason: format!("internal_error: {join_error}"),
-                    });
-                    continue;
-                }
-            };
-            // Serialize before mutating any batch-level state, so a failure
-            // here (unreachable today — GetMessageMediaResponse has no map
-            // keys or floats, the only things that make serde_json::to_string
-            // fail — but not a compile-time guarantee) lands this id in
-            // `failed` instead of returning early and leaking every other
-            // id's charge along with it (`json_response(&metadata)?` used to
-            // do exactly that).
-            let metadata = media_metadata(request.channel_id.clone(), id, download, &processed);
-            let metadata_json = match json_response(&metadata) {
-                Ok(json) => json,
-                Err(e) => {
-                    // Neither a download failure nor a cap drop: serializing the
-                    // metadata failed. Unreachable today (the response type has
-                    // no map keys or floats, the only things that make
-                    // serde_json::to_string fail) but not a compile-time
-                    // guarantee, so it gets an honest token of its own.
-                    // Budget deliberately untouched, same reasoning as above.
-                    failed.push(MediaBatchFailure {
-                        id,
-                        reason: format!("internal_error: {e}"),
-                    });
-                    continue;
-                }
-            };
-            budget.consume(processed.base64_jpeg.len());
-
-            total_base64_bytes += processed.base64_jpeg.len();
-            content.push(ContentBlock::image(processed.base64_jpeg, "image/jpeg"));
-            content.push(ContentBlock::text(metadata_json));
-            returned += 1;
+                Err(reason) => failed.push(MediaBatchFailure { id, reason }),
+            }
         }
 
         // Ids that produced no image cost nothing — hand their tokens back.
@@ -345,6 +270,48 @@ fn media_metadata(
         mime_type: "image/jpeg".to_string(),
         video_info: download.video_info,
     }
+}
+
+/// Process one batch outcome end to end: download-failure mapping, budget
+/// allowance, decode/shrink/encode on a blocking thread, metadata
+/// serialization. Returns the content pair for a success, or the
+/// machine-readable failure reason. The budget is consumed only after every
+/// fallible step has succeeded, so a failed id never charges the cap and
+/// later ids keep their full allowance.
+async fn process_media_outcome(
+    channel_id: &str,
+    max_dimension: u32,
+    budget: &mut Base64Budget,
+    outcome: MediaFetchOutcome,
+) -> Result<(String, String), String> {
+    let id = i64::from(outcome.message_id);
+    let mut download = outcome.result.map_err(|e| failure_reason(&e))?;
+
+    let Some(allowance) = budget.allowance() else {
+        return Err("payload_cap_reached".to_string());
+    };
+
+    // process_image_with_cap already shrinks the target dimension iteratively
+    // until the encoded payload fits — that is the progressive downscaling.
+    // Encode on a blocking thread: a Lanczos3 resize plus JPEG encode is
+    // hundreds of milliseconds of pure CPU. A panicked/cancelled task reports
+    // the id rather than failing the batch.
+    let bytes = std::mem::take(&mut download.bytes);
+    let processed = tokio::task::spawn_blocking(move || {
+        process_image_with_cap(&bytes, max_dimension, allowance)
+    })
+    .await
+    .map_err(|join_error| format!("internal_error: {join_error}"))?
+    .map_err(|e| post_download_failure_reason(&e))?;
+
+    // Serialize before consuming the budget, so a (today unreachable)
+    // serialization failure lands this id in `failed` with the budget
+    // untouched instead of leaking the allowance.
+    let metadata = media_metadata(channel_id.to_string(), id, download, &processed);
+    let metadata_json = json_response(&metadata).map_err(|e| format!("internal_error: {e}"))?;
+
+    budget.consume(processed.base64_jpeg.len());
+    Ok((processed.base64_jpeg, metadata_json))
 }
 
 /// Map a per-id download failure to a stable, machine-readable reason.
