@@ -21,8 +21,12 @@ mod last_responses;
 mod links;
 #[path = "tests/media.rs"]
 mod media;
-#[path = "tests/media_batch.rs"]
-mod media_batch;
+#[path = "tests/media_batch_budget.rs"]
+mod media_batch_budget;
+#[path = "tests/media_batch_core.rs"]
+mod media_batch_core;
+#[path = "tests/media_batch_fixtures.rs"]
+mod media_batch_fixtures;
 #[path = "tests/message_by_link.rs"]
 mod message_by_link;
 #[path = "tests/multi_channel.rs"]
