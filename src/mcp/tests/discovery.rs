@@ -4,28 +4,11 @@ use crate::mcp::server::McpServer;
 use crate::mcp::tools::{ChannelsResponse, SearchPublicChannelsRequest};
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
-use crate::telegram::types::Username;
-use crate::telegram::{Channel, ChannelId, ChannelName, ChatType};
+use crate::test_helpers::create_test_channel_named;
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::NumberOrString;
 use std::sync::Arc;
-
-/// Helper to create test channel (mirrors `channels.rs`'s local helper).
-fn create_test_channel(id: i64, name: &str) -> Channel {
-    Channel {
-        id: ChannelId::new(id).unwrap(),
-        name: ChannelName::new(name).unwrap(),
-        username: Some(Username::new("testchannel").unwrap()),
-        chat_type: ChatType::Channel,
-        description: Some("Test channel".to_string()),
-        member_count: Some(1000),
-        is_verified: false,
-        is_public: true,
-        is_subscribed: false,
-        last_message_date: None,
-    }
-}
 
 #[tokio::test]
 async fn search_public_channels_returns_channels_response() {
@@ -33,7 +16,7 @@ async fn search_public_channels_returns_channels_response() {
     mock_client
         .expect_search_public_channels()
         .withf(|q, limit| q == "rust" && *limit == 10)
-        .return_once(|_, _| Ok(vec![create_test_channel(42, "Rust News")]));
+        .return_once(|_, _| Ok(vec![create_test_channel_named(42, "Rust News", false)]));
 
     let mut mock_limiter = MockRateLimiterTrait::new();
     mock_limiter
@@ -100,7 +83,7 @@ async fn search_public_channels_truncates_to_requested_limit() {
         .withf(|q, limit| q == "rust" && *limit == 3)
         .return_once(|_, _| {
             Ok((0..25)
-                .map(|i| create_test_channel(1000 + i, &format!("Channel {i}")))
+                .map(|i| create_test_channel_named(1000 + i, &format!("Channel {i}"), false))
                 .collect())
         });
 
@@ -147,7 +130,7 @@ async fn discovery_has_more_is_unknown_at_limit() {
     mock_client
         .expect_search_public_channels()
         .withf(|q, limit| q == "rust" && *limit == 1)
-        .return_once(|_, _| Ok(vec![create_test_channel(42, "Rust News")]));
+        .return_once(|_, _| Ok(vec![create_test_channel_named(42, "Rust News", false)]));
 
     let mut mock_limiter = MockRateLimiterTrait::new();
     mock_limiter.expect_acquire().returning(|_| Ok(()));
@@ -184,7 +167,7 @@ async fn discovery_has_more_false_under_limit() {
     mock_client
         .expect_search_public_channels()
         .withf(|q, limit| q == "rust" && *limit == 10)
-        .return_once(|_, _| Ok(vec![create_test_channel(42, "Rust News")]));
+        .return_once(|_, _| Ok(vec![create_test_channel_named(42, "Rust News", false)]));
 
     let mut mock_limiter = MockRateLimiterTrait::new();
     mock_limiter.expect_acquire().returning(|_| Ok(()));

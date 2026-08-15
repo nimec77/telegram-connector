@@ -4,44 +4,12 @@ use crate::mcp::server::McpServer;
 use crate::mcp::tools::{GetRecentMessagesRequest, ResponseFormat, SearchResponse};
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
-use crate::telegram::types::{
-    ChannelId, ChannelName, MediaFilter, MediaType, Message, MessageId, QueryMetadata,
-    SearchResult, Username,
-};
-use crate::test_helpers::create_test_search_result;
+use crate::telegram::types::{MediaFilter, Message, QueryMetadata, SearchResult};
+use crate::test_helpers::{create_test_message, create_test_search_result};
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::NumberOrString;
 use std::sync::Arc;
-
-fn create_test_message(id: i64, text: &str, channel_id: i64) -> Message {
-    Message {
-        id: MessageId::new(id).unwrap(),
-        channel_id: ChannelId::new(channel_id).unwrap(),
-        channel_name: ChannelName::new("Test Channel").unwrap(),
-        channel_username: Some(Username::new("testchannel").unwrap()),
-        text: text.to_string(),
-        timestamp: chrono::Utc::now(),
-        sender_id: None,
-        sender_name: None,
-        has_media: false,
-        media_type: MediaType::None,
-        forwarded_from: None,
-        link_preview: None,
-        views: None,
-        forwards: None,
-        reply_to_message_id: None,
-        video_info: None,
-        audio_info: None,
-        document_info: None,
-        poll_info: None,
-        grouped_id: None,
-        link: format!("https://t.me/testchannel/{}", id),
-        reactions: None,
-        reactions_total: None,
-        album: None,
-    }
-}
 
 #[tokio::test]
 async fn get_recent_messages_returns_results() {

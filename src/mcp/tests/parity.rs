@@ -10,10 +10,11 @@
 use crate::mcp::server::McpServer;
 use crate::mcp::tools::types::requests::{GetMessagesBatchRequest, ResponseFormat};
 use crate::mcp::tools::{GetMessageByLinkRequest, GetRecentMessagesRequest, SearchRequest};
-use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::{Message, MessageBatch};
-use crate::test_helpers::{create_test_message_with_enriched_forward, create_test_search_result};
+use crate::test_helpers::{
+    create_test_message_with_enriched_forward, create_test_search_result, permissive_limiter,
+};
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::NumberOrString;
@@ -30,12 +31,6 @@ fn fixture() -> Message {
         CHANNEL_ID,
         FORWARDED_FROM_ID,
     )
-}
-
-fn permissive_limiter() -> MockRateLimiterTrait {
-    let mut limiter = MockRateLimiterTrait::new();
-    limiter.expect_acquire().returning(|_| Ok(()));
-    limiter
 }
 
 /// The `forwarded_from` object as it appears on the wire. Handles both

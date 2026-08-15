@@ -6,7 +6,7 @@ use crate::mcp::tools::{GetMessageMediaResponse, GetMessagesMediaBatchRequest, M
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::{MediaDownload, MediaFetchError, MediaFetchOutcome, MediaType};
-use crate::test_helpers::create_test_jpeg;
+use crate::test_helpers::{create_test_jpeg, permissive_limiter};
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{ContentBlock, NumberOrString};
@@ -62,14 +62,6 @@ fn request(channel: &str, ids: Vec<i64>) -> GetMessagesMediaBatchRequest {
         message_ids: ids,
         max_dimension: None,
     }
-}
-
-/// A limiter that accepts anything — charging is Task 7's subject.
-fn permissive_limiter() -> MockRateLimiterTrait {
-    let mut limiter = MockRateLimiterTrait::new();
-    limiter.expect_acquire().returning(|_| Ok(()));
-    limiter.expect_refund().return_const(());
-    limiter
 }
 
 fn summary_of(content: &[ContentBlock]) -> MediaBatchSummary {

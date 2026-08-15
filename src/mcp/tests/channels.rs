@@ -6,31 +6,16 @@ use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::Username;
 use crate::telegram::{Channel, ChannelId, ChannelName, ChannelPage, ChatType};
+use crate::test_helpers::create_test_channel_named;
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::NumberOrString;
 use std::sync::Arc;
 
-/// Helper to create test channel
-fn create_test_channel(id: i64, name: &str) -> Channel {
-    Channel {
-        id: ChannelId::new(id).unwrap(),
-        name: ChannelName::new(name).unwrap(),
-        username: Some(Username::new("testchannel").unwrap()),
-        chat_type: ChatType::Channel,
-        description: Some("Test channel".to_string()),
-        member_count: Some(1000),
-        is_verified: false,
-        is_public: true,
-        is_subscribed: true,
-        last_message_date: None,
-    }
-}
-
 /// Build `n` distinct test channels (ids 1000.., names "Channel N").
 fn n_channels(n: usize) -> Vec<Channel> {
     (0..n)
-        .map(|i| create_test_channel(1000 + i as i64, &format!("Channel {i}")))
+        .map(|i| create_test_channel_named(1000 + i as i64, &format!("Channel {i}"), true))
         .collect()
 }
 
@@ -39,8 +24,8 @@ async fn get_subscribed_channels_returns_list() {
     // Given: Mock client returning test channels
     let mut mock_client = MockTelegramClientTrait::new();
     let test_channels = vec![
-        create_test_channel(123, "Channel 1"),
-        create_test_channel(456, "Channel 2"),
+        create_test_channel_named(123, "Channel 1", true),
+        create_test_channel_named(456, "Channel 2", true),
     ];
     let expected = test_channels.clone();
 
@@ -83,7 +68,7 @@ async fn get_subscribed_channels_returns_list() {
 async fn get_subscribed_channels_respects_pagination() {
     // Given: Mock client with custom pagination parameters
     let mut mock_client = MockTelegramClientTrait::new();
-    let test_channels = vec![create_test_channel(789, "Channel 3")];
+    let test_channels = vec![create_test_channel_named(789, "Channel 3", true)];
     let expected = test_channels.clone();
 
     mock_client
@@ -284,7 +269,7 @@ async fn include_full_routes_to_full_channel_info() {
         .expect_get_full_channel_info()
         .with(mockall::predicate::eq("@news"))
         .return_once(|_| {
-            let mut channel = create_test_channel(42, "News Channel");
+            let mut channel = create_test_channel_named(42, "News Channel", true);
             channel.description = Some("full description".to_string());
             channel.member_count = Some(12345);
             Ok(channel)
@@ -318,7 +303,7 @@ async fn include_full_absent_keeps_basic_path() {
     mock_client
         .expect_get_channel_info()
         .with(mockall::predicate::eq("@news"))
-        .return_once(|_| Ok(create_test_channel(42, "News Channel")));
+        .return_once(|_| Ok(create_test_channel_named(42, "News Channel", true)));
 
     let mock_limiter = MockRateLimiterTrait::new();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
@@ -426,7 +411,7 @@ async fn include_full_meters_the_extra_rpc() {
     mock_client
         .expect_get_full_channel_info()
         .with(mockall::predicate::eq("@news"))
-        .return_once(|_| Ok(create_test_channel(42, "News Channel")));
+        .return_once(|_| Ok(create_test_channel_named(42, "News Channel", true)));
 
     let mut mock_limiter = MockRateLimiterTrait::new();
     mock_limiter
@@ -481,7 +466,7 @@ async fn include_full_passes_last_message_date_through() {
     // Mock get_full_channel_info("@news") returning a channel with
     // last_message_date populated; verify it passes through to the response.
     let mut mock_client = MockTelegramClientTrait::new();
-    let mut channel = create_test_channel(42, "News Channel");
+    let mut channel = create_test_channel_named(42, "News Channel", true);
     let expected_date = "2026-08-10T05:55:12Z"
         .parse::<chrono::DateTime<chrono::Utc>>()
         .unwrap();

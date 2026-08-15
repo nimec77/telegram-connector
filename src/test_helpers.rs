@@ -205,6 +205,23 @@ pub fn create_test_channel_detailed(
     }
 }
 
+/// Create a test channel with an explicit display name and subscription
+/// state (fixed username "testchannel").
+pub fn create_test_channel_named(id: i64, name: &str, is_subscribed: bool) -> Channel {
+    Channel {
+        id: ChannelId::new(id).expect("Test channel ID must be positive"),
+        name: ChannelName::new(name).expect("Valid channel name"),
+        username: Some(Username::new("testchannel").expect("Valid username")),
+        chat_type: ChatType::Channel,
+        description: Some("Test channel".to_string()),
+        member_count: Some(1000),
+        is_verified: false,
+        is_public: true,
+        is_subscribed,
+        last_message_date: None,
+    }
+}
+
 /// Create a test search result with the given messages.
 pub fn create_test_search_result(
     messages: Vec<Message>,
@@ -430,6 +447,16 @@ pub fn raw_tl_messages_slice(
         chats: vec![tl::enums::Chat::Channel(raw_tl_channel(11, "Канал", None))],
         users: vec![],
     })
+}
+
+/// A rate limiter that accepts every acquire and swallows refunds — for
+/// tests where limiting is not the subject.
+#[cfg(test)]
+pub fn permissive_limiter() -> crate::rate_limiter::MockRateLimiterTrait {
+    let mut limiter = crate::rate_limiter::MockRateLimiterTrait::new();
+    limiter.expect_acquire().returning(|_| Ok(()));
+    limiter.expect_refund().return_const(());
+    limiter
 }
 
 #[cfg(test)]
