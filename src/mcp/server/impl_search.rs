@@ -4,6 +4,7 @@
 //! delegate to them. Split out per LM-3 (`server.rs` was 880 lines).
 
 use super::*;
+use crate::mcp::tools::helpers::wire_message_id;
 
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {
     pub(super) async fn search_messages_impl(
@@ -453,6 +454,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             ChannelRef::Id(id) => id.get().to_string(),
         };
 
+        let wire_id = wire_message_id(message_id)?;
+
         // Acquire rate limiter token
         self.rate_limiter
             .acquire(1)
@@ -462,7 +465,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         // Fetch the message
         let message = self
             .telegram_client
-            .get_message_by_id(&channel_identifier, message_id.get() as i32)
+            .get_message_by_id(&channel_identifier, wire_id)
             .await
             .map_err(|e| e.to_string())?;
 

@@ -4,6 +4,7 @@
 //! delegate to them. Split out per LM-3 (`server.rs` was 880 lines).
 
 use super::*;
+use crate::mcp::tools::helpers::wire_message_id;
 use crate::mcp::tools::image::{ProcessedImage, process_image, process_image_with_cap};
 use crate::mcp::tools::media_budget::Base64Budget;
 use crate::telegram::types::MediaDownload;
@@ -22,6 +23,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         request: GetMessageMediaRequest,
     ) -> Result<CallToolResult, String> {
         let message_id = parse_message_id(request.message_id)?;
+        let wire_id = wire_message_id(message_id)?;
         let max_dimension = request
             .max_dimension
             .unwrap_or(DEFAULT_MAX_DIMENSION)
@@ -35,7 +37,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
         let mut download = self
             .telegram_client
-            .download_message_media(&request.channel_id, message_id.get() as i32, max_dimension)
+            .download_message_media(&request.channel_id, wire_id, max_dimension)
             .await
             .map_err(|e| e.to_string())?;
 
@@ -252,6 +254,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         request: TranscribeVoiceMessageRequest,
     ) -> Result<String, String> {
         let message_id = parse_message_id(request.message_id)?;
+        let wire_id = wire_message_id(message_id)?;
         // Bounds come from [transcription] config (AD-6). Floor at 1 and cap at the
         // configured max via min/max rather than clamp(1, max) so a misconfigured
         // max of 0 can't panic clamp's min<=max invariant.
@@ -276,7 +279,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
         let outcome = self
             .telegram_client
-            .transcribe_audio(&request.channel_id, message_id.get() as i32, timeout_secs)
+            .transcribe_audio(&request.channel_id, wire_id, timeout_secs)
             .await
             .map_err(|e| e.to_string())?;
 
