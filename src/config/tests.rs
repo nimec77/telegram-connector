@@ -1,5 +1,6 @@
 use super::*;
 use std::env;
+use std::ffi::OsString;
 use std::fs;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
@@ -14,6 +15,54 @@ fn env_lock() -> MutexGuard<'static, ()> {
     ENV_LOCK.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+/// RAII guard for tests that mutate process environment variables.
+///
+/// Construction takes `ENV_LOCK`, serializing all env-mutating tests.
+/// `set`/`remove` record a variable's prior value the first time they touch
+/// it, and `Drop` restores every touched variable — so a failing assertion
+/// cannot leak env state into subsequent tests (before this guard, cleanup
+/// ran only on the success path).
+struct EnvGuard {
+    saved: Vec<(&'static str, Option<OsString>)>,
+    _lock: MutexGuard<'static, ()>,
+}
+
+impl EnvGuard {
+    fn new() -> Self {
+        Self {
+            saved: Vec::new(),
+            _lock: env_lock(),
+        }
+    }
+
+    fn set(&mut self, key: &'static str, value: impl AsRef<std::ffi::OsStr>) {
+        self.save(key);
+        unsafe { env::set_var(key, value) };
+    }
+
+    fn remove(&mut self, key: &'static str) {
+        self.save(key);
+        unsafe { env::remove_var(key) };
+    }
+
+    fn save(&mut self, key: &'static str) {
+        if !self.saved.iter().any(|(k, _)| *k == key) {
+            self.saved.push((key, env::var_os(key)));
+        }
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        for (key, old) in self.saved.iter().rev() {
+            match old {
+                Some(value) => unsafe { env::set_var(key, value) },
+                None => unsafe { env::remove_var(key) },
+            }
+        }
+    }
+}
+
 #[test]
 fn test_expand_env_vars_no_variables() {
     let result = expand_env_vars("simple string").unwrap();
@@ -22,30 +71,19 @@ fn test_expand_env_vars_no_variables() {
 
 #[test]
 fn test_expand_env_vars_single_variable() {
-    let _env = env_lock();
-    unsafe {
-        env::set_var("TEST_VAR", "test_value");
-    }
+    let mut env_guard = EnvGuard::new();
+    env_guard.set("TEST_VAR", "test_value");
     let result = expand_env_vars("prefix_${TEST_VAR}_suffix").unwrap();
     assert_eq!(result, "prefix_test_value_suffix");
-    unsafe {
-        env::remove_var("TEST_VAR");
-    }
 }
 
 #[test]
 fn test_expand_env_vars_multiple_variables() {
-    let _env = env_lock();
-    unsafe {
-        env::set_var("VAR1", "value1");
-        env::set_var("VAR2", "value2");
-    }
+    let mut env_guard = EnvGuard::new();
+    env_guard.set("VAR1", "value1");
+    env_guard.set("VAR2", "value2");
     let result = expand_env_vars("${VAR1}_middle_${VAR2}").unwrap();
     assert_eq!(result, "value1_middle_value2");
-    unsafe {
-        env::remove_var("VAR1");
-        env::remove_var("VAR2");
-    }
 }
 
 #[test]
@@ -61,21 +99,15 @@ fn test_expand_env_vars_missing_variable_returns_error() {
 
 #[test]
 fn test_expand_env_vars_no_recursive_expansion() {
-    let _env = env_lock();
+    let mut env_guard = EnvGuard::new();
     // If a var's value contains ${...}, it should NOT be expanded further
-    unsafe {
-        env::set_var("OUTER_VAR", "${INNER_VAR}");
-        env::set_var("INNER_VAR", "should_not_appear");
-    }
+    env_guard.set("OUTER_VAR", "${INNER_VAR}");
+    env_guard.set("INNER_VAR", "should_not_appear");
     let result = expand_env_vars("value_${OUTER_VAR}_end").unwrap();
     assert_eq!(
         result, "value_${INNER_VAR}_end",
         "Variable values containing ${{...}} should not be recursively expanded"
     );
-    unsafe {
-        env::remove_var("OUTER_VAR");
-        env::remove_var("INNER_VAR");
-    }
 }
 
 #[test]
@@ -86,13 +118,11 @@ fn test_expand_env_vars_incomplete_syntax() {
 
 #[test]
 fn test_expand_env_vars_numeric_unquoting() {
-    let _env = env_lock();
+    let mut env_guard = EnvGuard::new();
     // When a quoted TOML value contains only an env var with a pure numeric value,
     // it should be unquoted to allow parsing as integer
-    unsafe {
-        env::set_var("TEST_NUM", "12345");
-        env::set_var("TEST_PHONE", "+1234567890");
-    }
+    env_guard.set("TEST_NUM", "12345");
+    env_guard.set("TEST_PHONE", "+1234567890");
 
     // Pure number should be unquoted
     let result = expand_env_vars(r#"api_id = "${TEST_NUM}""#).unwrap();
@@ -101,11 +131,6 @@ fn test_expand_env_vars_numeric_unquoting() {
     // Phone number (with +) should remain quoted
     let result = expand_env_vars(r#"phone = "${TEST_PHONE}""#).unwrap();
     assert_eq!(result, r#"phone = "+1234567890""#);
-
-    unsafe {
-        env::remove_var("TEST_NUM");
-        env::remove_var("TEST_PHONE");
-    }
 }
 
 #[test]
@@ -224,7 +249,7 @@ fn test_auth_credentials_getter() {
 #[ignore = "for CI/CD passing tests"]
 #[test]
 fn test_load_valid_config() {
-    let _env = env_lock();
+    let mut env_guard = EnvGuard::new();
     let temp_dir = env::temp_dir();
     let config_path = temp_dir.join("test_config.toml");
     let config_content = r#"
@@ -249,13 +274,8 @@ format = "compact"
 "#;
     fs::write(&config_path, config_content).unwrap();
 
-    unsafe {
-        env::set_var("TELEGRAM_MCP_CONFIG", &config_path);
-    }
+    env_guard.set("TELEGRAM_MCP_CONFIG", &config_path);
     let result = Config::load();
-    unsafe {
-        env::remove_var("TELEGRAM_MCP_CONFIG");
-    }
     fs::remove_file(&config_path).ok();
 
     assert!(result.is_ok());
@@ -270,7 +290,7 @@ format = "compact"
 #[ignore = "for CI/CD passing tests"]
 #[test]
 fn test_load_config_with_env_vars() {
-    let _env = env_lock();
+    let mut env_guard = EnvGuard::new();
     let temp_dir = env::temp_dir();
     let config_path = temp_dir.join("test_config_env.toml");
     // Test that ALL fields can use ${VAR} syntax, including numeric api_id
@@ -296,21 +316,13 @@ format = "compact"
 "#;
     fs::write(&config_path, config_content).unwrap();
 
-    unsafe {
-        env::set_var("TEST_API_ID", "98765");
-        env::set_var("TEST_API_HASH", "expanded_hash");
-        env::set_var("TEST_PHONE", "+9876543210");
-        env::set_var("TELEGRAM_MCP_CONFIG", &config_path);
-    }
+    env_guard.set("TEST_API_ID", "98765");
+    env_guard.set("TEST_API_HASH", "expanded_hash");
+    env_guard.set("TEST_PHONE", "+9876543210");
+    env_guard.set("TELEGRAM_MCP_CONFIG", &config_path);
 
     let result = Config::load();
 
-    unsafe {
-        env::remove_var("TEST_API_ID");
-        env::remove_var("TEST_API_HASH");
-        env::remove_var("TEST_PHONE");
-        env::remove_var("TELEGRAM_MCP_CONFIG");
-    }
     fs::remove_file(&config_path).ok();
 
     assert!(result.is_ok());
@@ -332,32 +344,22 @@ format = "compact"
 
 #[test]
 fn test_load_missing_config() {
-    let _env = env_lock();
-    unsafe {
-        env::set_var("TELEGRAM_MCP_CONFIG", "/nonexistent/path/config.toml");
-    }
+    let mut env_guard = EnvGuard::new();
+    env_guard.set("TELEGRAM_MCP_CONFIG", "/nonexistent/path/config.toml");
     let result = Config::load();
-    unsafe {
-        env::remove_var("TELEGRAM_MCP_CONFIG");
-    }
 
     assert!(result.is_err());
 }
 
 #[test]
 fn test_load_invalid_toml() {
-    let _env = env_lock();
+    let mut env_guard = EnvGuard::new();
     let temp_dir = env::temp_dir();
     let config_path = temp_dir.join("test_invalid.toml");
     fs::write(&config_path, "this is not valid TOML {{{}}}").unwrap();
 
-    unsafe {
-        env::set_var("TELEGRAM_MCP_CONFIG", &config_path);
-    }
+    env_guard.set("TELEGRAM_MCP_CONFIG", &config_path);
     let result = Config::load();
-    unsafe {
-        env::remove_var("TELEGRAM_MCP_CONFIG");
-    }
     fs::remove_file(&config_path).ok();
 
     assert!(result.is_err());
@@ -366,14 +368,9 @@ fn test_load_invalid_toml() {
 #[ignore = "for CI/CD passing tests"]
 #[test]
 fn test_resolve_path_from_env() {
-    let _env = env_lock();
-    unsafe {
-        env::set_var("TELEGRAM_MCP_CONFIG", "/custom/path/config.toml");
-    }
+    let mut env_guard = EnvGuard::new();
+    env_guard.set("TELEGRAM_MCP_CONFIG", "/custom/path/config.toml");
     let result = Config::resolve_config_path().unwrap();
-    unsafe {
-        env::remove_var("TELEGRAM_MCP_CONFIG");
-    }
 
     assert_eq!(result, PathBuf::from("/custom/path/config.toml"));
 }
@@ -381,10 +378,8 @@ fn test_resolve_path_from_env() {
 #[ignore = "for CI/CD passing tests"]
 #[test]
 fn test_resolve_path_default() {
-    let _env = env_lock();
-    unsafe {
-        env::remove_var("TELEGRAM_MCP_CONFIG");
-    }
+    let mut env_guard = EnvGuard::new();
+    env_guard.remove("TELEGRAM_MCP_CONFIG");
     let result = Config::resolve_config_path();
     assert!(result.is_ok());
     let path = result.unwrap();
@@ -589,7 +584,7 @@ fn test_timeout_config_validate_accepts_defaults() {
 #[ignore = "for CI/CD passing tests"]
 #[test]
 fn test_load_config_with_file_logging_options() {
-    let _env = env_lock();
+    let mut env_guard = EnvGuard::new();
     let temp_dir = env::temp_dir();
     let config_path = temp_dir.join("test_file_logging_config.toml");
     let config_content = r#"
@@ -607,13 +602,8 @@ max_log_days = 14
 "#;
     fs::write(&config_path, config_content).unwrap();
 
-    unsafe {
-        env::set_var("TELEGRAM_MCP_CONFIG", &config_path);
-    }
+    env_guard.set("TELEGRAM_MCP_CONFIG", &config_path);
     let result = Config::load();
-    unsafe {
-        env::remove_var("TELEGRAM_MCP_CONFIG");
-    }
     fs::remove_file(&config_path).ok();
 
     assert!(result.is_ok());
@@ -881,4 +871,16 @@ fn costs_equal_to_capacity_are_accepted() {
         transcription_cost: 10,
     };
     assert!(config.validate().is_ok());
+}
+
+#[test]
+fn env_guard_restores_env_on_panic() {
+    let result = std::panic::catch_unwind(|| {
+        let mut env_guard = EnvGuard::new();
+        env_guard.set("ENV_GUARD_PANIC_PROBE", "leaked?");
+        panic!("assertion-failure stand-in");
+    });
+    assert!(result.is_err());
+    let _env_guard = EnvGuard::new(); // re-serialize before probing
+    assert!(env::var_os("ENV_GUARD_PANIC_PROBE").is_none());
 }
