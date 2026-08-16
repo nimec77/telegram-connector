@@ -59,13 +59,12 @@ impl TelegramClient {
         let peer = match resolved_peer {
             Some(peer) => peer,
             None => {
-                let id = params.channel_id.ok_or_else(|| {
-                    let reference = params.channel_identifier.as_deref().unwrap_or("");
-                    tracing::warn!(reference, "Channel not found: username did not resolve");
-                    Error::InvalidInput(format!("Channel not found: {}", reference))
-                })?;
-                self.find_dialog_peer(id.get()).await?.ok_or_else(|| {
-                    tracing::warn!(channel_id = %id, "Channel not found in dialogs");
+                let id = dialog_fallback_target(
+                    params.channel_id,
+                    params.channel_identifier.as_deref(),
+                )?;
+                self.find_dialog_peer(id).await?.ok_or_else(|| {
+                    tracing::warn!(channel_id = id, "Channel not found in dialogs");
                     Error::InvalidInput(format!("Channel not found: {}", id))
                 })?
             }
@@ -156,3 +155,24 @@ impl TelegramClient {
         ))
     }
 }
+
+/// The numeric id to walk dialogs by when username resolution did not produce
+/// a peer.
+///
+/// A username reference carries no numeric id (`channel_id == None`), so a
+/// username that fails to resolve hard-errors here rather than walking dialogs
+/// by an id we never had (AD-2).
+fn dialog_fallback_target(
+    channel_id: Option<ChannelId>,
+    identifier: Option<&str>,
+) -> Result<i64, Error> {
+    channel_id.map(|id| id.get()).ok_or_else(|| {
+        let reference = identifier.unwrap_or("");
+        tracing::warn!(reference, "Channel not found: username did not resolve");
+        Error::InvalidInput(format!("Channel not found: {}", reference))
+    })
+}
+
+#[cfg(test)]
+#[path = "tests/ops_history_tests.rs"]
+mod tests;
