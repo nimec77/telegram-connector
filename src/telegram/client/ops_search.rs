@@ -60,23 +60,34 @@ impl TelegramClient {
         let has_more = page.has_more();
         let mut messages = page.into_messages();
 
-        // Sort by timestamp (newest first)
+        // Sort by timestamp (newest first). Stays here, not in
+        // `assemble_search_result`: history relies on its pager's already
+        // reverse-chronological order and must not be sorted.
         messages.sort_by_key(|b| std::cmp::Reverse(b.timestamp));
 
-        let channels_in_results = {
-            let unique: std::collections::HashSet<_> =
-                messages.iter().map(|m| m.channel_id.get()).collect();
-            unique.len() as u32
-        };
         let search_time_ms = start_time.elapsed().as_millis() as u64;
-        let returned = messages.len() as u64;
+
+        // The global path has no cursor to resume from anyway (see the
+        // `before_id`/`after_id` rejection above), so `partial`/`timed_out` —
+        // computed by `assemble_search_result`, deliberately paired together and
+        // never with `has_more` — are the only truncation signal it can give.
+        let result = assemble_search_result(
+            messages,
+            &budget,
+            has_more,
+            params.query.clone(),
+            cutoff_time,
+            params.to_date,
+            channels_scanned,
+            search_time_ms,
+        );
 
         tracing::info!(
             query = %params.query,
             media_filter = ?params.media_filter,
-            results = returned,
+            results = result.returned,
             channels_scanned = ?channels_scanned,
-            channels_in_results,
+            channels_in_results = result.query_metadata.channels_in_results,
             duration_ms = search_time_ms,
             pages_fetched = budget.pages_fetched(),
             messages_scanned = budget.messages_scanned(),
@@ -84,33 +95,7 @@ impl TelegramClient {
             "Search completed"
         );
 
-        Ok(SearchResult {
-            returned,
-            has_more,
-            search_time_ms,
-            query_metadata: QueryMetadata {
-                query: params.query.clone(),
-                window_from: cutoff_time,
-                window_to: params.to_date,
-                channels_scanned,
-                channels_in_results,
-                timed_out: budget.timed_out(),
-                // Deliberately paired with `timed_out`, and deliberately *not* with
-                // `has_more`: expiry stopped the walk without proving anything lies
-                // beyond the page, and the global path has no cursor to resume from
-                // anyway (see the `before_id`/`after_id` rejection above).
-                //
-                // Can be a conservative false positive: the deadline is checked at the
-                // top of an iteration, so expiry landing on what would have been the
-                // terminal iteration reports a complete result set as partial. Avoiding
-                // that needs lookahead the loop does not have, and the error is in the
-                // safe direction — it is not a bug to go fix later.
-                partial: budget.timed_out(),
-                pages_fetched: budget.pages_fetched(),
-                messages_scanned: budget.messages_scanned(),
-            },
-            messages,
-        })
+        Ok(result)
     }
 
     /// Channel-scoped search: walk dialogs to the target channel, then page
