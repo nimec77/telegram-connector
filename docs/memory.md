@@ -6,12 +6,12 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Current state
 
-- **v0.22.3** (2026-08-16, on `refactor/audit-stage4-ops-verification`; master is still
-  0.22.1 pending this branch's PR), 16 MCP tools (16th: `get_messages_media_batch`). 760 lib
-  tests passing, 5 ignored (up from 726). Coverage **78.33% lines** (`cargo llvm-cov --lib`;
-  76.19% for a full `cargo llvm-cov` run), compared approximately to the 75.1%
-  audit-start baseline — that baseline predates stages 2–3, so it isn't a clean
-  stage-4-only delta. Near-100% on domain types/converters/shaping, `MessageWalk`'s
+- **v0.22.3** (2026-08-16, brought in by `refactor/audit-stage4-ops-verification`), 16 MCP
+  tools (16th: `get_messages_media_batch`). 760 lib tests passing, 5 ignored (up from 726).
+  Coverage **78.33% lines** (`cargo llvm-cov --lib`; 76.19% for a full `cargo llvm-cov`
+  run), compared approximately to the 75.1% audit-start baseline — that baseline predates
+  stages 2–3, so it isn't a clean stage-4-only delta. Near-100% on domain
+  types/converters/shaping, `MessageWalk`'s
   decision logic (`walk.rs`) at 95%. The production `TelegramClient` ops layer is still
   mostly 0% — the DI seam swaps exactly that code for mocks; `ops_history`/`ops_message`
   moved off zero (12%/26%), `ops_search` stayed at 0% (thin glue below the seam, as
@@ -70,8 +70,8 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   (`telegram/client/walk.rs`), synchronous and above the DI seam — the loops themselves
   (`get_recent_messages_impl`/`search_in_channel`/`search_global`) sit *below* the seam,
   where `MockTelegramClientTrait` replaces the whole client, so branching placed there stays
-  untestable. The three differ only in `WalkConfig`'s five fields: `cutoff_time`, `to_date`,
-  `after_bound`, `media_filter`, `below_cutoff`.
+  untestable. The three differ only in `WalkConfig`'s five fields (`cutoff_time`, `to_date`,
+  `after_bound`, `media_filter`, `below_cutoff`) plus the deadline (history: disabled).
 - **Pagination:** `before_id` maps to the RPC's `offset_id`; `after_id` is a client-side
   break (grammers has no `min_id` setter); both exclusive. Message ids are only unique per
   channel, so global search reports `has_more` but never a `next_cursor`. `has_more` means

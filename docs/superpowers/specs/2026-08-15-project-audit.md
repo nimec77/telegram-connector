@@ -41,21 +41,21 @@ poison recovery + `available_tokens` dedup. Three deliberate behavior deltas doc
 in PR #42 (guard wording, `search_global` debug-log timing scope, enum-coercion error
 text).
 
-## Stage 4 — Coverage via `MessageWalk` ✅ (not yet merged)
+## Stage 4 — Coverage via `MessageWalk` ✅ (v0.22.3)
 
 Done: extracted `MessageWalk`/`WalkConfig` (`telegram/client/walk.rs`), a synchronous
 decision machine living above the DI seam, and wired all three message-fetch loops
 (`get_recent_messages_impl`, `search_in_channel`, `search_global`) onto it — they now
 differ only in `WalkConfig`'s five fields (`cutoff_time`, `to_date`, `after_bound`,
-`media_filter`, `below_cutoff`). Extracted five pure functions (`assemble_search_result`,
-`dialog_fallback_target`, `partition_batch`, `ChannelPageBuilder`, `classify_search_hit`);
-covered config file-loading error branches; closed two stage-3 follow-ups
-(`PageAccumulator::push` `#[must_use]`, a collapse=false album-sibling test). Two
-deliberate behavior deltas: history's loop gains a `walk.expired()` check that is
-provably inert (`deadline_secs = 0` never expires — pinned by
-`zero_deadline_is_treated_as_disabled_not_instantly_expired`); global search's per-page
-`debug!` moved from before `step` to after it (values unchanged, ordering real), and its
-tracing field `page` was renamed to `page_no`.
+`media_filter`, `below_cutoff`) plus the deadline (history: disabled). Extracted five
+pure functions (`assemble_search_result`, `dialog_fallback_target`, `partition_batch`,
+`ChannelPageBuilder`, `classify_search_hit`); covered config file-loading error branches;
+closed two stage-3 follow-ups (`PageAccumulator::push` `#[must_use]`, a collapse=false
+album-sibling test). Two deliberate behavior deltas: history's loop gains a
+`walk.expired()` check that is provably inert (`deadline_secs = 0` never expires —
+pinned by `zero_deadline_is_treated_as_disabled_not_instantly_expired`); global search's
+per-page `debug!` moved from before `step` to after it (values unchanged, ordering
+real), and its tracing field `page` was renamed to `page_no`.
 
 Overall lines: **78.33%** (`cargo llvm-cov --lib`) / **76.19%** (full `cargo llvm-cov`, all
 targets); 760 passed / 5 ignored (up from 726). Compared approximately against the audit's
