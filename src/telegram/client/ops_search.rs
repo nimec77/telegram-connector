@@ -275,6 +275,10 @@ impl TelegramClient {
                         .map_err(|e| Error::TelegramApi(format!("Search failed: {}", e)))?;
                     mtproto_nanos += fetch_start.elapsed().as_nanos();
                     let page_size = pager.take_last_page_size();
+                    // Read before the fold: `kept` reports messages admitted
+                    // *before* this page, which is what the pre-refactor log
+                    // meant and the cleaner progress reading at fetch time.
+                    let kept_before = walk.kept();
                     // Destructured before `Fetched` so `chat_peer` outlives the
                     // borrow taken by `peer`. Moving `raw`/`entities` in keeps this
                     // hot loop clone-free.
@@ -291,7 +295,8 @@ impl TelegramClient {
                     };
                     // Logged after `step`, which owns `record_page` — so the page
                     // counters read the same as they did when the log sat ahead of
-                    // the fold. `kept` now includes this fetch's message.
+                    // the fold, and `kept_before` was captured ahead of it. Every
+                    // logged value is identical to the pre-refactor ordering.
                     // `page_size` is `Some` even when the round trip came back
                     // empty: it still cost the caller latency, which is what the
                     // field reports.
@@ -300,7 +305,7 @@ impl TelegramClient {
                             page_no = walk.pages_fetched(),
                             messages_in_page = size,
                             messages_scanned = walk.messages_scanned(),
-                            kept = walk.kept(),
+                            kept = kept_before,
                             "Global search page fetched"
                         );
                     }
