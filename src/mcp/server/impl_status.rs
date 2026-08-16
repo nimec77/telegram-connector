@@ -102,7 +102,9 @@ fn omit_binary_blocks(response: &mut serde_json::Value) {
             continue;
         };
         let padding = data.bytes().rev().take_while(|&b| b == b'=').count();
-        let size_bytes = data.len() / 4 * 3 - padding;
+        // Saturating: a malformed payload shorter than one base64 quantum
+        // (e.g. "==") makes the quotient 0 while padding is 2.
+        let size_bytes = (data.len() / 4 * 3).saturating_sub(padding);
         let mime_type = block
             .get("mimeType")
             .cloned()

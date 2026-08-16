@@ -159,10 +159,13 @@ async fn oversized_payload_is_returned_as_stub_with_real_size() {
 /// omit-transform is tested against the actual wire field names.
 fn image_envelope() -> String {
     let data = base64::engine::general_purpose::STANDARD.encode([7u8; 300]);
-    let call_result = CallToolResult::success(vec![
-        ContentBlock::image(data, "image/jpeg"),
-        ContentBlock::text(r#"{"meta":1}"#),
-    ]);
+    envelope_with_image(data, vec![ContentBlock::text(r#"{"meta":1}"#)])
+}
+
+fn envelope_with_image(data: String, mut rest: Vec<ContentBlock>) -> String {
+    let mut blocks = vec![ContentBlock::image(data, "image/jpeg")];
+    blocks.append(&mut rest);
+    let call_result = CallToolResult::success(blocks);
     serde_json::json!({
         "jsonrpc": "2.0",
         "id": 7,
@@ -197,6 +200,34 @@ async fn replay_stubs_image_blocks_by_default() {
     assert_eq!(blocks[0]["size_bytes"], 300);
     assert!(blocks[0].get("data").is_none(), "base64 must be stripped");
     assert_eq!(blocks[1]["type"], "text", "non-image blocks untouched");
+}
+
+#[tokio::test]
+async fn replay_stubs_a_malformed_short_base64_payload_without_underflowing() {
+    // "==" is nothing but padding: `data.len() / 4 * 3` is 0, so subtracting
+    // the 2 padding bytes underflowed `usize` — a panic in debug builds and a
+    // ~18-exabyte `size_bytes` in release.
+    let server = make_server();
+    server.response_buffer().push(buffered(
+        "7",
+        &envelope_with_image("==".to_string(), Vec::new()),
+    ));
+
+    let result = server
+        .get_last_responses(
+            Parameters(GetLastResponsesRequest {
+                n: None,
+                include_binary: None,
+            }),
+            RequestId(NumberOrString::Number(1)),
+        )
+        .await
+        .expect("tool ok");
+    let response: LastResponsesResponse = serde_json::from_str(&result).expect("valid JSON");
+
+    let blocks = &response.responses[0].response["result"]["content"];
+    assert_eq!(blocks[0]["omitted"], true);
+    assert_eq!(blocks[0]["size_bytes"], 0);
 }
 
 #[tokio::test]
