@@ -246,3 +246,35 @@ fn an_admitted_album_is_not_split_at_the_limit_boundary() {
     let collapsed: Vec<Message> = page.into_messages();
     assert_eq!(collapsed.len(), 1, "the two siblings collapse to one post");
 }
+
+#[test]
+fn the_after_bound_check_wins_over_the_media_filter_at_the_same_id() {
+    // Pins the ORDER of the two checks inside `step`: `after_bound` (Stop)
+    // must be evaluated before `media_filter` (Continue). History is the
+    // only loop that sets both simultaneously. If the branches were swapped,
+    // a message sitting exactly at the cursor bound that also misses the
+    // media filter would return `Continue` instead of `Stop`, and the walk
+    // would over-scan the rest of the page past a bound it should have
+    // stopped at.
+    use crate::telegram::types::MediaFilter;
+
+    let client = inert_client();
+    let peer = channel_peer(&client, 11);
+    // `raw_tl_message` builds a service message: no media, so a Photo filter
+    // never matches it — this message would be skipped (Continue) if
+    // `media_filter` were checked first.
+    let filter = MediaFilter::Photo;
+    let cfg = WalkConfig {
+        after_bound: Some(5),
+        media_filter: Some(&filter),
+        ..open_config(at(1_000))
+    };
+    let mut walk = MessageWalk::new(cfg, false, 10, 0);
+
+    assert_eq!(
+        walk.step(Some(fetched(5, 2_000, &peer)), None),
+        Flow::Stop,
+        "the cursor bound must win over the media filter"
+    );
+    assert_eq!(walk.kept(), 0);
+}
