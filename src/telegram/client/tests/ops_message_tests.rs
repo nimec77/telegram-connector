@@ -70,6 +70,26 @@ fn a_message_empty_placeholder_is_missing_not_a_fabricated_message() {
 }
 
 #[test]
+fn a_present_message_that_fails_conversion_is_reported_missing_not_dropped() {
+    // A bare id-0 message: it is present in the map and is NOT a
+    // `MessageEmpty` (it's a `Message::Service`), so it clears the
+    // `is_empty_variant` guard and `convert_raw_message`'s own `MessageEmpty`
+    // check — but `MessageId::new(0)` rejects non-positive ids, so
+    // `convert_raw_message` still returns `None`. This exercises the branch
+    // that would otherwise silently drop the id instead of reporting it
+    // missing.
+    let (_client, peer) = inert_peer();
+    let entities = EntityLookup::from_envelope(&[], &[]);
+    let mut by_id = HashMap::new();
+    by_id.insert(0, raw_tl_message(0, 1_000, 11));
+
+    let batch = partition_batch(&[0], &mut by_id, &peer, &entities, "@канал");
+
+    assert!(batch.messages.is_empty());
+    assert_eq!(batch.missing_ids, vec![0]);
+}
+
+#[test]
 fn requested_order_is_preserved_in_missing_ids() {
     let (_client, peer) = inert_peer();
     let entities = EntityLookup::from_envelope(&[], &[]);
