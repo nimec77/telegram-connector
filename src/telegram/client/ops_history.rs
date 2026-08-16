@@ -64,7 +64,7 @@ impl TelegramClient {
                     params.channel_identifier.as_deref(),
                 )?;
                 self.find_dialog_peer(id).await?.ok_or_else(|| {
-                    tracing::warn!(channel_id = id, "Channel not found in dialogs");
+                    tracing::warn!(channel_id = %id, "Channel not found in dialogs");
                     Error::InvalidInput(format!("Channel not found: {}", id))
                 })?
             }
