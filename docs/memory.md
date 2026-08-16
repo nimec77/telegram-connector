@@ -7,7 +7,7 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 ## Current state
 
 - **v0.22.4** (released 2026-08-16; packages the stage-4 work), 16 MCP
-  tools (16th: `get_messages_media_batch`). 762 lib tests passing, 5 ignored (up from 726).
+  tools (16th: `get_messages_media_batch`). 773 lib tests passing, 5 ignored.
   Coverage **78.33% lines** (`cargo llvm-cov --lib`; 76.19% for a full `cargo llvm-cov`
   run), compared approximately to the 75.1% audit-start baseline — that baseline predates
   stages 2–3, so it isn't a clean stage-4-only delta. Near-100% on domain
@@ -16,10 +16,10 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   mostly 0% — the DI seam swaps exactly that code for mocks; `ops_history`/`ops_message`
   moved off zero (12%/26%), `ops_search` stayed at 0% (thin glue below the seam, as
   designed).
-- **Audit 2026-08-15** (spec: `docs/superpowers/specs/2026-08-15-project-audit.md`, 4 staged
-  work packages). All four stages shipped (correctness fixes + dead code; module splits +
-  test extraction; duplication/KISS refactors; ops-layer coverage via `MessageWalk` — see the
-  spec for what landed). Hygiene backlog (11 mechanical fixes) stays its own future PR.
+- **Audit 2026-08-15 is fully shipped and its spec deleted** (delete-on-merge; the file lives
+  in git history). Four staged work packages — correctness fixes + dead code; module splits +
+  test extraction; duplication/KISS refactors; ops-layer coverage via `MessageWalk` — plus the
+  11-item hygiene backlog, which also fixed an unlisted `redact_hash` multibyte panic.
 
 ## Open items
 
@@ -144,9 +144,16 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   `community_peer()` in `converters/channel.rs` tests.
 - **Generated TL structs: check the freshest `target/debug/build/grammers-tl-types` hash dir
   by mtime**, never `head -1` — stale dirs from old pins linger and lie about struct fields.
-- **tokio's `test-util` feature is excluded from `full`** and must be requested explicitly
-  in `[dev-dependencies]` for `start_paused`/`advance`; it was once supplied transitively by
-  an "unused" `tokio-test` dep, so removing dead dev-deps can break feature unification.
+- **tokio's `test-util` feature must be requested explicitly in `[dev-dependencies]`** for
+  `start_paused`/`advance` (no umbrella feature includes it); it was once supplied
+  transitively by an "unused" `tokio-test` dep, so removing dead dev-deps can break feature
+  unification. The main dep lists its features explicitly (not `full`) — each one is
+  annotated with the call site that needs it.
+- **`tracing_subscriber`'s `TryInitError` cannot be inspected**: its cause is a private box
+  and `source()` forwards to the *cause's* source, so "a subscriber is already installed"
+  is indistinguishable by type. It doesn't matter — `try_init`'s only two failure modes
+  (`set_global_default`, `LogTracer::init`) both mean already-initialized, so swallowing all
+  of them is correct. Real logging-init failures come from `build_file_layer` instead.
 - **No `sleep()` in proptest** — it froze the suite; time-dependent behavior belongs in
   paused-clock tokio tests.
 - **`tracing_appender` names files `app.log.YYYY-MM-DD`** — `path.extension()` returns the
