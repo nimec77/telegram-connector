@@ -3,9 +3,8 @@
 //! Unit of `client` (LM-2).
 
 use super::raw_pager::RawHistoryPager;
-use super::search_budget::SearchBudget;
+use super::walk::{BelowCutoff, Fetched, Flow, MessageWalk, WalkConfig};
 use super::*;
-use crate::telegram::albums::PageAccumulator;
 
 impl TelegramClient {
     pub(super) async fn get_recent_messages_impl(
@@ -84,9 +83,16 @@ impl TelegramClient {
         let (before_offset, after_bound) = cursor_wire_bounds(params.before_id, params.after_id)?;
 
         let (page, budget) = with_timeout("iter_messages", self.timeouts.history_secs, async {
-            let mut page = PageAccumulator::new(params.collapse_albums, params.limit as usize);
-            // counters only — the spec scopes the deadline to search
-            let mut budget = SearchBudget::new(0);
+            let cfg = WalkConfig {
+                cutoff_time,
+                to_date: params.to_date,
+                after_bound,
+                media_filter: params.media_filter.as_ref(),
+                below_cutoff: BelowCutoff::Stop,
+            };
+            // Deadline 0: the spec scopes the search deadline to search, so
+            // history's budget carries counters only and never expires.
+            let mut walk = MessageWalk::new(cfg, params.collapse_albums, params.limit as usize, 0);
             // Raw GetHistory pager instead of grammers' iter_messages: same
             // request, but it keeps the response envelope so forwards get
             // attributed from data already in hand (zero extra calls).
@@ -96,52 +102,23 @@ impl TelegramClient {
             }
 
             loop {
+                if walk.expired() {
+                    break;
+                }
                 let next = pager.next().await.map_err(|e| {
                     Error::TelegramApi(format!("Failed to iterate messages: {}", e))
                 })?;
-                // Before the `else break`: a round trip that came back empty still
-                // cost the caller latency, which is what the field reports.
-                if let Some(page_size) = pager.take_last_page_size() {
-                    budget.record_page(page_size);
-                }
-                let Some((raw_msg, entities)) = next else {
-                    break;
-                };
-                if let Some(to) = params.to_date
-                    && timestamp_from_raw(&raw_msg).is_some_and(|t| t > to)
-                {
-                    continue; // newer than the requested window; keep iterating toward it
-                }
-
-                // Check time filter - messages are in reverse chronological order
-                if timestamp_from_raw(&raw_msg).is_none_or(|t| t < cutoff_time) {
-                    break;
-                }
-
-                // Exclusive lower cursor bound: everything from here on
-                // is older (reverse chronological), so stop (A8).
-                if let Some(after) = after_bound
-                    && raw_msg.id() <= after
-                {
-                    break;
-                }
-
-                // Apply media filter client-side (GetHistory has no server-side filtering)
-                if params
-                    .media_filter
-                    .as_ref()
-                    .is_some_and(|filter| !matches_media_filter_raw(&raw_msg, filter))
-                {
-                    continue;
-                }
-
-                if let Some(converted) = convert_raw_message(&raw_msg, &peer, &entities)
-                    && !page.push(converted)
-                {
+                let page_size = pager.take_last_page_size();
+                let fetched = next.map(|(raw, entities)| Fetched {
+                    raw,
+                    entities,
+                    peer: Some(&peer),
+                });
+                if walk.step(fetched, page_size) == Flow::Stop {
                     break;
                 }
             }
-            Ok((page, budget))
+            Ok(walk.into_parts())
         })
         .await?;
 
@@ -175,9 +152,9 @@ impl TelegramClient {
                 // History has no deadline (spec scopes it to search), so it can
                 // never truncate on time — only the work counters are live here.
                 // Read off the budget anyway rather than hardcoding `false`:
-                // identical today (`SearchBudget::new(0)` never latches, and
-                // `expired()` is never called on this path) and self-maintaining
-                // if a deadline is ever extended to history.
+                // identical today (the walk loop calls `expired()` every
+                // iteration, but `SearchBudget::new(0)` never latches it) and
+                // self-maintaining if a deadline is ever extended to history.
                 timed_out: budget.timed_out(),
                 partial: budget.timed_out(),
                 pages_fetched: budget.pages_fetched(),

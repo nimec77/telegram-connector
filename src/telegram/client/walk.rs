@@ -18,10 +18,6 @@ use grammers_client::tl;
 use std::sync::Arc;
 
 /// Whether the driving loop keeps fetching.
-//
-// `dead_code` is allowed only until Task 4 wires `MessageWalk` into the ops
-// loops; remove this attribute when that lands.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Flow {
     Continue,
@@ -32,16 +28,19 @@ pub(super) enum Flow {
 /// reverse chronological order, so the first old message proves the rest are
 /// older too — they stop. Global search is ordered by relevance across
 /// channels, so an old result says nothing about the next one — it skips.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum BelowCutoff {
     Stop,
+    //
+    // `dead_code` is allowed only until Task 6 wires global search, whose
+    // relevance ordering makes it the first consumer of `Skip`; remove this
+    // attribute when that lands.
+    #[allow(dead_code)]
     Skip,
 }
 
 /// The five ways the three loops differ. Every field is inert at its default
 /// on the paths that do not use it.
-#[allow(dead_code)]
 pub(super) struct WalkConfig<'a> {
     pub(super) cutoff_time: DateTime<Utc>,
     pub(super) to_date: Option<DateTime<Utc>>,
@@ -57,21 +56,18 @@ pub(super) struct WalkConfig<'a> {
 /// One message off a pager, with the envelope entities it arrived with and
 /// the peer to attribute it to. `peer` is `None` only on global search, when
 /// the envelope did not name the message's chat.
-#[allow(dead_code)]
 pub(super) struct Fetched<'p> {
     pub(super) raw: tl::enums::Message,
     pub(super) entities: Arc<EntityLookup>,
     pub(super) peer: Option<&'p Peer>,
 }
 
-#[allow(dead_code)]
 pub(super) struct MessageWalk<'a> {
     cfg: WalkConfig<'a>,
     page: PageAccumulator,
     budget: SearchBudget,
 }
 
-#[allow(dead_code)]
 impl<'a> MessageWalk<'a> {
     pub(super) fn new(
         cfg: WalkConfig<'a>,
@@ -148,15 +144,22 @@ impl<'a> MessageWalk<'a> {
         }
     }
 
+    //
+    // `dead_code` is allowed only until Task 6 wires global search, the
+    // first consumer of these counters and of `kept`'s progress logging;
+    // remove this attribute when that lands.
+    #[allow(dead_code)]
     pub(super) fn pages_fetched(&self) -> u32 {
         self.budget.pages_fetched()
     }
 
+    #[allow(dead_code)]
     pub(super) fn messages_scanned(&self) -> u64 {
         self.budget.messages_scanned()
     }
 
     /// Messages admitted so far (pre-collapse) — for progress logging.
+    #[allow(dead_code)]
     pub(super) fn kept(&self) -> usize {
         self.page.len()
     }
