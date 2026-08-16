@@ -431,6 +431,69 @@ pub fn raw_tl_message(id: i32, date: i32, channel_id: i64) -> tl::enums::Message
     })
 }
 
+/// Plain raw message carrying a `grouped_id`, for album-path tests.
+/// `raw_tl_message` above builds a `MessageService`, which has no
+/// `grouped_id` field at all, so the album path is unreachable through it —
+/// this is a plain `tl::types::Message` instead.
+pub fn raw_tl_message_grouped(
+    id: i32,
+    date: i32,
+    channel_id: i64,
+    grouped_id: i64,
+) -> tl::enums::Message {
+    tl::enums::Message::Message(tl::types::Message {
+        out: false,
+        mentioned: false,
+        media_unread: false,
+        silent: false,
+        post: true,
+        from_scheduled: false,
+        legacy: false,
+        edit_hide: false,
+        pinned: false,
+        noforwards: false,
+        video_processing_pending: false,
+        paid_suggested_post_stars: false,
+        paid_suggested_post_ton: false,
+        invert_media: false,
+        offline: false,
+        id,
+        from_id: None,
+        from_boosts_applied: None,
+        from_rank: None,
+        peer_id: tl::enums::Peer::Channel(tl::types::PeerChannel { channel_id }),
+        saved_peer_id: None,
+        fwd_from: None,
+        via_bot_id: None,
+        via_business_bot_id: None,
+        guestchat_via_from: None,
+        reply_to: None,
+        date,
+        message: String::new(),
+        media: None,
+        reply_markup: None,
+        entities: None,
+        views: None,
+        forwards: None,
+        replies: None,
+        edit_date: None,
+        post_author: None,
+        grouped_id: Some(grouped_id),
+        restriction_reason: None,
+        ttl_period: None,
+        reactions: None,
+        quick_reply_shortcut_id: None,
+        effect: None,
+        factcheck: None,
+        report_delivery_until_date: None,
+        paid_message_stars: None,
+        suggested_post: None,
+        schedule_repeat_period: None,
+        summary_from_language: None,
+        rich_message: None,
+    })
+}
+
 /// Raw-TL messages.MessagesSlice wrapping the given messages.
 pub fn raw_tl_messages_slice(
     messages: Vec<tl::enums::Message>,

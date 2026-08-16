@@ -152,3 +152,97 @@ fn a_message_with_no_readable_timestamp_takes_the_below_cutoff_path() {
     };
     assert_eq!(walk.step(Some(empty), None), Flow::Stop);
 }
+
+#[test]
+fn the_after_bound_is_exclusive_at_its_own_id() {
+    // `after_id` is documented exclusive: the cursor message itself is the
+    // one the caller already has.
+    let client = inert_client();
+    let peer = channel_peer(&client, 11);
+    let cfg = WalkConfig {
+        after_bound: Some(5),
+        ..open_config(at(1_000))
+    };
+    let mut walk = MessageWalk::new(cfg, false, 10, 0);
+
+    assert_eq!(
+        walk.step(Some(fetched(6, 2_000, &peer)), None),
+        Flow::Continue
+    );
+    assert_eq!(walk.kept(), 1);
+    assert_eq!(walk.step(Some(fetched(5, 1_900, &peer)), None), Flow::Stop);
+    assert_eq!(walk.kept(), 1, "the bound id itself must not be admitted");
+}
+
+#[test]
+fn a_media_filter_miss_skips_without_stopping() {
+    use crate::telegram::types::MediaFilter;
+
+    let client = inert_client();
+    let peer = channel_peer(&client, 11);
+    // `raw_tl_message` builds a service message: no media, so a Photo filter
+    // cannot match it.
+    let filter = MediaFilter::Photo;
+    let cfg = WalkConfig {
+        media_filter: Some(&filter),
+        ..open_config(at(1_000))
+    };
+    let mut walk = MessageWalk::new(cfg, false, 10, 0);
+
+    assert_eq!(
+        walk.step(Some(fetched(9, 2_000, &peer)), None),
+        Flow::Continue
+    );
+    assert_eq!(
+        walk.kept(),
+        0,
+        "a filtered-out message must not be admitted"
+    );
+}
+
+#[test]
+fn a_message_whose_chat_did_not_resolve_is_skipped() {
+    // Global search only: the envelope did not name this message's chat, so
+    // there is no identity to attribute it to. Skip, never fabricate.
+    let mut walk = MessageWalk::new(open_config(at(1_000)), false, 10, 0);
+
+    let orphan = Fetched {
+        raw: raw_tl_message(9, 2_000, 11),
+        entities: no_entities(),
+        peer: None,
+    };
+    assert_eq!(walk.step(Some(orphan), None), Flow::Continue);
+    assert_eq!(walk.kept(), 0);
+}
+
+#[test]
+fn an_admitted_album_is_not_split_at_the_limit_boundary() {
+    // Albums are the subtlest interaction with `push`: an admitted album's
+    // trailing siblings pass even beyond `limit`, so a page can exceed
+    // `limit` raw messages without ever reporting `has_more`.
+    use crate::telegram::types::Message;
+    use crate::test_helpers::raw_tl_message_grouped;
+
+    let client = inert_client();
+    let peer = channel_peer(&client, 11);
+    // limit 1 with collapse on: the first message opens the only allowed
+    // post; a sibling of that same post must still be admitted.
+    let mut walk = MessageWalk::new(open_config(at(1_000)), true, 1, 0);
+
+    let album_member = |id: i32| Fetched {
+        raw: raw_tl_message_grouped(id, 2_000, 11, 77),
+        entities: no_entities(),
+        peer: Some(&peer),
+    };
+
+    assert_eq!(walk.step(Some(album_member(2)), None), Flow::Continue);
+    assert_eq!(walk.step(Some(album_member(3)), None), Flow::Continue);
+
+    let (page, _) = walk.into_parts();
+    assert!(
+        !page.has_more(),
+        "a trailing album sibling is not a refusal — has_more must stay false"
+    );
+    let collapsed: Vec<Message> = page.into_messages();
+    assert_eq!(collapsed.len(), 1, "the two siblings collapse to one post");
+}
