@@ -19,6 +19,10 @@ impl TelegramClient {
         })? {
             if let Some(mut channel) = convert_peer_to_channel(dialog.peer()) {
                 // Free enrichment: the dialog already carries its top message (B8).
+                // This runs for every converted dialog in the walk, not only the
+                // ones that end up on the returned page — `admit` below decides
+                // page membership (offset/limit) afterwards. The cost is a pure
+                // timestamp conversion, so enriching before that decision is fine.
                 channel.last_message_date =
                     dialog.last_message.as_ref().and_then(message_timestamp);
                 builder.admit(channel);
@@ -211,6 +215,12 @@ impl TelegramClient {
                 match hit {
                     SearchHit::Subscribed => convert_peer_to_channel(&peer),
                     SearchHit::Discovered => convert_discovered_peer(&peer),
+                    // Unreachable: the early `return None` above already filters
+                    // out `SearchHit::Skip` before `Peer::from_raw` is called, so
+                    // `hit` can never be `Skip` here. That early return exists so
+                    // `Peer::from_raw` is never invoked on a `Chat::Empty` (kept
+                    // as its own arm, not folded into a `_` catch-all, so a future
+                    // `SearchHit` variant doesn't silently fall through unnoticed).
                     SearchHit::Skip => None,
                 }
             })

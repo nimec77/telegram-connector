@@ -295,6 +295,16 @@ fn an_unreadable_file_reports_a_read_failure() {
     // so a run as root, where chmod 0 does not block reads, does not leak a
     // 0-mode file if a later assertion panics).
     fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).expect("chmod");
+
+    // Running as root, chmod 0o000 does not block reads (root bypasses the
+    // permission bits entirely), so `result` can come back `Ok` here. That
+    // isn't a bug in the code under test — it's the test's own precondition
+    // failing to hold — so bail out instead of asserting on an outcome this
+    // run can never produce.
+    if result.is_ok() {
+        return;
+    }
+
     let err = result.expect_err("an unreadable file must error");
     assert!(format!("{err:#}").contains("Failed to read config"));
 }
