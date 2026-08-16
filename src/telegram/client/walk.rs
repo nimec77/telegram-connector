@@ -8,7 +8,9 @@
 
 use super::search_budget::SearchBudget;
 use crate::telegram::albums::PageAccumulator;
-use crate::telegram::converters::{convert_raw_message, timestamp_from_raw};
+use crate::telegram::converters::{
+    convert_raw_message, matches_media_filter_raw, timestamp_from_raw,
+};
 use crate::telegram::envelope::EntityLookup;
 use chrono::{DateTime, Utc};
 use grammers_client::peer::Peer;
@@ -116,6 +118,22 @@ impl<'a> MessageWalk<'a> {
                 BelowCutoff::Stop => Flow::Stop,
                 BelowCutoff::Skip => Flow::Continue,
             };
+        }
+        // Exclusive lower cursor bound: everything from here on is older
+        // (reverse chronological), so stop.
+        if let Some(after) = self.cfg.after_bound
+            && item.raw.id() <= after
+        {
+            return Flow::Stop;
+        }
+        // Client-side media filter (history only — GetHistory has no
+        // server-side filtering).
+        if self
+            .cfg
+            .media_filter
+            .is_some_and(|filter| !matches_media_filter_raw(&item.raw, filter))
+        {
+            return Flow::Continue;
         }
         let Some(converted) = item
             .peer
