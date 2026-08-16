@@ -100,27 +100,22 @@ impl TelegramConfig {
     /// Check if authentication credentials are present (api_hash, phone_number)
     /// Note: api_id is always required for connection, not just setup
     pub fn has_auth_credentials(&self) -> bool {
-        self.api_hash
-            .as_ref()
-            .is_some_and(|s| !s.expose_secret().is_empty())
-            && self
-                .phone_number
-                .as_ref()
-                .is_some_and(|s| !s.expose_secret().is_empty())
+        self.auth_credentials().is_some()
     }
 
-    /// Get authentication credentials (panics if not present - call has_auth_credentials first)
-    pub fn auth_credentials(&self) -> (&str, &str) {
-        (
-            self.api_hash
-                .as_ref()
-                .expect("api_hash required")
-                .expose_secret(),
-            self.phone_number
-                .as_ref()
-                .expect("phone_number required")
-                .expose_secret(),
-        )
+    /// Authentication credentials as `(api_hash, phone_number)`, or `None`
+    /// when either is absent or empty.
+    ///
+    /// This is the single definition of "credentials are present";
+    /// [`Self::has_auth_credentials`] is its predicate form.
+    pub fn auth_credentials(&self) -> Option<(&str, &str)> {
+        fn non_empty(secret: &SecretString) -> Option<&str> {
+            Some(secret.expose_secret()).filter(|value| !value.is_empty())
+        }
+        Some((
+            self.api_hash.as_ref().and_then(non_empty)?,
+            self.phone_number.as_ref().and_then(non_empty)?,
+        ))
     }
 }
 
