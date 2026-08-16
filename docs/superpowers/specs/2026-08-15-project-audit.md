@@ -41,27 +41,32 @@ poison recovery + `available_tokens` dedup. Three deliberate behavior deltas doc
 in PR #42 (guard wording, `search_global` debug-log timing scope, enum-coercion error
 text).
 
-## Stage 4 — Coverage (75.1% overall; the distribution is the story)
+## Stage 4 — Coverage via `MessageWalk` ✅ (not yet merged)
 
-Designed: `docs/superpowers/specs/2026-08-15-audit-stage4-design.md`. The goal there is
-*verified ops behavior*, not a coverage percentage. Scope is the message-fetch core
-(`ops_search`, `ops_history`, `ops_message`, `resolve`, `channels`); `ops_media`,
-`ops_stats`, `ops_transcribe`, `lifecycle`, `client/auth` are deferred.
+Done: extracted `MessageWalk`/`WalkConfig` (`telegram/client/walk.rs`), a synchronous
+decision machine living above the DI seam, and wired all three message-fetch loops
+(`get_recent_messages_impl`, `search_in_channel`, `search_global`) onto it — they now
+differ only in `WalkConfig`'s five fields (`cutoff_time`, `to_date`, `after_bound`,
+`media_filter`, `below_cutoff`). Extracted five pure functions (`assemble_search_result`,
+`dialog_fallback_target`, `partition_batch`, `ChannelPageBuilder`, `classify_search_hit`);
+covered config file-loading error branches; closed two stage-3 follow-ups
+(`PageAccumulator::push` `#[must_use]`, a collapse=false album-sibling test). Two
+deliberate behavior deltas: history's loop gains a `walk.expired()` check that is
+provably inert (`deadline_secs = 0` never expires — pinned by
+`zero_deadline_is_treated_as_disabled_not_instantly_expired`); global search's per-page
+`debug!` moved from before `step` to after it (values unchanged, ordering real), and its
+tracing field `page` was renamed to `page_no`.
 
-- Production `TelegramClient` ops layer at **0%**: `ops_search` / `ops_media` /
-  `ops_history` / `ops_message` / `ops_stats` / `ops_transcribe` / `lifecycle` /
-  `client/auth`; `resolve.rs` 12%, `channels.rs` 45%, `raw_pager.rs` 61%. Structural: the
-  DI seam sits above these files. Remedy proven in-repo: keep extracting pure decision
-  logic (as `albums.rs`, `search_budget.rs`, paging math already were).
-- `telegram/auth.rs` effectively untested (placeholder only, removed in stage 1).
-- `config.rs` 69.6% despite 861 test lines — file-loading error branches untested.
-- `serde_helpers.rs` 81.5%, `mcp/server.rs` 79.6% (tool wrapper log paths — needs a
-  `RequestContext<RoleServer>`, which is not constructible in unit tests; deferred).
-- Stage 3 follow-ups (from the stage-3 final review): add `#[must_use]` to
-  `PageAccumulator::push`; add a collapse=false album-sibling `into_messages` test
-  (albums.rs unit tests are the only pin on `PageAccumulator` — the ops loops sit below
-  the DI seam); rename the global-search tracing field `page` to `page_no`
-  (`ops_search.rs` — clashes with the `page` accumulator local).
+Coverage 75.1% → **78.33%** overall lines (`cargo llvm-cov --lib`); 760 passed / 5 ignored
+(up from 726). `walk.rs` 95%, `config.rs` 70%→83%, `ops_history.rs` 0%→12%,
+`ops_message.rs` 0%→26%. `ops_search.rs` stayed at 0% (thin glue below the DI seam, as
+designed).
+`channels.rs` and `resolve.rs` — despite Task 10's extraction and new tests, and despite
+`resolve.rs`'s code and tests being byte-identical to the pre-stage-4 tree — measured
+*lower* than the cited baseline (45%→25%, 12%→9%); not independently re-verified whether
+this is a real regression or a baseline-measurement artifact. `ops_media`, `ops_stats`,
+`ops_transcribe`, `lifecycle`, `client/auth` remain deferred at 0%, per this stage's
+original scope.
 
 ## Hygiene backlog — its own branch and PR
 
