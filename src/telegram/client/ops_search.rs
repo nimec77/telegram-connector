@@ -228,17 +228,32 @@ impl TelegramClient {
             "search_all_messages",
             self.timeouts.search_secs,
             async move {
-                let mut page = PageAccumulator::new(params.collapse_albums, params.limit as usize);
-                let mut budget = SearchBudget::new(self.search_deadline_secs);
+                let cfg = WalkConfig {
+                    cutoff_time,
+                    to_date: params.to_date,
+                    // Cursors are per-channel; the dispatcher rejects them here.
+                    after_bound: None,
+                    // SearchGlobal filters server-side.
+                    media_filter: None,
+                    // Relevance-ordered across channels: one old result says
+                    // nothing about the next, so skip rather than stop.
+                    below_cutoff: BelowCutoff::Skip,
+                };
+                let mut walk = MessageWalk::new(
+                    cfg,
+                    params.collapse_albums,
+                    params.limit as usize,
+                    self.search_deadline_secs,
+                );
                 // Global search via the raw messages.SearchGlobal pager:
                 // same request as grammers' search_all_messages, but the
                 // response envelope is kept so forwards get attributed
                 // (zero extra calls). The pager also yields each result's
                 // own chat peer, built from that same envelope.
                 // The window is bound server-side by construction. The client-side
-                // window checks below are retained as defense in depth: they cost
-                // nothing once the server honors those bounds, and keep the result
-                // correct if it ever does not.
+                // window checks `MessageWalk` applies are retained as defense in
+                // depth: they cost nothing once the server honors those bounds, and
+                // keep the result correct if it ever does not.
                 let mut pager =
                     RawGlobalSearchPager::new(&self.client, cutoff_time, params.to_date)
                         .query(&params.query);
@@ -250,7 +265,7 @@ impl TelegramClient {
                 let mut mtproto_nanos: u128 = 0;
 
                 loop {
-                    if budget.expired() {
+                    if walk.expired() {
                         break;
                     }
                     let fetch_start = Instant::now();
@@ -259,37 +274,42 @@ impl TelegramClient {
                         .await
                         .map_err(|e| Error::TelegramApi(format!("Search failed: {}", e)))?;
                     mtproto_nanos += fetch_start.elapsed().as_nanos();
-                    // Before the `else break`: a round trip that came back empty
-                    // still cost the caller latency, which is what the field reports.
-                    if let Some(page_size) = pager.take_last_page_size() {
-                        budget.record_page(page_size);
+                    let page_size = pager.take_last_page_size();
+                    // Destructured before `Fetched` so `chat_peer` outlives the
+                    // borrow taken by `peer`. Moving `raw`/`entities` in keeps this
+                    // hot loop clone-free.
+                    let flow = match next {
+                        Some((raw, entities, chat_peer)) => walk.step(
+                            Some(Fetched {
+                                raw,
+                                entities,
+                                peer: chat_peer.as_ref(),
+                            }),
+                            page_size,
+                        ),
+                        None => walk.step(None, page_size),
+                    };
+                    // Logged after `step`, which owns `record_page` — so the page
+                    // counters read the same as they did when the log sat ahead of
+                    // the fold. `kept` now includes this fetch's message.
+                    // `page_size` is `Some` even when the round trip came back
+                    // empty: it still cost the caller latency, which is what the
+                    // field reports.
+                    if let Some(size) = page_size {
                         tracing::debug!(
-                            page = budget.pages_fetched(),
-                            messages_in_page = page_size,
-                            messages_scanned = budget.messages_scanned(),
-                            kept = page.len(),
+                            page_no = walk.pages_fetched(),
+                            messages_in_page = size,
+                            messages_scanned = walk.messages_scanned(),
+                            kept = walk.kept(),
                             "Global search page fetched"
                         );
                     }
-                    let Some((raw_msg, entities, chat_peer)) = next else {
-                        break;
-                    };
-                    if let Some(to) = params.to_date
-                        && timestamp_from_raw(&raw_msg).is_some_and(|t| t > to)
-                    {
-                        continue; // newer than the requested window; keep iterating toward it
-                    }
-                    if timestamp_from_raw(&raw_msg).is_none_or(|t| t < cutoff_time) {
-                        continue; // Skip old messages but keep searching
-                    }
-                    if let Some(peer) = chat_peer.as_ref()
-                        && let Some(converted) = convert_raw_message(&raw_msg, peer, &entities)
-                        && !page.push(converted)
-                    {
+                    if flow == Flow::Stop {
                         break;
                     }
                 }
 
+                let (page, budget) = walk.into_parts();
                 tracing::debug!(
                     pages_fetched = budget.pages_fetched(),
                     messages_scanned = budget.messages_scanned(),

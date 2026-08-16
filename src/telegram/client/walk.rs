@@ -31,11 +31,6 @@ pub(super) enum Flow {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum BelowCutoff {
     Stop,
-    //
-    // `dead_code` is allowed only until Task 6 wires global search, whose
-    // relevance ordering makes it the first consumer of `Skip`; remove this
-    // attribute when that lands.
-    #[allow(dead_code)]
     Skip,
 }
 
@@ -144,22 +139,15 @@ impl<'a> MessageWalk<'a> {
         }
     }
 
-    //
-    // `dead_code` is allowed only until Task 6 wires global search, the
-    // first consumer of these counters and of `kept`'s progress logging;
-    // remove this attribute when that lands.
-    #[allow(dead_code)]
     pub(super) fn pages_fetched(&self) -> u32 {
         self.budget.pages_fetched()
     }
 
-    #[allow(dead_code)]
     pub(super) fn messages_scanned(&self) -> u64 {
         self.budget.messages_scanned()
     }
 
     /// Messages admitted so far (pre-collapse) — for progress logging.
-    #[allow(dead_code)]
     pub(super) fn kept(&self) -> usize {
         self.page.len()
     }
