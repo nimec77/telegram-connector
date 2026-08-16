@@ -6,20 +6,21 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Current state
 
-- **v0.22.1 on master** (2026-08-15), 16 MCP tools (16th: `get_messages_media_batch`). ~726 lib tests
-  passing, 5 ignored. Coverage baseline **75.1% lines** (`cargo llvm-cov`): near-100% on
-  domain types/converters/shaping, **0% on the production `TelegramClient` ops layer** (the
-  DI seam swaps exactly that code for mocks).
+- **v0.22.3** (2026-08-16, on `refactor/audit-stage4-ops-verification`; master is still
+  0.22.1 pending this branch's PR), 16 MCP tools (16th: `get_messages_media_batch`). 760 lib
+  tests passing, 5 ignored (up from 726). Coverage **78.33% lines** (`cargo llvm-cov`, up
+  from the 75.1% audit-start baseline): near-100% on domain types/converters/shaping,
+  `MessageWalk`'s decision logic (`walk.rs`) at 95%. The production `TelegramClient` ops
+  layer is still mostly 0% — the DI seam swaps exactly that code for mocks;
+  `ops_history`/`ops_message` moved off zero (12%/26%), `ops_search` stayed at 0% (thin glue
+  below the seam, as designed).
 - **Audit 2026-08-15** (spec: `docs/superpowers/specs/2026-08-15-project-audit.md`, 4 staged
-  work packages). Stages 1–3 shipped (correctness fixes + dead code; module splits + test
-  extraction; duplication/KISS refactors — see the spec for what landed).
+  work packages). All four stages shipped (correctness fixes + dead code; module splits +
+  test extraction; duplication/KISS refactors; ops-layer coverage via `MessageWalk` — see the
+  spec for what landed). Hygiene backlog (11 mechanical fixes) stays its own future PR.
 
 ## Open items
 
-- **The `chore: release v0.22.2` commit (8c7957d) never reached master** — it sits only on
-  the merged-and-abandoned `refactor/audit-stage2-splits` branch (PR #40 merged before it
-  was pushed). Master is still 0.22.1; cherry-pick it or cut the release fresh.
-- **Audit stage 4** (ops-layer coverage) — specced in the audit spec, not started.
 - **`Username::new`'s 5-char minimum silently drops real 3–4-char usernames** (e.g. `@mash`)
   from `channel_username` and forward enrichment. Fix belongs in
   `src/telegram/types/names.rs`; needs its own ticket.
@@ -63,6 +64,12 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   inclusive/exclusive — client-side checks re-filter to exact bounds. Don't "fix" the ±1
   out. `[search] deadline_seconds` (default 20) is a backstop: expiry returns a partial
   result with `query_metadata.timed_out`/`partial`, never an error.
+- **The three message-fetch loops' decision logic lives in `MessageWalk::step`**
+  (`telegram/client/walk.rs`), synchronous and above the DI seam — the loops themselves
+  (`get_recent_messages_impl`/`search_in_channel`/`search_global`) sit *below* the seam,
+  where `MockTelegramClientTrait` replaces the whole client, so branching placed there stays
+  untestable. The three differ only in `WalkConfig`'s five fields: `cutoff_time`, `to_date`,
+  `after_bound`, `media_filter`, `below_cutoff`.
 - **Pagination:** `before_id` maps to the RPC's `offset_id`; `after_id` is a client-side
   break (grammers has no `min_id` setter); both exclusive. Message ids are only unique per
   channel, so global search reports `has_more` but never a `next_cursor`. `has_more` means
