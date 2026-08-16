@@ -198,22 +198,20 @@ impl TelegramClient {
             .chats
             .into_iter()
             .filter_map(|chat| {
-                // `Chat::Empty` carries no usable identity; skip it rather than
-                // surfacing a placeholder "Unknown" channel.
-                if matches!(&chat, tl::enums::Chat::Empty(_)) {
+                let hit = classify_search_hit(&chat, &subscribed_keys);
+                if hit == SearchHit::Skip {
                     return None;
                 }
-                let is_subscribed = subscribed_keys.contains(&chat_subscription_key(&chat));
                 // `Peer::from_raw` already routes each `Chat` variant to the right
                 // peer kind (including the broadcast-vs-megagroup distinction
                 // inside `Chat::Channel`/`ChannelForbidden`, which the individual
                 // `Channel`/`Group`/`Community::from_raw` constructors panic on if
                 // mismatched) — reuse it instead of re-deriving that routing here.
                 let peer = Peer::from_raw(&self.client, chat);
-                if is_subscribed {
-                    convert_peer_to_channel(&peer)
-                } else {
-                    convert_discovered_peer(&peer)
+                match hit {
+                    SearchHit::Subscribed => convert_peer_to_channel(&peer),
+                    SearchHit::Discovered => convert_discovered_peer(&peer),
+                    SearchHit::Skip => None,
                 }
             })
             .take(clamped_limit as usize)
@@ -319,6 +317,33 @@ fn chat_subscription_key(chat: &tl::enums::Chat) -> SubscriptionKey {
         C::ChannelForbidden(c) => SubscriptionKey::Channel(c.id),
         C::Community(c) => SubscriptionKey::Channel(c.id),
         C::CommunityForbidden(c) => SubscriptionKey::Channel(c.id),
+    }
+}
+
+/// What a `contacts.search` hit turns into.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SearchHit {
+    /// `Chat::Empty` carries no usable identity — skip it rather than
+    /// surfacing a placeholder "Unknown" channel.
+    Skip,
+    /// Already in the caller's dialogs: full channel conversion.
+    Subscribed,
+    /// A public-directory result the caller has not joined.
+    Discovered,
+}
+
+/// Classify one `contacts.search` result against the caller's own dialogs.
+fn classify_search_hit(
+    chat: &tl::enums::Chat,
+    subscribed: &std::collections::HashSet<SubscriptionKey>,
+) -> SearchHit {
+    if matches!(chat, tl::enums::Chat::Empty(_)) {
+        return SearchHit::Skip;
+    }
+    if subscribed.contains(&chat_subscription_key(chat)) {
+        SearchHit::Subscribed
+    } else {
+        SearchHit::Discovered
     }
 }
 

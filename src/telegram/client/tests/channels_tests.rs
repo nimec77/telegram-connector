@@ -241,3 +241,40 @@ fn an_offset_past_the_end_yields_an_empty_page_with_a_real_total() {
     assert!(page.channels.is_empty());
     assert_eq!(page.total, 3);
 }
+
+#[test]
+fn an_empty_chat_result_is_skipped_rather_than_shown_as_unknown() {
+    let subscribed = std::collections::HashSet::new();
+    let chat = tl::enums::Chat::Empty(tl::types::ChatEmpty { id: 7 });
+
+    assert_eq!(classify_search_hit(&chat, &subscribed), SearchHit::Skip);
+}
+
+#[test]
+fn a_chat_in_my_results_classifies_as_subscribed() {
+    let my_results = vec![tl::enums::Peer::Channel(tl::types::PeerChannel {
+        channel_id: 11,
+    })];
+    let subscribed = subscribed_peer_keys(&my_results);
+    let chat = tl::enums::Chat::Channel(crate::test_helpers::raw_tl_channel(11, "Канал", None));
+
+    assert_eq!(
+        classify_search_hit(&chat, &subscribed),
+        SearchHit::Subscribed
+    );
+}
+
+#[test]
+fn a_numeric_collision_across_namespaces_does_not_mark_a_channel_subscribed() {
+    // PeerChat.chat_id and PeerChannel.channel_id are independent namespaces;
+    // a bare i64 key would wrongly match here.
+    let my_results = vec![tl::enums::Peer::Chat(tl::types::PeerChat { chat_id: 11 })];
+    let subscribed = subscribed_peer_keys(&my_results);
+    let chat = tl::enums::Chat::Channel(crate::test_helpers::raw_tl_channel(11, "Канал", None));
+
+    assert_eq!(
+        classify_search_hit(&chat, &subscribed),
+        SearchHit::Discovered,
+        "a chat-namespace id must not match a channel-namespace id"
+    );
+}
