@@ -21,16 +21,28 @@ pub fn init(config: &LoggingConfig) -> anyhow::Result<()> {
         None
     };
 
-    // Combine layers and initialize
-    // Use try_init() to gracefully handle already-initialized subscriber (common in tests)
-    let result = tracing_subscriber::registry()
+    // Combine layers and initialize.
+    //
+    // `try_init` has exactly two failure modes, and both mean "already
+    // initialized": `set_global_default` (a global subscriber exists) and
+    // `LogTracer::init` (the `log` crate's logger is set). Neither is worth
+    // failing startup over — repeat calls and the test harness hit both — and
+    // `TryInitError` boxes its cause privately (its `source()` forwards to the
+    // cause's *own* source), so the two cannot be told apart by type anyway.
+    //
+    // Errors that are not double-init never reach here: `build_file_layer`
+    // propagates through `?` above.
+    if let Err(error) = tracing_subscriber::registry()
         .with(filter)
         .with(stderr_layer)
         .with(file_layer)
-        .try_init();
+        .try_init()
+    {
+        // Goes to the subscriber that is already installed, which is the point.
+        tracing::debug!(%error, "tracing subscriber already initialized; keeping the existing one");
+    }
 
-    // Ignore error if subscriber is already initialized (common in tests)
-    result.or(Ok(()))
+    Ok(())
 }
 
 /// Build stderr layer with configured format
@@ -79,38 +91,40 @@ where
         .boxed())
 }
 
-/// Redact phone number for safe logging
-/// Shows first 4 chars + last 3 chars, hides middle
-/// Returns "[REDACTED]" for strings ≤6 characters
-pub fn redact_phone(phone: &str) -> String {
-    // Char-aware: byte slicing panics mid-codepoint, and a config-supplied
-    // phone string is not guaranteed to be ASCII.
-    let chars: Vec<char> = phone.chars().collect();
-    if chars.len() <= 6 {
+/// Characters a partial redaction must hide to be worth doing. Below this,
+/// the "redacted" form would echo nearly the whole secret — a 7-character
+/// phone once rendered as `+123***456`, i.e. every character it had.
+const MIN_HIDDEN_CHARS: usize = 3;
+
+/// Show the first `visible_start` and last `visible_end` characters, hiding
+/// the middle. Falls back to `[REDACTED]` when that would hide fewer than
+/// [`MIN_HIDDEN_CHARS`] characters.
+///
+/// Char-aware: byte slicing panics mid-codepoint, and neither a
+/// config-supplied phone number nor an API hash is guaranteed to be ASCII.
+fn redact(value: &str, visible_start: usize, visible_end: usize) -> String {
+    let chars: Vec<char> = value.chars().collect();
+    if chars.len() < visible_start + visible_end + MIN_HIDDEN_CHARS {
         return "[REDACTED]".to_string();
     }
 
-    let start: String = chars[..4].iter().collect();
-    let end: String = chars[chars.len() - 3..].iter().collect();
+    let start: String = chars[..visible_start].iter().collect();
+    let end: String = chars[chars.len() - visible_end..].iter().collect();
     format!("{start}***{end}")
+}
+
+/// Redact phone number for safe logging
+/// Shows first 4 chars + last 3 chars, hides middle
+/// Returns "[REDACTED]" for strings under 10 characters
+pub fn redact_phone(phone: &str) -> String {
+    redact(phone, 4, 3)
 }
 
 /// Redact API hash for safe logging
 /// Shows first 4 chars + last 1 char, hides middle
-/// Returns "[REDACTED]" for strings ≤6 characters
+/// Returns "[REDACTED]" for strings under 8 characters
 pub fn redact_hash(hash: &str) -> String {
-    if hash.len() <= 6 {
-        return "[REDACTED]".to_string();
-    }
-
-    let visible_start = 4;
-    let visible_end = 1;
-
-    format!(
-        "{}***{}",
-        &hash[..visible_start],
-        &hash[hash.len() - visible_end..]
-    )
+    redact(hash, 4, 1)
 }
 
 /// Clean up old log files based on max_log_days configuration.

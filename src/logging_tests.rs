@@ -21,11 +21,28 @@ fn redact_phone_longer_number() {
 }
 
 #[test]
-fn redact_phone_exactly_minimum_length() {
-    // Phone with 7 characters (minimum: 4 visible start + 3 visible end)
+fn redact_phone_hides_nothing_at_seven_chars_so_it_redacts_wholesale() {
+    // 4 visible leading + 3 visible trailing == the whole 7-char string, so
+    // the "redacted" form would have printed the phone verbatim.
     let phone = "+123456";
     let redacted = redact_phone(phone);
-    assert_eq!(redacted, "+123***456");
+    assert_eq!(redacted, "[REDACTED]");
+}
+
+#[test]
+fn redact_phone_redacts_wholesale_below_three_hidden_chars() {
+    // 9 chars: only 2 would be hidden.
+    let phone = "+12345678";
+    let redacted = redact_phone(phone);
+    assert_eq!(redacted, "[REDACTED]");
+}
+
+#[test]
+fn redact_phone_shows_edges_once_three_chars_are_hidden() {
+    // 10 chars is the shortest input that hides 3.
+    let phone = "+123456789";
+    let redacted = redact_phone(phone);
+    assert_eq!(redacted, "+123***789");
 }
 
 #[test]
@@ -45,9 +62,9 @@ fn redact_phone_empty_string() {
 
 #[test]
 fn redact_phone_multibyte_input_does_not_panic() {
-    // 8 chars but 24 bytes: byte index 4 is not a char boundary, so the old
+    // 10 chars but 30 bytes: byte index 4 is not a char boundary, so the old
     // byte-slicing implementation panicked here.
-    assert_eq!(redact_phone("€€€€€€€€"), "€€€€***€€€");
+    assert_eq!(redact_phone("€€€€€€€€€€"), "€€€€***€€€");
 }
 
 // ========================================================================
@@ -71,11 +88,26 @@ fn redact_hash_long_string() {
 }
 
 #[test]
-fn redact_hash_exactly_minimum_length() {
-    // Hash with 7 characters (minimum: 4 visible start + 1 visible end)
+fn redact_hash_redacts_wholesale_below_three_hidden_chars() {
+    // 7 chars: 4 visible leading + 1 visible trailing hides only 2.
     let hash = "abcdefg";
     let redacted = redact_hash(hash);
-    assert_eq!(redacted, "abcd***g");
+    assert_eq!(redacted, "[REDACTED]");
+}
+
+#[test]
+fn redact_hash_shows_edges_once_three_chars_are_hidden() {
+    // 8 chars is the shortest input that hides 3.
+    let hash = "abcdefgh";
+    let redacted = redact_hash(hash);
+    assert_eq!(redacted, "abcd***h");
+}
+
+#[test]
+fn redact_hash_multibyte_input_does_not_panic() {
+    // 8 chars but 24 bytes: byte index 4 is not a char boundary. `redact_hash`
+    // byte-sliced where `redact_phone` had already been made char-aware.
+    assert_eq!(redact_hash("€€€€€€€€"), "€€€€***€");
 }
 
 #[test]
@@ -130,6 +162,24 @@ fn init_with_different_log_levels() {
         let result = init(&config);
         assert!(result.is_ok(), "Failed to init with level: {}", level);
     }
+}
+
+#[test]
+fn init_propagates_a_file_layer_failure() {
+    // The only errors `init` swallows are `try_init`'s, which are both
+    // "already initialized". A failure to build the file layer must still
+    // reach the caller — here the log directory's parent is a regular file,
+    // so `create_dir_all` cannot succeed.
+    let blocker = tempfile::NamedTempFile::new().expect("temp file");
+    let config = LoggingConfig {
+        level: "info".to_string(),
+        format: "compact".to_string(),
+        file_enabled: true,
+        file_path: blocker.path().join("logs"),
+        max_log_days: 7,
+    };
+
+    assert!(init(&config).is_err());
 }
 
 #[test]
