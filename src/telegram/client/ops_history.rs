@@ -127,7 +127,6 @@ impl TelegramClient {
 
         let search_time_ms = start_time.elapsed().as_millis() as u64;
         let returned = messages.len() as u64;
-        let channels_in_results = if messages.is_empty() { 0 } else { 1 };
 
         tracing::info!(
             channel_id = resolved_channel_id,
@@ -139,28 +138,21 @@ impl TelegramClient {
             "Get recent messages completed"
         );
 
-        Ok(SearchResult {
-            returned,
-            has_more,
-            search_time_ms,
-            query_metadata: QueryMetadata {
-                query: String::new(), // No query for history retrieval
-                window_from: cutoff_time,
-                window_to: params.to_date,
-                channels_scanned: Some(1),
-                channels_in_results,
-                // History has no deadline (spec scopes it to search), so it can
-                // never truncate on time — only the work counters are live here.
-                // Read off the budget anyway rather than hardcoding `false`:
-                // identical today (the walk loop calls `expired()` every
-                // iteration, but `SearchBudget::new(0)` never latches it) and
-                // self-maintaining if a deadline is ever extended to history.
-                timed_out: budget.timed_out(),
-                partial: budget.timed_out(),
-                pages_fetched: budget.pages_fetched(),
-                messages_scanned: budget.messages_scanned(),
-            },
+        // History has no deadline (spec scopes it to search), so `budget` can
+        // never actually expire here — `assemble_search_result` reads
+        // `timed_out`/`partial` off it anyway rather than hardcoding `false`:
+        // identical today (the walk loop calls `expired()` every iteration,
+        // but `SearchBudget::new(0)` never latches it) and self-maintaining
+        // if a deadline is ever extended to history.
+        Ok(assemble_search_result(
             messages,
-        })
+            &budget,
+            has_more,
+            String::new(), // no query for history retrieval
+            cutoff_time,
+            params.to_date,
+            Some(1),
+            search_time_ms,
+        ))
     }
 }
