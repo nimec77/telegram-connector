@@ -6,8 +6,8 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Current state
 
-- **v0.22.3** (2026-08-16, brought in by `refactor/audit-stage4-ops-verification`), 16 MCP
-  tools (16th: `get_messages_media_batch`). 760 lib tests passing, 5 ignored (up from 726).
+- **v0.22.4** (released 2026-08-16; packages the stage-4 work), 16 MCP
+  tools (16th: `get_messages_media_batch`). 762 lib tests passing, 5 ignored (up from 726).
   Coverage **78.33% lines** (`cargo llvm-cov --lib`; 76.19% for a full `cargo llvm-cov`
   run), compared approximately to the 75.1% audit-start baseline — that baseline predates
   stages 2–3, so it isn't a clean stage-4-only delta. Near-100% on domain

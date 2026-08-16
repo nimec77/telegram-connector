@@ -41,7 +41,7 @@ poison recovery + `available_tokens` dedup. Three deliberate behavior deltas doc
 in PR #42 (guard wording, `search_global` debug-log timing scope, enum-coercion error
 text).
 
-## Stage 4 — Coverage via `MessageWalk` ✅ (v0.22.3)
+## Stage 4 — Coverage via `MessageWalk` ✅ (merged via PR #43, released in v0.22.4)
 
 Done: extracted `MessageWalk`/`WalkConfig` (`telegram/client/walk.rs`), a synchronous
 decision machine living above the DI seam, and wired all three message-fetch loops
