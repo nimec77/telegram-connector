@@ -423,27 +423,6 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         inv.finish(self.get_message_media_impl(request).await)
     }
 
-    /// Tool 16: get_messages_media_batch - Return several messages' images in one call
-    #[tool(
-        description = "Get the photos (or video/animation/video-note thumbnails) of up to 10 messages from ONE channel in a single call, as image blocks the model can see, each followed by its JSON metadata and a trailing batch summary. Far cheaper than N get_message_media calls: one channel resolution and one fetch round trip for the whole batch. Ids with no visual media, deleted ids, ids dropped because the total payload cap was exhausted or an image could not be shrunk to fit (retrying that id alone will not help), ids that hit a download or encode failure (download_failed), and the rare id that fails after a successful download due to an image-encode task panic or a metadata-serialization failure (internal_error), are reported in the summary's `failed` array rather than failing the call. Charged media_download_cost tokens per image actually returned."
-    )]
-    pub async fn get_messages_media_batch(
-        &self,
-        Parameters(request): Parameters<GetMessagesMediaBatchRequest>,
-        id: RequestId,
-    ) -> Result<CallToolResult, String> {
-        let inv = ToolInvocation::start("get_messages_media_batch", id);
-        tracing::info!(
-            tool = inv.tool,
-            request_id = %inv.request_id,
-            channel_id = %request.channel_id,
-            requested = request.message_ids.len(),
-            max_dimension = ?request.max_dimension,
-            "Tool invocation started"
-        );
-        inv.finish(self.get_messages_media_batch_impl(request).await)
-    }
-
     /// Tool 11: transcribe_voice_message - Transcribe a voice/video-note message to text
     #[tool(
         description = "Transcribe a voice message or video note (round video) to text using Telegram's server-side transcription (no local ML). REQUIRES Telegram Premium on the connected account; check_mcp_status reports `premium`. Charged transcription_cost rate-limit tokens (more than a search). Returns partial text with partial=true if the wait times out."
@@ -542,6 +521,27 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "Tool invocation started"
         );
         inv.finish(self.get_channel_stats_impl(request).await)
+    }
+
+    /// Tool 16: get_messages_media_batch - Return several messages' images in one call
+    #[tool(
+        description = "Get the photos (or video/animation/video-note thumbnails) of up to 10 messages from ONE channel in a single call, as image blocks the model can see, each followed by its JSON metadata and a trailing batch summary. Far cheaper than N get_message_media calls: one channel resolution and one fetch round trip for the whole batch. Ids with no visual media, deleted ids, ids dropped because the total payload cap was exhausted or an image could not be shrunk to fit (retrying that id alone will not help), ids that hit a download or encode failure (download_failed), and the rare id that fails after a successful download due to an image-encode task panic or a metadata-serialization failure (internal_error), are reported in the summary's `failed` array rather than failing the call. Charged media_download_cost tokens per image actually returned."
+    )]
+    pub async fn get_messages_media_batch(
+        &self,
+        Parameters(request): Parameters<GetMessagesMediaBatchRequest>,
+        id: RequestId,
+    ) -> Result<CallToolResult, String> {
+        let inv = ToolInvocation::start("get_messages_media_batch", id);
+        tracing::info!(
+            tool = inv.tool,
+            request_id = %inv.request_id,
+            channel_id = %request.channel_id,
+            requested = request.message_ids.len(),
+            max_dimension = ?request.max_dimension,
+            "Tool invocation started"
+        );
+        inv.finish(self.get_messages_media_batch_impl(request).await)
     }
 }
 

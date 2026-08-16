@@ -1,4 +1,16 @@
 //! Custom serde deserializers for MCP tool types.
+//!
+//! **Scope: whole scalars only.** These helpers coerce a scalar argument that
+//! a lenient client sent as the wrong JSON type — a numeric string for an
+//! integer, a number for a string, `"true"`/`1` for a bool. `Vec` *elements*
+//! are deliberately left strict: `"10"` inside `message_ids` is a type error,
+//! not a `10`. Clients stringify whole arguments, not individual array items,
+//! so per-element coercion would add surface with no matching failure mode,
+//! and a mixed-type array is worth reporting rather than silently repairing.
+//!
+//! Leniency stops at the transport boundary. Field types and the advertised
+//! `JsonSchema` are unchanged — schemars ignores `deserialize_with` — and the
+//! domain layer (`params.rs`, the newtypes) stays strict.
 
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
