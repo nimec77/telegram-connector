@@ -10,40 +10,30 @@ impl TelegramClient {
         limit: u32,
         offset: u32,
     ) -> Result<crate::telegram::ChannelPage, Error> {
-        let mut page = Vec::new();
-        let mut total = 0usize;
+        let mut builder = ChannelPageBuilder::new(offset, limit);
         let mut dialogs = self.client.iter_dialogs();
 
-        // Walk the WHOLE dialog list: the page is cut out in passing, and the
-        // walk continues so `total` is the genuine subscription count (B6).
-        // Iteration always started from the beginning anyway — offset pages
-        // already paid the full walk.
         while let Some(dialog) = dialogs.next().await.map_err(|e| {
             tracing::error!(error = %e, "Failed to iterate dialogs in get_subscribed_channels");
             Error::TelegramApi(format!("Failed to iterate dialogs: {}", e))
         })? {
             if let Some(mut channel) = convert_peer_to_channel(dialog.peer()) {
-                if total >= offset as usize && page.len() < limit as usize {
-                    // Free enrichment: the dialog already carries its top message (B8).
-                    channel.last_message_date =
-                        dialog.last_message.as_ref().and_then(message_timestamp);
-                    page.push(channel);
-                }
-                total += 1;
+                // Free enrichment: the dialog already carries its top message (B8).
+                channel.last_message_date =
+                    dialog.last_message.as_ref().and_then(message_timestamp);
+                builder.admit(channel);
             }
         }
 
+        let page = builder.finish();
         tracing::debug!(
-            returned = page.len(),
-            total,
+            returned = page.channels.len(),
+            total = page.total,
             offset,
             limit,
             "get_subscribed_channels completed"
         );
-        Ok(crate::telegram::ChannelPage {
-            channels: page,
-            total,
-        })
+        Ok(page)
     }
 
     pub(super) async fn get_channel_info_impl(
@@ -229,6 +219,44 @@ impl TelegramClient {
             .take(clamped_limit as usize)
             .collect();
         Ok(channels)
+    }
+}
+
+/// Accumulates a `ChannelPage` while the dialog walk runs to completion.
+///
+/// The walk covers the WHOLE dialog list: the page is cut out in passing and
+/// iteration continues, so `total` is the genuine subscription count (B6).
+/// Iteration always started from the beginning anyway — offset pages already
+/// paid the full walk.
+struct ChannelPageBuilder {
+    offset: usize,
+    limit: usize,
+    page: Vec<crate::telegram::Channel>,
+    total: usize,
+}
+
+impl ChannelPageBuilder {
+    fn new(offset: u32, limit: u32) -> Self {
+        Self {
+            offset: offset as usize,
+            limit: limit as usize,
+            page: Vec::new(),
+            total: 0,
+        }
+    }
+
+    fn admit(&mut self, channel: crate::telegram::Channel) {
+        if self.total >= self.offset && self.page.len() < self.limit {
+            self.page.push(channel);
+        }
+        self.total += 1;
+    }
+
+    fn finish(self) -> crate::telegram::ChannelPage {
+        crate::telegram::ChannelPage {
+            channels: self.page,
+            total: self.total,
+        }
     }
 }
 

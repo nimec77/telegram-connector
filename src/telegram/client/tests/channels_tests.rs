@@ -206,3 +206,38 @@ fn validate_channel_identifier_rejects_empty() {
 fn validate_channel_identifier_accepts_non_empty() {
     assert!(validate_channel_identifier("@news").is_ok());
 }
+
+#[test]
+fn total_counts_every_channel_while_the_page_is_cut_out_in_passing() {
+    // B6: the walk continues past the page so `total` is the genuine
+    // subscription count, not the page length.
+    use crate::test_helpers::create_test_channel_named;
+
+    let mut builder = ChannelPageBuilder::new(1, 2);
+    for id in 1..=5 {
+        builder.admit(create_test_channel_named(id, &format!("Канал {id}"), true));
+    }
+    let page = builder.finish();
+
+    assert_eq!(page.total, 5, "total must count every channel walked");
+    assert_eq!(page.channels.len(), 2, "the page honours limit");
+    assert_eq!(
+        page.channels[0].id.get(),
+        2,
+        "offset 1 skips the first channel"
+    );
+}
+
+#[test]
+fn an_offset_past_the_end_yields_an_empty_page_with_a_real_total() {
+    use crate::test_helpers::create_test_channel_named;
+
+    let mut builder = ChannelPageBuilder::new(10, 5);
+    for id in 1..=3 {
+        builder.admit(create_test_channel_named(id, "Канал", true));
+    }
+    let page = builder.finish();
+
+    assert!(page.channels.is_empty());
+    assert_eq!(page.total, 3);
+}
