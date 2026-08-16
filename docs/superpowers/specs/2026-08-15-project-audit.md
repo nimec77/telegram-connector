@@ -57,16 +57,18 @@ provably inert (`deadline_secs = 0` never expires — pinned by
 `debug!` moved from before `step` to after it (values unchanged, ordering real), and its
 tracing field `page` was renamed to `page_no`.
 
-Coverage 75.1% → **78.33%** overall lines (`cargo llvm-cov --lib`); 760 passed / 5 ignored
-(up from 726). `walk.rs` 95%, `config.rs` 70%→83%, `ops_history.rs` 0%→12%,
+Overall lines: **78.33%** (`cargo llvm-cov --lib`) / **76.19%** (full `cargo llvm-cov`, all
+targets); 760 passed / 5 ignored (up from 726). Compared approximately against the audit's
+75.1% baseline using the `--lib` figure — that baseline was measured at v0.22.1, before
+stages 2 and 3 merged, so per-file deltas against it are not attributable to stage 4 in
+either direction. `walk.rs` 95%, `config.rs` 70%→83%, `ops_history.rs` 0%→12%,
 `ops_message.rs` 0%→26%. `ops_search.rs` stayed at 0% (thin glue below the DI seam, as
-designed).
-`channels.rs` and `resolve.rs` — despite Task 10's extraction and new tests, and despite
-`resolve.rs`'s code and tests being byte-identical to the pre-stage-4 tree — measured
-*lower* than the cited baseline (45%→25%, 12%→9%); not independently re-verified whether
-this is a real regression or a baseline-measurement artifact. `ops_media`, `ops_stats`,
-`ops_transcribe`, `lifecycle`, `client/auth` remain deferred at 0%, per this stage's
-original scope.
+designed) — a genuine, correctly-explained stage-4 outcome. `channels.rs` now measures 25%
+and `resolve.rs` measures 9%; neither is comparable to the stale baseline. `resolve.rs` is
+byte-identical to `origin/master` on this branch (`git diff origin/master..HEAD` for the
+file is empty) — stage 4 never touched it. `ops_media`, `ops_stats`, `ops_transcribe`,
+`lifecycle`, `client/auth` remain deferred at 0%, per this
+stage's original scope.
 
 ## Hygiene backlog — its own branch and PR
 
