@@ -49,9 +49,34 @@ fn test_validate_for_setup_valid_credentials() {
 #[test]
 fn test_auth_credentials_getter() {
     let config = create_test_config(12345, Some("test_hash"), Some("+1234567890"));
-    let (api_hash, phone) = config.telegram.auth_credentials();
+    let (api_hash, phone) = config
+        .telegram
+        .auth_credentials()
+        .expect("both credentials are present");
     assert_eq!(api_hash, "test_hash");
     assert_eq!(phone, "+1234567890");
+}
+
+#[test]
+fn auth_credentials_returns_none_when_api_hash_is_missing() {
+    let config = create_test_config(12345, None, Some("+1234567890"));
+    assert!(config.telegram.auth_credentials().is_none());
+}
+
+#[test]
+fn auth_credentials_returns_none_when_phone_number_is_missing() {
+    let config = create_test_config(12345, Some("hash"), None);
+    assert!(config.telegram.auth_credentials().is_none());
+}
+
+#[test]
+fn auth_credentials_returns_none_for_an_empty_credential() {
+    // `has_auth_credentials` treats an empty string as absent; the getter that
+    // backs it must agree, or the two could disagree. `create_test_config`
+    // filters empty strings to `None`, so set the empty secret directly.
+    let mut config = create_test_config(12345, Some("hash"), Some("+1234567890"));
+    config.telegram.api_hash = Some(SecretString::new(String::new().into_boxed_str()));
+    assert!(config.telegram.auth_credentials().is_none());
 }
 
 #[test]

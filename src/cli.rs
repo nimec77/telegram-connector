@@ -30,13 +30,6 @@ pub struct Cli {
     pub config: Option<PathBuf>,
 }
 
-impl Cli {
-    /// Parse command line arguments
-    pub fn parse_args() -> Self {
-        Self::parse()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

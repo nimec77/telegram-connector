@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use clap::Parser;
 use std::sync::Arc;
 use telegram_connector::{
     Cli, Config, RateLimiter, TelegramClientTrait, logging,
@@ -11,7 +12,7 @@ use tokio::sync::oneshot;
 #[tokio::main]
 async fn main() -> Result<()> {
     // Parse CLI arguments
-    let cli = Cli::parse_args();
+    let cli = Cli::parse();
 
     // Load configuration (does not validate auth credentials)
     let mut config =
@@ -65,8 +66,7 @@ async fn main() -> Result<()> {
     tracing::info!("Authenticated with Telegram");
 
     // Run MCP server
-    run_mcp_server(telegram_client, config).await?;
-    std::process::exit(0);
+    run_mcp_server(telegram_client, config).await
 }
 
 /// Run interactive setup mode for authentication
@@ -82,7 +82,9 @@ async fn run_setup_mode(client: &TelegramClient, config: &Config) -> Result<()> 
     println!("Authenticating with Telegram...\n");
     println!("A login code will be sent to your Telegram app for the phone number in your config.");
 
-    let (api_hash, phone) = config.telegram.auth_credentials();
+    let (api_hash, phone) = config.telegram.auth_credentials().context(
+        "Authentication credentials missing: set telegram.api_hash and telegram.phone_number",
+    )?;
 
     interactive_auth(client, phone, api_hash)
         .await
