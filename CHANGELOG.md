@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.4] - 2026-08-16
+
+### Changed
+- Global search's per-page `debug!` line now fires after the page is walked
+  rather than before it. The logged values are unchanged; only the ordering
+  relative to surrounding lines moved. Its tracing field `page` was renamed
+  to `page_no` — update any log query that matches on the old field name.
+
+### Internal
+- Audit stage 4, behavior-preserving apart from the logging change above: the
+  three message-fetch loops (`get_recent_messages`, channel search, global
+  search) now run on a shared `MessageWalk`/`WalkConfig` state machine
+  (`telegram/client/walk.rs`). The walk is synchronous and sits above the DI
+  seam, so its page accounting, window triage, cursor bounds, media filtering
+  and terminal cases are directly testable — previously that branching lived
+  inside the async loops, where the mock client replaces the whole code path.
+  The three call sites differ only in `WalkConfig`'s five fields plus the
+  deadline, which history leaves disabled.
+- Further extractions off the same loops: `assemble_search_result` shared
+  between search and history, `dialog_fallback_target`, `partition_batch`,
+  `ChannelPageBuilder`, `classify_search_hit`.
+- Test coverage rose to 78.33% lines (`cargo llvm-cov --lib`), with
+  `walk.rs` at 95% and `config.rs` 70%→83%; config file-loading error
+  branches are now covered and those tests moved to
+  `src/config/tests/load_tests.rs`. 762 lib tests passing, up from 726.
+- Closed two stage-3 follow-ups: `PageAccumulator::push` is now
+  `#[must_use]`, and album-sibling behavior under `collapse=false` is pinned
+  by a test.
+- CI now lints test code as well: `cargo clippy --all-targets`.
+
 ## [0.22.3] - 2026-08-15
 
 ### Fixed
