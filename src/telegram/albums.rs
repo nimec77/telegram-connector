@@ -80,6 +80,7 @@ impl PageAccumulator {
 
     /// Admit `message` into the page. Returns `false` when the page is full —
     /// the caller stops fetching.
+    #[must_use = "a false return means the page is full and the caller must stop fetching"]
     pub(crate) fn push(&mut self, message: Message) -> bool {
         let admitted = if self.collapse {
             self.counter.admit(album_key(&message), self.limit)
@@ -303,5 +304,21 @@ mod tests {
         let mut page = PageAccumulator::new(true, 5);
         assert!(page.push(create_test_message(1, "a", 100)));
         assert!(!page.has_more());
+    }
+
+    #[test]
+    fn album_siblings_stay_separate_when_collapse_is_off() {
+        // With collapse off, `into_messages` must not merge siblings — each
+        // raw message is its own post, and `limit` counts raw messages.
+        let mut page = PageAccumulator::new(false, 10);
+        assert!(page.push(album_member(1, 77, "a")));
+        assert!(page.push(album_member(2, 77, "b")));
+
+        let messages = page.into_messages();
+        assert_eq!(messages.len(), 2, "collapse=false must not merge siblings");
+        assert!(
+            messages.iter().all(|m| m.album.is_none()),
+            "collapse=false leaves album metadata unset"
+        );
     }
 }
