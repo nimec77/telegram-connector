@@ -5,6 +5,7 @@
 use super::guard::{is_empty_variant, require_found_raw};
 use super::raw_fetch::fetch_messages_by_id;
 use super::*;
+use crate::telegram::envelope::EntityLookup;
 
 impl TelegramClient {
     pub(super) async fn get_message_by_id_impl(
@@ -87,36 +88,56 @@ impl TelegramClient {
             })
             .await?;
 
-        // Single pass so every requested id lands in exactly one of
-        // `messages` / `missing_ids` — never silently in neither. An absent
-        // entry and a MessageEmpty both mean the id does not exist in this
-        // channel (work-order B1 guard); a present, non-empty message that
-        // still fails domain conversion is logged and reported as missing
-        // rather than dropped.
-        let mut messages = Vec::with_capacity(message_ids.len());
-        let mut missing_ids = Vec::with_capacity(message_ids.len());
-        for &message_id in message_ids {
-            match by_id.remove(&message_id) {
-                Some(raw) if !is_empty_variant(&raw) => {
-                    match convert_raw_message(&raw, &peer, &entities) {
-                        Some(converted) => messages.push(converted),
-                        None => {
-                            tracing::warn!(
-                                channel_ref = %channel_ref,
-                                message_id,
-                                "Failed to convert message in batch; reporting as missing"
-                            );
-                            missing_ids.push(i64::from(message_id));
-                        }
-                    }
-                }
-                _ => missing_ids.push(i64::from(message_id)),
-            }
-        }
-
-        Ok(crate::telegram::MessageBatch {
-            messages,
-            missing_ids,
-        })
+        Ok(partition_batch(
+            message_ids,
+            &mut by_id,
+            &peer,
+            &entities,
+            channel_ref,
+        ))
     }
 }
+
+/// Split a fetched id-keyed map into found messages and missing ids.
+///
+/// Single pass so every requested id lands in exactly one bucket — never
+/// silently in neither. An absent entry and a `MessageEmpty` both mean the id
+/// does not exist in this channel; a present, non-empty message that still
+/// fails domain conversion is logged and reported as missing rather than
+/// dropped.
+fn partition_batch(
+    message_ids: &[i32],
+    by_id: &mut std::collections::HashMap<i32, tl::enums::Message>,
+    peer: &grammers_client::peer::Peer,
+    entities: &EntityLookup,
+    channel_ref: &str,
+) -> crate::telegram::MessageBatch {
+    let mut messages = Vec::with_capacity(message_ids.len());
+    let mut missing_ids = Vec::with_capacity(message_ids.len());
+    for &message_id in message_ids {
+        match by_id.remove(&message_id) {
+            Some(raw) if !is_empty_variant(&raw) => {
+                match convert_raw_message(&raw, peer, entities) {
+                    Some(converted) => messages.push(converted),
+                    None => {
+                        tracing::warn!(
+                            channel_ref = %channel_ref,
+                            message_id,
+                            "Failed to convert message in batch; reporting as missing"
+                        );
+                        missing_ids.push(i64::from(message_id));
+                    }
+                }
+            }
+            _ => missing_ids.push(i64::from(message_id)),
+        }
+    }
+    crate::telegram::MessageBatch {
+        messages,
+        missing_ids,
+    }
+}
+
+#[cfg(test)]
+#[path = "tests/ops_message_tests.rs"]
+mod tests;
