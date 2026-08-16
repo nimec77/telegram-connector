@@ -84,3 +84,71 @@ fn a_full_page_stops_the_walk_and_latches_has_more() {
     assert_eq!(budget.pages_fetched(), 1);
     assert_eq!(budget.messages_scanned(), 2);
 }
+
+#[test]
+fn a_message_newer_than_to_date_is_skipped_not_stopped() {
+    // Paging walks backwards toward the window; a too-new message means keep
+    // going, never stop.
+    let client = inert_client();
+    let peer = channel_peer(&client, 11);
+    let cfg = WalkConfig {
+        to_date: Some(at(2_000)),
+        ..open_config(at(1_000))
+    };
+    let mut walk = MessageWalk::new(cfg, false, 10, 0);
+
+    assert_eq!(
+        walk.step(Some(fetched(9, 3_000, &peer)), None),
+        Flow::Continue
+    );
+    assert_eq!(walk.kept(), 0, "a too-new message must not be admitted");
+}
+
+#[test]
+fn below_cutoff_stops_on_the_reverse_chronological_paths() {
+    let client = inert_client();
+    let peer = channel_peer(&client, 11);
+    let mut walk = MessageWalk::new(open_config(at(1_000)), false, 10, 0);
+
+    assert_eq!(walk.step(Some(fetched(9, 500, &peer)), None), Flow::Stop);
+    assert_eq!(walk.kept(), 0);
+}
+
+#[test]
+fn below_cutoff_skips_on_the_global_path() {
+    // Global search is ordered by relevance across channels, so one old
+    // result says nothing about the next.
+    let client = inert_client();
+    let peer = channel_peer(&client, 11);
+    let cfg = WalkConfig {
+        below_cutoff: BelowCutoff::Skip,
+        ..open_config(at(1_000))
+    };
+    let mut walk = MessageWalk::new(cfg, false, 10, 0);
+
+    assert_eq!(
+        walk.step(Some(fetched(9, 500, &peer)), None),
+        Flow::Continue
+    );
+    assert_eq!(walk.kept(), 0);
+}
+
+#[test]
+fn a_message_with_no_readable_timestamp_takes_the_below_cutoff_path() {
+    // `MessageEmpty` has no date. It must not be treated as in-window and
+    // handed to conversion, which would reject it anyway — the point is that
+    // the *stop* semantics apply, matching the original `is_none_or`.
+    let client = inert_client();
+    let peer = channel_peer(&client, 11);
+    let mut walk = MessageWalk::new(open_config(at(1_000)), false, 10, 0);
+
+    let empty = Fetched {
+        raw: grammers_client::tl::enums::Message::Empty(grammers_client::tl::types::MessageEmpty {
+            id: 7,
+            peer_id: None,
+        }),
+        entities: no_entities(),
+        peer: Some(&peer),
+    };
+    assert_eq!(walk.step(Some(empty), None), Flow::Stop);
+}

@@ -8,7 +8,7 @@
 
 use super::search_budget::SearchBudget;
 use crate::telegram::albums::PageAccumulator;
-use crate::telegram::converters::convert_raw_message;
+use crate::telegram::converters::{convert_raw_message, timestamp_from_raw};
 use crate::telegram::envelope::EntityLookup;
 use chrono::{DateTime, Utc};
 use grammers_client::peer::Peer;
@@ -102,6 +102,21 @@ impl<'a> MessageWalk<'a> {
         let Some(item) = fetched else {
             return Flow::Stop;
         };
+        let timestamp = timestamp_from_raw(&item.raw);
+        // Newer than the requested window: keep iterating toward it.
+        if let Some(to) = self.cfg.to_date
+            && timestamp.is_some_and(|t| t > to)
+        {
+            return Flow::Continue;
+        }
+        // Below the window, or undated. `is_none_or` matches the original
+        // loops: an unreadable date is treated as out-of-window, not admitted.
+        if timestamp.is_none_or(|t| t < self.cfg.cutoff_time) {
+            return match self.cfg.below_cutoff {
+                BelowCutoff::Stop => Flow::Stop,
+                BelowCutoff::Skip => Flow::Continue,
+            };
+        }
         let Some(converted) = item
             .peer
             .and_then(|peer| convert_raw_message(&item.raw, peer, &item.entities))
