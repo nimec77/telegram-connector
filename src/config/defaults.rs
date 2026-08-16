@@ -9,10 +9,28 @@ use super::{
 };
 use std::path::PathBuf;
 
+/// The user's config directory, or `None` when no home directory can be
+/// determined. Split out from [`config_dir_join`] so the join is pure.
+fn project_config_dir() -> Option<PathBuf> {
+    directories::ProjectDirs::from("", "", "telegram-connector")
+        .map(|dirs| dirs.config_dir().to_path_buf())
+}
+
+/// Append `relative` to the config directory, degrading to a bare relative
+/// path when there is none.
+///
+/// Serde `default = "..."` providers cannot return an error, so a missing
+/// home directory must not abort deserialization — `Config::load_from` and
+/// `logging::init` surface the resulting path in their own errors instead.
+pub(crate) fn config_dir_join(config_dir: Option<PathBuf>, relative: &str) -> PathBuf {
+    match config_dir {
+        Some(dir) => dir.join(relative),
+        None => PathBuf::from(relative),
+    }
+}
+
 pub(crate) fn default_session_file() -> PathBuf {
-    let dirs = directories::ProjectDirs::from("", "", "telegram-connector")
-        .expect("Could not determine config directory");
-    dirs.config_dir().join("session.bin")
+    config_dir_join(project_config_dir(), "session.bin")
 }
 
 pub(crate) fn default_hours_back() -> u32 {
@@ -52,9 +70,7 @@ pub(crate) fn default_file_enabled() -> bool {
 }
 
 pub(crate) fn default_log_path() -> PathBuf {
-    let dirs = directories::ProjectDirs::from("", "", "telegram-connector")
-        .expect("Could not determine config directory");
-    dirs.config_dir().join("logs")
+    config_dir_join(project_config_dir(), "logs")
 }
 
 pub(crate) fn default_max_log_days() -> u32 {

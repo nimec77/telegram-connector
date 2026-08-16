@@ -31,6 +31,31 @@ fn test_default_logging_config_has_file_fields() {
 }
 
 // ========================================================================
+// Config-Directory Fallback Tests
+// ========================================================================
+
+#[test]
+fn config_dir_join_appends_to_the_config_directory_when_one_exists() {
+    let joined = config_dir_join(
+        Some(PathBuf::from("/home/u/.config/telegram-connector")),
+        "session.bin",
+    );
+    assert_eq!(
+        joined,
+        PathBuf::from("/home/u/.config/telegram-connector/session.bin")
+    );
+}
+
+#[test]
+fn config_dir_join_falls_back_to_a_relative_path_when_there_is_no_config_directory() {
+    // `ProjectDirs::from` returns `None` when no home directory can be
+    // determined. These are `#[serde(default = "...")]` providers, which
+    // cannot return an error — so they degrade to a relative path instead of
+    // panicking mid-deserialization.
+    assert_eq!(config_dir_join(None, "logs"), PathBuf::from("logs"));
+}
+
+// ========================================================================
 // Timeout Config Tests (Phase 20)
 // ========================================================================
 
