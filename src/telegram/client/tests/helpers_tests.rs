@@ -121,3 +121,34 @@ fn partial_is_paired_with_timed_out_not_with_has_more() {
     assert!(!result.query_metadata.partial);
     assert!(!result.query_metadata.timed_out);
 }
+
+#[test]
+fn several_messages_from_one_channel_report_a_single_channel_in_results() {
+    // The real history shape: every message comes from the one peer being
+    // fetched. This is the case the two pre-unification callers agreed on
+    // only by construction (search: `HashSet` len; history: hand-rolled
+    // `if empty {0} else {1}`) — 0-channel and 2-channel cases are pinned
+    // above, but this 1-distinct-channel case is the one history actually
+    // exercises in production, so it needs its own pin.
+    use crate::test_helpers::create_test_message;
+
+    let budget = SearchBudget::new(0);
+    let messages = vec![
+        create_test_message(1, "текст", 100),
+        create_test_message(2, "текст", 100),
+        create_test_message(3, "текст", 100),
+    ];
+    let result = assemble_search_result(
+        messages,
+        &budget,
+        false,
+        String::new(),
+        at_secs(1_000),
+        None,
+        Some(1),
+        5,
+    );
+
+    assert_eq!(result.returned, 3);
+    assert_eq!(result.query_metadata.channels_in_results, 1);
+}
