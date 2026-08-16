@@ -46,6 +46,7 @@ mod raw_page;
 mod raw_pager;
 mod resolve;
 mod search_budget;
+mod walk;
 
 #[cfg(test)]
 #[path = "client/tests/helpers_tests.rs"]
