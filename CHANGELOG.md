@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.5] - 2026-08-16
+
+### Fixed
+- Secret redaction no longer echoes a short value in full. `redact_phone`
+  showed 4 leading + 3 trailing characters but only fell back to
+  `[REDACTED]` at 6 characters or fewer, so a 7-character phone rendered
+  every character it had. Both redactors now require at least 3 hidden
+  characters (phone: 10+, hash: 8+). The shared helper is char-aware, which
+  also fixes a latent abort: `redact_hash` byte-sliced at index 4, so a
+  multibyte value panicked.
+- `omit_binary_blocks` no longer underflows on a base64 payload shorter than
+  one quantum. The size estimate `len / 4 * 3 - padding` panicked in debug
+  builds and reported a ~18-exabyte `size_bytes` in release; it now
+  saturates.
+- Config defaults degrade instead of panicking when no home directory can be
+  determined. `default_session_file` and `default_log_path` called `expect()`
+  on `ProjectDirs::from`; as `#[serde(default)]` providers they cannot return
+  an error, so they now fall back to a bare relative path.
+
+### Changed
+- `list_tools` now lists `get_messages_media_batch` last. Its doc comment read
+  "Tool 16" while it sat between tools 10 and 11; source order now matches the
+  numbering, and `#[tool_router]` registers in declaration order. The tool
+  description is byte-identical.
+- Shutdown drops the tokio runtime rather than terminating immediately: `main`
+  returns `run_mcp_server`'s result instead of calling `std::process::exit(0)`,
+  which skipped every destructor.
+
+### Internal
+- `TelegramConfig::auth_credentials` returns `Option<(&str, &str)>` instead of
+  `expect()`-ing both secrets, and `has_auth_credentials` is now its predicate
+  form, so the two can no longer disagree. `Cli::parse_args` (a one-line
+  wrapper over `Parser::parse`) was dropped.
+- `logging::init`'s blanket `result.or(Ok(()))` is now an explicit, logged
+  swallow, pinned by a test. `try_init`'s only two failure modes both mean
+  "already initialized" and `TryInitError` boxes its cause privately, so they
+  cannot be distinguished by type.
+- The `tokio` dependency declares the seven features that back real call sites
+  instead of `full`. No crate leaves the graph; the only lockfile change is
+  that tokio stops enabling `parking_lot` for its internal locks.
+- Doc fixes: `TelegramClientTrait` no longer names a private module path in
+  its public docs, and `serde_helpers.rs` records why coercion is whole-scalar
+  only.
+
 ## [0.22.4] - 2026-08-16
 
 ### Changed
