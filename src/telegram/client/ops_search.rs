@@ -4,6 +4,7 @@
 
 use super::raw_pager::{RawChannelSearchPager, RawGlobalSearchPager};
 use super::search_budget::SearchBudget;
+use super::walk::{BelowCutoff, Fetched, Flow, MessageWalk, WalkConfig};
 use super::*;
 use crate::telegram::albums::PageAccumulator;
 use chrono::{DateTime, Utc};
@@ -127,9 +128,21 @@ impl TelegramClient {
             "search_messages_channel",
             self.timeouts.search_secs,
             async {
-                let mut page = PageAccumulator::new(params.collapse_albums, params.limit as usize);
+                let cfg = WalkConfig {
+                    cutoff_time,
+                    to_date: params.to_date,
+                    after_bound,
+                    // messages.Search filters server-side; no client-side pass.
+                    media_filter: None,
+                    below_cutoff: BelowCutoff::Stop,
+                };
+                let mut walk = MessageWalk::new(
+                    cfg,
+                    params.collapse_albums,
+                    params.limit as usize,
+                    self.search_deadline_secs,
+                );
                 let mut channels_scanned = 0u32;
-                let mut budget = SearchBudget::new(self.search_deadline_secs);
                 // Find the channel in our dialogs
                 let mut dialogs = self.client.iter_dialogs();
 
@@ -145,7 +158,7 @@ impl TelegramClient {
                     // exists to replace with a graceful partial. Checking here also
                     // latches `timed_out`, so a slow walk is reported rather than
                     // looking like a fast empty result.
-                    if budget.expired() {
+                    if walk.expired() {
                         break;
                     }
                     let peer = dialog.peer();
@@ -169,46 +182,27 @@ impl TelegramClient {
                         }
 
                         loop {
-                            if budget.expired() {
+                            if walk.expired() {
                                 break;
                             }
                             let next = pager
                                 .next()
                                 .await
                                 .map_err(|e| Error::TelegramApi(format!("Search failed: {}", e)))?;
-                            // Before the `else break`: a round trip that came back
-                            // empty still cost the caller latency, which is what
-                            // the field reports.
-                            if let Some(page_size) = pager.take_last_page_size() {
-                                budget.record_page(page_size);
-                            }
-                            let Some((raw_msg, entities)) = next else {
-                                break;
-                            };
-                            if let Some(to) = params.to_date
-                                && timestamp_from_raw(&raw_msg).is_some_and(|t| t > to)
-                            {
-                                continue; // newer than the requested window; keep iterating toward it
-                            }
-                            if timestamp_from_raw(&raw_msg).is_none_or(|t| t < cutoff_time) {
-                                break; // reverse chronological order
-                            }
-                            // Exclusive lower cursor bound: everything from here on
-                            // is older (reverse chronological), so stop (A8).
-                            if let Some(after) = after_bound
-                                && raw_msg.id() <= after
-                            {
-                                break;
-                            }
-                            if let Some(converted) = convert_raw_message(&raw_msg, peer, &entities)
-                                && !page.push(converted)
-                            {
+                            let page_size = pager.take_last_page_size();
+                            let fetched = next.map(|(raw, entities)| Fetched {
+                                raw,
+                                entities,
+                                peer: Some(peer),
+                            });
+                            if walk.step(fetched, page_size) == Flow::Stop {
                                 break;
                             }
                         }
                         break;
                     }
                 }
+                let (page, budget) = walk.into_parts();
                 Ok((page, channels_scanned, budget))
             },
         )
