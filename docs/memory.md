@@ -6,8 +6,9 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Current state
 
-- **v0.22.4** (released 2026-08-16; packages the stage-4 work), 16 MCP
-  tools (16th: `get_messages_media_batch`). 773 lib tests passing, 5 ignored.
+- **v0.22.5** (released 2026-08-16), 16 MCP tools (16th:
+  `get_messages_media_batch`). 756 lib tests passing, 5 ignored (the 2026-08-22
+  review pass removed 23 tests of since-deleted dead API).
   Coverage **78.33% lines** (`cargo llvm-cov --lib`; 76.19% for a full `cargo llvm-cov`
   run), compared approximately to the 75.1% audit-start baseline — that baseline predates
   stages 2–3, so it isn't a clean stage-4-only delta. Near-100% on domain
@@ -19,7 +20,12 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 - **Audit 2026-08-15 is fully shipped and its spec deleted** (delete-on-merge; the file lives
   in git history). Four staged work packages — correctness fixes + dead code; module splits +
   test extraction; duplication/KISS refactors; ops-layer coverage via `MessageWalk` — plus the
-  11-item hygiene backlog, which also fixed an unlisted `redact_hash` multibyte panic.
+  11-item hygiene backlog.
+- **Code review 2026-08-22 is addressed and its findings doc deleted** (delete-on-merge).
+  Deliberately *not* changed: fan-out failed-channel refunds (see Rate limiter below),
+  the per-response re-serialization in `InstrumentedTransport` (it feeds the `bytes`
+  log field, not only the recovery buffer), and `ResponseBuffer::is_empty` (clippy's
+  `len_without_is_empty`).
 
 ## Open items
 
@@ -55,7 +61,10 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   `acquire` (fail fast with `retry_after = ceil(deficit/refill_rate)` — MCP tools must not
   block the protocol). Batch tools acquire `cost × ids` up front and refund ids that
   produced no image; `channel_ids` fan-out does one atomic `acquire(N)` for deduped channels
-  (never N racing acquires). Server defaults come from `config::defaults` with a
+  (never N racing acquires) and **never refunds failed channels** — each still spent a
+  resolve/fetch RPC, and a refund would make an unresolvable channel free to hammer (the
+  media-batch refund differs: its ids share one fetch RPC, so a per-id charge is
+  pessimistic). Any resolve RPC sits *behind* `acquire`, on every path. Server defaults come from `config::defaults` with a
   desync-guard test; costs above `max_tokens` rejected at config load.
 - **Timeouts:** three global knobs by call type (`resolve`/`history`/`search`, plus
   `download`), not per-tool; a multi-page `next().await` walk lives inside *one*
