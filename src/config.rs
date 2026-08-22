@@ -149,12 +149,6 @@ pub(crate) const MIN_IMAGE_BASE64_BYTES: usize = 32_768;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct SearchConfig {
-    #[serde(default = "default_hours_back")]
-    pub default_hours_back: u32,
-    #[serde(default = "default_max_results_default")]
-    pub max_results_default: u32,
-    #[serde(default = "default_max_results_limit")]
-    pub max_results_limit: u32,
     /// Wall-clock budget for a search's accumulation loop. On expiry the
     /// search returns the results gathered so far with `timed_out`/`partial`
     /// set — never an error. Must stay below `[telegram.timeouts] search_secs`
@@ -341,13 +335,6 @@ impl Default for ObservabilityConfig {
 }
 
 impl Config {
-    /// Load configuration from file
-    ///
-    /// If `config_path` is Some, uses that path. Otherwise, resolves the default path.
-    pub fn load() -> anyhow::Result<Self> {
-        Self::load_from(None)
-    }
-
     /// Load configuration from a specific path or default location
     ///
     /// If `config_path` is Some, uses that path. Otherwise, resolves the default path.

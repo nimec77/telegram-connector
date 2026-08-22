@@ -5,9 +5,9 @@
 
 use crate::telegram::types::{
     Channel, ChannelId, ChannelName, ChatType, ForwardInfo, LinkPreview, MediaType, Message,
-    MessageId, QueryMetadata, SearchResult, UserId, Username,
+    MessageId, QueryMetadata, SearchResult, Username,
 };
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use grammers_client::tl;
 
 /// Create a test message with commonly used defaults.
@@ -49,71 +49,6 @@ pub fn create_test_message(id: i64, text: &str, channel_id: i64) -> Message {
         reactions_total: None,
         album: None,
     }
-}
-
-/// Create a test message with custom timestamp.
-pub fn create_test_message_with_time(
-    id: i64,
-    text: &str,
-    channel_id: i64,
-    timestamp: DateTime<Utc>,
-) -> Message {
-    let mut msg = create_test_message(id, text, channel_id);
-    msg.timestamp = timestamp;
-    msg
-}
-
-/// Create a test message with media.
-pub fn create_test_message_with_media(
-    id: i64,
-    text: &str,
-    channel_id: i64,
-    media_type: MediaType,
-) -> Message {
-    let mut msg = create_test_message(id, text, channel_id);
-    msg.has_media = media_type != MediaType::None;
-    msg.media_type = media_type;
-    msg
-}
-
-/// Create a test message with sender information.
-pub fn create_test_message_with_sender(
-    id: i64,
-    text: &str,
-    channel_id: i64,
-    sender_id: i64,
-    sender_name: &str,
-) -> Message {
-    let mut msg = create_test_message(id, text, channel_id);
-    msg.sender_id = Some(UserId::new(sender_id).expect("Test sender ID must be positive"));
-    msg.sender_name = Some(sender_name.to_string());
-    msg
-}
-
-/// Create a test message carrying forward attribution (channel forward).
-pub fn create_test_message_with_forward(
-    id: i64,
-    text: &str,
-    channel_id: i64,
-    forwarded_channel_id: i64,
-    original_message_id: i64,
-) -> Message {
-    let mut msg = create_test_message(id, text, channel_id);
-    msg.forwarded_from = Some(ForwardInfo {
-        channel_id: Some(
-            ChannelId::new(forwarded_channel_id)
-                .expect("Test forwarded channel ID must be positive"),
-        ),
-        channel_name: None,
-        channel_username: None,
-        sender_name: None,
-        post_author: None,
-        original_date: None,
-        original_message_id: Some(
-            MessageId::new(original_message_id).expect("Test original message ID must be positive"),
-        ),
-    });
-    msg
 }
 
 /// Forward fixture with full attribution, as the envelope-enriched
@@ -533,30 +468,6 @@ mod tests {
         assert_eq!(msg.text, "Hello");
         assert_eq!(msg.channel_id.get(), 100);
         assert!(!msg.has_media);
-    }
-
-    #[test]
-    fn create_test_message_with_media_works() {
-        let msg = create_test_message_with_media(2, "Photo caption", 100, MediaType::Photo);
-        assert!(msg.has_media);
-        assert_eq!(msg.media_type, MediaType::Photo);
-    }
-
-    #[test]
-    fn create_test_message_with_sender_works() {
-        let msg = create_test_message_with_sender(3, "Hello", 100, 42, "Alice");
-        assert_eq!(msg.sender_id.unwrap().get(), 42);
-        assert_eq!(msg.sender_name.unwrap(), "Alice");
-    }
-
-    #[test]
-    fn create_test_message_with_forward_works() {
-        let msg = create_test_message_with_forward(4, "Forwarded", 100, 555, 42);
-        let fwd = msg.forwarded_from.expect("forward attribution present");
-        assert_eq!(fwd.channel_id.unwrap().get(), 555);
-        assert_eq!(fwd.original_message_id.unwrap().get(), 42);
-        assert!(fwd.channel_name.is_none());
-        assert!(fwd.channel_username.is_none());
     }
 
     #[test]

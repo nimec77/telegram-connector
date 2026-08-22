@@ -120,13 +120,6 @@ pub fn redact_phone(phone: &str) -> String {
     redact(phone, 4, 3)
 }
 
-/// Redact API hash for safe logging
-/// Shows first 4 chars + last 1 char, hides middle
-/// Returns "[REDACTED]" for strings under 8 characters
-pub fn redact_hash(hash: &str) -> String {
-    redact(hash, 4, 1)
-}
-
 /// Clean up old log files based on max_log_days configuration.
 /// Returns the number of files removed.
 ///

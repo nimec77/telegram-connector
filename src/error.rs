@@ -17,15 +17,6 @@ pub enum Error {
         detail: String,
     },
 
-    #[error("configuration error: {0}")]
-    Config(String),
-
-    #[error("network error: {0}")]
-    Network(String),
-
-    #[error("MCP protocol error: {0}")]
-    Mcp(String),
-
     #[error("invalid input: {0}")]
     InvalidInput(String),
 
@@ -104,24 +95,6 @@ mod tests {
             error.to_string(),
             "rate limit exceeded: requested 5 tokens, 2.40 available, retry after 2 seconds"
         );
-    }
-
-    #[test]
-    fn test_config_error_display() {
-        let error = Error::Config("missing api_id".to_string());
-        assert_eq!(error.to_string(), "configuration error: missing api_id");
-    }
-
-    #[test]
-    fn test_network_error_display() {
-        let error = Error::Network("connection timeout".to_string());
-        assert_eq!(error.to_string(), "network error: connection timeout");
-    }
-
-    #[test]
-    fn test_mcp_error_display() {
-        let error = Error::Mcp("invalid request".to_string());
-        assert_eq!(error.to_string(), "MCP protocol error: invalid request");
     }
 
     #[test]

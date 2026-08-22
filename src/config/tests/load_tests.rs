@@ -1,4 +1,4 @@
-//! File-based Config::load tests — every env-mutating loader in one auditable place.
+//! File-based Config::load_from tests — every env-mutating loader in one auditable place.
 use super::EnvGuard;
 use crate::config::*;
 use std::env;
@@ -17,11 +17,6 @@ api_hash = "test_hash"
 phone_number = "+1234567890"
 session_file = "/tmp/session.bin"
 
-[search]
-default_hours_back = 48
-max_results_default = 20
-max_results_limit = 100
-
 [rate_limiting]
 max_tokens = 50
 refill_rate = 2.0
@@ -33,7 +28,7 @@ format = "compact"
     fs::write(&config_path, config_content).unwrap();
 
     env_guard.set("TELEGRAM_MCP_CONFIG", &config_path);
-    let result = Config::load();
+    let result = Config::load_from(None);
     fs::remove_file(&config_path).ok();
 
     assert!(result.is_ok());
@@ -59,11 +54,6 @@ api_hash = "${TEST_API_HASH}"
 phone_number = "${TEST_PHONE}"
 session_file = "/tmp/session.bin"
 
-[search]
-default_hours_back = 48
-max_results_default = 20
-max_results_limit = 100
-
 [rate_limiting]
 max_tokens = 50
 refill_rate = 2.0
@@ -79,7 +69,7 @@ format = "compact"
     env_guard.set("TEST_PHONE", "+9876543210");
     env_guard.set("TELEGRAM_MCP_CONFIG", &config_path);
 
-    let result = Config::load();
+    let result = Config::load_from(None);
 
     fs::remove_file(&config_path).ok();
 
@@ -104,7 +94,7 @@ format = "compact"
 fn test_load_missing_config() {
     let mut env_guard = EnvGuard::new();
     env_guard.set("TELEGRAM_MCP_CONFIG", "/nonexistent/path/config.toml");
-    let result = Config::load();
+    let result = Config::load_from(None);
 
     assert!(result.is_err());
 }
@@ -117,7 +107,7 @@ fn test_load_invalid_toml() {
     fs::write(&config_path, "this is not valid TOML {{{}}}").unwrap();
 
     env_guard.set("TELEGRAM_MCP_CONFIG", &config_path);
-    let result = Config::load();
+    let result = Config::load_from(None);
     fs::remove_file(&config_path).ok();
 
     assert!(result.is_err());
@@ -145,7 +135,7 @@ max_log_days = 14
     fs::write(&config_path, config_content).unwrap();
 
     env_guard.set("TELEGRAM_MCP_CONFIG", &config_path);
-    let result = Config::load();
+    let result = Config::load_from(None);
     fs::remove_file(&config_path).ok();
 
     assert!(result.is_ok());

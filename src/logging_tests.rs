@@ -68,64 +68,6 @@ fn redact_phone_multibyte_input_does_not_panic() {
 }
 
 // ========================================================================
-// API Hash Redaction Tests
-// ========================================================================
-
-#[test]
-fn redact_hash_normal_length() {
-    // Standard API hash
-    let hash = "abc123def456";
-    let redacted = redact_hash(hash);
-    assert_eq!(redacted, "abc1***6");
-}
-
-#[test]
-fn redact_hash_long_string() {
-    // Longer hash
-    let hash = "abcdefghijklmnopqrstuvwxyz";
-    let redacted = redact_hash(hash);
-    assert_eq!(redacted, "abcd***z");
-}
-
-#[test]
-fn redact_hash_redacts_wholesale_below_three_hidden_chars() {
-    // 7 chars: 4 visible leading + 1 visible trailing hides only 2.
-    let hash = "abcdefg";
-    let redacted = redact_hash(hash);
-    assert_eq!(redacted, "[REDACTED]");
-}
-
-#[test]
-fn redact_hash_shows_edges_once_three_chars_are_hidden() {
-    // 8 chars is the shortest input that hides 3.
-    let hash = "abcdefgh";
-    let redacted = redact_hash(hash);
-    assert_eq!(redacted, "abcd***h");
-}
-
-#[test]
-fn redact_hash_multibyte_input_does_not_panic() {
-    // 8 chars but 24 bytes: byte index 4 is not a char boundary. `redact_hash`
-    // byte-sliced where `redact_phone` had already been made char-aware.
-    assert_eq!(redact_hash("€€€€€€€€"), "€€€€***€");
-}
-
-#[test]
-fn redact_hash_too_short() {
-    // Hash too short to redact safely (≤6 chars)
-    let hash = "abc123";
-    let redacted = redact_hash(hash);
-    assert_eq!(redacted, "[REDACTED]");
-}
-
-#[test]
-fn redact_hash_empty_string() {
-    let hash = "";
-    let redacted = redact_hash(hash);
-    assert_eq!(redacted, "[REDACTED]");
-}
-
-// ========================================================================
 // Initialization Tests
 // ========================================================================
 

@@ -41,31 +41,10 @@ impl SearchParams {
     pub const DEFAULT_LIMIT: u32 = 20;
     pub const MAX_LIMIT: u32 = 100;
 
-    pub fn new(query: impl Into<String>) -> Self {
-        Self {
-            query: query.into(),
-            channel_id: None,
-            hours_back: Self::DEFAULT_HOURS_BACK,
-            limit: Self::DEFAULT_LIMIT,
-            media_filter: None,
-            from_date: None,
-            to_date: None,
-            collapse_albums: true,
-            before_id: None,
-            after_id: None,
-        }
-    }
-
     /// Effective window start: `from_date` if set, else `now - hours_back`.
     pub fn window_start(&self) -> DateTime<Utc> {
         self.from_date
             .unwrap_or_else(|| Utc::now() - Duration::hours(self.hours_back as i64))
-    }
-}
-
-impl Default for SearchParams {
-    fn default() -> Self {
-        Self::new("")
     }
 }
 
@@ -112,49 +91,10 @@ impl HistoryParams {
     pub const DEFAULT_LIMIT: u32 = 20;
     pub const MAX_LIMIT: u32 = 100;
 
-    pub fn new(channel_id: ChannelId) -> Self {
-        Self {
-            channel_id: Some(channel_id),
-            channel_identifier: None,
-            hours_back: Self::DEFAULT_HOURS_BACK,
-            limit: Self::DEFAULT_LIMIT,
-            media_filter: None,
-            from_date: None,
-            to_date: None,
-            collapse_albums: true,
-            before_id: None,
-            after_id: None,
-        }
-    }
-
     /// Effective window start: `from_date` if set, else `now - hours_back`.
     pub fn window_start(&self) -> DateTime<Utc> {
         self.from_date
             .unwrap_or_else(|| Utc::now() - Duration::hours(self.hours_back as i64))
-    }
-
-    /// Builder method to set hours_back
-    pub fn hours_back(mut self, hours: u32) -> Self {
-        self.hours_back = hours.min(Self::MAX_HOURS_BACK);
-        self
-    }
-
-    /// Builder method to set limit
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.limit = limit.min(Self::MAX_LIMIT);
-        self
-    }
-
-    /// Builder method to set media filter
-    pub fn media_filter(mut self, filter: MediaFilter) -> Self {
-        self.media_filter = Some(filter);
-        self
-    }
-
-    /// Builder method to set channel identifier for direct resolution
-    pub fn channel_identifier(mut self, identifier: impl Into<String>) -> Self {
-        self.channel_identifier = Some(identifier.into());
-        self
     }
 }
 
@@ -218,28 +158,26 @@ fn is_false(b: &bool) -> bool {
 mod tests {
     use super::*;
 
+    /// A 48-hour, no-filter, no-cursor search — the shape the MCP layer
+    /// builds when a request carries only a query.
+    fn search_params(query: &str) -> SearchParams {
+        SearchParams {
+            query: query.to_string(),
+            channel_id: None,
+            hours_back: SearchParams::DEFAULT_HOURS_BACK,
+            limit: SearchParams::DEFAULT_LIMIT,
+            media_filter: None,
+            from_date: None,
+            to_date: None,
+            collapse_albums: true,
+            before_id: None,
+            after_id: None,
+        }
+    }
+
     // =========================================================================
     // SearchParams Tests
     // =========================================================================
-
-    #[test]
-    fn search_params_default() {
-        let params = SearchParams::default();
-        assert_eq!(params.query, "");
-        assert_eq!(params.hours_back, SearchParams::DEFAULT_HOURS_BACK);
-        assert_eq!(params.limit, SearchParams::DEFAULT_LIMIT);
-        assert!(params.channel_id.is_none());
-        assert!(params.media_filter.is_none());
-    }
-
-    #[test]
-    fn search_params_new() {
-        let params = SearchParams::new("AI news");
-        assert_eq!(params.query, "AI news");
-        assert_eq!(params.hours_back, 48);
-        assert_eq!(params.limit, 20);
-        assert!(params.media_filter.is_none());
-    }
 
     #[test]
     fn search_params_constants() {
@@ -252,16 +190,8 @@ mod tests {
     #[test]
     fn search_params_with_media_filter() {
         let params = SearchParams {
-            query: "test".to_string(),
-            channel_id: None,
-            hours_back: 48,
-            limit: 20,
             media_filter: Some(MediaFilter::Photo),
-            from_date: None,
-            to_date: None,
-            collapse_albums: true,
-            before_id: None,
-            after_id: None,
+            ..search_params("test")
         };
         assert_eq!(params.media_filter, Some(MediaFilter::Photo));
     }
@@ -271,61 +201,11 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn params_default_to_no_cursors() {
-        let history = HistoryParams::new(ChannelId::new(1).unwrap());
-        assert!(history.before_id.is_none());
-        assert!(history.after_id.is_none());
-        let search = SearchParams::new("query");
-        assert!(search.before_id.is_none());
-        assert!(search.after_id.is_none());
-    }
-
-    #[test]
-    fn history_params_new() {
-        let channel_id = ChannelId::new(123456).unwrap();
-        let params = HistoryParams::new(channel_id);
-
-        assert_eq!(params.channel_id.map(|c| c.get()), Some(123456));
-        assert_eq!(params.hours_back, HistoryParams::DEFAULT_HOURS_BACK);
-        assert_eq!(params.limit, HistoryParams::DEFAULT_LIMIT);
-        assert!(params.media_filter.is_none());
-    }
-
-    #[test]
     fn history_params_constants() {
         assert_eq!(HistoryParams::DEFAULT_HOURS_BACK, 48);
         assert_eq!(HistoryParams::MAX_HOURS_BACK, 168); // 7 days
         assert_eq!(HistoryParams::DEFAULT_LIMIT, 20);
         assert_eq!(HistoryParams::MAX_LIMIT, 100);
-    }
-
-    #[test]
-    fn history_params_builder_methods() {
-        let channel_id = ChannelId::new(123456).unwrap();
-        let params = HistoryParams::new(channel_id)
-            .hours_back(72)
-            .limit(50)
-            .media_filter(MediaFilter::Photo);
-
-        assert_eq!(params.hours_back, 72);
-        assert_eq!(params.limit, 50);
-        assert_eq!(params.media_filter, Some(MediaFilter::Photo));
-    }
-
-    #[test]
-    fn history_params_hours_back_capped_at_max() {
-        let channel_id = ChannelId::new(123456).unwrap();
-        let params = HistoryParams::new(channel_id).hours_back(500); // Exceeds max
-
-        assert_eq!(params.hours_back, HistoryParams::MAX_HOURS_BACK);
-    }
-
-    #[test]
-    fn history_params_limit_capped_at_max() {
-        let channel_id = ChannelId::new(123456).unwrap();
-        let params = HistoryParams::new(channel_id).limit(500); // Exceeds max
-
-        assert_eq!(params.limit, HistoryParams::MAX_LIMIT);
     }
 
     // =========================================================================
@@ -334,7 +214,7 @@ mod tests {
 
     #[test]
     fn window_start_defaults_to_hours_back() {
-        let params = SearchParams::new("q"); // hours_back = 48 default
+        let params = search_params("q"); // hours_back = 48 default
         let expected = Utc::now() - Duration::hours(48);
         let diff = (params.window_start() - expected).num_seconds().abs();
         assert!(diff <= 1, "window_start should be ~now - hours_back");
@@ -342,7 +222,7 @@ mod tests {
 
     #[test]
     fn window_start_prefers_from_date() {
-        let mut params = SearchParams::new("q");
+        let mut params = search_params("q");
         let from = Utc::now() - Duration::days(30);
         params.from_date = Some(from);
         assert_eq!(params.window_start(), from);
