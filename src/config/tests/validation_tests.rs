@@ -164,23 +164,6 @@ fn test_download_secs_zero_fails_validation() {
 }
 
 #[test]
-fn retired_search_keys_are_ignored_not_rejected() {
-    // `default_hours_back` / `max_results_default` / `max_results_limit` were
-    // deserialized but never read — the behaviour lives in the
-    // `SearchParams`/`HistoryParams` constants. A config that still carries
-    // them must keep loading, with the keys ignored.
-    let config: Config = toml::from_str(
-        "[telegram]\napi_id = 123\n\n[search]\ndefault_hours_back = 200\n\
-         max_results_default = 5\nmax_results_limit = 7\n",
-    )
-    .expect("retired keys must be ignored, not rejected");
-    assert_eq!(
-        config.search.deadline_seconds,
-        default_search_deadline_seconds()
-    );
-}
-
-#[test]
 fn limits_config_rejects_zero_budget() {
     let config: Config =
         toml::from_str("[telegram]\napi_id = 123\n\n[limits]\nresponse_byte_budget = 0\n")

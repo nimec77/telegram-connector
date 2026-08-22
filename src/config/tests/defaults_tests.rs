@@ -284,3 +284,20 @@ fn media_batch_payload_cap_defaults_to_eight_mib() {
     let limits = default_limits_config();
     assert_eq!(limits.media_batch_max_total_bytes, 8_388_608);
 }
+
+#[test]
+fn retired_search_keys_are_ignored_not_rejected() {
+    // `default_hours_back` / `max_results_default` / `max_results_limit` were
+    // deserialized but never read — the behaviour lives in the
+    // `SearchParams`/`HistoryParams` constants. A config that still carries
+    // them must keep loading, with the keys ignored.
+    let config: Config = toml::from_str(
+        "[telegram]\napi_id = 123\n\n[search]\ndefault_hours_back = 200\n\
+         max_results_default = 5\nmax_results_limit = 7\n",
+    )
+    .expect("retired keys must be ignored, not rejected");
+    assert_eq!(
+        config.search.deadline_seconds,
+        default_search_deadline_seconds()
+    );
+}

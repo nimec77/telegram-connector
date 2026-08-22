@@ -210,6 +210,15 @@ mod tests {
     }
 
     #[test]
+    fn parse_channel_reference_treats_the_empty_string_as_an_invalid_numeric_id() {
+        // `"".chars().all(..)` is vacuously true, so the empty reference is
+        // classified numeric and rejected by the id parser — never handed to
+        // the resolve layer as a username.
+        let err = parse_channel_reference("").unwrap_err();
+        assert!(err.contains("Invalid channel_id"), "got: {err}");
+    }
+
+    #[test]
     fn parse_channel_reference_rejects_an_invalid_numeric_id() {
         // All digits, so it is a numeric id — and an invalid one, not a username.
         let err = parse_channel_reference("0").unwrap_err();

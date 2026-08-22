@@ -115,7 +115,9 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             let fetch = |reference: String| {
                 let base = params_template.clone(); // SearchParams minus channel_id
                 async move {
-                    let channel_id = self.search_channel_id(&reference).await?;
+                    let channel_id = self
+                        .resolve_channel_ref(parse_channel_reference(&reference)?)
+                        .await?;
                     let params = SearchParams {
                         channel_id: Some(channel_id),
                         ..base
@@ -139,18 +141,24 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                 .await;
         }
 
-        // Single-channel/global path: 1 token per search, acquired before the
-        // username resolve below so that RPC is metered like the fan-out
-        // path's per-channel resolve — never free work.
+        // Single-channel/global path. Classify the reference first so a
+        // malformed numeric id is rejected before any token is spent (local
+        // validation precedes acquire on every tool); then take the 1 token
+        // per search *before* the username resolve, so that RPC is metered
+        // like the fan-out path's per-channel resolve — never free work.
+        let reference = request
+            .channel_id
+            .as_deref()
+            .map(parse_channel_reference)
+            .transpose()?;
+
         self.rate_limiter
             .acquire(1)
             .await
             .map_err(|e| e.to_string())?;
 
-        // Numeric refs parse locally; a username ref spends one resolve RPC
-        // before the search itself (§1.3).
-        let channel_id = match &request.channel_id {
-            Some(reference) => Some(self.search_channel_id(reference).await?),
+        let channel_id = match reference {
+            Some(reference) => Some(self.resolve_channel_ref(reference).await?),
             None => None,
         };
 
@@ -196,9 +204,10 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         json_response(&response)
     }
 
-    /// Numeric refs parse locally; username refs spend one resolve RPC (§1.3).
-    async fn search_channel_id(&self, reference: &str) -> Result<ChannelId, String> {
-        match parse_channel_reference(reference)? {
+    /// Numeric refs are already parsed; a username ref spends one resolve
+    /// RPC (§1.3). Callers acquire before calling this, never after.
+    async fn resolve_channel_ref(&self, reference: ChannelRef) -> Result<ChannelId, String> {
+        match reference {
             ChannelRef::Id(channel_id) => Ok(channel_id),
             ChannelRef::Username(username) => self
                 .telegram_client
@@ -215,11 +224,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     /// merge, multi-channel shaping.
     ///
     /// Tokens are charged per channel *attempted* and never refunded for
-    /// channels that end in `channel_errors`. A failed channel still spent a
-    /// resolve and/or fetch RPC against Telegram — the same resolve+fetch
-    /// shape of work `get_messages_batch` charges `acquire(1)` for — and a
-    /// refund would let a caller hammer an unresolvable channel at zero
-    /// cost, exactly the flood behaviour the limiter exists to prevent. The
+    /// channels that end in `channel_errors`. A failed channel typically
+    /// spent a resolve and/or fetch RPC against Telegram — the same
+    /// resolve+fetch shape of work `get_messages_batch` charges `acquire(1)`
+    /// for — and a refund would let a caller hammer an unresolvable channel
+    /// at zero cost, exactly the flood behaviour the limiter exists to
+    /// prevent. (Only a locally rejected entry such as `"0"` fails without an
+    /// RPC; over-charging it is the safe direction.) The
     /// media batch's per-id refund is a different case: its ids share one
     /// fetch RPC, so a per-id charge is pessimistic; per-channel RPCs here
     /// are not.
