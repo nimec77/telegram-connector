@@ -263,6 +263,29 @@ fn a_transcription_cost_above_the_bucket_capacity_is_rejected() {
 }
 
 #[test]
+fn a_non_positive_refill_rate_is_rejected() {
+    // refill_rate = 0 never refills, so the first rejection's retry hint is
+    // ceil(deficit / 0) = inf, saturating to u64::MAX seconds; a negative rate
+    // drains the bucket over time; NaN slips past a plain `<= 0.0` check.
+    // Each is a permanent lockout, not a tight limit.
+    for rate in [0.0, -1.0, f64::NAN] {
+        let config = RateLimitConfig {
+            max_tokens: 10,
+            refill_rate: rate,
+            media_download_cost: 3,
+            transcription_cost: 5,
+        };
+        let err = config
+            .validate()
+            .expect_err("a refill_rate that can never refill must be rejected");
+        assert!(
+            err.to_string().contains("refill_rate"),
+            "the error must name the offending key, got: {err}"
+        );
+    }
+}
+
+#[test]
 fn costs_equal_to_capacity_are_accepted() {
     // Exactly-capacity is satisfiable from a full bucket, so it is legal.
     let config = RateLimitConfig {

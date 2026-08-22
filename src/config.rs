@@ -198,11 +198,23 @@ pub struct RateLimitConfig {
 }
 
 impl RateLimitConfig {
-    /// Reject a per-call cost the bucket can never satisfy. A cost above
-    /// `max_tokens` means every call of that kind fails on a full bucket —
-    /// a configuration that is not merely tight but unsatisfiable. It also
-    /// keeps per-call costs proportionate to the bucket's capacity.
+    /// Reject a bucket that can never refill or a per-call cost it can never
+    /// satisfy — configurations that are not merely tight but unsatisfiable.
+    ///
+    /// A `refill_rate` of zero (or negative, or NaN) is a permanent lockout:
+    /// the bucket drains once and never recovers, and the rejection's retry
+    /// hint is `ceil(deficit / 0)`, which saturates to `u64::MAX` seconds.
+    /// A cost above `max_tokens` means every call of that kind fails even on
+    /// a full bucket; the check also keeps per-call costs proportionate to
+    /// the bucket's capacity.
     pub fn validate(&self) -> anyhow::Result<()> {
+        if self.refill_rate.is_nan() || self.refill_rate <= 0.0 {
+            anyhow::bail!(
+                "rate_limiting.refill_rate must be > 0 (got {}): the bucket would never \
+                 refill, so every call would fail once it is drained",
+                self.refill_rate
+            );
+        }
         if self.media_download_cost > self.max_tokens {
             anyhow::bail!(
                 "rate_limiting.media_download_cost ({}) exceeds max_tokens ({}), \
