@@ -80,9 +80,6 @@ fn create_test_config(api_id: i32, api_hash: Option<&str>, phone_number: Option<
             max_download_bytes: default_max_download_bytes(),
         },
         search: SearchConfig {
-            default_hours_back: 48,
-            max_results_default: 20,
-            max_results_limit: 100,
             deadline_seconds: 20,
         },
         rate_limiting: RateLimitConfig {

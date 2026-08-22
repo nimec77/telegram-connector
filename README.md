@@ -74,16 +74,13 @@ phone_number = "+1234567890"
 # session_file = "~/.config/telegram-connector/session.bin"
 
 [search]
-# default_hours_back = 48
-# max_results_default = 20
-# max_results_limit = 100
 # deadline_seconds = 20          # Wall-clock budget for a search accumulation loop (1–3600).
                                  # On expiry the search returns what it has, with
                                  # query_metadata.timed_out/partial set — never an error.
 
 [rate_limiting]
 # max_tokens = 60
-# refill_rate = 2.0
+# refill_rate = 2.0                # Tokens per second; must be > 0.
 # media_download_cost = 3        # Tokens charged per image returned by media tools.
 
 [limits]

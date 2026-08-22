@@ -54,19 +54,6 @@ pub struct Message {
     pub album: Option<AlbumInfo>,
 }
 
-impl Message {
-    /// Check if message is within specified hours from now
-    pub fn is_recent(&self, hours: u32) -> bool {
-        let threshold = Utc::now() - chrono::Duration::hours(hours as i64);
-        self.timestamp > threshold
-    }
-
-    /// Check if message is text-only (no media)
-    pub fn is_text_only(&self) -> bool {
-        self.media_type == MediaType::None
-    }
-}
-
 /// Attribution for a forwarded message.
 ///
 /// `channel_name` / `channel_username` / `sender_name` are resolved from the
@@ -269,30 +256,6 @@ mod tests {
             reactions_total: None,
             album: None,
         }
-    }
-
-    #[test]
-    fn message_is_recent_within_window() {
-        let mut msg = create_test_message();
-        msg.timestamp = Utc::now() - chrono::Duration::hours(24);
-
-        assert!(msg.is_recent(48));
-        assert!(!msg.is_recent(12));
-    }
-
-    #[test]
-    fn message_is_text_only() {
-        let msg = create_test_message();
-        assert!(msg.is_text_only());
-    }
-
-    #[test]
-    fn message_with_photo_not_text_only() {
-        let mut msg = create_test_message();
-        msg.has_media = true;
-        msg.media_type = MediaType::Photo;
-
-        assert!(!msg.is_text_only());
     }
 
     #[test]

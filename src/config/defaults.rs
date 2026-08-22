@@ -33,18 +33,6 @@ pub(crate) fn default_session_file() -> PathBuf {
     config_dir_join(project_config_dir(), "session.bin")
 }
 
-pub(crate) fn default_hours_back() -> u32 {
-    48
-}
-
-pub(crate) fn default_max_results_default() -> u32 {
-    20
-}
-
-pub(crate) fn default_max_results_limit() -> u32 {
-    100
-}
-
 pub(crate) fn default_search_deadline_seconds() -> u64 {
     20
 }
@@ -145,9 +133,6 @@ pub(crate) fn default_server_config() -> ServerConfig {
 
 pub(crate) fn default_search_config() -> SearchConfig {
     SearchConfig {
-        default_hours_back: default_hours_back(),
-        max_results_default: default_max_results_default(),
-        max_results_limit: default_max_results_limit(),
         deadline_seconds: default_search_deadline_seconds(),
     }
 }
