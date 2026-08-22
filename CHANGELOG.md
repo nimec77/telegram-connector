@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.6] - 2026-08-22
+
 ### Fixed
 - `rate_limiting.refill_rate` must now be `> 0`. A zero (or negative, or
   NaN) rate was accepted and produced a permanent lockout: the bucket drained
