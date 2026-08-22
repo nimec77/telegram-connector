@@ -28,3 +28,6 @@ proptest-regressions/
 
 # Worktrees
 .worktrees/
+
+# Opencode
+.opencode/
