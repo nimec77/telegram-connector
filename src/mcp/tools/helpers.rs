@@ -3,6 +3,7 @@
 //! This module extracts common ID parsing logic used across multiple tools.
 
 use crate::error::Error;
+use crate::link::ChannelRef;
 use crate::telegram::types::{ChannelId, MessageId};
 
 /// The message inside `InvalidInput`, so tool-level prefixes don't stack on
@@ -34,6 +35,18 @@ pub fn parse_channel_id(id_str: &str) -> Result<ChannelId, String> {
         .map_err(|_| format!("Invalid channel_id: '{}' is not a valid number", id_str))?;
 
     ChannelId::new(id_num).map_err(|e| format!("Invalid channel_id: {}", error_detail(e)))
+}
+
+/// Classify a channel reference as the list tools receive it: an all-digit
+/// string is a numeric id (validated here), anything else is a username left
+/// verbatim for the resolve layer. Shared by `search_messages` and
+/// `get_recent_messages` so the two agree on what counts as numeric.
+pub(crate) fn parse_channel_reference(reference: &str) -> Result<ChannelRef, String> {
+    if reference.chars().all(|c| c.is_ascii_digit()) {
+        parse_channel_id(reference).map(ChannelRef::Id)
+    } else {
+        Ok(ChannelRef::Username(reference.to_string()))
+    }
 }
 
 /// Parse a message ID to a type-safe MessageId.
@@ -174,6 +187,34 @@ pub fn json_response<T: serde::Serialize>(value: &T) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_channel_reference_treats_all_digits_as_a_numeric_id() {
+        assert_eq!(
+            parse_channel_reference("1144180066"),
+            Ok(ChannelRef::Id(ChannelId::new(1144180066).unwrap()))
+        );
+    }
+
+    #[test]
+    fn parse_channel_reference_keeps_a_username_verbatim() {
+        // The `@` is preserved: the resolve layer owns username normalization.
+        assert_eq!(
+            parse_channel_reference("@swodki"),
+            Ok(ChannelRef::Username("@swodki".to_string()))
+        );
+        assert_eq!(
+            parse_channel_reference("swodki"),
+            Ok(ChannelRef::Username("swodki".to_string()))
+        );
+    }
+
+    #[test]
+    fn parse_channel_reference_rejects_an_invalid_numeric_id() {
+        // All digits, so it is a numeric id — and an invalid one, not a username.
+        let err = parse_channel_reference("0").unwrap_err();
+        assert!(err.contains("Invalid channel_id"), "got: {err}");
+    }
 
     #[test]
     fn parse_channel_id_valid() {
