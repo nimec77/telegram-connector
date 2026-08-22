@@ -5,15 +5,28 @@
 
 use super::McpServer;
 use crate::link::{ChannelRef, parse_telegram_link};
-use crate::mcp::tools::helpers::{parse_cursor_bounds, wire_message_id};
+use crate::mcp::tools::helpers::{parse_channel_reference, parse_cursor_bounds, wire_message_id};
 use crate::mcp::tools::{
     GetMessageByLinkRequest, GetRecentMessagesRequest, MessageResponse, ResponseFormat,
-    SearchRequest, SearchResponse, fanout, json_response, parse_channel_id, parse_optional_utc,
-    shaping, validate_date_window,
+    SearchRequest, SearchResponse, fanout, json_response, parse_optional_utc, shaping,
+    validate_date_window,
 };
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
-use crate::telegram::types::{ChannelId, HistoryParams, SearchParams};
+use crate::telegram::types::{ChannelId, HistoryParams, SearchParams, SearchResult};
+use chrono::{DateTime, Utc};
+use std::future::Future;
+
+/// The per-call inputs of a fan-out beyond the per-channel fetch itself:
+/// what to merge to and how to shape the merged page.
+struct FanoutPage {
+    limit: u32,
+    query: String,
+    window_from: DateTime<Utc>,
+    window_to: Option<DateTime<Utc>>,
+    format: ResponseFormat,
+    max_text_length: u32,
+}
 
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {
     pub(super) async fn search_messages_impl(
@@ -99,61 +112,43 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         )?;
 
         if let Some(list) = scope {
-            if before_id.is_some() || after_id.is_some() {
-                return Err(
-                    "before_id/after_id require a single channel_id: cursor pagination is \
-                     per-channel"
-                        .to_string(),
-                );
-            }
-
-            // Rate cost for fan-out: one atomic acquire for the deduped channel
-            // count, so the D5 deficit message stays accurate.
-            self.rate_limiter
-                .acquire(list.len() as u32)
-                .await
-                .map_err(|e| e.to_string())?;
-
-            let outcomes = fanout::run(list, |reference| {
+            let fetch = |reference: String| {
                 let base = params_template.clone(); // SearchParams minus channel_id
                 async move {
-                    match self.search_channel_id(&reference).await {
-                        Ok(channel_id) => {
-                            let params = SearchParams {
-                                channel_id: Some(channel_id),
-                                ..base
-                            };
-                            self.telegram_client
-                                .search_messages(&params)
-                                .await
-                                .map_err(|e| e.to_string())
-                        }
-                        Err(e) => Err(e),
-                    }
+                    let channel_id = self.search_channel_id(&reference).await?;
+                    let params = SearchParams {
+                        channel_id: Some(channel_id),
+                        ..base
+                    };
+                    self.telegram_client
+                        .search_messages(&params)
+                        .await
+                        .map_err(|e| e.to_string())
                 }
-            })
-            .await;
-
-            let mut response = fanout::merge_results(
-                outcomes,
-                limit as usize,
-                request.query.clone(),
+            };
+            let page = FanoutPage {
+                limit,
+                query: request.query.clone(),
                 window_from,
-                to_date,
-            )?;
-            shaping::shape_response(
-                &mut response,
+                window_to: to_date,
                 format,
                 max_text_length,
-                /* cursor_eligible */ false,
-                self.response_byte_budget,
-                shaping::CompactScope::Multi,
-            )?;
-            return json_response(&response);
+            };
+            return self
+                .run_fanout(list, before_id.is_some() || after_id.is_some(), page, fetch)
+                .await;
         }
 
-        // Single-channel/global path. Numeric refs parse locally; a username
-        // ref spends one resolve RPC before the search itself (§1.3).
+        // Single-channel/global path: 1 token per search, acquired before the
+        // username resolve below so that RPC is metered like the fan-out
+        // path's per-channel resolve — never free work.
+        self.rate_limiter
+            .acquire(1)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // Numeric refs parse locally; a username ref spends one resolve RPC
+        // before the search itself (§1.3).
         let channel_id = match &request.channel_id {
             Some(reference) => Some(self.search_channel_id(reference).await?),
             None => None,
@@ -164,12 +159,6 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             channel_id,
             ..params_template
         };
-
-        // Acquire rate limiter tokens (1 token per search)
-        self.rate_limiter
-            .acquire(1)
-            .await
-            .map_err(|e| e.to_string())?;
 
         // Execute search
         let result = self
@@ -209,15 +198,73 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
     /// Numeric refs parse locally; username refs spend one resolve RPC (§1.3).
     async fn search_channel_id(&self, reference: &str) -> Result<ChannelId, String> {
-        if reference.chars().all(|c| c.is_ascii_digit()) {
-            parse_channel_id(reference)
-        } else {
-            self.telegram_client
-                .resolve_channel_identity(reference)
+        match parse_channel_reference(reference)? {
+            ChannelRef::Id(channel_id) => Ok(channel_id),
+            ChannelRef::Username(username) => self
+                .telegram_client
+                .resolve_channel_identity(&username)
                 .await
                 .map(|identity| identity.id)
-                .map_err(|e| e.to_string())
+                .map_err(|e| e.to_string()),
         }
+    }
+
+    /// Fan-out tail shared by `search_messages` and `get_recent_messages`:
+    /// one atomic acquire for the deduped channel count (so the D5 deficit
+    /// message stays accurate), bounded-concurrency fetch, newest-first
+    /// merge, multi-channel shaping.
+    ///
+    /// Tokens are charged per channel *attempted* and never refunded for
+    /// channels that end in `channel_errors`. A failed channel still spent a
+    /// resolve and/or fetch RPC against Telegram — the same resolve+fetch
+    /// shape of work `get_messages_batch` charges `acquire(1)` for — and a
+    /// refund would let a caller hammer an unresolvable channel at zero
+    /// cost, exactly the flood behaviour the limiter exists to prevent. The
+    /// media batch's per-id refund is a different case: its ids share one
+    /// fetch RPC, so a per-id charge is pessimistic; per-channel RPCs here
+    /// are not.
+    async fn run_fanout<F, Fut>(
+        &self,
+        list: Vec<String>,
+        has_cursor: bool,
+        page: FanoutPage,
+        fetch: F,
+    ) -> Result<String, String>
+    where
+        F: Fn(String) -> Fut,
+        Fut: Future<Output = Result<SearchResult, String>>,
+    {
+        if has_cursor {
+            return Err(
+                "before_id/after_id require a single channel_id: cursor pagination is \
+                 per-channel"
+                    .to_string(),
+            );
+        }
+
+        self.rate_limiter
+            .acquire(list.len() as u32)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let outcomes = fanout::run(list, fetch).await;
+
+        let mut response = fanout::merge_results(
+            outcomes,
+            page.limit as usize,
+            page.query,
+            page.window_from,
+            page.window_to,
+        )?;
+        shaping::shape_response(
+            &mut response,
+            page.format,
+            page.max_text_length,
+            /* cursor_eligible */ false,
+            self.response_byte_budget,
+            shaping::CompactScope::Multi,
+        )?;
+        json_response(&response)
     }
 
     pub(super) async fn get_recent_messages_impl(
@@ -277,56 +324,32 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         let channels = fanout::validate_channel_scope(&request.channel_id, &request.channel_ids)?;
         // channels: Option<Vec<String>> — Some(list) means fan-out.
         if let Some(list) = channels {
-            if before_id.is_some() || after_id.is_some() {
-                return Err("before_id/after_id require a single channel_id: cursor \
-                            pagination is per-channel"
-                    .to_string());
-            }
-
-            // Rate cost for fan-out: one atomic acquire for the deduped channel
-            // count, so the D5 deficit message stays accurate.
-            self.rate_limiter
-                .acquire(list.len() as u32)
-                .await
-                .map_err(|e| e.to_string())?;
-
-            let outcomes = fanout::run(list, |reference| {
+            let fetch = |reference: String| {
                 let base = params_template.clone(); // HistoryParams minus target
                 async move {
-                    match history_target(&reference) {
-                        Ok((channel_id, channel_identifier)) => {
-                            let params = HistoryParams {
-                                channel_id,
-                                channel_identifier,
-                                ..base
-                            };
-                            self.telegram_client
-                                .get_recent_messages(&params)
-                                .await
-                                .map_err(|e| e.to_string())
-                        }
-                        Err(e) => Err(e),
-                    }
+                    let (channel_id, channel_identifier) = history_target(&reference)?;
+                    let params = HistoryParams {
+                        channel_id,
+                        channel_identifier,
+                        ..base
+                    };
+                    self.telegram_client
+                        .get_recent_messages(&params)
+                        .await
+                        .map_err(|e| e.to_string())
                 }
-            })
-            .await;
-
-            let mut response = fanout::merge_results(
-                outcomes,
-                limit as usize,
-                String::new(),
+            };
+            let page = FanoutPage {
+                limit,
+                query: String::new(),
                 window_from,
-                to_date,
-            )?;
-            shaping::shape_response(
-                &mut response,
+                window_to: to_date,
                 format,
                 max_text_length,
-                /* cursor_eligible */ false,
-                self.response_byte_budget,
-                shaping::CompactScope::Multi,
-            )?;
-            return json_response(&response);
+            };
+            return self
+                .run_fanout(list, before_id.is_some() || after_id.is_some(), page, fetch)
+                .await;
         }
 
         // Single-channel path. The client owns resolution; the server no longer
@@ -426,9 +449,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
 /// Split a channel reference into HistoryParams' (channel_id, channel_identifier) pair.
 fn history_target(reference: &str) -> Result<(Option<ChannelId>, Option<String>), String> {
-    if reference.chars().all(|c| c.is_ascii_digit()) {
-        Ok((Some(parse_channel_id(reference)?), None))
-    } else {
-        Ok((None, Some(reference.to_string())))
-    }
+    Ok(match parse_channel_reference(reference)? {
+        ChannelRef::Id(channel_id) => (Some(channel_id), None),
+        ChannelRef::Username(username) => (None, Some(username)),
+    })
 }

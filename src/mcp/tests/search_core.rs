@@ -375,6 +375,39 @@ async fn search_passes_media_filter_to_params() {
 }
 
 #[tokio::test]
+async fn rate_limited_search_never_spends_a_resolve_rpc() {
+    use crate::error::Error;
+
+    // A username channel_id costs a resolve RPC before the search itself. That
+    // RPC is real Telegram work, so it must sit behind the limiter like the
+    // fan-out path's per-channel resolve does — otherwise repeated rejected
+    // searches could hammer username resolution at zero token cost.
+    let mut telegram = MockTelegramClientTrait::new();
+    telegram.expect_resolve_channel_identity().times(0);
+    telegram.expect_search_messages().times(0);
+
+    let mut limiter = MockRateLimiterTrait::new();
+    limiter.expect_acquire().returning(|_| {
+        Err(Error::RateLimit {
+            retry_after_seconds: 5,
+            detail: String::new(),
+        })
+    });
+    let server = McpServer::new(Arc::new(telegram), Arc::new(limiter));
+
+    let request = SearchRequest {
+        query: "тест".to_string(),
+        channel_id: Some("@swodki".to_string()),
+        ..Default::default()
+    };
+    let err = server
+        .search_messages_impl(request)
+        .await
+        .expect_err("the limiter's rejection must surface");
+    assert!(err.contains("rate limit"), "got: {err}");
+}
+
+#[tokio::test]
 async fn search_accepts_username_channel_id() {
     // §1.3 restoration: search_messages must accept a username channel_id,
     // not just a numeric one. The username is resolved to a ChannelId via
