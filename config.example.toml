@@ -40,11 +40,6 @@ phone_number = "+1234567890"
 # shutdown_timeout_seconds = 5             # Default: 5
 
 [search]
-# Optional: Search defaults
-# default_hours_back = 48                  # Default: 48
-# max_results_default = 20                 # Default: 20
-# max_results_limit = 100                  # Default: 100
-
 # Wall-clock budget for a search's accumulation loop. On expiry the search
 # returns the results gathered so far with "timed_out": true and
 # "partial": true in query_metadata — never an error, because partial

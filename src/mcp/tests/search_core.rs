@@ -408,6 +408,27 @@ async fn rate_limited_search_never_spends_a_resolve_rpc() {
 }
 
 #[tokio::test]
+async fn invalid_numeric_channel_id_is_rejected_before_any_token_is_spent() {
+    // Local validation precedes acquire on every tool: an all-digit channel_id
+    // that fails to parse never reaches Telegram, so it must not cost a token.
+    let telegram = MockTelegramClientTrait::new();
+    let mut limiter = MockRateLimiterTrait::new();
+    limiter.expect_acquire().times(0);
+    let server = McpServer::new(Arc::new(telegram), Arc::new(limiter));
+
+    let request = SearchRequest {
+        query: "тест".to_string(),
+        channel_id: Some("0".to_string()),
+        ..Default::default()
+    };
+    let err = server
+        .search_messages_impl(request)
+        .await
+        .expect_err("a non-positive numeric channel_id is invalid");
+    assert!(err.contains("Invalid channel_id"), "got: {err}");
+}
+
+#[tokio::test]
 async fn search_accepts_username_channel_id() {
     // §1.3 restoration: search_messages must accept a username channel_id,
     // not just a numeric one. The username is resolved to a ChannelId via

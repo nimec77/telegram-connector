@@ -7,8 +7,8 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 ## Current state
 
 - **v0.22.5** (released 2026-08-16), 16 MCP tools (16th:
-  `get_messages_media_batch`). 756 lib tests passing, 5 ignored (the 2026-08-22
-  review pass removed 23 tests of since-deleted dead API).
+  `get_messages_media_batch`). 758 lib tests passing, 5 ignored (the 2026-08-22
+  review pass removed 23 tests of since-deleted dead API and added 8).
   Coverage **78.33% lines** (`cargo llvm-cov --lib`; 76.19% for a full `cargo llvm-cov`
   run), compared approximately to the 75.1% audit-start baseline — that baseline predates
   stages 2–3, so it isn't a clean stage-4-only delta. Near-100% on domain
@@ -64,7 +64,8 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   (never N racing acquires) and **never refunds failed channels** — each still spent a
   resolve/fetch RPC, and a refund would make an unresolvable channel free to hammer (the
   media-batch refund differs: its ids share one fetch RPC, so a per-id charge is
-  pessimistic). Any resolve RPC sits *behind* `acquire`, on every path. Server defaults come from `config::defaults` with a
+  pessimistic). Server-wide invariant on every tool: **local validation before `acquire`,
+  every RPC after it** — a malformed id is rejected for free, a username resolve is never. Server defaults come from `config::defaults` with a
   desync-guard test; costs above `max_tokens` rejected at config load.
 - **Timeouts:** three global knobs by call type (`resolve`/`history`/`search`, plus
   `download`), not per-tool; a multi-page `next().await` walk lives inside *one*
