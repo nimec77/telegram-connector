@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `rate_limiting.refill_rate` must now be `> 0`. A zero (or negative, or
+  NaN) rate was accepted and produced a permanent lockout: the bucket drained
+  once and never refilled, while every rejection advised retrying after
+  `u64::MAX` seconds.
+- `search_messages` with a username `channel_id` now acquires its rate-limit
+  token *before* the username-resolve RPC, matching the fan-out path. The
+  resolve used to run unmetered, so repeated rejected searches could hammer
+  username resolution at zero token cost.
+
+### Changed
+- The two multi-channel fan-out tails (`search_messages`, `get_recent_messages`)
+  share one helper, which also documents the charging policy: tokens are
+  charged per channel attempted and never refunded for failed channels, since
+  each still spent a resolve/fetch RPC.
+
+### Removed
+- `[search] default_hours_back`, `max_results_default`, and
+  `max_results_limit` config keys. They were parsed but read by nothing; the
+  defaults and caps are the compiled-in `SearchParams` / `HistoryParams`
+  constants (48 h / 20 / 100). Existing config files that still carry the keys
+  keep loading — the keys are ignored.
+- Dead public surface with no production callers: `Error::Config` /
+  `Error::Network` / `Error::Mcp`, `SearchParams::new` / `Default`,
+  `HistoryParams::new` and its builder methods, `logging::redact_hash`,
+  `Message::is_recent` / `is_text_only`, and `Config::load` (use
+  `Config::load_from(None)`).
+
 ## [0.22.5] - 2026-08-16
 
 ### Fixed

@@ -60,6 +60,8 @@ impl<T: Transport<RoleServer>> Transport<RoleServer> for InstrumentedTransport<T
             _ => None,
         };
         // One extra serialization buys exact payload size + the recovery copy.
+        // Deliberately not gated on the buffer being enabled: the size also
+        // feeds the `bytes` field of every "Response written" log line below.
         let payload = response_id
             .as_ref()
             .and_then(|_| serde_json::to_string(&item).ok());
