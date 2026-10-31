@@ -333,3 +333,62 @@ fn an_unset_env_var_in_a_config_value_is_reported_not_silently_accepted() {
         "expansion must fail before the TOML parse stage is reached, got: {message}"
     );
 }
+
+#[test]
+fn config_parse_error_redacts_literal_and_expanded_secrets() {
+    let mut env_guard = EnvGuard::new();
+    let hash = "FAKE_CONFIG_PARSE_HASH_7c3a";
+    let phone = "+15550001234";
+    env_guard.set("CONFIG_PARSE_TEST_HASH", hash);
+    env_guard.set("CONFIG_PARSE_TEST_PHONE", phone);
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("config.toml");
+
+    // Both source excerpts and parser messages (including invalid values and keys)
+    // can contain secrets. Exercise real loading, expansion, and deserialization.
+    let cases = [
+        ("hash syntax", "api_id = 1\napi_hash = \"HASH\";\n"),
+        ("phone syntax", "api_id = 1\nphone_number = \"PHONE\";\n"),
+        ("hash type", "api_id = \"HASH\"\n"),
+        ("phone type", "api_id = \"PHONE\"\n"),
+        ("hash key", "api_id = 1\nHASH = 1\nHASH = 2\n"),
+    ];
+    let mut failures = Vec::new();
+    for expanded in [false, true] {
+        let (hash_input, phone_input) = if expanded {
+            ("${CONFIG_PARSE_TEST_HASH}", "${CONFIG_PARSE_TEST_PHONE}")
+        } else {
+            (hash, phone)
+        };
+        for (case, body) in cases {
+            let content = format!("[telegram]\n{body}")
+                .replace("HASH", hash_input)
+                .replace("PHONE", phone_input);
+            fs::write(&path, content).expect("write config");
+            let err = Config::load_from(Some(&path))
+                .expect_err("invalid config must fail")
+                .context("configuration startup failed");
+            let mut diagnostics = vec![
+                err.to_string(),
+                format!("{err:#}"),
+                format!("{err:?}"),
+                format!("{err:#?}"),
+            ];
+            for cause in err.chain() {
+                diagnostics.push(cause.to_string());
+                diagnostics.push(format!("{cause:?}"));
+            }
+            if diagnostics
+                .iter()
+                .any(|text| text.contains(hash) || text.contains(phone))
+            {
+                failures.push(format!("{case} (expanded={expanded}) leaks a secret"));
+            }
+            let chain = format!("{err:#}");
+            if !chain.contains("line ") || !chain.contains("column ") {
+                failures.push(format!("{case} (expanded={expanded}) lacks a location"));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}

@@ -357,8 +357,22 @@ impl Config {
         // This allows ${VAR} syntax in any field, including numeric fields like api_id
         let expanded_content = expand_env_vars(&content)?;
 
-        let config: Config =
-            toml::from_str(&expanded_content).context("Failed to parse config.toml")?;
+        let config: Config = toml::from_str(&expanded_content)
+            .map_err(|error: toml::de::Error| {
+                // Parser excerpts, messages, and keys may all contain credentials.
+                // Discard the original error entirely, including its Debug/source data.
+                if let Some(prefix) = error
+                    .span()
+                    .and_then(|span| expanded_content.get(..span.start))
+                {
+                    let line = prefix.bytes().filter(|&byte| byte == b'\n').count() + 1;
+                    let column = prefix.chars().rev().take_while(|&ch| ch != '\n').count() + 1;
+                    anyhow::anyhow!("Invalid TOML at line {line}, column {column}")
+                } else {
+                    anyhow::anyhow!("Invalid TOML (location unavailable)")
+                }
+            })
+            .context("Failed to parse config.toml")?;
 
         // Validate sub-configs that have non-credential invariants. Credential
         // validation is deferred to `validate_for_setup()` because the daemon path

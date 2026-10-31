@@ -64,6 +64,10 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   `"${VAR}"` whose expansion is pure digits gets unquoted so `api_id = "${VAR}"` parses as
   integer, while `+phone`/hashes stay strings. `api_id` is always required (SenderPool needs
   it); `api_hash`/`phone_number` only for `--setup`.
+- **Config parse diagnostics discard TOML errors**, including source excerpts, parser
+  messages and keys, because all may contain credentials after environment expansion.
+  Retain only numeric line/column through the loader's anyhow boundary; wrapping the
+  original error with a safe top-level message still leaks through debug/error chains.
 - **Rate limiter:** token bucket behind `Arc<Mutex>`, on-demand refill, non-blocking
   `acquire` (fail fast with `retry_after = ceil(deficit/refill_rate)` — MCP tools must not
   block the protocol). Batch tools acquire `cost × ids` up front and refund ids that

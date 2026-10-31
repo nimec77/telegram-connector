@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Config parse failures report only line and column, preventing literal or
+  environment-expanded credentials from appearing in error messages, debug output,
+  or nested error chains.
+
 ## [0.22.6] - 2026-08-22
 
 ### Fixed
