@@ -79,7 +79,7 @@ the installed ast-index skill when available.
 
 - Keep all three `grammers` dependencies pinned to the same Codeberg revision.
   Do not use the stale GitHub mirror or casually regenerate `Cargo.lock`.
-- `rmcp` v3.1 supports MCP 2026-07-28 and the legacy `initialize` handshake.
+- `rmcp` v3.8 supports MCP 2026-07-28 and the legacy `initialize` handshake.
   Gate version-specific response fields on the negotiated client protocol.
 - Apply the manual’s error/secret rules (§5), behavior-test workflow (§9), and
   checked-in formatter settings (§1). Never commit config/session files. The existing

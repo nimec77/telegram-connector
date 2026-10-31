@@ -1,0 +1,51 @@
+name: Security and dependency policy
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: 2
+
+jobs:
+  dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # reviewed 2026-10-16
+        with:
+          toolchain: nightly-2026-10-31
+      - name: Install pinned security tools
+        run: |
+          cargo install --locked cargo-audit --version 0.22.0
+          cargo install --locked cargo-deny --version 0.20.2
+      - name: Fresh advisories, unsoundness and yanks
+        run: cargo audit --deny unsound --deny yanked
+      - name: Source and advisory policy
+        run: cargo deny --locked check sources advisories
+      - name: Full external dependency license declarations
+        run: python3 scripts/check_dependency_policy.py
+      - name: Policy regression fixtures
+        run: python3 -m unittest discover -s scripts -p test_dependency_policy.py
+      - name: Install pinned workflow linter
+        run: |
+          curl --fail --show-error --location --output "$RUNNER_TEMP/actionlint.tar.gz" https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          printf '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  %s\n' "$RUNNER_TEMP/actionlint.tar.gz" | sha256sum --check
+          mkdir "$RUNNER_TEMP/actionlint"
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP/actionlint" actionlint
+      - name: Workflow syntax and expression checks
+        run: '"$RUNNER_TEMP/actionlint/actionlint" -shellcheck= -pyflakes='

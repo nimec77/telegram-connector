@@ -1,0 +1,35 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore(deps)
+    ignore:
+      - dependency-name: 'grammers-*'
+    groups:
+      rmcp:
+        patterns: [rmcp, rmcp-macros]
+        update-types: [minor, patch]
+      compatible-patches:
+        patterns: ['*']
+        exclude-patterns: [rmcp, rmcp-macros, 'grammers-*']
+        update-types: [patch]
+      stable-compatible-minors:
+        patterns: [anyhow, clap, directories, proptest, schemars, serde, serde_json, tempfile, thiserror, tokio, toml]
+        update-types: [minor]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:30'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore(deps)

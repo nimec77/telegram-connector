@@ -44,8 +44,8 @@ cargo test --locked
 ```
 
 `rust-toolchain.toml` selects nightly, rustfmt, and clippy, matching the existing
-CI channel. It selects a channel rather than freezing a dated nightly. Edition
-2024 alone does not choose a toolchain. Tests use mocks and require no Telegram
+CI channel. The required gate pins nightly-2026-10-31; a separate scheduled workflow checks
+floating nightly. Edition 2024 alone does not choose a toolchain. Tests use mocks and require no Telegram
 credentials. With cached dependencies, add `--offline` to Cargo build/clippy/test.
 Do not initialize a live Telegram session just to run development checks.
 
@@ -132,7 +132,7 @@ consolidation rather than a mechanical copy of overlapping orchestrators:
 ## Additional tools worth integrating
 
 Keep the mandatory gate small. Add tools in response to a concrete development need;
-none of the optional tools below is installed or enabled by this repository.
+the security tools below now run in dedicated CI jobs; other optional tools remain need-driven.
 
 | Integration | Why it fits this project | Suggested use |
 | --- | --- | --- |

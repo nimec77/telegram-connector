@@ -51,6 +51,20 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   resolve breaks". Never delete `Cargo.lock` casually; prefer targeted `cargo update -p` —
   the lockfile once masked a dead dependency graph (yanked `core2`/`glass_pumpkin` chain)
   for months.
+- **Stdio protocol/runtime:** rmcp 3.8 supports exactly tested 2026-07-28 and legacy
+  2025-11-25. A bounded raw-frame adapter preserves readable IDs, while per-request
+  context controls identity/caching/version fields. Default input cap 1MiB and 16
+  nonwaiting in-flight admissions are independent of account charging/output budgets.
+  Cooperative cancellation drops operations and suppresses queued late output; progress
+  is optional, token-bound, monotonic and nonblocking. Shutdown drains against one
+  configured deadline, including output; bootstrap writes separately use max(1s, grace)
+  to prevent saturated input hiding EOF. Observed zero-grace shutdown remains immediate.
+  Product bootstrap handlers stay local/nonblocking. A process-owned runtime avoids
+  macOS open-stdin exit hangs. Reuse runtime::image_job's two process-wide CPU permits,
+  retained inside started blocking closures. Uncorrelated errors omit id as allowed by
+  both dated MCP schemas; do not replace the SDK serializer merely to insert generic
+  JSON-RPC null IDs. Required CI/local nightly is pinned to 2026-10-31 with a separate
+  scheduled floating-nightly check.
 - **All tools in `server.rs` because `#[tool_router]` (attribute macro) scans the impl body
   before `macro_rules!` expansion** — a declaratively generated `#[tool]` method never
   registers. Boilerplate is factored via the `ToolInvocation` guard object instead.

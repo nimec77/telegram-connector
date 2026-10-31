@@ -1,15 +1,52 @@
 name: CI
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: 2
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    name: Quality (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1; Node24 hosted runner
         with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # reviewed 2026-10-16
+        with:
+          toolchain: nightly-2026-10-31
           components: rustfmt, clippy
-      - run: cargo fmt --all --check
-      - run: cargo clippy --locked --all-targets -- -D warnings
-      - run: cargo test --locked
+      - name: Fetch locked dependencies
+        run: cargo fetch --locked
+      - name: Formatting
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --offline --locked --all-targets -- -D warnings
+      - name: Tests and wire conformance
+        run: cargo test --offline --locked
+      - name: Release build
+        run: cargo build --offline --locked --release
+      - name: Offline process and second-client checks
+        run: |
+          cargo build --offline --locked --example offline_mcp_fixture
+          python3 scripts/test_stdio_process.py target/debug/examples/offline_mcp_fixture
+          python3 scripts/test_mcp_probe.py target/debug/examples/offline_mcp_fixture
+      - name: Dependency policy fixtures
+        run: python3 -m unittest discover -s scripts -p test_dependency_policy.py

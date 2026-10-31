@@ -1,0 +1,34 @@
+name: Floating nightly
+
+on:
+  schedule:
+    - cron: '43 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: 2
+
+jobs:
+  floating:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # reviewed 2026-10-16
+        with:
+          toolchain: nightly
+          components: rustfmt, clippy
+      - run: cargo fetch --locked
+      - run: cargo fmt --all --check
+      - run: cargo clippy --offline --locked --all-targets -- -D warnings
+      - run: cargo test --offline --locked

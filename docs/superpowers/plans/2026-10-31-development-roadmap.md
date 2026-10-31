@@ -18,7 +18,7 @@ fix RPC safety at the narrowest existing operation boundary.
 [media delivery proposal](../specs/2026-10-31-media-delivery-design.md).
 
 **Status:** All remaining tasks and linked alignment/media-M1 work are authorized.
-Tasks 1–4 are complete. Tasks 5–10 and standards alignment are in progress; optional
+Tasks 1–5 are complete. Tasks 6–10 and standards alignment are in progress; optional
 media M2/M3 remain separate product decisions. Fresh dependency targets are verified
 when each migration begins.
 
@@ -184,28 +184,37 @@ modify `src/mcp/server.rs`, `src/mcp/tests/server_core.rs`,
 `scripts/mcp_probe.py`, `src/main.rs`, `Cargo.toml`, `Cargo.lock` as required.
 **Produces:** offline wire harness and verified rmcp 3.8.0+ integration.
 
-- [ ] Build a mock-backed in-memory duplex harness using the same rmcp async transport
+- [x] Build a mock-backed in-memory duplex harness using the same rmcp async transport
   and instrumentation as production. Never require Telegram setup to test the protocol.
-- [ ] Cover discovery, a modern first `tools/list` without discovery/initialize, unknown
+- [x] Cover discovery, a modern first `tools/list` without discovery/initialize, unknown
   version, missing metadata, interleaved metadata, resultType/identity, cache fields,
   legacy initialization, malformed requests, unknown tools, notifications without replies,
   input size limits, EOF, cancellation and transport failures. Assert wire responses.
-- [ ] Characterize current behavior; for a known missing requirement, record a failing
+- [x] Characterize current behavior; for a known missing requirement, record a failing
   regression before changing production code. Preserve existing behavior where compliant.
-- [ ] Upgrade rmcp to current stable (snapshot 3.8.0); review 3.2/3.5/3.6 lifecycle and
+- [x] Upgrade rmcp to current stable (snapshot 3.8.0); review 3.2/3.5/3.6 lifecycle and
   transport changes. Prefer SDK handling; override only proven project gaps. Explicitly
   bound advertised versions to tested revisions rather than accepting all future defaults.
-- [ ] Verify MRTR/subscription dispatch and unadvertised-capability behavior. Keep dynamic
+- [x] Verify MRTR/subscription dispatch and unadvertised-capability behavior. Keep dynamic
   lists, user elicitation and optional extensions unadvertised without product handlers.
-- [ ] Add token-bound, monotonic progress for long transcription/media work, with no
+- [x] Add token-bound, monotonic progress for long transcription/media work, with no
   progress after completion/cancellation and no payload text in notifications. Verify
   cancellation cleanup of in-flight metrics; do not promise forced abortion of started
   `spawn_blocking` work, instead bound concurrency and stop scheduling more.
-- [ ] Apply `shutdown_timeout_seconds` as the actual graceful drain deadline, then cancel
+- [x] Apply `shutdown_timeout_seconds` as the actual graceful drain deadline, then cancel
   remaining operations and close transport. Test immediate completion, pending RPCs and
   deadline expiry; remove the fixed 100 ms sleep as a substitute for lifecycle management.
-- [ ] Extend the probe to select modern and legacy modes explicitly. Run protocol tests,
+- [x] Extend the probe to select modern and legacy modes explicitly. Run protocol tests,
   large media/recovery tests and full quality gate. Commit the SDK migration separately.
+
+**Verification:** SDK/runtime commits a34c518, 44aa543, 34e5bf6 and 6f3cb4b.
+Final gate 838 passed (5 existing ignored, 1 doctest ignored); 42 raw-wire cases and
+macOS offline subprocess/probe checks passed. Independent review's two Important
+findings were reproduced, fixed and accepted on scoped re-review. Bootstrap stall
+policy is max(1s, configured grace), separate from immediate observed zero-grace
+shutdown. Official 2026 and 2025 MCP bases both allow omitted error IDs when unreadable;
+the test now asserts that dated-schema behavior. Global test-log noise is tracked for
+S2 isolation. Linux execution remains required by final acceptance.
 
 ## Task 6: Refresh remaining dependencies, including Telegram
 

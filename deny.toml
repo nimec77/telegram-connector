@@ -1,0 +1,13 @@
+# Whole-graph source/advisory checks. License declarations are checked separately
+# by scripts/check_dependency_policy.py so the unassigned root license is not
+# silently granted or used to exclude its dependencies from the graph.
+[advisories]
+yanked = "deny"
+ignore = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = ["https://codeberg.org/Lonami/grammers"]
+required-git-spec = "rev"

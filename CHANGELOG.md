@@ -19,6 +19,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Development uses the authoritative Rust manual and reproducible module-grouped
   formatting, with documented compatibility and migration exceptions.
 
+
+- Upgrade rmcp to 3.8 and explicitly support the tested modern 2026-07-28 and
+  legacy 2025-11-25 revisions. Graceful shutdown now uses the configured deadline,
+  including blocked output; bootstrap stalls have a documented one-second minimum.
+- Pin local/required CI to nightly-2026-10-31 while preserving scheduled floating checks.
+
+### Added
+
+- Bounded stdio framing and admission, request-local protocol metadata, cooperative
+  cancellation and token-bound monotonic progress for long media/transcription work.
+- Linux/macOS CI, fresh security scans and explicit external dependency policy,
+  with reviewed action/tool pins and separate floating-nightly maintenance.
+
 ## [0.22.10] - 2026-10-31
 
 ### Fixed
