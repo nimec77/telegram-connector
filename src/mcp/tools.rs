@@ -2,6 +2,11 @@
 //!
 //! This module contains all 16 MCP tools.
 //! Tools are organized in subdirectory for better maintainability.
+//!
+//! Compatibility facade: request/response types remain available both here and
+//! through [`types`]. [`helpers`] and [`image`] keep their established public
+//! paths, but their string errors, wire coercions and image policy belong to the
+//! MCP boundary. Prefer strict Telegram domain constructors for new domain code.
 
 pub(crate) mod fanout;
 pub mod helpers;

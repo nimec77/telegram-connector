@@ -1,4 +1,10 @@
-//! Type conversion helpers for grammers types to our domain types.
+//! Compatibility conversion helpers from grammers types to domain data.
+//!
+//! Signatures intentionally depend on the pinned grammers/TL types. These pure
+//! helpers perform no RPCs, charging or peer resolution. Optional extractors return
+//! `None` when metadata/media is absent or unsupported; channel conversion returns
+//! `None` for peers that are not representable channels/groups. New consumers should
+//! prefer the client/domain facade instead of depending on upstream TL layout.
 //!
 //! Split into sub-domains (LM-4):
 //! - `media`   media classification, sizing, video/audio info

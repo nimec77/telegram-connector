@@ -2,6 +2,8 @@
 //!
 //! Unit of `observability` (LM-5).
 
+#![warn(missing_docs)]
+
 use crate::error::StateUnavailable;
 use std::collections::VecDeque;
 use std::sync::Mutex;
@@ -10,8 +12,11 @@ use std::time::SystemTime;
 /// One response kept for recovery via `get_last_responses`.
 #[derive(Debug, Clone)]
 pub struct BufferedResponse {
+    /// Display form of the request ID; internal correlation separately preserves ID type.
     pub request_id: String,
+    /// Recorded tool/method name.
     pub tool_name: String,
+    /// Wall-clock time at successful write observation.
     pub written_at: SystemTime,
     /// Byte count of the serialized JSON-RPC envelope (excludes the framing newline
     /// appended by the transport layer).
@@ -32,7 +37,9 @@ pub const OVERSIZED_PAYLOAD_STUB: &str =
 /// A consistent replay snapshot and its total retained entry count.
 #[derive(Debug)]
 pub struct ResponseSnapshot {
+    /// Requested newest-first subset from the same lock acquisition as the count.
     pub responses: Vec<BufferedResponse>,
+    /// Total entries retained before limiting the returned subset.
     pub buffered: usize,
 }
 
@@ -44,6 +51,8 @@ pub struct ResponseBuffer {
 }
 
 impl ResponseBuffer {
+    /// Create empty in-memory storage. Zero capacity disables replay; payloads
+    /// above `max_payload_bytes` are retained as size-preserving omission stubs.
     pub fn new(capacity: usize, max_payload_bytes: usize) -> Self {
         Self {
             capacity,

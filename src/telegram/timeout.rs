@@ -1,6 +1,8 @@
 //! Hard wall-clock timeout wrapper bounding grammers network operations.
 //!
-//! Extracted from `client.rs` (LM-2).
+//! Retained empty public compatibility module. Its timeout helper is crate-private;
+//! network timeout budgets are configured through [`crate::config::TimeoutConfig`].
+//! This module does not expose a general timeout service to embedders.
 
 use crate::error::Error;
 use std::future::Future;

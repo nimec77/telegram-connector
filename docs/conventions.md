@@ -5,7 +5,8 @@ errors, ownership, concurrency, documentation, and tests. Its adoption exception
 extracted test globs, the rmcp router layout, established constructors/builders, and
 documented conservative diagnostic wrappers and pending S4 import migration. Follow
 [AGENTS.md](../AGENTS.md) for repository workflow, source navigation, dependency constraints,
-and review invariants.
+and review invariants. The [Rust API inventory](rust-api.md) classifies supported,
+transitional and internal surfaces and records error/deadline/compatibility contracts.
 
 ## Development workflow
 

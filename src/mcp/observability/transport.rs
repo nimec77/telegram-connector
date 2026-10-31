@@ -30,6 +30,9 @@ pub struct InstrumentedTransport<T> {
 }
 
 impl<T> InstrumentedTransport<T> {
+    /// Decorate an existing transport without reading or writing it. This adds
+    /// diagnostics, not the production runtime's frame/admission/shutdown bounds;
+    /// the inner transport and caller retain their I/O/timeout responsibilities.
     pub fn new(
         inner: T,
         metrics: Arc<SessionMetrics>,

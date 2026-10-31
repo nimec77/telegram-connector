@@ -1,3 +1,5 @@
+//! Interactive setup workflow; never call while stdout carries MCP frames.
+
 use crate::error::Error;
 use crate::logging::redact_phone;
 use crate::telegram::client::TelegramClient;
@@ -9,7 +11,16 @@ use dialoguer::{Input, Password};
 /// - Authentication code (sent to Telegram app)
 /// - 2FA password (if enabled on account)
 ///
-/// Returns Ok(()) if authentication succeeds.
+/// Returns Ok(()) if authentication succeeds. This sends a login code and may
+/// authenticate/update the SQLite session. Human input waits are unbounded;
+/// request-code, sign-in and password RPCs each use the resolve timeout. Prompts
+/// can write terminal output, including a supplied 2FA hint. Account tool charging
+/// is not applied to setup.
+///
+/// # Errors
+/// Returns typed timeouts or redacted authentication failures for login RPCs,
+/// and authentication errors for terminal input failure. Passwords, login codes
+/// and challenge tokens are not retained in upstream error chains.
 ///
 /// # Manual testing
 ///

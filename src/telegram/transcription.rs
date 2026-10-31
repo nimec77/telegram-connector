@@ -1,6 +1,9 @@
 //! Pure, testable helpers for voice/video-note transcription:
 //! the poll-until-complete orchestrator, RPC-error mapping, and the
 //! media-type guard. None of these touch the network.
+//!
+//! [`TranscriptionDeadline`] is a compatibility path required by the public
+//! [`crate::TelegramClientTrait::transcribe_audio`] signature.
 
 use crate::error::Error;
 use crate::telegram::types::{MediaType, TranscriptionState};
@@ -18,6 +21,11 @@ pub struct TranscriptionDeadline {
 
 impl TranscriptionDeadline {
     /// Start the budget after local validation and rate-limit acquisition.
+    ///
+    /// Zero is an already-expired budget: production transcription returns a
+    /// typed timeout before any stage can start. Copying a deadline preserves its
+    /// absolute instant; it does not renew the budget. Use the validated MCP
+    /// transcription settings for configured requests.
     pub fn new(timeout_secs: u32) -> Self {
         Self {
             at: Instant::now() + Duration::from_secs(u64::from(timeout_secs)),

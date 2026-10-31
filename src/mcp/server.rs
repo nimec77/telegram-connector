@@ -1,3 +1,9 @@
+//! Supported MCP composition and tool entry points.
+//!
+//! Direct Rust tool calls keep the wire-oriented request wrappers and string
+//! errors. Transport progress/cancellation context exists only when run through
+//! the protocol runtime. Prefer [`McpServer`] builders for embedding.
+
 use crate::config::defaults::{
     default_media_batch_max_total_bytes, default_media_download_cost, default_response_byte_budget,
     default_transcription_cost, default_transcription_default_timeout,
@@ -26,6 +32,27 @@ use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+/// One MCP service sharing a client, limiter and session diagnostics through `Arc`.
+///
+/// Construction/builders perform no RPCs or account charges. Builders consume
+/// `self` and do not validate complete configuration: use the public configuration
+/// validators before applying hand-built or directly deserialized settings.
+/// Clones share client/limiter/metrics/replay handles. Replacing observability on
+/// one clone creates a fresh replay buffer for that clone, retaining its metrics.
+///
+/// Tool calls validate locally before acquisition and RPC. Fan-out charges each
+/// deduplicated channel attempted, including failures, without refunds. Media
+/// batches instead refund unproduced images after a successful shared fetch;
+/// a whole shared resolve/fetch failure retains at most one token of the charge. Message
+/// pagination is per channel; response byte trimming can prove `has_more` and
+/// produce a continuation cursor. Search deadline partials use explicit metadata,
+/// not fabricated pagination. Batch tools preserve per-item failures.
+///
+/// Status/replay are local diagnostics. Other tools may make Telegram RPCs;
+/// `open_message_in_telegram` additionally launches the OS URL handler. Most
+/// methods return serialized JSON/string errors; media methods return content
+/// blocks. String errors preserve established wire behavior rather than exposing
+/// the complete typed error domain to MCP callers.
 #[derive(Clone)]
 pub struct McpServer<T: TelegramClientTrait, R: RateLimiterTrait> {
     telegram_client: Arc<T>,
@@ -43,6 +70,8 @@ pub struct McpServer<T: TelegramClientTrait, R: RateLimiterTrait> {
 }
 
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {
+    /// Construct an inert service with default budgets and fresh diagnostics.
+    /// Session ownership and network tasks belong to the supplied client.
     pub fn new(telegram_client: Arc<T>, rate_limiter: Arc<R>) -> Self {
         let observability = ObservabilityConfig::default();
         Self {
@@ -64,7 +93,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         }
     }
 
-    /// Apply `[observability]` settings (ring buffer capacity, slow-write threshold).
+    /// Apply `[observability]` settings, replacing the replay buffer with an empty
+    /// one. Existing cloned handles still refer to their previous buffer.
     pub fn with_observability(mut self, config: &ObservabilityConfig) -> Self {
         self.response_buffer = Arc::new(ResponseBuffer::new(
             config.response_buffer_size,
@@ -145,7 +175,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         Arc::clone(&self.metrics)
     }
 
-    /// Response ring buffer handle (shared with the transport; used in tests).
+    /// Shared response replay handle. Enabled snapshots may report unavailable
+    /// storage; use fallible snapshots rather than compatibility emptiness getters.
     pub fn response_buffer(&self) -> Arc<ResponseBuffer> {
         Arc::clone(&self.response_buffer)
     }
@@ -184,7 +215,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         }
     }
 
-    /// Serve a configured stdio connection with graceful shutdown.
+    /// Serve one stdio connection with bounded admission and graceful shutdown.
+    /// Reserve stdout for MCP messages for the entire call. The shutdown future
+    /// must register/await a trigger; signal handling is not installed implicitly.
+    ///
+    /// # Errors
+    /// Returns invalid runtime limits, I/O, SDK initialization/task failures or
+    /// shutdown-trigger errors after cleanup; see [`Self::run_io`].
     pub async fn run_stdio_with_shutdown<F>(
         self,
         config: ServerConfig,
@@ -198,6 +235,17 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Serve an injectable byte stream using the production protocol runtime.
+    ///
+    /// EOF/shutdown starts one absolute drain budget shared by operations and
+    /// pending output. Cancellation drops async work, but cannot abort already
+    /// running blocking image processing. Embedders own runtime/process teardown.
+    /// Production bootstrap handlers are local and nonblocking; the generic
+    /// runtime does not promise to interrupt arbitrary blocking custom handlers.
+    /// See `docs/stdio-runtime.md` for framing, bootstrap stall and delivery races.
+    ///
+    /// # Errors
+    /// Invalid server limits fail before input is read. Transport I/O, SDK setup/
+    /// task and shutdown-future errors propagate after owned protocol cleanup.
     pub async fn run_io<I, O, F>(
         self,
         io: (I, O),
@@ -219,6 +267,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Serve stdio until EOF with default bounded runtime settings.
+    /// This does not install OS signal handlers; use [`Self::run_stdio_with_shutdown`]
+    /// for a trigger. The same I/O/lifecycle errors and teardown limits apply.
     pub async fn run_stdio(self) -> anyhow::Result<()> {
         self.run_stdio_with_shutdown(ServerConfig::default(), std::future::pending())
             .await

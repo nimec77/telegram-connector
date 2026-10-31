@@ -2,6 +2,8 @@
 //!
 //! Unit of `observability` (LM-5).
 
+#![warn(missing_docs)]
+
 use crate::error::StateUnavailable;
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -11,7 +13,9 @@ use std::time::{Instant, SystemTime};
 /// A request that has been received but not yet answered.
 #[derive(Debug, Clone)]
 pub struct InFlightRequest {
+    /// Tool/method identity associated with the request.
     pub tool_name: String,
+    /// Monotonic receipt instant used for latency observation.
     pub received_at: Instant,
 }
 
@@ -19,7 +23,9 @@ pub struct InFlightRequest {
 /// does not prevent request correlation, or vice versa.
 #[derive(Debug)]
 pub struct WriteObservation {
+    /// Matched identity, ordinary absence, or correlation unavailability.
     pub request: Result<Option<InFlightRequest>, StateUnavailable>,
+    /// Independent timestamp update result; does not govern the request result.
     pub last_write: Result<(), StateUnavailable>,
 }
 
@@ -43,6 +49,7 @@ impl Default for SessionMetrics {
 }
 
 impl SessionMetrics {
+    /// Start a local session with zero counts and no writes or pending identities.
     pub fn new() -> Self {
         Self {
             session_started_at: SystemTime::now(),
@@ -123,10 +130,12 @@ impl SessionMetrics {
         }
     }
 
+    /// Independent relaxed atomic count of requests recorded, even if correlation failed.
     pub fn requests_received(&self) -> u64 {
         self.requests_received.load(Ordering::Relaxed)
     }
 
+    /// Independent relaxed atomic count of successful writes observed.
     pub fn responses_written(&self) -> u64 {
         self.responses_written.load(Ordering::Relaxed)
     }
@@ -148,10 +157,12 @@ impl SessionMetrics {
             .map(|written| written.map(|instant| instant.elapsed().as_secs()))
     }
 
+    /// Wall-clock session start in RFC 3339 UTC, independent of poisoned locks.
     pub fn session_started_at_rfc3339(&self) -> String {
         chrono::DateTime::<chrono::Utc>::from(self.session_started_at).to_rfc3339()
     }
 
+    /// Monotonic elapsed seconds since creation, independent of poisoned locks.
     pub fn uptime_secs(&self) -> u64 {
         self.started_instant.elapsed().as_secs()
     }

@@ -6,6 +6,11 @@ use std::time::Duration;
 /// platform stdin read. The protocol runtime must finish its configured drain
 /// before this function returns. Started blocking work is not forcibly aborted:
 /// it may run until process exit, with image concurrency bounded separately.
+/// This creates its own runtime; call at a synchronous application entry point,
+/// not from inside an already-running Tokio runtime.
+///
+/// # Errors
+/// Returns runtime construction failure or the application's error unchanged.
 pub fn run<F: Future<Output = anyhow::Result<()>>>(application: F) -> anyhow::Result<()> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()

@@ -33,12 +33,16 @@ pub const SUPPORTED_VERSIONS: &[ProtocolVersion] =
 /// Failures of runtime setup, transport I/O, or SDK lifecycle ownership.
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeError {
+    /// Rejected input/admission/drain limits, before any input is read.
     #[error("Invalid server runtime configuration: {0}")]
     Configuration(anyhow::Error),
+    /// Read/write or supplied shutdown-trigger failure, reported after cleanup.
     #[error("Stdio transport failed: {0}")]
     Io(#[from] io::Error),
+    /// SDK bootstrap/negotiation failure outside an ordinary shutdown.
     #[error("MCP startup failed: {0}")]
     Initialize(#[from] Box<rmcp::service::ServerInitializeError>),
+    /// Owned SDK task failed to join normally.
     #[error("MCP service task failed: {0}")]
     Join(#[from] tokio::task::JoinError),
 }
@@ -50,7 +54,11 @@ pub struct Runtime {
     slow_write_threshold: Duration,
 }
 impl Runtime {
-    /// Create a bounded session. Invalid limits fail before any input is read.
+    /// Create a bounded session without reading input or acquiring account tokens.
+    ///
+    /// # Errors
+    /// Returns [`RuntimeError::Configuration`] when [`ServerConfig::validate`]
+    /// rejects the input/admission/drain limits.
     pub fn try_new(
         config: ServerConfig,
         metrics: Arc<SessionMetrics>,
@@ -73,6 +81,10 @@ impl Runtime {
     /// trigger. Its errors propagate after cleanup. Output writes share the same
     /// absolute shutdown deadline as operations. Started blocking CPU work remains
     /// non-abortable; callers own their process/runtime termination policy.
+    ///
+    /// # Errors
+    /// Returns transport/shutdown-trigger I/O, SDK initialization or owned-task
+    /// failures after cleanup. EOF and ordinary shutdown are successful outcomes.
     pub async fn serve<S, R, W, F>(
         self,
         service: S,

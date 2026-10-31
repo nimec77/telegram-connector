@@ -1,3 +1,7 @@
+//! Process-wide tracing setup, phone redaction and owned-log retention.
+//!
+//! MCP diagnostics go to stderr/files; stdout remains available for protocol data.
+
 use crate::config::LoggingConfig;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::layer::SubscriberExt;
@@ -5,7 +9,14 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer};
 
 /// Initialize tracing subscriber with configured format and output
-/// Supports dual output: stderr (configurable format) and file (JSON, daily rotation)
+/// Supports stderr plus optional daily JSON files. Reads `RUST_LOG`, creates the
+/// configured log directory/file when enabled, and attempts to install a global
+/// subscriber. An already-installed subscriber is accepted; existing global
+/// tracing configuration is not replaced.
+///
+/// # Errors
+/// File directory/appender creation failures propagate with context. This has
+/// process-global side effects and should be initialized once at application entry.
 pub fn init(config: &LoggingConfig) -> anyhow::Result<()> {
     // Build filter from config level or environment variable
     let filter =
@@ -115,7 +126,7 @@ fn redact(value: &str, visible_start: usize, visible_end: usize) -> String {
 
 /// Redact phone number for safe logging
 /// Shows first 4 chars + last 3 chars, hides middle
-/// Returns "[REDACTED]" for strings under 10 characters
+/// Returns `"[REDACTED]"` for strings under 10 characters
 pub fn redact_phone(phone: &str) -> String {
     redact(phone, 4, 3)
 }
@@ -126,7 +137,12 @@ pub fn redact_phone(phone: &str) -> String {
 /// Skips cleanup if:
 /// - file_enabled is false
 /// - max_log_days is 0 (keep logs forever)
-/// - log directory doesn't exist
+/// - log directory is absent or unreadable
+///
+/// Only regular files named `telegram-connector.YYYY-MM-DD.log` with valid dates
+/// are eligible, using filesystem modification age. Foreign files/directories
+/// remain untouched. Per-entry metadata/removal errors are skipped, so the count
+/// is best effort rather than a guarantee that all old logs were deleted.
 pub fn cleanup_old_logs(config: &LoggingConfig) -> anyhow::Result<usize> {
     // Skip if file logging disabled or max_days is 0 (infinite retention)
     if !config.file_enabled || config.max_log_days == 0 {

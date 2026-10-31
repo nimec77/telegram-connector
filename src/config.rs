@@ -1,3 +1,10 @@
+//! Configuration data and the filesystem/environment loading boundary.
+//!
+//! [`Config::load_from`] expands environment references and validates operational
+//! limits. Direct serde deserialization only supplies defaults and decodes fields;
+//! callers using it must invoke the relevant validation methods themselves.
+#![warn(missing_docs)]
+
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -8,27 +15,38 @@ mod env;
 use defaults::*;
 use env::expand_env_vars;
 
+/// Complete connector configuration; secrets remain wrapped in `SecretString`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
+    /// MTProto session, credentials, download bounds and RPC budgets.
     pub telegram: TelegramConfig,
+    /// Search accumulation budget and partial-result policy.
     #[serde(default = "default_search_config")]
     pub search: SearchConfig,
+    /// Account token bucket and weighted operation costs.
     #[serde(default = "default_rate_limit_config")]
     pub rate_limiting: RateLimitConfig,
+    /// Tracing output and daily file retention settings.
     #[serde(default = "default_logging_config")]
     pub logging: LoggingConfig,
+    /// Input, admission and graceful-drain limits.
     #[serde(default = "default_server_config")]
     pub server: ServerConfig,
+    /// Response recovery storage and write diagnostics.
     #[serde(default = "default_observability_config")]
     pub observability: ObservabilityConfig,
+    /// Default and maximum transcription request budgets.
     #[serde(default = "default_transcription_config")]
     pub transcription: TranscriptionConfig,
+    /// MCP message-stream and image payload budgets.
     #[serde(default = "default_limits_config")]
     pub limits: LimitsConfig,
 }
 
+/// Bounds for one protocol session, independent of account charges and output budgets.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ServerConfig {
+    /// One absolute drain budget after EOF or shutdown; zero cancels immediately.
     #[serde(default = "default_shutdown_timeout")]
     pub shutdown_timeout_seconds: u64,
     /// Maximum incoming NDJSON frame, including its newline (independent of output limits).
@@ -64,11 +82,12 @@ impl ServerConfig {
     }
 }
 
+/// MTProto connection/session settings; credentials are required only for setup.
 #[derive(Debug, Clone, Deserialize)]
 pub struct TelegramConfig {
-    /// API ID from https://my.telegram.org (always required for connection)
+    /// API ID from <https://my.telegram.org> (always required for connection)
     pub api_id: i32,
-    /// API hash from https://my.telegram.org (required only for --setup)
+    /// API hash from <https://my.telegram.org> (required only for --setup)
     #[serde(default, deserialize_with = "deserialize_optional_secret_string")]
     pub api_hash: Option<SecretString>,
     /// Phone number for authentication (required only for --setup)
@@ -89,15 +108,16 @@ pub struct TelegramConfig {
 
 /// Timeout budgets (seconds) applied to grammers calls in [`crate::telegram::client`].
 ///
-/// Three call categories share global budgets keyed by call type. Multi-iteration walks
+/// Call categories have separate budgets. Multi-iteration walks
 /// (`iter_messages.next()`, `search_iter.next()`) measure *total* elapsed time across all
 /// iterations, not per-iteration.
 #[derive(Debug, Clone, Deserialize)]
 pub struct TimeoutConfig {
-    /// Resolve / dialog-lookup operations (`resolve_username`, `iter_dialogs`).
+    /// Resolve/dialog lookups, account checks and authentication RPCs. Interactive
+    /// code/password entry is not timed; each login RPC gets this budget.
     #[serde(default = "default_resolve_secs")]
     pub resolve_secs: u64,
-    /// History walks (`iter_messages`, `get_message_by_id` fetch).
+    /// History/message fetches, subscribed-channel enumeration and transcription RPCs.
     #[serde(default = "default_history_secs")]
     pub history_secs: u64,
     /// Search walks (single-channel `search_iter`, global `search_all_messages`).
@@ -128,7 +148,7 @@ impl TimeoutConfig {
 }
 
 impl TelegramConfig {
-    /// Check if authentication credentials are present (api_hash, phone_number)
+    /// Check whether nonempty authentication credentials are present (api_hash, phone_number).
     /// Note: api_id is always required for connection, not just setup
     pub fn has_auth_credentials(&self) -> bool {
         self.auth_credentials().is_some()
@@ -138,7 +158,8 @@ impl TelegramConfig {
     /// when either is absent or empty.
     ///
     /// This is the single definition of "credentials are present";
-    /// [`Self::has_auth_credentials`] is its predicate form.
+    /// [`Self::has_auth_credentials`] is its predicate form. The returned strings
+    /// expose secret material to the caller; do not log or include them in errors.
     pub fn auth_credentials(&self) -> Option<(&str, &str)> {
         fn non_empty(secret: &SecretString) -> Option<&str> {
             Some(secret.expose_secret()).filter(|value| !value.is_empty())
@@ -178,6 +199,7 @@ const MAX_SEARCH_DEADLINE_SECONDS: u64 = 3600;
 /// `limits.media_batch_max_total_bytes` is validated against it here.
 pub(crate) const MIN_IMAGE_BASE64_BYTES: usize = 32_768;
 
+/// Cooperative search accumulation deadline, in addition to network timeouts.
 #[derive(Debug, Clone, Deserialize)]
 pub struct SearchConfig {
     /// Wall-clock budget for a search's accumulation loop. On expiry the
@@ -207,10 +229,13 @@ impl SearchConfig {
     }
 }
 
+/// Account token-bucket capacity, refill speed and weighted operation costs.
 #[derive(Debug, Clone, Deserialize)]
 pub struct RateLimitConfig {
+    /// Initial and maximum token capacity; builders do not validate this automatically.
     #[serde(default = "default_max_tokens")]
     pub max_tokens: u32,
+    /// Tokens restored per elapsed second on acquisition or snapshot.
     #[serde(default = "default_refill_rate")]
     pub refill_rate: f64,
     /// Tokens charged per get_message_media call (searches cost 1).
@@ -316,10 +341,13 @@ impl LimitsConfig {
     }
 }
 
+/// Process-wide tracing output and owned daily-log retention settings.
 #[derive(Debug, Clone, Deserialize)]
 pub struct LoggingConfig {
+    /// Tracing filter used when `RUST_LOG` is absent or invalid.
     #[serde(default = "default_log_level")]
     pub level: String,
+    /// Stderr format selector (`json` chooses JSON; other values use pretty text).
     #[serde(default = "default_log_format")]
     pub format: String,
     /// Enable file logging (default: true)
@@ -371,8 +399,20 @@ impl Config {
     /// If `config_path` is Some, uses that path. Otherwise, resolves the default path.
     /// Environment variables using `${VAR}` syntax are expanded before parsing.
     ///
-    /// Note: This does NOT validate credentials. Call `validate_for_setup()` if credentials
-    /// are required (e.g., when running with --setup flag).
+    /// Selects the explicit path, otherwise `TELEGRAM_MCP_CONFIG`, otherwise the
+    /// platform config directory. An unreadable selected path returns an error.
+    /// The file is read but never written; expansion does not mutate
+    /// the process environment and replacement values are not expanded recursively.
+    /// Validates timeouts, search, rate, server and output limits. This does not
+    /// authenticate or open a Telegram session. Call [`Self::validate_for_setup`]
+    /// separately when setup credentials are needed.
+    ///
+    /// # Errors
+    /// Returns contextual `anyhow` failures for path/read errors, missing or
+    /// non-Unicode values in referenced variables, malformed TOML and invalid limits. TOML
+    /// parser text and non-Unicode values are discarded so credentials do not
+    /// survive in Display, Debug or source chains; safe line/column context remains.
+    /// Paths and referenced environment variable names can appear in diagnostics.
     pub fn load_from(config_path: Option<&std::path::Path>) -> anyhow::Result<Self> {
         use anyhow::Context;
 
@@ -437,7 +477,11 @@ impl Config {
     }
 
     /// Validate that authentication credentials are present (required for --setup mode)
-    /// Note: api_id is always required and validated during config parsing
+    /// Only checks the presence of nonempty api_hash and phone_number; it does
+    /// not authenticate, validate API ID ranges, or contact Telegram.
+    ///
+    /// # Errors
+    /// Returns a secret-free description of required fields when either is absent.
     pub fn validate_for_setup(&self) -> anyhow::Result<()> {
         if !self.telegram.has_auth_credentials() {
             anyhow::bail!(
@@ -452,7 +496,8 @@ impl Config {
         Ok(())
     }
 
-    /// Apply CLI overrides to the configuration
+    /// Replace only the in-memory session path when an override is supplied.
+    /// Does not create/move a session or write configuration.
     pub fn apply_cli_overrides(&mut self, session_file: Option<std::path::PathBuf>) {
         if let Some(path) = session_file {
             self.telegram.session_file = path;

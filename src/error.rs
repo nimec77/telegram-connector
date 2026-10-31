@@ -1,73 +1,101 @@
+//! Typed domain/client failures and fixed unavailable-state identities.
+//!
+//! MCP tool boundaries preserve their existing string errors. Application setup
+//! and configuration continue to use contextual `anyhow` errors. String payloads
+//! below are not automatically redacted: constructors/callers must exclude secrets.
+#![warn(missing_docs)]
+
 use thiserror::Error;
 
+/// Domain/client operation failure. Existing exhaustive matches must handle new variants.
 #[derive(Error, Debug)]
 pub enum Error {
     /// Shared state was interrupted; its protected contents cannot be trusted.
     #[error(transparent)]
     Unavailable(#[from] StateUnavailable),
 
+    /// Authentication/session setup failure; interactive authentication redacts upstream details.
     #[error("authentication failed: {0}")]
     Auth(String),
-
+    /// Telegram API or transport failure in the established client error format.
     #[error("telegram API error: {0}")]
     TelegramApi(String),
-
+    /// Local token admission or upstream FLOOD_WAIT refusal; no automatic retry occurs.
     #[error("rate limit exceeded{detail}, retry after {retry_after_seconds} seconds")]
     RateLimit {
+        /// Suggested wait before retry, in seconds.
         retry_after_seconds: u64,
-        /// Pre-rendered deficit detail from the local limiter (leading ": "),
-        /// or empty when the wait comes from Telegram (FLOOD_WAIT) and no
-        /// token arithmetic exists.
+        /// Pre-rendered local deficit detail (leading ": "), or empty for upstream waits.
         detail: String,
     },
-
+    /// Invalid arguments or a referenced entity that cannot be found/represented.
     #[error("invalid input: {0}")]
     InvalidInput(String),
-
+    /// An async operation exceeded its configured budget; its future was dropped.
     #[error("operation '{operation}' timed out after {secs}s")]
-    Timeout { operation: String, secs: u64 },
-
+    Timeout {
+        /// Stable operation identity, such as `transcribe_audio`.
+        operation: String,
+        /// Configured budget in seconds, not a measured elapsed duration.
+        secs: u64,
+    },
+    /// Reported or streamed media exceeded the download cap.
     #[error("media too large: {size_bytes} bytes exceeds limit of {max_bytes} bytes")]
-    MediaTooLarge { size_bytes: u64, max_bytes: u64 },
-
+    MediaTooLarge {
+        /// Reported size or observed transfer size at refusal.
+        size_bytes: u64,
+        /// Configured byte cap.
+        max_bytes: u64,
+    },
+    /// The message has neither a supported image nor a usable visual thumbnail.
     #[error("message has no visual media (media type: {media_type})")]
-    NoVisualMedia { media_type: String },
-
+    NoVisualMedia {
+        /// Observed media type in the existing caller-facing vocabulary.
+        media_type: String,
+    },
+    /// Media transfer, decode or encode failure.
     #[error("media download failed: {0}")]
     DownloadFailed(String),
-
-    /// An image downloaded successfully but could not be shrunk under the
-    /// caller's base64 payload cap. Distinct from `DownloadFailed` because
-    /// the MCP batch tool reports the two with different machine-readable
-    /// reason tokens, and a retry helps only one of them.
+    /// Download succeeded, but bounded image shrinking could not meet the payload cap.
+    /// Distinct from DownloadFailed for MCP per-item reason tokens.
     #[error("image could not be reduced below the {limit}-byte payload cap")]
-    PayloadCapExceeded { limit: usize },
-
+    PayloadCapExceeded {
+        /// Requested maximum base64 payload bytes.
+        limit: usize,
+    },
+    /// The connected account lacks Telegram Premium for transcription.
     #[error("transcription requires Telegram Premium on the connected account")]
     PremiumRequired,
-
+    /// Telegram refused or failed transcription.
     #[error("transcription failed: {0}")]
     TranscriptionFailed(String),
-
+    /// Audio exceeds Telegram's transcription length limit.
     #[error("audio exceeds Telegram's transcription length limit")]
     VoiceTooLong,
-
+    /// Only voice messages and video notes are accepted for transcription.
     #[error(
         "message is not transcribable (media type: {media_type}); only voice and video_note are supported"
     )]
-    NotTranscribable { media_type: String },
+    NotTranscribable {
+        /// Actual media type in the existing caller-facing vocabulary.
+        media_type: String,
+    },
 }
 
 /// Fixed identities for unavailable synchronized state. No panic payload or
-/// protected contents are retained in this error.
+/// protected contents are retained in this error; no poison recovery is attempted.
 #[derive(Error, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StateUnavailable {
+    /// Account admission and token snapshots cannot trust the token bucket.
     #[error("rate limiter unavailable: interrupted critical section")]
     RateLimiter,
+    /// Last successful write timestamp is unavailable, rather than absent.
     #[error("last response write unavailable: interrupted critical section")]
     LastWrite,
+    /// Request-to-response correlation is unavailable, rather than unmatched.
     #[error("request correlation unavailable: interrupted critical section")]
     InFlight,
+    /// Enabled replay storage is unavailable, rather than empty or disabled.
     #[error("response replay unavailable: interrupted critical section")]
     ResponseBuffer,
 }

@@ -2,6 +2,10 @@
 //!
 //! Decode → downscale (longest side <= max_dimension) → JPEG q80 → base64,
 //! shrinking iteratively until the base64 payload fits the cap. No I/O.
+//!
+//! Compatibility API for MCP image policy, not a general image codec facade.
+//! Processing is synchronous CPU work; async embedders should offload it with
+//! their own bounded blocking-work policy.
 
 use crate::error::Error;
 use base64::Engine as _;
@@ -35,6 +39,14 @@ pub struct ProcessedImage {
 }
 
 /// Downscale and re-encode an image for return over MCP.
+///
+/// Never upscales. Already-fitting JPEG data is preserved byte for byte; other
+/// inputs become JPEG quality 80 and may shrink further to [`MAX_BASE64_LEN`].
+///
+/// # Errors
+/// Returns [`Error::DownloadFailed`] on decode/encode failure or
+/// [`Error::PayloadCapExceeded`] when bounded shrink attempts cannot fit the cap.
+/// No network download or account charge occurs here.
 pub fn process_image(bytes: &[u8], max_dimension: u32) -> Result<ProcessedImage, Error> {
     process_image_with_cap(bytes, max_dimension, MAX_BASE64_LEN)
 }

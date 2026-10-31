@@ -1,3 +1,6 @@
+//! Pure Telegram message link parsing and generation.
+#![warn(missing_docs)]
+
 use crate::error::Error;
 use crate::telegram::types::{ChannelId, MessageId};
 use serde::{Deserialize, Serialize};
@@ -5,7 +8,9 @@ use serde::{Deserialize, Serialize};
 /// Reference to a channel — either by username or numeric ID.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChannelRef {
+    /// Username text from a link; parsing does not validate username shape.
     Username(String),
+    /// Positive numeric channel ID from a members-only link.
     Id(ChannelId),
 }
 
@@ -18,6 +23,11 @@ pub enum ChannelRef {
 /// - `t.me/...` (no scheme)
 ///
 /// Query parameters (e.g. `?single`) and trailing slashes are stripped.
+/// No resolution or authorization occurs; username shape is left to the caller.
+///
+/// # Errors
+/// Returns [`Error::InvalidInput`] for an unsupported host/path, malformed numeric
+/// fields or nonpositive IDs. Message ID wire-range validation is separate.
 pub fn parse_telegram_link(link: &str) -> Result<(ChannelRef, MessageId), Error> {
     let path = link
         .strip_prefix("https://")
@@ -75,11 +85,17 @@ pub fn parse_telegram_link(link: &str) -> Result<(ChannelRef, MessageId), Error>
 /// and `open_message_in_telegram` (work-order B2).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MessageLink {
+    /// Channel ID used in members-only link forms.
     pub channel_id: ChannelId,
+    /// Message ID scoped to `channel_id`.
     pub message_id: MessageId,
+    /// Public username link when available, otherwise the members-only link.
     pub https_link: String,
+    /// Telegram application URI; constructing it does not launch an application.
     pub tg_protocol_link: String,
+    /// Members-only HTTPS link regardless of public username.
     pub internal_link: String,
+    /// Whether the caller supplied a public username.
     pub is_public: bool,
 }
 
@@ -87,7 +103,9 @@ impl MessageLink {
     /// Create links for a specific message in a channel.
     ///
     /// `username` is the channel's public username, if any — pass `None` for
-    /// private chats (never pass sentinel strings like `"unknown"`).
+    /// private chats (never pass sentinel strings like `"unknown"`). Username text is
+    /// interpolated as supplied; callers must obtain a real validated username.
+    /// This performs no escaping, RPC, authorization check or application launch.
     pub fn new(channel_id: ChannelId, message_id: MessageId, username: Option<&str>) -> Self {
         let internal_link = format!("https://t.me/c/{}/{}", channel_id, message_id);
         let (https_link, tg_protocol_link, is_public) = match username {

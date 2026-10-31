@@ -1,6 +1,10 @@
 //! Type-safe ID wrappers with validation.
 //!
-//! These wrapper types prevent accidental ID mixups at compile time.
+//! These wrapper types prevent accidental ID mixups at compile time. Constructors
+//! reject nonpositive IDs; derived deserialization preserves compatibility and
+//! does not run those checks. Message IDs are unique only within a channel.
+
+#![warn(missing_docs)]
 
 use crate::error::Error;
 use schemars::JsonSchema;
@@ -13,6 +17,11 @@ use std::fmt;
 pub struct ChannelId(i64);
 
 impl ChannelId {
+    /// Construct a positive ID without contacting Telegram.
+    ///
+    /// # Errors
+    /// Returns [`Error::InvalidInput`] for zero or a negative value. Positivity
+    /// alone does not prove that the entity exists or is accessible.
     pub fn new(id: i64) -> Result<Self, Error> {
         if id <= 0 {
             return Err(Error::InvalidInput(format!(
@@ -23,6 +32,7 @@ impl ChannelId {
         Ok(Self(id))
     }
 
+    /// Return the stored numeric ID without allocation.
     pub fn get(&self) -> i64 {
         self.0
     }
@@ -40,6 +50,11 @@ impl fmt::Display for ChannelId {
 pub struct MessageId(i64);
 
 impl MessageId {
+    /// Construct a positive ID without contacting Telegram.
+    ///
+    /// # Errors
+    /// Returns [`Error::InvalidInput`] for zero or a negative value. Positivity
+    /// alone does not prove that the entity exists or is accessible.
     pub fn new(id: i64) -> Result<Self, Error> {
         if id <= 0 {
             return Err(Error::InvalidInput(format!(
@@ -50,6 +65,7 @@ impl MessageId {
         Ok(Self(id))
     }
 
+    /// Return the stored numeric ID without allocation.
     pub fn get(&self) -> i64 {
         self.0
     }
@@ -73,6 +89,11 @@ impl fmt::Display for MessageId {
 pub struct UserId(i64);
 
 impl UserId {
+    /// Construct a positive ID without contacting Telegram.
+    ///
+    /// # Errors
+    /// Returns [`Error::InvalidInput`] for zero or a negative value. Positivity
+    /// alone does not prove that the entity exists or is accessible.
     pub fn new(id: i64) -> Result<Self, Error> {
         if id <= 0 {
             return Err(Error::InvalidInput(format!(
@@ -83,6 +104,7 @@ impl UserId {
         Ok(Self(id))
     }
 
+    /// Return the stored numeric ID without allocation.
     pub fn get(&self) -> i64 {
         self.0
     }

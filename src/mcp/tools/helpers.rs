@@ -1,6 +1,8 @@
 //! Shared helper functions for MCP tools.
 //!
-//! This module extracts common ID parsing logic used across multiple tools.
+//! Compatibility helpers for the MCP boundary. These preserve caller-facing
+//! string errors rather than the domain constructors' typed [`Error`] values.
+//! They are pure: they perform no RPCs, account charging or filesystem work.
 
 use crate::error::Error;
 use crate::link::ChannelRef;
@@ -25,9 +27,12 @@ fn error_detail(e: Error) -> String {
 /// * `Err(String)` - Error message describing the issue
 ///
 /// # Example
-/// ```ignore
+/// ```
+/// use telegram_connector::mcp::tools::parse_channel_id;
 /// let id = parse_channel_id("123456")?;
 /// assert_eq!(id.get(), 123456);
+/// assert!(parse_channel_id("0").is_err());
+/// # Ok::<(), String>(())
 /// ```
 pub fn parse_channel_id(id_str: &str) -> Result<ChannelId, String> {
     let id_num: i64 = id_str
@@ -81,6 +86,11 @@ pub fn parse_message_id(id: i64) -> Result<MessageId, String> {
 /// only in their cap. Returns the deduped ids alongside their wire (`i32`)
 /// forms, in the same order. Dedupe runs before the cap check, so a caller
 /// repeating an id is not penalised for it.
+///
+/// # Errors
+/// Returns a caller-facing string when the unique count exceeds `cap` or an ID
+/// is nonpositive or outside the Telegram `i32` wire range. Empty input succeeds;
+/// tool entry points separately enforce their nonempty-list policy.
 pub fn dedupe_and_validate_ids(ids: &[i64], cap: usize) -> Result<(Vec<i64>, Vec<i32>), String> {
     let mut seen = std::collections::HashSet::new();
     let unique: Vec<i64> = ids.iter().copied().filter(|id| seen.insert(*id)).collect();

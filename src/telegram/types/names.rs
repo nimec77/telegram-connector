@@ -1,4 +1,8 @@
-//! Validated string types for Telegram entities.
+//! String wrappers for Telegram entities, validated by their constructors.
+//!
+//! Derived deserialization preserves compatibility and bypasses constructor checks.
+
+#![warn(missing_docs)]
 
 use crate::error::Error;
 use schemars::JsonSchema;
@@ -12,6 +16,13 @@ use std::fmt;
 pub struct Username(String);
 
 impl Username {
+    /// Construct an observed username without trimming or removing `@`.
+    ///
+    /// # Errors
+    /// Returns [`Error::InvalidInput`] for empty input, more than 32 bytes, or
+    /// characters other than Unicode alphanumeric characters and underscores.
+    /// This intentionally accepts received short names; input resolution uses
+    /// the stricter ASCII [`Self::is_valid_shape`] policy.
     pub fn new(username: impl Into<String>) -> Result<Self, Error> {
         let username = username.into();
 
@@ -31,6 +42,7 @@ impl Username {
         Ok(Self(username))
     }
 
+    /// Borrow the stored name without allocating.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -67,6 +79,10 @@ impl fmt::Display for Username {
 pub struct ChannelName(String);
 
 impl ChannelName {
+    /// Trim surrounding whitespace and construct a display name.
+    ///
+    /// # Errors
+    /// Returns [`Error::InvalidInput`] when the trimmed name is empty.
     pub fn new(name: impl Into<String>) -> Result<Self, Error> {
         let name = name.into();
         let trimmed = name.trim();
@@ -78,6 +94,7 @@ impl ChannelName {
         Ok(Self(trimmed.to_string()))
     }
 
+    /// Borrow the stored name without allocating.
     pub fn as_str(&self) -> &str {
         &self.0
     }

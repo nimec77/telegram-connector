@@ -1,4 +1,10 @@
-//! MCP tool request and response types with JSON schemas.
+//! MCP tool request and response compatibility types with JSON schemas.
+//!
+//! These are wire-facing DTOs, not a replacement for strict domain constructors.
+//! Existing nested request/response/deserializer paths and facade exports remain
+//! supported compatibility paths. Flexible scalar coercion occurs here; failures
+//! use serde/string boundary errors. Public field literals remain allowed, so
+//! adding fields or changing Rust field types is distinct from wire compatibility.
 //!
 //! ## Module Organization
 //! - `requests` - Request types for each MCP tool

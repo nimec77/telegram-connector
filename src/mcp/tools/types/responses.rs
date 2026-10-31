@@ -33,6 +33,8 @@ pub struct StatusResponse {
     #[schemars(
         description = "Seconds since the last successful response write (null before the first)"
     )]
+    /// Age of the last successful write. `None` without an unavailable reason
+    /// means no write yet; `None` with the reason means untrusted timestamp state.
     pub last_response_write_age_secs: Option<u64>,
 
     /// Present only when timestamp state is unavailable. Without this field, a null
@@ -57,6 +59,8 @@ pub struct StatusResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct RateLimiterStatus {
     #[schemars(description = "Tokens currently available (null when unavailable)")]
+    /// Available tokens after refill; `None` means unavailable, never a proven zero.
+    /// The accompanying `unavailable` reason distinguishes failure on the wire.
     pub tokens: Option<f64>,
 
     /// Present only when the token snapshot is unavailable; capacity/refill remain valid.

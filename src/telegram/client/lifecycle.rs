@@ -10,7 +10,15 @@ impl TelegramClient {
     /// This handles both first-time setup (no session) and returning users (with session).
     /// If session exists, it will be loaded and used. Otherwise, a new session is created.
     ///
-    /// After creation, call `refresh_account_status()` to determine if authentication is needed.
+    /// After creation, call [`crate::TelegramClientTrait::refresh_account_status`]
+    /// to determine if authentication is needed. Creates parent directories, opens
+    /// or migrates the SQLite session, and spawns the sender-pool runner. Config
+    /// values are copied without validation; use the configuration validators.
+    /// Construction itself has no aggregate timeout or account limiter charge.
+    ///
+    /// # Errors
+    /// Returns [`Error::Auth`] for session directory/open/migration failures.
+    /// Does not prompt or perform interactive login.
     pub async fn new(config: &TelegramConfig, search: &SearchConfig) -> Result<Self, Error> {
         // Create parent directory if it doesn't exist
         if let Some(parent) = config.session_file.parent() {
@@ -57,12 +65,15 @@ impl TelegramClient {
         })
     }
 
-    /// Get access to the underlying grammers client (for authentication)
+    /// Borrow the upstream grammers client for compatibility/integration.
+    /// Calls made through it bypass this crate's validation, charging, redaction
+    /// and timeout wrappers; the embedder owns those policies.
     pub fn client(&self) -> &Client {
         &self.client
     }
 
-    /// Get access to the session (for saving)
+    /// Borrow the upstream SQLite session. Mutating it directly bypasses the
+    /// connector's lifecycle policy; this signature tracks pinned grammers.
     pub fn session(&self) -> &SqliteSession {
         &self.session
     }

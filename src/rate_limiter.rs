@@ -1,3 +1,8 @@
+//! Account token-bucket admission, independent of protocol in-flight admission.
+//!
+//! No network operations or automatic retries occur here. The client trait does
+//! not acquire this limiter; MCP entry points own validation/acquisition ordering.
+
 use crate::config::RateLimitConfig;
 use crate::error::{Error, StateUnavailable};
 use std::sync::{Arc, Mutex};
@@ -66,7 +71,9 @@ pub struct RateLimiter {
 }
 
 impl RateLimiter {
-    /// Create a new rate limiter from configuration
+    /// Create a full token bucket without I/O. Call [`RateLimitConfig::validate`]
+    /// first for hand-built/deserialized configuration; construction does not
+    /// validate or wait. Available-token reads refill against elapsed time.
     pub fn new(config: &RateLimitConfig) -> Self {
         let bucket = TokenBucket::new(config.max_tokens, config.refill_rate);
         Self {
@@ -101,11 +108,19 @@ impl RateLimiter {
     }
 }
 
-/// Trait for rate limiting (allows mocking in tests)
+/// Injectable account admission policy, deliberately unsealed for external limiters.
+/// Custom implementations own waiting/storage behavior; the production bucket
+/// refuses immediately rather than sleeping or retrying.
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
 pub trait RateLimiterTrait: Send + Sync {
-    /// Acquire tokens, returning error if rate limit exceeded
+    /// Acquire account tokens before any corresponding RPC.
+    ///
+    /// # Errors
+    /// Production returns [`Error::RateLimit`] with a retry hint when tokens are
+    /// insufficient, or [`Error::Unavailable`] when synchronized state is
+    /// poisoned, including zero-token requests. Failed acquisition spends no
+    /// tokens. No retry/wait is performed by the production implementation.
     async fn acquire(&self, tokens: u32) -> Result<(), Error>;
 
     /// Return tokens taken by an `acquire` whose work did not happen.

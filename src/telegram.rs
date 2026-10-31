@@ -1,3 +1,11 @@
+//! Telegram client facade and domain data used by the MCP server.
+//!
+//! Prefer [`TelegramClient`], [`TelegramClientTrait`] and [`types`] for new Rust
+//! integrations. Nested client/trait/type paths, converters and timeout modules
+//! remain for compatibility. Real client construction opens a session and starts
+//! its sender task; domain construction alone is inert. Client methods do not
+//! acquire the MCP account limiter; callers own charging and local validation.
+
 pub(crate) mod albums;
 pub mod auth;
 pub mod client;
