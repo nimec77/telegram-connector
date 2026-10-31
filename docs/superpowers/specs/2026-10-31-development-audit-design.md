@@ -1,7 +1,11 @@
 # Development audit and proposed direction
 
 Date: 2026-10-31. Baseline: `40f7b114f7024822ee1c77445d46e0ee4ab733b2`, package 0.22.6.
-Status: analysis and proposal only; no implementation authorized by this document.
+Status: historical audit/design baseline. Tasks 1–7 and Task 9 automation are implemented
+and reviewed in 0.23.0; Task 8/media-M1 and final acceptance remain pending. The
+[active roadmap](../plans/2026-10-31-development-roadmap.md) records current progress and
+validation ownership. Findings and source line references below describe the audit baseline,
+not a current list of unresolved defects.
 
 Follow-up requests are incorporated through the [Rust coding manual](../../rust-style.md)
 and [media delivery analysis](2026-10-31-media-delivery-design.md). The completed standards

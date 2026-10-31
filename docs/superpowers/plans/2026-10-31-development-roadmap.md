@@ -17,11 +17,11 @@ fix RPC safety at the narrowest existing operation boundary.
 [media delivery proposal](../specs/2026-10-31-media-delivery-design.md). The completed
 standards alignment plan is archived in Git history.
 
-**Status:** Tasks 1–7 and Rust standards alignment are complete; execution stopped
-after Task 7 at the user's request. Task 8/media-M1 and final Task 10 acceptance remain
-pending. Task 9 automation was implemented earlier; its final acceptance follows the
-validation ownership below. Optional media M2/M3 remain separate product decisions.
-This plan update does not resume implementation.
+**Status:** Version 0.23.0 is integrated into local `master`. Tasks 1–7, Task 9 automation,
+and Rust standards alignment are implemented and independently reviewed. Task 8/media-M1
+and final Task 10 acceptance remain pending; optional media M2/M3 remain separate product
+decisions. The completed standards plan is archived in Git history. Updating documentation
+does not resume the remaining implementation.
 
 ## Global constraints
 
@@ -241,25 +241,30 @@ remaining-task acceptance policy above.
 `src/telegram/client/*.rs`, converters/tests touched by upstream types.
 **Produces:** current direct versions and reviewed compatible transitives.
 
-- [ ] Requery authoritative versions; record exact resolved targets and compare against
+- [x] Requery authoritative versions; record exact resolved targets and compare against
   the audit table. Patch compatible serialization/config dependencies first. Include
   declarations already satisfied by newer lockfile versions in the review.
-- [ ] Update base64 0.22→0.23, mockall 0.14→0.15, proptest 1.11→1.12 as separate
+- [x] Update base64 0.22→0.23, mockall 0.14→0.15, proptest 1.11→1.12 as separate
   reviewable changes. Preserve byte-identical JPEG passthrough and paused-time tests.
-- [ ] Move all three grammers pins together to one reviewed SHA (snapshot
+- [x] Move all three grammers pins together to one reviewed SHA (snapshot
   `1e31e73cd9797790905bbea82cd75adcbe6f1242`). Review all changed TL enum matches and error
   variants; retain raw pagers while `Message.peers` is private.
-- [ ] Add missing behavior fixtures before adaptations: missing/deleted messages,
+- [x] Add missing behavior fixtures before adaptations: missing/deleted messages,
   communities/megagroups, forward-envelope attribution, same-number peer kinds,
   date windows, album boundaries and per-channel cursors. Test production conversion and
   paging decisions, not mocks alone; investigate peer collisions before changing behavior.
-- [ ] Refresh remaining compatible transitives without deleting the lockfile. Inventory
+- [x] Refresh remaining compatible transitives without deleting the lockfile. Inventory
   duplicate majors, yanked versions, licenses and sources. For every blocked latest major,
   record its upstream constraint and removal path; do not force incompatible versions.
-- [ ] Run the macOS quality gate, release build and fresh audit per migration
+- [x] Run the macOS quality gate, release build and fresh audit per migration
   group. Linux checks follow the owner-managed policy above. No live migration is claimed
   from offline tests; use a disposable mocked session fixture for session format checks.
   Commit each dependency group independently.
+
+**Verification:** Dependency migration groups and independent review completed through
+`cd6aed1`. The resolved pins, compatibility fixtures, fresh audit and transitive blockers
+are recorded in [the dependency snapshot](../../dependency-status.md). Task 7 subsequently
+added the dev-only schema validator and validated its expanded graph.
 
 ## Task 7: Add canonical typed JSON and output schemas
 
@@ -301,7 +306,8 @@ scoped validator policy in `d6a9bc8` were independently approved. macOS passed
 wire/schema/process checks and fresh dependency/security checks. See
 [the migration guide](../../tool-contract.md) for the new default, legacy mode,
 Rust API compatibility and the work deferred to Task 8. The user subsequently authorized
-a version bump and integration into the primary branch; Task 8 remains pending.
+a version bump and integration: `fc4938a` records 0.23.0 on local `master`.
+Task 8 remains pending.
 
 ## Task 8: Preserve budgets and isolate recovery across the new contract
 
@@ -350,20 +356,25 @@ media/search/recovery tests.
 dependency-update configuration; `rust-toolchain.toml`, `justfile`, README/docs.
 **Produces:** repeatable maintenance rather than a one-time update.
 
-- [ ] Pin reviewed action SHAs (checkout snapshot v7.0.1); set minimal read permissions
+- [x] Pin reviewed action SHAs (checkout snapshot v7.0.1); set minimal read permissions
   and disable credential persistence in checks. Verify updated runner/runtime requirements.
-- [ ] Pin one tested current dated nightly in local and CI configuration; retain a
+- [x] Pin one tested current dated nightly in local and CI configuration; retain a
   separate scheduled floating-nightly check. Do not switch project toolchain policy.
-- [ ] Add fresh advisory scans on PRs and a schedule, with vulnerability and unsoundness
+- [x] Add fresh advisory scans on PRs and a schedule, with vulnerability and unsoundness
   handling explicit. Any exception names advisory, rationale, owner and expiry.
-- [ ] Add reviewed dependency update automation, with rmcp, grammers, and incompatible
+- [x] Add reviewed dependency update automation, with rmcp, grammers, and incompatible
   updates separated. Grammers revisions require review; do not automate tracking master.
-- [ ] Introduce source/license/yank checks only with an explicit policy covering the
+- [x] Introduce source/license/yank checks only with an explicit policy covering the
   existing Codeberg source; no blanket unknown-license approvals. Keep the normal gate fast.
-- [ ] Validate workflow/config syntax and run offline quality checks on macOS.
+- [x] Validate workflow/config syntax and run offline quality checks on macOS.
   Linux execution is owner-managed and is not required for acceptance. Document only
   verified platform support; optional Windows support remains unverified unless tested.
   Commit automation.
+
+**Verification:** Automation and the metadata policy were implemented and independently
+reviewed in `30dafc7` / `11c0a71`, with later exact validator-license exceptions in
+`d6a9bc8`. Workflow syntax, policy fixtures and local macOS checks passed. Hosted CI
+execution is not implied; final acceptance after Task 8 remains Task 10.
 
 ## Task 10: Final acceptance and independent review
 

@@ -1,6 +1,6 @@
 # Dependency and toolchain maintenance
 
-Normal CI checks Linux and macOS with `nightly-2026-10-31`, locked dependency
+The configured CI matrix targets Linux and macOS with `nightly-2026-10-31`, locked dependency
 fetching, offline formatting/Clippy/tests/release builds, and the offline stdio
 process/probe checks. The floating-nightly workflow is scheduled/manual and separate
 from the reproducible required gate. Windows runtime support remains unverified.
@@ -57,6 +57,8 @@ in CI. Primary references: [checkout v7.0.1](https://github.com/actions/checkout
 [cargo-deny](https://github.com/EmbarkStudios/cargo-deny/releases/tag/0.20.2),
 [actionlint](https://github.com/rhysd/actionlint/releases/tag/v1.7.12).
 
-Local tool/config validation is separate from hosted execution. Record the actual
-Linux/macOS CI run and installed versions at final acceptance; configuration alone
-does not prove a workflow ran or a live Telegram session migrated.
+Local tool/config validation is separate from hosted execution. Agent validation runs on
+macOS; Linux setup and checks are owner-managed if needed and do not block the remaining
+agent tasks. Existing CI configuration remains in place. Record the platform and actual
+run evidence when reporting results; configuration alone does not prove a hosted workflow
+ran or a live Telegram session migrated. See the [remaining-task validation policy](superpowers/plans/2026-10-31-development-roadmap.md#validation-ownership-for-remaining-tasks).

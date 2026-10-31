@@ -1,11 +1,12 @@
 # Versioned tool output and migration
 
-MCP calls default to `[server] output_format = "json_v1"`. This application contract is
+Starting with version 0.23.0, MCP calls default to `[server] output_format = "json_v1"`.
+This application contract is
 independent of MCP 2026-07-28 versus the retained 2025-11-25 handshake, and of a search
 request’s `format = "full" | "compact"`. The default changes the application wire format;
 existing clients that parse the historical text can explicitly select `output_format =
-"legacy"` while migrating. No release/version change or publication is implied by this
-implementation stage.
+"legacy"` while migrating. The 0.23.0 changelog records this default and the Rust API
+migration; see [CHANGELOG.md](../CHANGELOG.md#0230---2026-10-31).
 
 ## Envelope and errors
 
@@ -26,7 +27,8 @@ premium_required, transcription_failed, voice_too_long and not_transcribable. A 
 error includes integer retry_after_seconds and is retryable; timeouts are retryable. Other
 categories conservatively report false, without claiming arbitrary provider failures are
 transient. No automatic retry occurs. Canonical messages omit raw provider/auth/download
-payloads. Typed argument decoding uses the input schema rather than exposing parser values.
+payloads. Typed argument decoding reports safe validation errors without exposing
+parser values.
 
 Valid argument objects with missing required or invalid typed fields produce tool errors.
 Missing/null arguments behave as an empty object: optional-only requests may succeed,
@@ -52,8 +54,8 @@ lookup, under the same resolve deadline and account charge. No extra resolution 
 performed merely to fill output IDs. Search retains a username-resolved namespace through
 SearchParams and applies it to the existing dialog traversal; numeric-only requests remain
 unqualified. An incomplete search dialog traversal keeps the existing deadline partial
-semantics and never starts message fetches from a provisional identity. Source identity remains available for all-missing
-message batches and all-failed media batches.
+semantics and never starts message fetches from a provisional identity. Source identity
+remains available for all-missing message batches and all-failed media batches.
 
 Dates serialize as RFC3339 UTC. Unknown counts and nullable base fields remain null;
 optional enrichment fields are omitted when absent. Envelope data/error keys are always
@@ -116,17 +118,18 @@ invented for canonical output. New Error variants affect exhaustive matches. Dom
 Deserialize now delegates to the original constructors, preserving valid JSON types while
 rejecting invalid values and normalizing channel-name whitespace. See [Rust API](rust-api.md).
 
-## Stage boundary: work deliberately not completed here
+## Remaining budget and recovery work
 
-This is Task 7. Existing message shaping still measures the legacy payload, not the full
+Version 0.23.0 completes the typed-output migration (roadmap Task 7). Existing message
+shaping still measures the legacy payload, not the full
 serialized canonical JSON-RPC response and duplicate fallback. The one-message floor and
 existing image/base64 caps remain. Full-wire 40,000-byte message sizing, a separate 65,536-byte
 non-binary media overhead cap, keyed recovery/TTL/reservations and bounded raw-media pipeline
 belong to Task 8 and are not advertised as implemented. get_last_responses currently remains
 a process-wide diagnostic ring, including in json_v1; it does not offer conversation isolation
 or targeted recovery. These limitations must be resolved/reviewed before a release claiming
-the complete audit design. No additional media/recovery implementation was included after
-the user narrowed the remaining scope to Task 7.
+the complete audit design. These changes remain in the
+[remaining roadmap](superpowers/plans/2026-10-31-development-roadmap.md#task-8-preserve-budgets-and-isolate-recovery-across-the-new-contract).
 
 The shared renderer retains typed mutable data until conversion/assembly: WireData::canonical
 returns concrete data plus separate image blocks, and tool_result serializes one envelope.

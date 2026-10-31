@@ -6,9 +6,11 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Current state
 
-- **Modernization through Task 7 is complete.** There are 16 tools. Task 7 adds default
-  `json_v1` typed structured output with matching text and explicit legacy mode; see [tool-contract.md](tool-contract.md). macOS Task 7 validation
-  passed 892 library tests and 3 doctests. The remaining roadmap is still pending.
+- **v0.23.0 is integrated into local `master`.** There are 16 tools. Modernization through
+  Task 7 and the maintenance automation (Task 9) are implemented and reviewed. Canonical
+  `json_v1` output is the default, with matching text and explicit legacy mode; see
+  [tool-contract.md](tool-contract.md). The macOS gate and merged-checkout tests passed
+  892 library tests and 3 doctests. Task 8/media-M1 and Task 10 acceptance remain pending.
   Required nightly is 2026-10-31; rmcp is 3.8; all three grammers crates use reviewed
   Codeberg revision `1e31e73cd9797790905bbea82cd75adcbe6f1242` (0.11).
 - **Coverage baseline remains the 2026-08-22 measurement:** 78.33% lines for the library
@@ -142,16 +144,17 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   break (grammers has no `min_id` setter); both exclusive. Message ids are only unique per
   channel, so global search reports `has_more` but never a `next_cursor`. `has_more` means
   "a qualifying message was refused by limit/budget", not "window exhausted". Byte budget
-  (`[limits] response_byte_budget`, 40 000) is pop-oldest-until-fits over the fully-shaped
-  response, with an at-least-one-message floor (the one documented way a response may exceed
-  budget).
+  (`[limits] response_byte_budget`, 40 000) trims the shaped legacy message payload,
+  retaining at least one message even if it exceeds that payload budget. Canonical envelope,
+  duplicate fallback and full JSON-RPC sizing remain Task 8 work.
 - **Albums:** `PostCounter` counts posts against `limit`, not raw messages — an admitted
   album is never split at the limit boundary (a page can exceed `limit` raw messages). A
   lone surviving sibling stays a plain message (`album: None`).
-- **Per-item failures are data, not errors:** `get_messages_batch.missing_ids`, fan-out
-  `channel_errors`, `resolve_channels` per-identifier `channel` XOR `error`. Batch
-  invariant: every requested id lands in exactly one of `messages`/`missing_ids`. Only
-  transport-level failure fails the call.
+- **Per-item failures remain data:** message batches expose `missing` entries, fan-out
+  retains `channel_errors`, and resolution returns per-identifier channel-or-error outcomes.
+  Each deduplicated requested message ID is in returned `messages`, `missing`, or
+  budget-trimmed `omitted_ids`; the internal Telegram batch uses `missing_ids`. Canonical
+  entries retain typed safe errors. Whole-operation failures still fail the call.
 - **Fan-out lives at the MCP layer** over the existing single-channel trait methods
   (`futures::stream::iter(..).buffered(4)`) — client/mock untouched, merge logic pure and
   unit-testable.
@@ -182,9 +185,10 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   resolution is a full uncached dialog walk (`resolve_peer`), so N looped calls pay N walks
   regardless of concurrency — hoist resolution out of the loop, resolve+fetch once per
   batch. Live: 4.4–7.2× faster.
-- **Test organization:** `#[path]`-extracted test files (no `mod.rs` ever);
-  `EnvGuard`/`ENV_LOCK` in `src/config/tests.rs`; shared fixtures in `src/test_helpers.rs`.
-  Deterministic time tests use `#[tokio::test(start_paused = true)]` + `time::advance`.
+- **Test organization:** `#[path]`-extracted test files (no `mod.rs`), with shared fixtures
+  in `src/test_helpers.rs`. Environment/path loaders and global logging run in subprocesses;
+  pure expansion tests inject lookups. Do not mutate the parent environment. Deterministic
+  time tests use `#[tokio::test(start_paused = true)]` + `time::advance`.
 
 ## Gotchas & lessons
 
@@ -250,8 +254,6 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   The `../tests/` idiom: `converters/message.rs` declares
   `#[path = "../tests/message_tests.rs"]` to reuse `telegram/tests/` instead of a one-file
   `converters/tests/` dir.
-- **`EnvGuard` cannot be nested** — `ENV_LOCK` is a plain non-reentrant `Mutex`; exactly one
-  guard per test body or self-deadlock.
 - **A test-only invariant kept in a recipe/doc ("run serially") is a latent race** — enforce
   it in the test module (lock), not the invocation.
 - **`rmcp::RequestContext<RoleServer>` can't be constructed in unit tests** — factor logic
