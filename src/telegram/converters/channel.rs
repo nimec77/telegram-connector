@@ -132,7 +132,11 @@ pub(crate) fn channel_identity(peer: &grammers_client::peer::Peer) -> Option<Cha
         // a message link, when fed into the link builder — pre-existing behavior.
         Peer::User(u) => u.username().map(str::to_string),
     };
-    Some(ChannelIdentity { id, username })
+    Some(ChannelIdentity {
+        peer_namespace: peer_namespace(peer),
+        id,
+        username,
+    })
 }
 
 /// Keep peer namespaces outside SDK-coupled code in a neutral domain enum.

@@ -17,6 +17,7 @@ use std::sync::Arc;
 
 fn identity(id: i64, username: Option<&str>) -> ChannelIdentity {
     ChannelIdentity {
+        peer_namespace: crate::telegram::types::PeerNamespace::Channel,
         id: ChannelId::new(id).expect("valid test id"),
         username: username.map(str::to_string),
     }
@@ -34,6 +35,12 @@ async fn generate_message_link_public_channel_returns_public_forms() {
         .return_once(|_| Ok(identity(1144180066, Some("swodki"))));
     let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+    #[cfg(target_os = "macos")]
+    let server = {
+        let mut server = server;
+        server.desktop_launcher = Arc::new(FakeDesktop);
+        server
+    };
 
     let request = GenerateLinkRequest {
         channel_id: "1144180066".to_string(),
@@ -67,6 +74,12 @@ async fn generate_message_link_accepts_username_input() {
         .return_once(|_| Ok(identity(1144180066, Some("swodki"))));
     let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+    #[cfg(target_os = "macos")]
+    let server = {
+        let mut server = server;
+        server.desktop_launcher = Arc::new(FakeDesktop);
+        server
+    };
 
     let request = GenerateLinkRequest {
         channel_id: "swodki".to_string(),
@@ -92,6 +105,12 @@ async fn generate_message_link_private_chat_returns_internal_forms() {
         .return_once(|_| Ok(identity(521440428, None)));
     let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+    #[cfg(target_os = "macos")]
+    let server = {
+        let mut server = server;
+        server.desktop_launcher = Arc::new(FakeDesktop);
+        server
+    };
 
     let request = GenerateLinkRequest {
         channel_id: "521440428".to_string(),
@@ -121,6 +140,12 @@ async fn generate_message_link_without_tg_protocol() {
         .return_once(|_| Ok(identity(999, None)));
     let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+    #[cfg(target_os = "macos")]
+    let server = {
+        let mut server = server;
+        server.desktop_launcher = Arc::new(FakeDesktop);
+        server
+    };
 
     let request = GenerateLinkRequest {
         channel_id: "999".to_string(),
@@ -146,6 +171,12 @@ async fn generate_message_link_unknown_channel_errors() {
         .return_once(|_| Err(Error::InvalidInput("Channel not found: @nope".to_string())));
     let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+    #[cfg(target_os = "macos")]
+    let server = {
+        let mut server = server;
+        server.desktop_launcher = Arc::new(FakeDesktop);
+        server
+    };
 
     let request = GenerateLinkRequest {
         channel_id: "@nope".to_string(),
@@ -182,6 +213,12 @@ async fn open_message_in_telegram_unknown_channel_errors() {
         });
     let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+    #[cfg(target_os = "macos")]
+    let server = {
+        let mut server = server;
+        server.desktop_launcher = Arc::new(FakeDesktop);
+        server
+    };
 
     let request = OpenMessageRequest {
         channel_id: "invalid".to_string(),
@@ -210,6 +247,12 @@ async fn open_message_in_telegram_uses_public_tg_form_by_default() {
         .return_once(|_| Ok(identity(1144180066, Some("swodki"))));
     let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+    #[cfg(target_os = "macos")]
+    let server = {
+        let mut server = server;
+        server.desktop_launcher = Arc::new(FakeDesktop);
+        server
+    };
 
     let request = OpenMessageRequest {
         channel_id: "swodki".to_string(),
@@ -235,6 +278,12 @@ async fn open_message_in_telegram_uses_https_when_requested() {
         .return_once(|_| Ok(identity(123456, None)));
     let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
+    #[cfg(target_os = "macos")]
+    let server = {
+        let mut server = server;
+        server.desktop_launcher = Arc::new(FakeDesktop);
+        server
+    };
 
     let request = OpenMessageRequest {
         channel_id: "123456".to_string(),
@@ -278,4 +327,17 @@ async fn open_message_in_telegram_errors_on_non_macos() {
             .expect_err("must be unsupported")
             .contains("only supported on macOS")
     );
+}
+
+#[cfg(target_os = "macos")]
+struct FakeDesktop;
+#[cfg(target_os = "macos")]
+#[async_trait::async_trait]
+impl crate::mcp::server::desktop::DesktopLauncher for FakeDesktop {
+    fn supported(&self) -> bool {
+        true
+    }
+    async fn open(&self, _link: &str) -> Result<(), Error> {
+        Ok(())
+    }
 }

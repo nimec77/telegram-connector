@@ -20,6 +20,7 @@ async fn search_messages_returns_results() {
     let mut mock_client = MockTelegramClientTrait::new();
     let expected_result = SearchResult {
         messages: vec![Message {
+            peer_namespace: Some(crate::telegram::types::PeerNamespace::Channel),
             id: MessageId::new(1).unwrap(),
             channel_id: ChannelId::new(123).unwrap(),
             channel_name: ChannelName::new("Test Channel").unwrap(),
@@ -257,6 +258,7 @@ async fn search_allows_empty_query_with_media_filter() {
     let mut mock_client = MockTelegramClientTrait::new();
     let expected_result = SearchResult {
         messages: vec![Message {
+            peer_namespace: Some(crate::telegram::types::PeerNamespace::Channel),
             id: MessageId::new(1).unwrap(),
             channel_id: ChannelId::new(123).unwrap(),
             channel_name: ChannelName::new("Test Channel").unwrap(),
@@ -439,6 +441,7 @@ async fn search_accepts_username_channel_id() {
         .withf(|r| r == "@swodki")
         .returning(|_| {
             Ok(ChannelIdentity {
+                peer_namespace: crate::telegram::types::PeerNamespace::Channel,
                 id: ChannelId::new(1144180066).expect("id"),
                 username: Some("swodki".into()),
             })

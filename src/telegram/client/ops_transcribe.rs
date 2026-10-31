@@ -74,6 +74,11 @@ impl TelegramClient {
         .await;
 
         Ok(TranscriptionOutcome {
+            channel_id: crate::telegram::converters::channel_identity(&peer)
+                .ok_or(Error::UnsupportedPeer)?
+                .id,
+            peer_namespace: crate::telegram::converters::peer_namespace(&peer),
+            message_id: crate::telegram::types::MessageId::new(i64::from(message_id))?,
             text: final_state.text,
             partial,
             media_type,

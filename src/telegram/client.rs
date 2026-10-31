@@ -10,8 +10,7 @@ use crate::error::Error;
 use crate::telegram::trait_def::TelegramClientTrait;
 use crate::telegram::transcription::TranscriptionDeadline;
 use crate::telegram::types::{
-    AccountStatus, HistoryParams, MediaDownload, MediaFetchOutcome, SearchParams, SearchResult,
-    TranscriptionOutcome,
+    AccountStatus, HistoryParams, MediaDownload, SearchParams, SearchResult, TranscriptionOutcome,
 };
 use grammers_client::Client;
 use grammers_session::storages::SqliteSession;
@@ -151,7 +150,7 @@ impl TelegramClientTrait for TelegramClient {
         channel_ref: &str,
         message_ids: &[i32],
         max_dimension: u32,
-    ) -> Result<Vec<MediaFetchOutcome>, Error> {
+    ) -> Result<crate::telegram::types::MediaBatch, Error> {
         self.download_messages_media_impl(channel_ref, message_ids, max_dimension)
             .await
     }
@@ -169,7 +168,7 @@ impl TelegramClientTrait for TelegramClient {
     async fn resolve_channels(
         &self,
         identifiers: &[String],
-    ) -> Result<Vec<crate::telegram::ChannelResolution>, Error> {
+    ) -> Result<Vec<crate::telegram::ChannelResolution<Error>>, Error> {
         self.resolve_channels_impl(identifiers).await
     }
 

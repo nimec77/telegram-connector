@@ -66,6 +66,8 @@ pub struct McpServer<T: TelegramClientTrait, R: RateLimiterTrait> {
     transcription_max_timeout_secs: u32,
     response_byte_budget: usize,
     media_batch_max_total_bytes: usize,
+    output_format: crate::config::OutputFormat,
+    desktop_launcher: Arc<dyn desktop::DesktopLauncher>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -89,8 +91,24 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             transcription_max_timeout_secs: default_transcription_max_timeout(),
             response_byte_budget: default_response_byte_budget() as usize,
             media_batch_max_total_bytes: default_media_batch_max_total_bytes() as usize,
+            output_format: crate::config::OutputFormat::JsonV1,
+            desktop_launcher: Arc::new(desktop::SystemLauncher),
             tool_router: Self::tool_router(),
         }
+    }
+
+    /// Select the application output mode, independently of protocol negotiation.
+    /// Existing direct tool methods remain legacy convenience adapters.
+    #[must_use]
+    pub fn with_output_format(mut self, format: crate::config::OutputFormat) -> Self {
+        self.output_format = format;
+        self.tool_router = Self::tool_router();
+        if format == crate::config::OutputFormat::Legacy {
+            for route in self.tool_router.map.values_mut() {
+                route.attr.output_schema = None;
+            }
+        }
+        self
     }
 
     /// Apply `[observability]` settings, replacing the replay buffer with an empty
@@ -263,13 +281,17 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         O: tokio::io::AsyncWrite + Unpin + Send + 'static,
         F: Future<Output = std::io::Result<()>> + Send,
     {
+        let server = self.with_output_format(config.output_format);
         let runtime = crate::mcp::runtime::Runtime::try_new(
             config,
-            self.metrics(),
-            self.response_buffer(),
-            self.slow_write_threshold,
+            server.metrics(),
+            server.response_buffer(),
+            server.slow_write_threshold,
         )?;
-        runtime.serve(self, io, shutdown).await.map_err(Into::into)
+        runtime
+            .serve(server, io, shutdown)
+            .await
+            .map_err(Into::into)
     }
 
     /// Serve stdio until EOF with default bounded runtime settings.
@@ -280,17 +302,22 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     /// Returns runtime setup, transport I/O, or SDK/task failures after cleanup,
     /// as described by [`Self::run_stdio_with_shutdown`].
     pub async fn run_stdio(self) -> anyhow::Result<()> {
-        self.run_stdio_with_shutdown(ServerConfig::default(), std::future::pending())
+        let config = ServerConfig {
+            output_format: self.output_format,
+            ..ServerConfig::default()
+        };
+        self.run_stdio_with_shutdown(config, std::future::pending())
             .await
     }
 }
 
-// The inherent `*_impl` methods (the real tool logic) live in themed
-// sibling modules under `server/`; the `#[tool]` wrappers below delegate
-// to them. Kept out of this file so it stays focused on the macro-bound
-// router + handler (LM-3).
+// Typed `*_data` operations live in themed sibling modules. `impl_legacy`
+// adapts them for existing direct Rust methods; registered wire methods call
+// typed operations directly. The complete router remains visible to rmcp.
+mod desktop;
 mod impl_channels;
 mod impl_discovery;
+mod impl_legacy;
 mod impl_links;
 mod impl_media;
 mod impl_message_batch;
@@ -306,7 +333,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     // ========================================================================
 
     /// Tool 1: check_mcp_status - Health check and diagnostics
-    #[tool(description = "Check MCP connection status, rate limiter state, and session counters")]
+    /// Legacy direct adapter; configured output mode affects registered MCP calls only.
+    ///
+    /// # Errors
+    /// Returns legacy text for invalid inputs, unavailable state, refused admission,
+    /// operation/timeout failures or serialization failure. Partial per-item outcomes
+    /// remain successful data; status observations retain explicit unavailability.
     pub async fn check_mcp_status(&self, id: RequestId) -> Result<String, String> {
         let inv = ToolInvocation::start("check_mcp_status", id);
         tracing::info!(
@@ -318,7 +350,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Tool 2: get_subscribed_channels - List user's Telegram channels with pagination
-    #[tool(description = "List user's subscribed Telegram channels with pagination support")]
+    /// Legacy direct adapter; configured output mode affects registered MCP calls only.
+    ///
+    /// # Errors
+    /// Returns legacy text for invalid inputs, unavailable state, refused admission,
+    /// operation/timeout failures or serialization failure. Partial per-item outcomes
+    /// remain successful data; status observations retain explicit unavailability.
     pub async fn get_subscribed_channels(
         &self,
         Parameters(request): Parameters<GetChannelsRequest>,
@@ -336,7 +373,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Tool 3: get_channel_info - Get detailed information about a Telegram channel
-    #[tool(description = "Get detailed information about a Telegram channel by username or ID")]
+    /// Legacy direct adapter; configured output mode affects registered MCP calls only.
+    ///
+    /// # Errors
+    /// Returns legacy text for invalid inputs, unavailable state, refused admission,
+    /// operation/timeout failures or serialization failure. Partial per-item outcomes
+    /// remain successful data; status observations retain explicit unavailability.
     pub async fn get_channel_info(
         &self,
         Parameters(request): Parameters<GetChannelInfoRequest>,
@@ -353,9 +395,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Tool 4: generate_message_link - Generate deep links for a Telegram message
-    #[tool(
-        description = "Generate shareable deep links for a Telegram message (accepts channel ID or username; public channels get https://t.me/<username> links)"
-    )]
+    /// Legacy direct adapter; configured output mode affects registered MCP calls only.
+    ///
+    /// # Errors
+    /// Returns legacy text for invalid inputs, unavailable state, refused admission,
+    /// operation/timeout failures or serialization failure. Partial per-item outcomes
+    /// remain successful data; status observations retain explicit unavailability.
     pub async fn generate_message_link(
         &self,
         Parameters(request): Parameters<GenerateLinkRequest>,
@@ -374,9 +419,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Tool 5: open_message_in_telegram - Open message in Telegram Desktop (macOS)
-    #[tool(
-        description = "Open a specific message in Telegram Desktop application (macOS only; accepts channel ID or username)"
-    )]
+    /// Legacy direct adapter; configured output mode affects registered MCP calls only.
+    ///
+    /// # Errors
+    /// Returns legacy text for invalid inputs, unavailable state, refused admission,
+    /// operation/timeout failures or serialization failure. Partial per-item outcomes
+    /// remain successful data; status observations retain explicit unavailability.
     pub async fn open_message_in_telegram(
         &self,
         Parameters(request): Parameters<OpenMessageRequest>,
@@ -395,15 +443,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Tool 6: search_messages - Search messages across Telegram channels
-    #[tool(
-        description = "Search messages across subscribed Telegram channels with optional \
-                       filters. Scoping with channel_id or channel_ids is cheaper than an \
-                       unscoped global search and supports cursor pagination \
-                       (before_id/after_id); global searches support neither, because there \
-                       is no per-channel offset to resume from. A search that exceeds its \
-                       configured deadline returns the results gathered so far with \
-                       query_metadata.timed_out and .partial set, never an error."
-    )]
+    /// Legacy direct adapter; configured output mode affects registered MCP calls only.
+    ///
+    /// # Errors
+    /// Returns legacy text for invalid inputs, unavailable state, refused admission,
+    /// operation/timeout failures or serialization failure. Partial per-item outcomes
+    /// remain successful data; status observations retain explicit unavailability.
     pub async fn search_messages(
         &self,
         Parameters(request): Parameters<SearchRequest>,
@@ -425,9 +470,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Tool 7: get_recent_messages - Get recent messages from a channel by time window
-    #[tool(
-        description = "Get recent messages from one channel - or fan out over up to 20 channels via channel_ids - by time window (no search query needed)"
-    )]
+    /// Legacy direct adapter; configured output mode affects registered MCP calls only.
+    ///
+    /// # Errors
+    /// Returns legacy text for invalid inputs, unavailable state, refused admission,
+    /// operation/timeout failures or serialization failure. Partial per-item outcomes
+    /// remain successful data; status observations retain explicit unavailability.
     pub async fn get_recent_messages(
         &self,
         Parameters(request): Parameters<GetRecentMessagesRequest>,
@@ -448,9 +496,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Tool 8: get_message_by_link - Get a specific message by its t.me link
-    #[tool(
-        description = "Get a specific Telegram message by its t.me link (e.g. https://t.me/swodki/575403)"
-    )]
+    /// Legacy direct adapter; configured output mode affects registered MCP calls only.
+    ///
+    /// # Errors
+    /// Returns legacy text for invalid inputs, unavailable state, refused admission,
+    /// operation/timeout failures or serialization failure. Partial per-item outcomes
+    /// remain successful data; status observations retain explicit unavailability.
     pub async fn get_message_by_link(
         &self,
         Parameters(request): Parameters<GetMessageByLinkRequest>,
@@ -467,9 +518,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Tool 9: get_last_responses - Recover recently written responses
-    #[tool(
-        description = "Debug/recovery: return the last N tool responses written to stdout, so a response lost in transit can be re-fetched without re-querying Telegram or spending rate-limit budget"
-    )]
+    /// Legacy direct adapter; configured output mode affects registered MCP calls only.
+    ///
+    /// # Errors
+    /// Returns legacy text for invalid inputs, unavailable state, refused admission,
+    /// operation/timeout failures or serialization failure. Partial per-item outcomes
+    /// remain successful data; status observations retain explicit unavailability.
     pub async fn get_last_responses(
         &self,
         Parameters(request): Parameters<GetLastResponsesRequest>,
@@ -486,9 +540,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Tool 10: get_message_media - Return a message's photo (or video thumbnail) as an image
-    #[tool(
-        description = "Get a message's photo (or the thumbnail of its video/animation/video note) as an image the model can see, plus a JSON metadata block. Photos are downscaled (max_dimension, default 1280) and re-encoded as JPEG. Heavier than a search: charged media_download_cost rate-limit tokens. For more than one image, use get_messages_media_batch instead of looping this tool."
-    )]
+    /// Legacy direct adapter; configured output mode affects registered MCP calls only.
+    ///
+    /// # Errors
+    /// Returns legacy text for invalid inputs, unavailable state, refused admission,
+    /// operation/timeout failures or serialization failure. Partial per-item outcomes
+    /// remain successful data; status observations retain explicit unavailability.
     pub async fn get_message_media(
         &self,
         Parameters(request): Parameters<GetMessageMediaRequest>,
@@ -507,9 +564,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Tool 11: transcribe_voice_message - Transcribe a voice/video-note message to text
-    #[tool(
-        description = "Transcribe a voice message or video note (round video) to text using Telegram's server-side transcription (no local ML). REQUIRES Telegram Premium on the connected account; check_mcp_status reports `premium`. Charged transcription_cost rate-limit tokens (more than a search). Returns partial text with partial=true if the wait times out."
-    )]
+    /// Legacy direct adapter; configured output mode affects registered MCP calls only.
+    ///
+    /// # Errors
+    /// Returns legacy text for invalid inputs, unavailable state, refused admission,
+    /// operation/timeout failures or serialization failure. Partial per-item outcomes
+    /// remain successful data; status observations retain explicit unavailability.
     pub async fn transcribe_voice_message(
         &self,
         Parameters(request): Parameters<TranscribeVoiceMessageRequest>,
@@ -528,9 +588,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Tool 12: search_public_channels - Discover public channels/groups by keyword
-    #[tool(
-        description = "Search Telegram's public directory for channels and groups by keyword (not limited to your subscriptions). is_subscribed: true is reliable; false is best-effort (the already-subscribed side of the result set is server-capped and prefix-matched). To go deeper on a result that has a real @username, call get_channel_info with that username."
-    )]
+    /// Legacy direct adapter; configured output mode affects registered MCP calls only.
+    ///
+    /// # Errors
+    /// Returns legacy text for invalid inputs, unavailable state, refused admission,
+    /// operation/timeout failures or serialization failure. Partial per-item outcomes
+    /// remain successful data; status observations retain explicit unavailability.
     pub async fn search_public_channels(
         &self,
         Parameters(request): Parameters<SearchPublicChannelsRequest>,
@@ -548,9 +611,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Tool 13: get_messages_batch - Fetch up to 50 specific messages in one call
-    #[tool(
-        description = "Fetch up to 50 specific messages from one channel by id in a single call. Deleted or missing ids are reported per-id in `missing` instead of failing the batch. The designated way to re-fetch full text after text_truncated, and to verify or deduplicate specific posts without N round trips."
-    )]
+    /// Legacy direct adapter; configured output mode affects registered MCP calls only.
+    ///
+    /// # Errors
+    /// Returns legacy text for invalid inputs, unavailable state, refused admission,
+    /// operation/timeout failures or serialization failure. Partial per-item outcomes
+    /// remain successful data; status observations retain explicit unavailability.
     pub async fn get_messages_batch(
         &self,
         Parameters(request): Parameters<GetMessagesBatchRequest>,
@@ -568,9 +634,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Tool 14: resolve_channels - Batch-resolve ids/usernames/titles to channels
-    #[tool(
-        description = "Batch-resolve up to 20 channel identifiers (numeric ID, @username, or exact title of a subscribed chat) to full channel entities in one call. Use for full entities (subscriber counts, flags) and title-only private chats; forward sources already arrive named in forwarded_from. Failures are reported per-identifier."
-    )]
+    /// Legacy direct adapter; configured output mode affects registered MCP calls only.
+    ///
+    /// # Errors
+    /// Returns legacy text for invalid inputs, unavailable state, refused admission,
+    /// operation/timeout failures or serialization failure. Partial per-item outcomes
+    /// remain successful data; status observations retain explicit unavailability.
     pub async fn resolve_channels(
         &self,
         Parameters(request): Parameters<ResolveChannelsRequest>,
@@ -587,9 +656,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Tool 15: get_channel_stats - Posting-rate and engagement statistics
-    #[tool(
-        description = "Compute posting statistics for one channel from a bounded history sample (default 7 days, max 30, capped at 500 messages): album-collapsed post count, posts/day, median views, media and album share. sample.complete is false when the cap cut the window short. No content classification."
-    )]
+    /// Legacy direct adapter; configured output mode affects registered MCP calls only.
+    ///
+    /// # Errors
+    /// Returns legacy text for invalid inputs, unavailable state, refused admission,
+    /// operation/timeout failures or serialization failure. Partial per-item outcomes
+    /// remain successful data; status observations retain explicit unavailability.
     pub async fn get_channel_stats(
         &self,
         Parameters(request): Parameters<GetChannelStatsRequest>,
@@ -607,9 +679,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     /// Tool 16: get_messages_media_batch - Return several messages' images in one call
-    #[tool(
-        description = "Get the photos (or video/animation/video-note thumbnails) of up to 10 messages from ONE channel in a single call, as image blocks the model can see, each followed by its JSON metadata and a trailing batch summary. Far cheaper than N get_message_media calls: one channel resolution and one fetch round trip for the whole batch. Ids with no visual media, deleted ids, ids dropped because the total payload cap was exhausted or an image could not be shrunk to fit (retrying that id alone will not help), ids that hit a download or encode failure (download_failed), and the rare id that fails after a successful download due to an image-encode task panic or a metadata-serialization failure (internal_error), are reported in the summary's `failed` array rather than failing the call. Charged media_download_cost tokens per image actually returned."
-    )]
+    /// Legacy direct adapter; configured output mode affects registered MCP calls only.
+    ///
+    /// # Errors
+    /// Returns legacy text for invalid inputs, unavailable state, refused admission,
+    /// operation/timeout failures or serialization failure. Partial per-item outcomes
+    /// remain successful data; status observations retain explicit unavailability.
     pub async fn get_messages_media_batch(
         &self,
         Parameters(request): Parameters<GetMessagesMediaBatchRequest>,
@@ -626,13 +701,314 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         );
         inv.finish(self.get_messages_media_batch_impl(request).await)
     }
+    #[tool(description = "Check MCP connection status, rate limiter state, and session counters", name = "check_mcp_status", input_schema = rmcp::handler::server::common::schema_for_empty_input(), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::StatusResponse>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    async fn check_mcp_status_wire(
+        &self,
+        arguments: rmcp::model::JsonObject,
+        id: RequestId,
+    ) -> CallToolResult {
+        let invocation = ToolInvocation::start("check_mcp_status", id);
+        let result: Result<crate::mcp::tools::StatusResponse, crate::error::Error> = async {
+            let _ = arguments;
+            self.check_mcp_status_data().await
+        }
+        .await;
+        crate::mcp::tools::types::contract::render(self.output_format, invocation.finish(result))
+    }
+
+    #[tool(description = "List user's subscribed Telegram channels with pagination support", name = "get_subscribed_channels", input_schema = rmcp::handler::server::common::schema_for_input::<GetChannelsRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::ChannelsResponse>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    async fn get_subscribed_channels_wire(
+        &self,
+        arguments: rmcp::model::JsonObject,
+        id: RequestId,
+    ) -> CallToolResult {
+        let invocation = ToolInvocation::start("get_subscribed_channels", id);
+        let result: Result<crate::mcp::tools::ChannelsResponse, crate::error::Error> = async {
+            let request: GetChannelsRequest =
+                crate::mcp::tools::types::contract::decode(arguments)?;
+            self.get_subscribed_channels_data(request).await
+        }
+        .await;
+        crate::mcp::tools::types::contract::render(self.output_format, invocation.finish(result))
+    }
+
+    #[tool(description = "Get detailed information about a Telegram channel by username or ID", name = "get_channel_info", input_schema = rmcp::handler::server::common::schema_for_input::<GetChannelInfoRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::telegram::types::Channel>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    async fn get_channel_info_wire(
+        &self,
+        arguments: rmcp::model::JsonObject,
+        id: RequestId,
+    ) -> CallToolResult {
+        let invocation = ToolInvocation::start("get_channel_info", id);
+        let result: Result<crate::telegram::types::Channel, crate::error::Error> = async {
+            let request: GetChannelInfoRequest =
+                crate::mcp::tools::types::contract::decode(arguments)?;
+            self.get_channel_info_data(request).await
+        }
+        .await;
+        crate::mcp::tools::types::contract::render(self.output_format, invocation.finish(result))
+    }
+
+    #[tool(
+        description = "Generate shareable deep links for a Telegram message (accepts channel ID or username; public channels get https://t.me/<username> links)"
+    , name = "generate_message_link", input_schema = rmcp::handler::server::common::schema_for_input::<GenerateLinkRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::MessageLinkResponse>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    async fn generate_message_link_wire(
+        &self,
+        arguments: rmcp::model::JsonObject,
+        id: RequestId,
+    ) -> CallToolResult {
+        let invocation = ToolInvocation::start("generate_message_link", id);
+        let result: Result<crate::mcp::tools::MessageLinkResponse, crate::error::Error> = async {
+            let request: GenerateLinkRequest =
+                crate::mcp::tools::types::contract::decode(arguments)?;
+            self.generate_message_link_data(request).await
+        }
+        .await;
+        crate::mcp::tools::types::contract::render(self.output_format, invocation.finish(result))
+    }
+
+    #[tool(
+        description = "Open a specific message in Telegram Desktop application (macOS only; accepts channel ID or username)"
+    , name = "open_message_in_telegram", input_schema = rmcp::handler::server::common::schema_for_input::<OpenMessageRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::OpenMessageResponse>(), annotations(read_only_hint = false, destructive_hint = false, idempotent_hint = false, open_world_hint = true))]
+    async fn open_message_in_telegram_wire(
+        &self,
+        arguments: rmcp::model::JsonObject,
+        id: RequestId,
+    ) -> CallToolResult {
+        let invocation = ToolInvocation::start("open_message_in_telegram", id);
+        let result: Result<crate::mcp::tools::OpenMessageResponse, crate::error::Error> = async {
+            let request: OpenMessageRequest =
+                crate::mcp::tools::types::contract::decode(arguments)?;
+            self.open_message_in_telegram_data(request).await
+        }
+        .await;
+        crate::mcp::tools::types::contract::render(self.output_format, invocation.finish(result))
+    }
+
+    #[tool(
+        description = "Search messages across subscribed Telegram channels with optional \
+                       filters. Scoping with channel_id or channel_ids is cheaper than an \
+                       unscoped global search and supports cursor pagination \
+                       (before_id/after_id); global searches support neither, because there \
+                       is no per-channel offset to resume from. A search that exceeds its \
+                       configured deadline returns the results gathered so far with \
+                       query_metadata.timed_out and .partial set, never an error."
+    , name = "search_messages", input_schema = rmcp::handler::server::common::schema_for_input::<SearchRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::SearchResponse<crate::error::Error>>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    async fn search_messages_wire(
+        &self,
+        arguments: rmcp::model::JsonObject,
+        id: RequestId,
+    ) -> CallToolResult {
+        let invocation = ToolInvocation::start("search_messages", id);
+        let result: Result<
+            crate::mcp::tools::SearchResponse<crate::error::Error>,
+            crate::error::Error,
+        > = async {
+            let request: SearchRequest = crate::mcp::tools::types::contract::decode(arguments)?;
+            self.search_messages_data(request).await
+        }
+        .await;
+        crate::mcp::tools::types::contract::render(self.output_format, invocation.finish(result))
+    }
+
+    #[tool(
+        description = "Get recent messages from one channel - or fan out over up to 20 channels via channel_ids - by time window (no search query needed)"
+    , name = "get_recent_messages", input_schema = rmcp::handler::server::common::schema_for_input::<GetRecentMessagesRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::SearchResponse<crate::error::Error>>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    async fn get_recent_messages_wire(
+        &self,
+        arguments: rmcp::model::JsonObject,
+        id: RequestId,
+    ) -> CallToolResult {
+        let invocation = ToolInvocation::start("get_recent_messages", id);
+        let result: Result<
+            crate::mcp::tools::SearchResponse<crate::error::Error>,
+            crate::error::Error,
+        > = async {
+            let request: GetRecentMessagesRequest =
+                crate::mcp::tools::types::contract::decode(arguments)?;
+            self.get_recent_messages_data(request).await
+        }
+        .await;
+        crate::mcp::tools::types::contract::render(self.output_format, invocation.finish(result))
+    }
+
+    #[tool(
+        description = "Get a specific Telegram message by its t.me link (e.g. https://t.me/swodki/575403)"
+    , name = "get_message_by_link", input_schema = rmcp::handler::server::common::schema_for_input::<GetMessageByLinkRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::MessageResponse>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    async fn get_message_by_link_wire(
+        &self,
+        arguments: rmcp::model::JsonObject,
+        id: RequestId,
+    ) -> CallToolResult {
+        let invocation = ToolInvocation::start("get_message_by_link", id);
+        let result: Result<crate::mcp::tools::MessageResponse, crate::error::Error> = async {
+            let request: GetMessageByLinkRequest =
+                crate::mcp::tools::types::contract::decode(arguments)?;
+            self.get_message_by_link_data(request).await
+        }
+        .await;
+        crate::mcp::tools::types::contract::render(self.output_format, invocation.finish(result))
+    }
+
+    #[tool(
+        description = "Debug/recovery: return the last N tool responses written to stdout, so a response lost in transit can be re-fetched without re-querying Telegram or spending rate-limit budget"
+    , name = "get_last_responses", input_schema = rmcp::handler::server::common::schema_for_input::<GetLastResponsesRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::LastResponsesResponse>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    async fn get_last_responses_wire(
+        &self,
+        arguments: rmcp::model::JsonObject,
+        id: RequestId,
+    ) -> CallToolResult {
+        let invocation = ToolInvocation::start("get_last_responses", id);
+        let result: Result<crate::mcp::tools::LastResponsesResponse, crate::error::Error> = async {
+            let request: GetLastResponsesRequest =
+                crate::mcp::tools::types::contract::decode(arguments)?;
+            self.get_last_responses_data(request).await
+        }
+        .await;
+        crate::mcp::tools::types::contract::render(self.output_format, invocation.finish(result))
+    }
+
+    #[tool(
+        description = "Get a message's photo (or the thumbnail of its video/animation/video note) as an image the model can see, plus a JSON metadata block. Photos are downscaled (max_dimension, default 1280) and re-encoded as JPEG. Heavier than a search: charged media_download_cost rate-limit tokens. For more than one image, use get_messages_media_batch instead of looping this tool."
+    , name = "get_message_media", input_schema = rmcp::handler::server::common::schema_for_input::<GetMessageMediaRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::types::media_contract::MediaOutput>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    async fn get_message_media_wire(
+        &self,
+        arguments: rmcp::model::JsonObject,
+        id: RequestId,
+    ) -> CallToolResult {
+        let invocation = ToolInvocation::start("get_message_media", id);
+        let result: Result<
+            crate::mcp::tools::types::media_contract::MediaOutput,
+            crate::error::Error,
+        > = async {
+            let request: GetMessageMediaRequest =
+                crate::mcp::tools::types::contract::decode(arguments)?;
+            self.get_message_media_data(request).await
+        }
+        .await;
+        crate::mcp::tools::types::contract::render(self.output_format, invocation.finish(result))
+    }
+
+    #[tool(
+        description = "Transcribe a voice message or video note (round video) to text using Telegram's server-side transcription (no local ML). REQUIRES Telegram Premium on the connected account; check_mcp_status reports `premium`. Charged transcription_cost rate-limit tokens (more than a search). Returns partial text with partial=true if the wait times out."
+    , name = "transcribe_voice_message", input_schema = rmcp::handler::server::common::schema_for_input::<TranscribeVoiceMessageRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::TranscribeVoiceMessageResponse>(), annotations(read_only_hint = false, destructive_hint = false, idempotent_hint = false, open_world_hint = true))]
+    async fn transcribe_voice_message_wire(
+        &self,
+        arguments: rmcp::model::JsonObject,
+        id: RequestId,
+    ) -> CallToolResult {
+        let invocation = ToolInvocation::start("transcribe_voice_message", id);
+        let result: Result<crate::mcp::tools::TranscribeVoiceMessageResponse, crate::error::Error> =
+            async {
+                let request: TranscribeVoiceMessageRequest =
+                    crate::mcp::tools::types::contract::decode(arguments)?;
+                self.transcribe_voice_message_data(request).await
+            }
+            .await;
+        crate::mcp::tools::types::contract::render(self.output_format, invocation.finish(result))
+    }
+
+    #[tool(
+        description = "Search Telegram's public directory for channels and groups by keyword (not limited to your subscriptions). is_subscribed: true is reliable; false is best-effort (the already-subscribed side of the result set is server-capped and prefix-matched). To go deeper on a result that has a real @username, call get_channel_info with that username."
+    , name = "search_public_channels", input_schema = rmcp::handler::server::common::schema_for_input::<SearchPublicChannelsRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::ChannelsResponse>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    async fn search_public_channels_wire(
+        &self,
+        arguments: rmcp::model::JsonObject,
+        id: RequestId,
+    ) -> CallToolResult {
+        let invocation = ToolInvocation::start("search_public_channels", id);
+        let result: Result<crate::mcp::tools::ChannelsResponse, crate::error::Error> = async {
+            let request: SearchPublicChannelsRequest =
+                crate::mcp::tools::types::contract::decode(arguments)?;
+            self.search_public_channels_data(request).await
+        }
+        .await;
+        crate::mcp::tools::types::contract::render(self.output_format, invocation.finish(result))
+    }
+
+    #[tool(
+        description = "Fetch up to 50 specific messages from one channel by id in a single call. Deleted or missing ids are reported per-id in `missing` instead of failing the batch. The designated way to re-fetch full text after text_truncated, and to verify or deduplicate specific posts without N round trips."
+    , name = "get_messages_batch", input_schema = rmcp::handler::server::common::schema_for_input::<GetMessagesBatchRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::MessagesBatchResponse>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    async fn get_messages_batch_wire(
+        &self,
+        arguments: rmcp::model::JsonObject,
+        id: RequestId,
+    ) -> CallToolResult {
+        let invocation = ToolInvocation::start("get_messages_batch", id);
+        let result: Result<crate::mcp::tools::MessagesBatchResponse, crate::error::Error> = async {
+            let request: GetMessagesBatchRequest =
+                crate::mcp::tools::types::contract::decode(arguments)?;
+            self.get_messages_batch_data(request).await
+        }
+        .await;
+        crate::mcp::tools::types::contract::render(self.output_format, invocation.finish(result))
+    }
+
+    #[tool(
+        description = "Batch-resolve up to 20 channel identifiers (numeric ID, @username, or exact title of a subscribed chat) to full channel entities in one call. Use for full entities (subscriber counts, flags) and title-only private chats; forward sources already arrive named in forwarded_from. Failures are reported per-identifier."
+    , name = "resolve_channels", input_schema = rmcp::handler::server::common::schema_for_input::<ResolveChannelsRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::ResolveChannelsResponse<crate::error::Error>>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    async fn resolve_channels_wire(
+        &self,
+        arguments: rmcp::model::JsonObject,
+        id: RequestId,
+    ) -> CallToolResult {
+        let invocation = ToolInvocation::start("resolve_channels", id);
+        let result: Result<
+            crate::mcp::tools::ResolveChannelsResponse<crate::error::Error>,
+            crate::error::Error,
+        > = async {
+            let request: ResolveChannelsRequest =
+                crate::mcp::tools::types::contract::decode(arguments)?;
+            self.resolve_channels_data(request).await
+        }
+        .await;
+        crate::mcp::tools::types::contract::render(self.output_format, invocation.finish(result))
+    }
+
+    #[tool(
+        description = "Compute posting statistics for one channel from a bounded history sample (default 7 days, max 30, capped at 500 messages): album-collapsed post count, posts/day, median views, media and album share. sample.complete is false when the cap cut the window short. No content classification."
+    , name = "get_channel_stats", input_schema = rmcp::handler::server::common::schema_for_input::<GetChannelStatsRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::telegram::types::ChannelStats>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    async fn get_channel_stats_wire(
+        &self,
+        arguments: rmcp::model::JsonObject,
+        id: RequestId,
+    ) -> CallToolResult {
+        let invocation = ToolInvocation::start("get_channel_stats", id);
+        let result: Result<crate::telegram::types::ChannelStats, crate::error::Error> = async {
+            let request: GetChannelStatsRequest =
+                crate::mcp::tools::types::contract::decode(arguments)?;
+            self.get_channel_stats_data(request).await
+        }
+        .await;
+        crate::mcp::tools::types::contract::render(self.output_format, invocation.finish(result))
+    }
+
+    #[tool(
+        description = "Get the photos (or video/animation/video-note thumbnails) of up to 10 messages from ONE channel in a single call, as image blocks the model can see, each followed by its JSON metadata and a trailing batch summary. Far cheaper than N get_message_media calls: one channel resolution and one fetch round trip for the whole batch. Ids with no visual media, deleted ids, ids dropped because the total payload cap was exhausted or an image could not be shrunk to fit (retrying that id alone will not help), ids that hit a download or encode failure (download_failed), and the rare id that fails after a successful download due to an image-encode task panic or a metadata-serialization failure (internal_error), are reported in the summary's `failed` array rather than failing the call. Charged media_download_cost tokens per image actually returned."
+    , name = "get_messages_media_batch", input_schema = rmcp::handler::server::common::schema_for_input::<GetMessagesMediaBatchRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::types::media_contract::MediaOutput>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    async fn get_messages_media_batch_wire(
+        &self,
+        arguments: rmcp::model::JsonObject,
+        id: RequestId,
+    ) -> CallToolResult {
+        let invocation = ToolInvocation::start("get_messages_media_batch", id);
+        let result: Result<
+            crate::mcp::tools::types::media_contract::MediaOutput,
+            crate::error::Error,
+        > = async {
+            let request: GetMessagesMediaBatchRequest =
+                crate::mcp::tools::types::contract::decode(arguments)?;
+            self.get_messages_media_batch_data(request).await
+        }
+        .await;
+        crate::mcp::tools::types::contract::render(self.output_format, invocation.finish(result))
+    }
 }
 
 // Implement ServerHandler trait with tool capabilities.
 // The #[tool_handler] macro fills in any of call_tool/list_tools/get_tool
 // not already defined below; list_tools is defined manually here to attach
 // SEP-2549 cache hints (ttlMs/cacheScope), so the macro leaves it alone.
-#[tool_handler]
+#[tool_handler(router = self.tool_router)]
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> ServerHandler
     for McpServer<T, R>
 {
@@ -688,14 +1064,14 @@ impl ToolInvocation {
         }
     }
 
-    fn finish<T>(self, result: Result<T, String>) -> Result<T, String> {
+    fn finish<T, E>(self, result: Result<T, E>) -> Result<T, E> {
         log_tool_outcome(self.tool, &self.request_id, self.started, &result);
         result
     }
 }
 
 /// Log the symmetric completion entry for a tool invocation.
-fn log_tool_outcome<T>(tool: &str, request_id: &str, started: Instant, result: &Result<T, String>) {
+fn log_tool_outcome<T, E>(tool: &str, request_id: &str, started: Instant, result: &Result<T, E>) {
     let duration_ms = started.elapsed().as_millis() as u64;
     match result {
         Ok(_) => {
@@ -706,12 +1082,11 @@ fn log_tool_outcome<T>(tool: &str, request_id: &str, started: Instant, result: &
                 "Tool invocation completed"
             );
         }
-        Err(error) => {
+        Err(_) => {
             tracing::warn!(
                 tool = %tool,
                 request_id = %request_id,
                 duration_ms,
-                error = %error,
                 "Tool invocation failed"
             );
         }

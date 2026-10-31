@@ -113,6 +113,9 @@ pub struct MediaLimits {
 /// Response for transcribe_voice_message tool
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct TranscribeVoiceMessageResponse {
+    /// Resolved source retained for canonical output; legacy output omits it.
+    #[serde(skip)]
+    pub target: Option<(ChannelId, crate::telegram::types::PeerNamespace, MessageId)>,
     #[schemars(description = "The transcription text (may be partial)")]
     pub text: String,
 
@@ -148,6 +151,9 @@ pub struct ChannelsResponse {
 /// Response for generate_message_link tool
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MessageLinkResponse {
+    /// Validated resolved identity for canonical output.
+    #[serde(skip)]
+    pub resolved_channel: Option<(ChannelId, crate::telegram::types::PeerNamespace)>,
     #[schemars(description = "Canonical numeric channel ID")]
     pub channel_id: String,
 
@@ -182,6 +188,9 @@ pub struct MissingMessageEntry {
 /// Response for get_messages_batch tool
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MessagesBatchResponse {
+    /// Validated source identity for canonical rendering; legacy keeps the supplied reference.
+    #[serde(skip)]
+    pub resolved_channel: Option<(ChannelId, crate::telegram::types::PeerNamespace)>,
     #[schemars(description = "Channel the messages belong to (as passed in the request)")]
     pub channel_id: String,
     #[schemars(description = "Found messages, in request order")]
@@ -197,9 +206,9 @@ pub struct MessagesBatchResponse {
 
 /// Response for resolve_channels tool
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ResolveChannelsResponse {
+pub struct ResolveChannelsResponse<E = String> {
     #[schemars(description = "One outcome per requested identifier, in request order")]
-    pub resolutions: Vec<ChannelResolution>,
+    pub resolutions: Vec<ChannelResolution<E>>,
     #[schemars(description = "Number of resolutions in this response")]
     pub returned: usize,
     #[schemars(description = "How many identifiers resolved to a channel")]
@@ -348,6 +357,9 @@ pub struct MediaBatchFailure {
 /// Response-level channel header emitted in compact format (work-order A4).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ChannelHeader {
+    /// Internal source namespace, excluded from the legacy representation.
+    #[serde(skip)]
+    pub peer_namespace: Option<crate::telegram::types::PeerNamespace>,
     pub id: ChannelId,
     pub name: ChannelName,
     pub username: Option<Username>,
@@ -355,10 +367,10 @@ pub struct ChannelHeader {
 
 /// One channel that failed during a multi-channel fan-out (work-order A3/A6).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ChannelFetchError {
+pub struct ChannelFetchError<E = String> {
     #[schemars(description = "The channel reference as passed in channel_ids")]
     pub channel: String,
-    pub error: String,
+    pub error: E,
 }
 
 /// Wire representation of a single message (mirrors the domain `Message`).
@@ -370,6 +382,9 @@ pub struct ChannelFetchError {
 /// `SearchResponse.channel`) in compact format (A4).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MessageResponse {
+    /// Internal source namespace, excluded from the legacy representation.
+    #[serde(skip)]
+    pub peer_namespace: Option<crate::telegram::types::PeerNamespace>,
     pub id: MessageId,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub channel_id: Option<ChannelId>,
@@ -421,6 +436,7 @@ pub struct MessageResponse {
 impl From<Message> for MessageResponse {
     fn from(m: Message) -> Self {
         Self {
+            peer_namespace: m.peer_namespace,
             id: m.id,
             channel_id: Some(m.channel_id),
             channel_name: Some(m.channel_name),
@@ -461,7 +477,7 @@ pub struct NextCursor {
 
 /// Wire representation of a search/history result set.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct SearchResponse {
+pub struct SearchResponse<E = String> {
     /// Compact-format channel header; omitted in full format or when empty (A4).
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub channel: Option<ChannelHeader>,
@@ -472,7 +488,7 @@ pub struct SearchResponse {
     /// Channels that failed during a multi-channel fan-out; omitted when
     /// none did (A3/A6). Results from the other channels are still returned.
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub channel_errors: Option<Vec<ChannelFetchError>>,
+    pub channel_errors: Option<Vec<ChannelFetchError<E>>>,
     pub messages: Vec<MessageResponse>,
     pub returned: u64,
     /// A qualifying message was *proven* to exist in the window beyond this
@@ -488,7 +504,13 @@ pub struct SearchResponse {
 }
 
 impl From<SearchResult> for SearchResponse {
-    fn from(r: SearchResult) -> Self {
+    fn from(result: SearchResult) -> Self {
+        Self::from_result(result)
+    }
+}
+impl<E> SearchResponse<E> {
+    /// Build a presentation result while retaining the chosen typed per-channel error payload.
+    pub fn from_result(r: SearchResult) -> Self {
         Self {
             channel: None,
             channels: None,

@@ -67,7 +67,7 @@ impl TelegramClient {
     pub(super) async fn resolve_channels_impl(
         &self,
         identifiers: &[String],
-    ) -> Result<Vec<ChannelResolution>, Error> {
+    ) -> Result<Vec<ChannelResolution<Error>>, Error> {
         // One walk over the whole dialog list (same shape as
         // get_subscribed_channels_impl, without pagination).
         let dialogs = with_timeout("iter_dialogs", self.timeouts.resolve_secs, async {
@@ -96,10 +96,14 @@ impl TelegramClient {
                 MatchOutcome::Ambiguous(n) => ChannelResolution {
                     identifier: identifier.clone(),
                     channel: None,
-                    error: Some(format!(
-                        "ambiguous title: {n} subscribed chats are named '{}'",
-                        identifier.trim()
-                    )),
+                    error: Some(if identifier.trim().parse::<i64>().is_ok() {
+                        Error::AmbiguousChannel(identifier.trim().to_string())
+                    } else {
+                        Error::AmbiguousTitle {
+                            identifier: identifier.trim().to_string(),
+                            count: n,
+                        }
+                    }),
                 },
                 MatchOutcome::TryUsernameRpc => {
                     match self.resolve_username_peer(identifier.trim()).await {
@@ -112,7 +116,7 @@ impl TelegramClient {
                             None => ChannelResolution {
                                 identifier: identifier.clone(),
                                 channel: None,
-                                error: Some("Not a channel or group".to_string()),
+                                error: Some(Error::UnsupportedPeer),
                             },
                         },
                         Ok(None) => not_found(identifier),
@@ -121,7 +125,7 @@ impl TelegramClient {
                         Err(e) => ChannelResolution {
                             identifier: identifier.clone(),
                             channel: None,
-                            error: Some(e.to_string()),
+                            error: Some(e),
                         },
                     }
                 }
@@ -133,11 +137,11 @@ impl TelegramClient {
     }
 }
 
-fn not_found(identifier: &str) -> ChannelResolution {
+fn not_found(identifier: &str) -> ChannelResolution<Error> {
     ChannelResolution {
         identifier: identifier.to_string(),
         channel: None,
-        error: Some(format!("Channel not found: {}", identifier.trim())),
+        error: Some(Error::ChannelNotFound(identifier.trim().to_string())),
     }
 }
 

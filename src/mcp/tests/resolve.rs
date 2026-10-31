@@ -24,7 +24,7 @@ async fn resolve_returns_per_identifier_outcomes() {
                 ChannelResolution {
                     identifier: "999".into(),
                     channel: None,
-                    error: Some("Channel not found: 999".into()),
+                    error: Some(crate::error::Error::ChannelNotFound("999".into())),
                 },
             ])
         });

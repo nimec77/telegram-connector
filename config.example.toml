@@ -36,6 +36,9 @@ phone_number = "+1234567890"
 # download_secs = 120 # media downloads (get_message_media / get_messages_media_batch)
 
 [server]
+# Versioned structured JSON + matching text fallback (default); use "legacy" temporarily
+# for consumers parsing the historical text/image shapes. Independent of MCP version.
+output_format = "json_v1"
 # Absolute drain deadline for accepted requests AND pending stdout writes.
 # 0 cancels immediately once EOF/signal is observed; maximum 3600 seconds.
 # Bootstrap response write-stall limit is max(1 second, this budget), including

@@ -134,6 +134,7 @@ pub(crate) fn default_timeout_config() -> TimeoutConfig {
 
 pub(crate) fn default_server_config() -> ServerConfig {
     ServerConfig {
+        output_format: super::OutputFormat::JsonV1,
         shutdown_timeout_seconds: default_shutdown_timeout(),
         max_request_bytes: default_max_request_bytes(),
         max_in_flight_requests: default_max_in_flight_requests(),

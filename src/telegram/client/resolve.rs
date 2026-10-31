@@ -156,11 +156,23 @@ pub(crate) fn username_to_resolve(identifier: &str) -> Option<&str> {
 /// A bounded dialog traversal must finish before a provisional numeric match is trusted.
 pub(super) struct NumericSelection<T> {
     id: i64,
+    namespace: Option<PeerNamespace>,
     selected: Option<(PeerNamespace, T)>,
 }
 impl<T> NumericSelection<T> {
     pub(super) fn new(id: i64) -> Self {
-        Self { id, selected: None }
+        Self {
+            id,
+            namespace: None,
+            selected: None,
+        }
+    }
+    pub(super) fn with_namespace(id: i64, namespace: Option<PeerNamespace>) -> Self {
+        Self {
+            id,
+            namespace,
+            selected: None,
+        }
     }
     pub(super) fn consider(
         &mut self,
@@ -168,7 +180,10 @@ impl<T> NumericSelection<T> {
         id: Option<i64>,
         value: impl FnOnce() -> T,
     ) -> Result<(), Error> {
-        if namespace == PeerNamespace::User || id != Some(self.id) {
+        if namespace == PeerNamespace::User
+            || id != Some(self.id)
+            || self.namespace.is_some_and(|expected| expected != namespace)
+        {
             return Ok(());
         }
         match &self.selected {
@@ -222,5 +237,21 @@ mod selection_tests {
                 Err(Error::AmbiguousChannel(_))
             ));
         }
+    }
+}
+
+#[cfg(test)]
+mod qualified_tests {
+    use super::*;
+    #[test]
+    fn qualified_numeric_selection_keeps_the_resolved_namespace() {
+        let mut selected = NumericSelection::with_namespace(123, Some(PeerNamespace::Channel));
+        selected
+            .consider(PeerNamespace::Chat, Some(123), || "wrong group")
+            .expect("skip other namespace");
+        selected
+            .consider(PeerNamespace::Channel, Some(123), || "right channel")
+            .expect("qualified channel");
+        assert_eq!(selected.finish(), Some("right channel"));
     }
 }

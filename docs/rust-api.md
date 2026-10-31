@@ -22,7 +22,7 @@ is not evidence that downstream users do not exist. Every existing public path i
 | --- | --- |
 | Crate root | `Cli`, `Config`, `ObservabilityConfig`, `ServerConfig`, `Error`, `MessageLink`, `RateLimiter`, `RateLimiterTrait`, `TelegramClient`, `TelegramClientTrait` are canonical conveniences. |
 | `config` | `Config`, `TelegramConfig`, `TimeoutConfig`, `SearchConfig`, `RateLimitConfig`, `TranscriptionConfig`, `LimitsConfig`, `LoggingConfig`, `ObservabilityConfig`, `ServerConfig`; fields and validation/loading methods remain public. |
-| `mcp::McpServer` and `mcp::server::McpServer` | Inert construction, six consuming `with_*` builders, metrics/replay handles, stdio/injected I/O and existing tool methods. Direct tools retain wire-facing wrappers and string errors/content blocks. |
+| `mcp::McpServer` and `mcp::server::McpServer` | Inert construction, consuming `with_*` builders, metrics/replay handles, stdio/injected I/O and existing tool methods. Direct tools retain legacy adapters and string errors/content blocks; registered wire entrypoints select the configured typed contract. |
 | `telegram::{TelegramClient, TelegramClientTrait}` | Production client and intentionally substitutable, unsealed client seam. Concrete `new`, `client`, `session`, `session_path`, `request_login_code`, `check_password` stay available. |
 | `telegram::types` | All domain facade exports: IDs/names, account/channel/message/album/link-preview/reaction entities, media metadata and outcomes, query/history parameters/results, stats and transcription data. This includes `MediaDownload`, metadata types and `SizeCandidate` even when not reexported directly by `telegram`. |
 | `rate_limiter` | Production limiter and unsealed limiter trait, including the defaulted fallible snapshot extension for existing implementers. |
@@ -157,7 +157,7 @@ already-installed tracing is accepted. Retention deletes only owned dated regula
 by modification age, best effort, and leaves foreign files untouched.
 
 Server builders are inert and consume `self`; validate configuration before applying them.
-All six consuming `with_*` builders carry a useful `must_use` message so discarding the
+All consuming `with_*` builders carry a useful `must_use` message so discarding the
 configured server warns. Names, signatures and return types remain unchanged. Established
 fallible `ChannelId`, `MessageId`, `UserId`, `Username`, `ChannelName` and `TelegramClient`
 `new` methods retain their names for compatibility; new fallible constructors prefer
@@ -212,3 +212,21 @@ External Rust constructors/trait fixtures must populate it for namespace-aware r
 legacy deserialization leaves it unknown rather than inventing an identity. Error gains
 MessageNotFound, ChannelNotFound, AmbiguousChannel and UnsupportedPeer variants. Existing
 missing-message Display text remains compatible; typed classification is now precise.
+
+
+## Canonical contract Rust changes
+
+The intentional Task 7 migration preserves direct legacy tool method signatures, but adds
+identity metadata to public domain/result structs and changes batch media and resolution
+trait results. New `config::OutputFormat` and `ServerConfig.output_format` select wire mode;
+new `with_output_format` is consuming and must-use. Domain/legacy serializers do not globally
+switch numeric IDs to strings. The concrete canonical DTO boundary owns that conversion.
+See [the contract migration](tool-contract.md#legacy-and-rust-compatibility) for exact fields,
+trait changes, enum match implications and the remaining Task 8 stage boundary.
+
+
+SearchParams now carries optional neutral channel_namespace metadata from an already-resolved
+username. The existing search dialog pass uses it to distinguish same-number eligible peers;
+bare numeric requests leave it None and fail closed. This is an intentional Rust struct-literal
+addition, not a new MCP request field or identifier syntax. The shared selector covers direct
+resolution, batch resolution and the search operation's own dialog loop under existing budgets.

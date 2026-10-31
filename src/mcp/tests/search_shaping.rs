@@ -20,6 +20,7 @@ async fn search_messages_serializes_enrichment_fields() {
     let mut mock_client = MockTelegramClientTrait::new();
     let enriched = SearchResult {
         messages: vec![Message {
+            peer_namespace: Some(crate::telegram::types::PeerNamespace::Channel),
             id: MessageId::new(1).unwrap(),
             channel_id: ChannelId::new(123).unwrap(),
             channel_name: ChannelName::new("Test Channel").unwrap(),

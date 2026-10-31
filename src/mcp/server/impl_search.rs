@@ -4,12 +4,15 @@
 //! delegate to them. Split out per LM-3 (`server.rs` was 880 lines).
 
 use super::McpServer;
+use crate::error::Error;
 use crate::link::{ChannelRef, parse_telegram_link};
-use crate::mcp::tools::helpers::{parse_channel_reference, parse_cursor_bounds, wire_message_id};
+use crate::mcp::tools::validation::{
+    parse_channel_reference, parse_cursor_bounds, parse_optional_utc, validate_date_window,
+    wire_message_id,
+};
 use crate::mcp::tools::{
     GetMessageByLinkRequest, GetRecentMessagesRequest, MessageResponse, ResponseFormat,
-    SearchRequest, SearchResponse, fanout, json_response, parse_optional_utc, shaping,
-    validate_date_window,
+    SearchRequest, SearchResponse, fanout, shaping,
 };
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
@@ -29,38 +32,41 @@ struct FanoutPage {
 }
 
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {
-    pub(super) async fn search_messages_impl(
+    pub(super) async fn search_messages_data(
         &self,
         request: SearchRequest,
-    ) -> Result<String, String> {
+    ) -> Result<SearchResponse<Error>, Error> {
         // Validate: query required unless media_filter is set
         if request.query.trim().is_empty() && request.media_filter.is_none() {
-            return Err(
+            return Err(Error::InvalidInput(
                 "Search query cannot be empty (unless media_filter is set to filter by media type)"
                     .to_string(),
-            );
+            ));
         }
 
         // `Some(list)` = fan-out; `None` covers both the single-channel_id path
         // and, when channel_id is also absent, the global-search path (A6).
-        let scope = fanout::validate_channel_scope(&request.channel_id, &request.channel_ids)?;
+        let scope = crate::mcp::tools::validation::validate_channel_scope(
+            &request.channel_id,
+            &request.channel_ids,
+        )?;
         let channel_scoped = request.channel_id.is_some() || scope.is_some();
 
         if !channel_scoped && (request.before_id.is_some() || request.after_id.is_some()) {
-            return Err(
+            return Err(Error::InvalidInput(
                 "before_id/after_id require channel_id: cursor pagination is per-channel; \
                  global search cannot page by message id"
                     .to_string(),
-            );
+            ));
         }
 
         let format = request.format.unwrap_or_default();
         if !channel_scoped && format == ResponseFormat::Compact {
-            return Err(
+            return Err(Error::InvalidInput(
                 "format=compact requires channel_id or channel_ids: the compact header \
                  describes channel scope; use full format for global search"
                     .to_string(),
-            );
+            ));
         }
 
         // Apply defaults and limits
@@ -76,7 +82,9 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
         // Validate limit is greater than 0
         if limit == 0 {
-            return Err("Search limit must be greater than 0".to_string());
+            return Err(Error::InvalidInput(
+                "Search limit must be greater than 0".to_string(),
+            ));
         }
 
         // Parse the optional date range
@@ -84,12 +92,14 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         let to_date = parse_optional_utc("to_date", &request.to_date)?;
 
         let (before_id, after_id) = parse_cursor_bounds(request.before_id, request.after_id)?;
-        let max_text_length = shaping::resolve_max_text_length(request.max_text_length)?;
+        let max_text_length =
+            crate::mcp::tools::validation::resolve_max_text_length(request.max_text_length)?;
 
         // Shared parameter template; the channel target (channel_id) is filled
         // in per-path below: once for the single-channel/global path, once per
         // entry for the fan-out path.
         let params_template = SearchParams {
+            channel_namespace: None,
             query: request.query.clone(),
             channel_id: None,
             hours_back,
@@ -115,17 +125,15 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             let fetch = |reference: String| {
                 let base = params_template.clone(); // SearchParams minus channel_id
                 async move {
-                    let channel_id = self
+                    let (channel_id, channel_namespace) = self
                         .resolve_channel_ref(parse_channel_reference(&reference)?)
                         .await?;
                     let params = SearchParams {
+                        channel_namespace,
                         channel_id: Some(channel_id),
                         ..base
                     };
-                    self.telegram_client
-                        .search_messages(&params)
-                        .await
-                        .map_err(|e| e.to_string())
+                    self.telegram_client.search_messages(&params).await
                 }
             };
             let page = FanoutPage {
@@ -152,28 +160,22 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             .map(parse_channel_reference)
             .transpose()?;
 
-        self.rate_limiter
-            .acquire(1)
-            .await
-            .map_err(|e| e.to_string())?;
+        self.rate_limiter.acquire(1).await?;
 
-        let channel_id = match reference {
+        let resolved = match reference {
             Some(reference) => Some(self.resolve_channel_ref(reference).await?),
             None => None,
         };
 
         // Build search params
         let params = SearchParams {
-            channel_id,
+            channel_id: resolved.map(|(id, _)| id),
+            channel_namespace: resolved.and_then(|(_, namespace)| namespace),
             ..params_template
         };
 
         // Execute search
-        let result = self
-            .telegram_client
-            .search_messages(&params)
-            .await
-            .map_err(|e| e.to_string())?;
+        let result = self.telegram_client.search_messages(&params).await?;
 
         // Log search results (IDs only, not message text - for privacy and log size)
         let message_ids: Vec<i64> = result.messages.iter().map(|m| m.id.get()).collect();
@@ -196,7 +198,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         } else {
             shaping::CursorPolicy::Unavailable
         };
-        let mut response = SearchResponse::from(result);
+        let mut response = SearchResponse::<Error>::from_result(result);
         shaping::shape_response(
             &mut response,
             format,
@@ -205,20 +207,22 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             self.response_byte_budget,
             shaping::CompactScope::Single,
         )?;
-        json_response(&response)
+        Ok(response)
     }
 
     /// Numeric refs are already parsed; a username ref spends one resolve
     /// RPC (§1.3). Callers acquire before calling this, never after.
-    async fn resolve_channel_ref(&self, reference: ChannelRef) -> Result<ChannelId, String> {
+    async fn resolve_channel_ref(
+        &self,
+        reference: ChannelRef,
+    ) -> Result<(ChannelId, Option<crate::telegram::types::PeerNamespace>), Error> {
         match reference {
-            ChannelRef::Id(channel_id) => Ok(channel_id),
+            ChannelRef::Id(channel_id) => Ok((channel_id, None)),
             ChannelRef::Username(username) => self
                 .telegram_client
                 .resolve_channel_identity(&username)
                 .await
-                .map(|identity| identity.id)
-                .map_err(|e| e.to_string()),
+                .map(|identity| (identity.id, Some(identity.peer_namespace))),
         }
     }
 
@@ -233,8 +237,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     /// resolve+fetch shape of work `get_messages_batch` charges `acquire(1)`
     /// for — and a refund would let a caller hammer an unresolvable channel
     /// at zero cost, exactly the flood behaviour the limiter exists to
-    /// prevent. (Only a locally rejected entry such as `"0"` fails without an
-    /// RPC; over-charging it is the safe direction.) The
+    /// prevent. Locally malformed entries are rejected before this acquisition. The
     /// media batch's per-id refund is a different case: its ids share one
     /// fetch RPC, so a per-id charge is pessimistic; per-channel RPCs here
     /// are not.
@@ -244,23 +247,20 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         has_cursor: bool,
         page: FanoutPage,
         fetch: F,
-    ) -> Result<String, String>
+    ) -> Result<SearchResponse<Error>, Error>
     where
         F: Fn(String) -> Fut,
-        Fut: Future<Output = Result<SearchResult, String>>,
+        Fut: Future<Output = Result<SearchResult, Error>>,
     {
         if has_cursor {
-            return Err(
+            return Err(Error::InvalidInput(
                 "before_id/after_id require a single channel_id: cursor pagination is \
                  per-channel"
                     .to_string(),
-            );
+            ));
         }
 
-        self.rate_limiter
-            .acquire(list.len() as u32)
-            .await
-            .map_err(|e| e.to_string())?;
+        self.rate_limiter.acquire(list.len() as u32).await?;
 
         let outcomes = fanout::run(list, fetch).await;
 
@@ -279,13 +279,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             self.response_byte_budget,
             shaping::CompactScope::Multi,
         )?;
-        json_response(&response)
+        Ok(response)
     }
 
-    pub(super) async fn get_recent_messages_impl(
+    pub(super) async fn get_recent_messages_data(
         &self,
         request: GetRecentMessagesRequest,
-    ) -> Result<String, String> {
+    ) -> Result<SearchResponse<Error>, Error> {
         // Apply defaults and limits
         let hours_back = request
             .hours_back
@@ -299,7 +299,9 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
         // Validate limit is greater than 0
         if limit == 0 {
-            return Err("Limit must be greater than 0".to_string());
+            return Err(Error::InvalidInput(
+                "Limit must be greater than 0".to_string(),
+            ));
         }
 
         // Parse the optional date range
@@ -307,7 +309,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         let to_date = parse_optional_utc("to_date", &request.to_date)?;
 
         let (before_id, after_id) = parse_cursor_bounds(request.before_id, request.after_id)?;
-        let max_text_length = shaping::resolve_max_text_length(request.max_text_length)?;
+        let max_text_length =
+            crate::mcp::tools::validation::resolve_max_text_length(request.max_text_length)?;
 
         let format = request.format.unwrap_or_default();
 
@@ -336,7 +339,10 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             params_template.hours_back,
         )?;
 
-        let channels = fanout::validate_channel_scope(&request.channel_id, &request.channel_ids)?;
+        let channels = crate::mcp::tools::validation::validate_channel_scope(
+            &request.channel_id,
+            &request.channel_ids,
+        )?;
         // channels: Option<Vec<String>> — Some(list) means fan-out.
         if let Some(list) = channels {
             let fetch = |reference: String| {
@@ -348,10 +354,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                         channel_identifier,
                         ..base
                     };
-                    self.telegram_client
-                        .get_recent_messages(&params)
-                        .await
-                        .map_err(|e| e.to_string())
+                    self.telegram_client.get_recent_messages(&params).await
                 }
             };
             let page = FanoutPage {
@@ -370,9 +373,9 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         // Single-channel path. The client owns resolution; the server no longer
         // pre-resolves usernames via get_channel_info (AD-2) — that second
         // resolve was redundant with the client's own resolve_username_peer.
-        let channel_id_str = request
-            .channel_id
-            .ok_or_else(|| "channel_id (or channel_ids) is required".to_string())?;
+        let channel_id_str = request.channel_id.ok_or_else(|| {
+            Error::InvalidInput("channel_id (or channel_ids) is required".to_string())
+        })?;
         let (channel_id, channel_identifier) = history_target(&channel_id_str)?;
 
         // Build history params
@@ -383,17 +386,10 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         };
 
         // Acquire rate limiter tokens (1 token per request)
-        self.rate_limiter
-            .acquire(1)
-            .await
-            .map_err(|e| e.to_string())?;
+        self.rate_limiter.acquire(1).await?;
 
         // Execute history retrieval
-        let result = self
-            .telegram_client
-            .get_recent_messages(&params)
-            .await
-            .map_err(|e| e.to_string())?;
+        let result = self.telegram_client.get_recent_messages(&params).await?;
 
         // Log results (IDs only, not message text - for privacy and log size)
         let message_ids: Vec<i64> = result.messages.iter().map(|m| m.id.get()).collect();
@@ -409,7 +405,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "Recent messages results"
         );
 
-        let mut response = SearchResponse::from(result);
+        let mut response = SearchResponse::<Error>::from_result(result);
         shaping::shape_response(
             &mut response,
             format,
@@ -418,16 +414,15 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             self.response_byte_budget,
             shaping::CompactScope::Single,
         )?;
-        json_response(&response)
+        Ok(response)
     }
 
-    pub(super) async fn get_message_by_link_impl(
+    pub(super) async fn get_message_by_link_data(
         &self,
         request: GetMessageByLinkRequest,
-    ) -> Result<String, String> {
+    ) -> Result<MessageResponse, Error> {
         // Parse the link
-        let (channel_ref, message_id) =
-            parse_telegram_link(&request.link).map_err(|e| e.to_string())?;
+        let (channel_ref, message_id) = parse_telegram_link(&request.link)?;
 
         // Convert ChannelRef to string identifier for the trait method
         let channel_identifier = match &channel_ref {
@@ -438,17 +433,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         let wire_id = wire_message_id(message_id)?;
 
         // Acquire rate limiter token
-        self.rate_limiter
-            .acquire(1)
-            .await
-            .map_err(|e| e.to_string())?;
+        self.rate_limiter.acquire(1).await?;
 
         // Fetch the message
         let message = self
             .telegram_client
             .get_message_by_id(&channel_identifier, wire_id)
-            .await
-            .map_err(|e| e.to_string())?;
+            .await?;
 
         tracing::info!(
             link = %request.link,
@@ -457,12 +448,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "Message by link results"
         );
 
-        json_response(&MessageResponse::from(message))
+        Ok(MessageResponse::from(message))
     }
 }
 
 /// Split a channel reference into HistoryParams' (channel_id, channel_identifier) pair.
-fn history_target(reference: &str) -> Result<(Option<ChannelId>, Option<String>), String> {
+fn history_target(reference: &str) -> Result<(Option<ChannelId>, Option<String>), Error> {
     Ok(match parse_channel_reference(reference)? {
         ChannelRef::Id(channel_id) => (Some(channel_id), None),
         ChannelRef::Username(username) => (None, Some(username)),

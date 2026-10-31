@@ -7,8 +7,8 @@ use crate::error::Error;
 use crate::telegram::transcription::TranscriptionDeadline;
 use crate::telegram::types::{
     AccountStatus, Channel, ChannelIdentity, ChannelPage, ChannelResolution, ChannelStats,
-    HistoryParams, MediaDownload, MediaFetchOutcome, Message, MessageBatch, SearchParams,
-    SearchResult, TranscriptionOutcome,
+    HistoryParams, MediaDownload, Message, MessageBatch, SearchParams, SearchResult,
+    TranscriptionOutcome,
 };
 
 /// Injectable Telegram operations; deliberately unsealed for external clients.
@@ -202,7 +202,7 @@ pub trait TelegramClientTrait: Send + Sync {
         channel_ref: &str,
         message_ids: &[i32],
         max_dimension: u32,
-    ) -> Result<Vec<MediaFetchOutcome>, Error>;
+    ) -> Result<crate::telegram::types::MediaBatch, Error>;
 
     /// Transcribe a voice / video-note message's audio via `messages.transcribeAudio`.
     ///
@@ -241,7 +241,7 @@ pub trait TelegramClientTrait: Send + Sync {
     async fn resolve_channels(
         &self,
         identifiers: &[String],
-    ) -> Result<Vec<ChannelResolution>, Error>;
+    ) -> Result<Vec<ChannelResolution<Error>>, Error>;
 
     /// One bounded history sweep computing album-collapsed posting stats:
     /// up to `days_back` days (caller-clamped), at most

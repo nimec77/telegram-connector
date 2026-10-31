@@ -28,8 +28,9 @@ pub use entities::{
 };
 pub use ids::{ChannelId, MessageId, PeerNamespace, UserId};
 pub use media::{
-    AudioInfo, AudioKind, DocumentInfo, MediaDownload, MediaFetchError, MediaFetchOutcome,
-    MediaFilter, MediaType, PollInfo, PollOption, SizeCandidate, VideoInfo, VideoKind,
+    AudioInfo, AudioKind, DocumentInfo, MediaBatch, MediaDownload, MediaFetchError,
+    MediaFetchOutcome, MediaFilter, MediaType, PollInfo, PollOption, SizeCandidate, VideoInfo,
+    VideoKind,
 };
 pub use names::{ChannelName, Username};
 pub use params::{HistoryParams, QueryMetadata, SearchParams, SearchResult};

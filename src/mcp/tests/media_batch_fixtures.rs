@@ -9,6 +9,8 @@ pub(super) fn photo_download(width: u32, height: u32) -> MediaDownload {
     let bytes = create_test_jpeg(width, height);
     let source_size_bytes = bytes.len() as u64;
     MediaDownload {
+        channel_id: crate::telegram::types::ChannelId::new(100).expect("fixture channel"),
+        peer_namespace: crate::telegram::types::PeerNamespace::Channel,
         bytes,
         media_type: MediaType::Photo,
         is_thumbnail: false,
@@ -62,4 +64,12 @@ pub(super) fn summary_of(content: &[ContentBlock]) -> MediaBatchSummary {
         panic!("last content block must be the summary text block");
     };
     serde_json::from_str(&text.text).expect("summary must be valid JSON")
+}
+
+pub(super) fn media_batch(outcomes: Vec<MediaFetchOutcome>) -> crate::telegram::types::MediaBatch {
+    crate::telegram::types::MediaBatch {
+        channel_id: crate::telegram::types::ChannelId::new(100).expect("fixture"),
+        peer_namespace: crate::telegram::types::PeerNamespace::Channel,
+        outcomes,
+    }
 }

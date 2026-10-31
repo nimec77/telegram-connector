@@ -13,6 +13,9 @@ fn transcription_server() -> McpServer<MockTelegramClientTrait, MockRateLimiterT
         });
     client.expect_transcribe_audio().returning(|_, _, _| {
         Ok(TranscriptionOutcome {
+            channel_id: crate::telegram::types::ChannelId::new(100).expect("fixture channel"),
+            peer_namespace: crate::telegram::types::PeerNamespace::Channel,
+            message_id: crate::telegram::types::MessageId::new(1).expect("fixture message"),
             text: "PRIVATE TRANSCRIPTION".into(),
             partial: false,
             media_type: MediaType::Voice,
@@ -88,6 +91,8 @@ async fn media_progress_keeps_binary_content_and_input_limit_independent() {
         .return_once(|_, _, _| {
             let bytes = crate::test_helpers::create_test_jpeg(200, 100);
             Ok(MediaDownload {
+                channel_id: crate::telegram::types::ChannelId::new(100).expect("fixture channel"),
+                peer_namespace: crate::telegram::types::PeerNamespace::Channel,
                 source_size_bytes: bytes.len() as u64,
                 bytes,
                 media_type: MediaType::Photo,
@@ -116,7 +121,11 @@ async fn media_progress_keeps_binary_content_and_input_limit_independent() {
         .await;
     let (count, result) = progress_until_result(&mut wire, 1, json!("image")).await;
     assert!(count >= 3, "download/encode/result progress");
-    assert_eq!(result["result"]["content"][0]["type"], "image");
+    assert_eq!(
+        result["result"]["structuredContent"]["data"]["items"][0]["content_index"],
+        1
+    );
+    assert_eq!(result["result"]["content"][1]["type"], "image");
     assert!(result.to_string().len() > 512);
     wire.close().await;
 }

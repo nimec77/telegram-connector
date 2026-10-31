@@ -1,31 +1,30 @@
 //! `McpServer` inherent `*_impl` method: public channel discovery.
 
 use super::McpServer;
-use crate::mcp::tools::{ChannelsResponse, SearchPublicChannelsRequest, json_response};
+use crate::error::Error;
+use crate::mcp::tools::{ChannelsResponse, SearchPublicChannelsRequest};
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
 
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {
-    pub(super) async fn search_public_channels_impl(
+    pub(super) async fn search_public_channels_data(
         &self,
         request: SearchPublicChannelsRequest,
-    ) -> Result<String, String> {
+    ) -> Result<ChannelsResponse, Error> {
         if request.query.trim().is_empty() {
-            return Err("Search query cannot be empty".to_string());
+            return Err(Error::InvalidInput(
+                "Search query cannot be empty".to_string(),
+            ));
         }
 
         let limit = request.limit.unwrap_or(10).clamp(1, 50);
 
-        self.rate_limiter
-            .acquire(1)
-            .await
-            .map_err(|e| e.to_string())?;
+        self.rate_limiter.acquire(1).await?;
 
         let mut channels = self
             .telegram_client
             .search_public_channels(&request.query, limit)
-            .await
-            .map_err(|e| e.to_string())?;
+            .await?;
 
         // `contacts.search`'s `limit` bounds only its global `results` set, while
         // the `chats` it returns also carries the caller's own dialog matches — so
@@ -44,6 +43,6 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                 Some(false)
             },
         };
-        json_response(&response)
+        Ok(response)
     }
 }

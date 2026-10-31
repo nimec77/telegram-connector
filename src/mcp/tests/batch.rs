@@ -24,6 +24,8 @@ async fn batch_returns_found_and_missing() {
         .withf(|c, ids| c == "swodki" && ids == [610119, 609784])
         .returning(|_, _| {
             Ok(MessageBatch {
+                channel_id: crate::telegram::types::ChannelId::new(100).expect("fixture channel"),
+                peer_namespace: crate::telegram::types::PeerNamespace::Channel,
                 messages: vec![create_test_message(610119, "text", 1144180066)],
                 missing_ids: vec![609784],
             })
@@ -71,6 +73,8 @@ async fn batch_dedupes_ids_preserving_order() {
         .withf(|_, ids| ids == [7, 3])
         .returning(|_, _| {
             Ok(MessageBatch {
+                channel_id: crate::telegram::types::ChannelId::new(100).expect("fixture channel"),
+                peer_namespace: crate::telegram::types::PeerNamespace::Channel,
                 messages: vec![],
                 missing_ids: vec![7, 3],
             })

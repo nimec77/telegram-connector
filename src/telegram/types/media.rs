@@ -159,6 +159,10 @@ pub enum MediaFilter {
 /// the mockable trait boundary.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MediaDownload {
+    /// Numeric identity of the resolved source, without an additional lookup.
+    pub channel_id: super::ids::ChannelId,
+    /// Source peer namespace.
+    pub peer_namespace: super::ids::PeerNamespace,
     /// Raw downloaded image bytes (JPEG as served by Telegram).
     pub bytes: Vec<u8>,
     /// What the source message's media was (Photo, Video, Animation, VideoNote).
@@ -185,9 +189,8 @@ pub struct MediaDownload {
 ///
 /// A typed enum rather than a bare `Error` because the MCP layer must emit a
 /// stable, machine-readable reason token per id, and the not-found case is
-/// otherwise indistinguishable: `guard::not_found` returns
-/// `Error::InvalidInput` with the reason only in its message text, and
-/// sniffing that string would couple the wire contract to prose.
+/// retained independently of a shared fetch failure. Single-message guards also
+/// return a typed MessageNotFound error; neither boundary classifies prose.
 #[derive(Debug)]
 pub enum MediaFetchError {
     /// Deleted, never existed, or returned as the `MessageEmpty` placeholder.
@@ -196,6 +199,17 @@ pub enum MediaFetchError {
     NoVisualMedia { media_type: String },
     /// Anything else: oversize, decode failure, RPC error.
     Failed(crate::error::Error),
+}
+
+/// Shared resolved identity for ordered outcomes, including an all-failed batch.
+#[derive(Debug)]
+pub struct MediaBatch {
+    /// Resolved numeric source ID.
+    pub channel_id: super::ids::ChannelId,
+    /// Source namespace.
+    pub peer_namespace: super::ids::PeerNamespace,
+    /// One outcome for every requested message ID, in order.
+    pub outcomes: Vec<MediaFetchOutcome>,
 }
 
 /// Per-message result of a batch media download.
@@ -321,6 +335,8 @@ mod tests {
     #[test]
     fn media_download_construction() {
         let download = MediaDownload {
+            channel_id: crate::telegram::types::ChannelId::new(100).expect("fixture channel"),
+            peer_namespace: crate::telegram::types::PeerNamespace::Channel,
             bytes: vec![0xff, 0xd8],
             media_type: MediaType::Photo,
             is_thumbnail: false,

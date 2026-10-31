@@ -1,9 +1,10 @@
 //! `McpServer` inherent `*_impl` method: get_messages_batch (work-order A1).
 
 use super::McpServer;
+use crate::error::Error;
+use crate::mcp::tools::validation::dedupe_and_validate_ids;
 use crate::mcp::tools::{
-    GetMessagesBatchRequest, MessageResponse, MessagesBatchResponse, MissingMessageEntry,
-    dedupe_and_validate_ids, json_response, shaping,
+    GetMessagesBatchRequest, MessageResponse, MessagesBatchResponse, MissingMessageEntry, shaping,
 };
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
@@ -13,15 +14,17 @@ use crate::telegram::types::MessageId;
 pub(super) const MAX_BATCH_IDS: usize = 50;
 
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {
-    pub(super) async fn get_messages_batch_impl(
+    pub(super) async fn get_messages_batch_data(
         &self,
         request: GetMessagesBatchRequest,
-    ) -> Result<String, String> {
+    ) -> Result<MessagesBatchResponse, Error> {
         if request.channel_id.trim().is_empty() {
-            return Err("channel_id is required".to_string());
+            return Err(Error::InvalidInput("channel_id is required".to_string()));
         }
         if request.message_ids.is_empty() {
-            return Err("message_ids must contain at least one id".to_string());
+            return Err(Error::InvalidInput(
+                "message_ids must contain at least one id".to_string(),
+            ));
         }
 
         let (unique, wire_ids) = dedupe_and_validate_ids(&request.message_ids, MAX_BATCH_IDS)?;
@@ -30,19 +33,18 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             .max_text_length
             .unwrap_or(shaping::DEFAULT_MAX_TEXT_LENGTH);
         if max_text_length == 0 {
-            return Err("max_text_length must be greater than 0".to_string());
+            return Err(Error::InvalidInput(
+                "max_text_length must be greater than 0".to_string(),
+            ));
         }
 
-        self.rate_limiter
-            .acquire(1)
-            .await
-            .map_err(|e| e.to_string())?;
+        crate::mcp::tools::validation::validate_channel_reference(&request.channel_id)?;
+        self.rate_limiter.acquire(1).await?;
 
         let batch = self
             .telegram_client
             .get_messages_batch(&request.channel_id, &wire_ids)
-            .await
-            .map_err(|e| e.to_string())?;
+            .await?;
 
         tracing::info!(
             channel = %request.channel_id,
@@ -72,6 +74,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
         let returned = messages.len();
         let mut response = MessagesBatchResponse {
+            resolved_channel: Some((batch.channel_id, batch.peer_namespace)),
             channel_id: request.channel_id,
             messages,
             returned,
@@ -79,6 +82,6 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             omitted_ids: None,
         };
         shaping::fit_batch_to_budget(&mut response, self.response_byte_budget)?;
-        json_response(&response)
+        Ok(response)
     }
 }

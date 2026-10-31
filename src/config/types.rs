@@ -33,9 +33,23 @@ pub struct Config {
     pub limits: LimitsConfig,
 }
 
+/// Application tool-output contract, independent from MCP protocol negotiation.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OutputFormat {
+    /// Versioned typed JSON, structured content and matching text fallback.
+    #[default]
+    JsonV1,
+    /// Temporary compatibility output with historical text/image shapes.
+    Legacy,
+}
+
 /// Bounds for one protocol session, independent of account charges and output budgets.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ServerConfig {
+    /// Application output contract; canonical JSON is the migration default.
+    #[serde(default)]
+    pub output_format: OutputFormat,
     /// One absolute drain budget after EOF or shutdown; zero cancels immediately.
     #[serde(default = "defaults::default_shutdown_timeout")]
     pub shutdown_timeout_seconds: u64,

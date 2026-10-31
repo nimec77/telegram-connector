@@ -42,6 +42,9 @@ async fn returns_transcription_text() {
         .withf(|ch, id, t| ch == "news" && *id == 42 && t.timeout_secs() == 30)
         .return_once(|_, _, _| {
             Ok(TranscriptionOutcome {
+                channel_id: crate::telegram::types::ChannelId::new(100).expect("fixture channel"),
+                peer_namespace: crate::telegram::types::PeerNamespace::Channel,
+                message_id: crate::telegram::types::MessageId::new(1).expect("fixture message"),
                 text: "привет мир".to_string(),
                 partial: false,
                 media_type: MediaType::Voice,
@@ -78,6 +81,9 @@ async fn returns_partial_flag_and_video_note_type() {
         });
     client.expect_transcribe_audio().return_once(|_, _, _| {
         Ok(TranscriptionOutcome {
+            channel_id: crate::telegram::types::ChannelId::new(100).expect("fixture channel"),
+            peer_namespace: crate::telegram::types::PeerNamespace::Channel,
+            message_id: crate::telegram::types::MessageId::new(1).expect("fixture message"),
             text: "часть".to_string(),
             partial: true,
             media_type: MediaType::VideoNote,
@@ -144,6 +150,9 @@ async fn unknown_premium_proceeds() {
     });
     client.expect_transcribe_audio().return_once(|_, _, _| {
         Ok(TranscriptionOutcome {
+            channel_id: crate::telegram::types::ChannelId::new(100).expect("fixture channel"),
+            peer_namespace: crate::telegram::types::PeerNamespace::Channel,
+            message_id: crate::telegram::types::MessageId::new(1).expect("fixture message"),
             text: "ok".to_string(),
             partial: false,
             media_type: MediaType::Voice,
@@ -259,6 +268,7 @@ fn media_type_wire_name_is_consistent_across_endpoints() {
     assert_eq!(search_name, "\"video_note\"");
 
     let resp = TranscribeVoiceMessageResponse {
+        target: None,
         text: String::new(),
         partial: false,
         duration_seconds: None,
@@ -285,6 +295,9 @@ async fn clamps_request_timeout_to_configured_max() {
         .withf(|_, _, t| t.timeout_secs() == 45)
         .return_once(|_, _, _| {
             Ok(TranscriptionOutcome {
+                channel_id: crate::telegram::types::ChannelId::new(100).expect("fixture channel"),
+                peer_namespace: crate::telegram::types::PeerNamespace::Channel,
+                message_id: crate::telegram::types::MessageId::new(1).expect("fixture message"),
                 text: "ok".to_string(),
                 partial: false,
                 media_type: MediaType::Voice,

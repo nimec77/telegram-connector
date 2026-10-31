@@ -10,6 +10,9 @@ use serde::{Deserialize, Serialize};
 /// Search parameters for message search.
 #[derive(Debug, Clone)]
 pub struct SearchParams {
+    /// Namespace learned from an already-resolved username; absent for bare numeric inputs.
+    /// This is internal routing metadata, not a new MCP input identifier format.
+    pub channel_namespace: Option<super::ids::PeerNamespace>,
     pub query: String,
     pub channel_id: Option<ChannelId>,
     pub hours_back: u32,
@@ -162,6 +165,7 @@ mod tests {
     /// builds when a request carries only a query.
     fn search_params(query: &str) -> SearchParams {
         SearchParams {
+            channel_namespace: None,
             query: query.to_string(),
             channel_id: None,
             hours_back: SearchParams::DEFAULT_HOURS_BACK,

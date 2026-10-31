@@ -5,19 +5,20 @@
 
 use super::McpServer;
 use crate::error::Error;
-use crate::mcp::tools::helpers::{validate_channel_reference, wire_message_id};
 use crate::mcp::tools::image::{ProcessedImage, process_image, process_image_with_cap};
 use crate::mcp::tools::media_budget::Base64Budget;
+use crate::mcp::tools::types::media_contract::{MediaImage, MediaOutput};
+use crate::mcp::tools::validation::{
+    dedupe_and_validate_ids, parse_message_id, validate_channel_reference, wire_message_id,
+};
 use crate::mcp::tools::{
     GetMessageMediaRequest, GetMessageMediaResponse, GetMessagesMediaBatchRequest,
-    MediaBatchFailure, MediaBatchSummary, TranscribeVoiceMessageRequest,
-    TranscribeVoiceMessageResponse, dedupe_and_validate_ids, json_response, parse_message_id,
+    TranscribeVoiceMessageRequest, TranscribeVoiceMessageResponse,
 };
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
 use crate::telegram::transcription::TranscriptionDeadline;
 use crate::telegram::types::{MediaDownload, MediaFetchError, MediaFetchOutcome};
-use rmcp::model::{CallToolResult, ContentBlock};
 
 /// Longest-side pixel limit applied when a request omits `max_dimension`.
 pub(super) const DEFAULT_MAX_DIMENSION: u32 = 1280;
@@ -28,10 +29,10 @@ pub(super) const MAX_DIMENSION: u32 = 2048;
 pub(super) const MAX_MEDIA_BATCH_IDS: usize = 10;
 
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {
-    pub(super) async fn get_message_media_impl(
+    pub(super) async fn get_message_media_data(
         &self,
         request: GetMessageMediaRequest,
-    ) -> Result<CallToolResult, String> {
+    ) -> Result<MediaOutput, Error> {
         let message_id = parse_message_id(request.message_id)?;
         let wire_id = wire_message_id(message_id)?;
         let max_dimension = request
@@ -39,27 +40,25 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             .unwrap_or(DEFAULT_MAX_DIMENSION)
             .clamp(MIN_DIMENSION, MAX_DIMENSION);
 
+        crate::mcp::tools::validation::validate_channel_reference(&request.channel_id)?;
         crate::mcp::runtime::report_progress("Media request validated").await;
 
         // Media downloads are heavier than searches; charge the configured cost.
-        self.rate_limiter
-            .acquire(self.media_download_cost)
-            .await
-            .map_err(|e| e.to_string())?;
+        self.rate_limiter.acquire(self.media_download_cost).await?;
 
         let mut download = self
             .telegram_client
             .download_message_media(&request.channel_id, wire_id, max_dimension)
-            .await
-            .map_err(|e| e.to_string())?;
+            .await?;
 
         crate::mcp::runtime::report_progress("Media downloaded").await;
+        let channel_id = download.channel_id;
+        let peer_namespace = download.peer_namespace;
         let bytes = std::mem::take(&mut download.bytes);
         let processed =
             crate::mcp::runtime::image_job(move || process_image(&bytes, max_dimension))
                 .await
-                .map_err(|e| format!("image encode task failed: {e}"))?
-                .map_err(|e| e.to_string())?;
+                .map_err(|_| Error::Internal("image encode task failed"))??;
         crate::mcp::runtime::report_progress("Image encoded").await;
         let metadata = media_metadata(
             request.channel_id.clone(),
@@ -77,23 +76,34 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "Message media results"
         );
 
-        let metadata_json = json_response(&metadata)?;
-
-        Ok(CallToolResult::success(vec![
-            ContentBlock::image(processed.base64_jpeg, "image/jpeg"),
-            ContentBlock::text(metadata_json),
-        ]))
+        Ok(MediaOutput {
+            single: true,
+            channel_reference: request.channel_id,
+            channel_id,
+            peer_namespace,
+            requested: 1,
+            items: vec![(
+                message_id.get(),
+                Ok(MediaImage {
+                    base64: processed.base64_jpeg,
+                    metadata,
+                }),
+            )],
+            max_total_bytes: crate::mcp::tools::image::MAX_BASE64_LEN as u64,
+        })
     }
 
-    pub(super) async fn get_messages_media_batch_impl(
+    pub(super) async fn get_messages_media_batch_data(
         &self,
         request: GetMessagesMediaBatchRequest,
-    ) -> Result<CallToolResult, String> {
+    ) -> Result<MediaOutput, Error> {
         if request.channel_id.trim().is_empty() {
-            return Err("channel_id is required".to_string());
+            return Err(Error::InvalidInput("channel_id is required".to_string()));
         }
         if request.message_ids.is_empty() {
-            return Err("message_ids must contain at least one id".to_string());
+            return Err(Error::InvalidInput(
+                "message_ids must contain at least one id".to_string(),
+            ));
         }
 
         let (unique, wire_ids) =
@@ -104,6 +114,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             .unwrap_or(DEFAULT_MAX_DIMENSION)
             .clamp(MIN_DIMENSION, MAX_DIMENSION);
 
+        crate::mcp::tools::validation::validate_channel_reference(&request.channel_id)?;
         crate::mcp::runtime::report_progress("Media request validated").await;
 
         // Acquire pessimistically for every requested id BEFORE any network
@@ -111,10 +122,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         // never refuse a batch, since the downloads would already have happened.
         // One atomic acquire keeps the D5 deficit message accurate.
         let charged = self.media_download_cost.saturating_mul(unique.len() as u32);
-        self.rate_limiter
-            .acquire(charged)
-            .await
-            .map_err(|e| e.to_string())?;
+        self.rate_limiter.acquire(charged).await?;
 
         let outcomes = match self
             .telegram_client
@@ -133,31 +141,41 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                 // charges (acquire(1)) for that identical resolve+fetch shape
                 // of work. saturating_sub guards a hypothetical charged of 0.
                 self.rate_limiter.refund(charged.saturating_sub(1));
-                return Err(e.to_string());
+                return Err(e);
             }
         };
 
         crate::mcp::runtime::report_progress("Media downloaded").await;
-        let mut content = Vec::new();
-        let mut failed = Vec::new();
+        let channel_id = outcomes.channel_id;
+        let peer_namespace = outcomes.peer_namespace;
+        let mut items = Vec::new();
+        let mut failed = 0usize;
         let mut total_base64_bytes = 0usize;
         let mut returned = 0usize;
         let mut budget = Base64Budget::new(self.media_batch_max_total_bytes);
 
-        for outcome in outcomes {
+        for outcome in outcomes.outcomes {
             let id = i64::from(outcome.message_id);
             // Encoding runs in request order, so budget allocation is
             // deterministic no matter which download finished first.
             match process_media_outcome(&request.channel_id, max_dimension, &mut budget, outcome)
                 .await
             {
-                Ok((base64_jpeg, metadata_json)) => {
+                Ok((base64_jpeg, metadata)) => {
                     total_base64_bytes += base64_jpeg.len();
-                    content.push(ContentBlock::image(base64_jpeg, "image/jpeg"));
-                    content.push(ContentBlock::text(metadata_json));
+                    items.push((
+                        id,
+                        Ok(MediaImage {
+                            base64: base64_jpeg,
+                            metadata,
+                        }),
+                    ));
                     returned += 1;
                 }
-                Err(reason) => failed.push(MediaBatchFailure { id, reason }),
+                Err(error) => {
+                    failed += 1;
+                    items.push((id, Err(error)));
+                }
             }
             crate::mcp::runtime::report_progress("Media item processed").await;
         }
@@ -175,28 +193,26 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             channel = %request.channel_id,
             requested = unique.len(),
             returned,
-            failed = failed.len(),
+            failed,
             total_base64_bytes,
             "Messages media batch results"
         );
 
-        let summary = MediaBatchSummary {
-            channel_id: request.channel_id,
+        Ok(MediaOutput {
+            single: false,
+            channel_reference: request.channel_id,
+            channel_id,
+            peer_namespace,
             requested: unique.len(),
-            returned,
-            failed,
-            total_base64_bytes,
+            items,
             max_total_bytes: self.media_batch_max_total_bytes as u64,
-        };
-        content.push(ContentBlock::text(json_response(&summary)?));
-
-        Ok(CallToolResult::success(content))
+        })
     }
 
-    pub(super) async fn transcribe_voice_message_impl(
+    pub(super) async fn transcribe_voice_message_data(
         &self,
         request: TranscribeVoiceMessageRequest,
-    ) -> Result<String, String> {
+    ) -> Result<TranscribeVoiceMessageResponse, Error> {
         validate_channel_reference(&request.channel_id)?;
         let message_id = parse_message_id(request.message_id)?;
         let wire_id = wire_message_id(message_id)?;
@@ -215,26 +231,22 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         // must not start account RPCs before acquiring the operation charge.
         let cached = self.telegram_client.cached_account_status().await;
         if cached.premium == Some(false) {
-            return Err(Error::PremiumRequired.to_string());
+            return Err(Error::PremiumRequired);
         }
 
         // Transcription is precious (Telegram weekly quota); charge more than a search.
-        self.rate_limiter
-            .acquire(self.transcription_cost)
-            .await
-            .map_err(|e| e.to_string())?;
+        self.rate_limiter.acquire(self.transcription_cost).await?;
 
         let deadline = TranscriptionDeadline::new(timeout_secs);
         if cached.premium.is_none() {
             let refreshed = deadline
                 .run(self.telegram_client.refresh_account_status())
-                .await
-                .map_err(|e| e.to_string())?;
+                .await?;
             if !refreshed.authorized {
-                return Err(Error::Auth("Telegram account is not authenticated".into()).to_string());
+                return Err(Error::Auth("Telegram account is not authenticated".into()));
             }
             if refreshed.premium == Some(false) {
-                return Err(Error::PremiumRequired.to_string());
+                return Err(Error::PremiumRequired);
             }
         }
 
@@ -242,8 +254,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         let outcome = self
             .telegram_client
             .transcribe_audio(&request.channel_id, wire_id, deadline)
-            .await
-            .map_err(|e| e.to_string())?;
+            .await?;
 
         crate::mcp::runtime::report_progress("Transcription received").await;
 
@@ -254,14 +265,18 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             mt @ (crate::telegram::types::MediaType::Voice
             | crate::telegram::types::MediaType::VideoNote) => mt,
             other => {
-                return Err(format!(
-                    "unexpected media type for transcription: {:?}",
-                    other
-                ));
+                return Err(Error::NotTranscribable {
+                    media_type: format!("{other:?}"),
+                });
             }
         };
 
         let response = TranscribeVoiceMessageResponse {
+            target: Some((
+                outcome.channel_id,
+                outcome.peer_namespace,
+                outcome.message_id,
+            )),
             text: outcome.text,
             partial: outcome.partial,
             duration_seconds: outcome.duration_seconds,
@@ -277,13 +292,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "Transcription results"
         );
 
-        json_response(&response)
+        Ok(response)
     }
 }
 
 /// Build the metadata block accompanying a returned image.
 ///
-/// Shared by `get_message_media_impl` and `get_messages_media_batch_impl` so
+/// Shared by `get_message_media_data` and `get_messages_media_batch_data` so
 /// a batch-of-one produces byte-identical metadata to the single-image tool
 /// (`batch_of_one_matches_the_single_tool_metadata`).
 fn media_metadata(
@@ -322,12 +337,19 @@ async fn process_media_outcome(
     max_dimension: u32,
     budget: &mut Base64Budget,
     outcome: MediaFetchOutcome,
-) -> Result<(String, String), String> {
+) -> Result<(String, GetMessageMediaResponse), Error> {
     let id = i64::from(outcome.message_id);
-    let mut download = outcome.result.map_err(|e| failure_reason(&e))?;
+    let mut download = outcome.result.map_err(|e| match e {
+        MediaFetchError::NotFound => Error::MessageNotFound {
+            channel: channel_id.to_string(),
+            message_id: i64::from(outcome.message_id),
+        },
+        MediaFetchError::NoVisualMedia { media_type } => Error::NoVisualMedia { media_type },
+        MediaFetchError::Failed(error) => error,
+    })?;
 
     let Some(allowance) = budget.allowance() else {
-        return Err("payload_cap_reached".to_string());
+        return Err(Error::PayloadCapExceeded { limit: 0 });
     };
 
     // process_image_with_cap already shrinks the target dimension iteratively
@@ -340,45 +362,15 @@ async fn process_media_outcome(
         process_image_with_cap(&bytes, max_dimension, allowance)
     })
     .await
-    .map_err(|join_error| format!("internal_error: {join_error}"))?
-    .map_err(|e| post_download_failure_reason(&e))?;
+    .map_err(|_| Error::Internal("image encode task failed"))??;
 
     // Serialize before consuming the budget, so a (today unreachable)
     // serialization failure lands this id in `failed` with the budget
     // untouched instead of leaking the allowance.
     let metadata = media_metadata(channel_id.to_string(), id, download, &processed);
-    let metadata_json = json_response(&metadata).map_err(|e| format!("internal_error: {e}"))?;
 
     budget.consume(processed.base64_jpeg.len());
-    Ok((processed.base64_jpeg, metadata_json))
-}
-
-/// Map a per-id download failure to a stable, machine-readable reason.
-///
-/// Callers branch on these tokens, so they are deliberately not the `Display`
-/// text of the underlying error — that text is free to change. The match is
-/// total, so a new `MediaFetchError` variant is a compile error here rather
-/// than a silent fall-through to `download_failed`.
-fn failure_reason(error: &MediaFetchError) -> String {
-    match error {
-        MediaFetchError::NotFound => "not_found".to_string(),
-        MediaFetchError::NoVisualMedia { .. } => "no_visual_media".to_string(),
-        MediaFetchError::Failed(inner) => format!("download_failed: {inner}"),
-    }
-}
-
-/// Map a failure that happened *after* a successful download to a stable,
-/// machine-readable reason token.
-///
-/// Unlike `failure_reason`, this matches a catch-all: `Error` is the crate-wide
-/// enum with sixteen variants, only one of which is meaningful to a caller
-/// here. Enumerating the rest would be noise, and `download_failed` with the
-/// error's text attached is the honest default for all of them.
-fn post_download_failure_reason(error: &Error) -> String {
-    match error {
-        Error::PayloadCapExceeded { .. } => "payload_cap_reached".to_string(),
-        other => format!("download_failed: {other}"),
-    }
+    Ok((processed.base64_jpeg, metadata))
 }
 
 #[cfg(test)]
@@ -387,7 +379,10 @@ mod tests {
 
     #[test]
     fn cap_exhaustion_maps_to_the_payload_cap_token() {
-        let reason = post_download_failure_reason(&Error::PayloadCapExceeded { limit: 32_768 });
+        let reason =
+            crate::mcp::tools::types::media_contract::legacy_failure(&Error::PayloadCapExceeded {
+                limit: 32_768,
+            });
         assert_eq!(
             reason, "payload_cap_reached",
             "an image that downloaded fine but could not be shrunk is a cap drop, \
@@ -397,7 +392,9 @@ mod tests {
 
     #[test]
     fn a_real_failure_still_maps_to_the_download_failed_token() {
-        let reason = post_download_failure_reason(&Error::DownloadFailed("boom".to_string()));
+        let reason = crate::mcp::tools::types::media_contract::legacy_failure(
+            &Error::DownloadFailed("boom".to_string()),
+        );
         assert_eq!(reason, "download_failed: media download failed: boom");
     }
 }

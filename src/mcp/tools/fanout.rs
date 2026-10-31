@@ -2,6 +2,7 @@
 //! bounded-concurrency fetch outcomes merged into one flat, newest-first
 //! response. Pure over wire/domain types so merging is unit-testable.
 
+use crate::error::Error;
 use crate::mcp::tools::types::responses::{
     ChannelFetchError, MessageResponse, SearchResponse, unique_channel_count,
 };
@@ -17,11 +18,10 @@ pub(crate) const MAX_FANOUT_CHANNELS: usize = 20;
 /// Concurrent per-channel fetches in flight (roadmap: bounded concurrency 4).
 pub(crate) const FANOUT_CONCURRENCY: usize = 4;
 
-/// One channel's fetch outcome; `result` is stringly-typed because tool
-/// errors already are (`Result<String, String>` contract).
+/// One channel's fetch outcome; retain its typed cause until mode-specific output.
 pub(crate) struct ChannelFetchOutcome {
     pub channel: String,
-    pub result: Result<SearchResult, String>,
+    pub result: Result<SearchResult, Error>,
 }
 
 /// Fetch every channel in `list` through `fetch` with bounded concurrency
@@ -30,7 +30,7 @@ pub(crate) struct ChannelFetchOutcome {
 pub(crate) async fn run<F, Fut>(list: Vec<String>, fetch: F) -> Vec<ChannelFetchOutcome>
 where
     F: Fn(String) -> Fut,
-    Fut: Future<Output = Result<SearchResult, String>>,
+    Fut: Future<Output = Result<SearchResult, Error>>,
 {
     futures::stream::iter(list.into_iter().map(|reference| {
         let result = fetch(reference.clone());
@@ -55,10 +55,10 @@ pub(crate) fn merge_results(
     query: String,
     window_from: DateTime<Utc>,
     window_to: Option<DateTime<Utc>>,
-) -> Result<SearchResponse, String> {
+) -> Result<SearchResponse<Error>, Error> {
     let attempted = outcomes.len() as u32;
     let mut messages: Vec<MessageResponse> = Vec::new();
-    let mut errors: Vec<ChannelFetchError> = Vec::new();
+    let mut errors: Vec<ChannelFetchError<Error>> = Vec::new();
     let mut has_more = false;
     let mut search_time_ms = 0u64;
     let mut pages_fetched = 0u32;
@@ -87,13 +87,8 @@ pub(crate) fn merge_results(
     }
 
     if messages.is_empty() && !errors.is_empty() && errors.len() as u32 == attempted {
-        return Err(format!(
-            "all {attempted} channels failed: {}",
-            errors
-                .iter()
-                .map(|e| format!("{}: {}", e.channel, e.error))
-                .collect::<Vec<_>>()
-                .join("; ")
+        return Err(Error::AllChannelsFailed(
+            errors.into_iter().map(|e| (e.channel, e.error)).collect(),
         ));
     }
 
@@ -241,7 +236,9 @@ mod tests {
             ok("a", result_with(&[(10, 30)], 1, false)),
             ChannelFetchOutcome {
                 channel: "gone".into(),
-                result: Err("invalid input: Channel not found: gone".into()),
+                result: Err(Error::TelegramApi(
+                    "invalid input: Channel not found: gone".into(),
+                )),
             },
         ];
         let resp = merge_results(
@@ -256,7 +253,7 @@ mod tests {
         assert!(!resp.has_more);
         let errors = resp.channel_errors.expect("errors present");
         assert_eq!(errors[0].channel, "gone");
-        assert!(errors[0].error.contains("not found"));
+        assert!(errors[0].error.to_string().contains("not found"));
         assert_eq!(
             resp.query_metadata.channels_scanned,
             Some(2),
@@ -269,11 +266,11 @@ mod tests {
         let outcomes = vec![
             ChannelFetchOutcome {
                 channel: "a".into(),
-                result: Err("boom a".into()),
+                result: Err(Error::TelegramApi("boom a".into())),
             },
             ChannelFetchOutcome {
                 channel: "b".into(),
-                result: Err("boom b".into()),
+                result: Err(Error::TelegramApi("boom b".into())),
             },
         ];
         let err = merge_results(
@@ -285,7 +282,8 @@ mod tests {
         )
         .unwrap_err();
         assert!(
-            err.contains("a: boom a") && err.contains("b: boom b"),
+            err.to_string().contains("a: telegram API error: boom a")
+                && err.to_string().contains("b: telegram API error: boom b"),
             "got: {err}"
         );
     }
@@ -308,7 +306,7 @@ mod tests {
     fn scope_rejects_both_channel_id_and_channel_ids() {
         let err = validate_channel_scope(&Some("123".to_string()), &Some(vec!["456".to_string()]))
             .unwrap_err();
-        assert!(err.contains("not both"), "got: {err}");
+        assert!(err.to_string().contains("not both"), "got: {err}");
     }
 
     #[test]
@@ -338,14 +336,14 @@ mod tests {
     fn scope_rejects_blank_entries() {
         let err = validate_channel_scope(&None, &Some(vec!["a".to_string(), "  ".to_string()]))
             .unwrap_err();
-        assert!(err.contains("blank"), "got: {err}");
+        assert!(err.to_string().contains("blank"), "got: {err}");
     }
 
     #[test]
     fn scope_rejects_more_than_max_channels() {
         let list: Vec<String> = (0..21).map(|i| i.to_string()).collect();
         let err = validate_channel_scope(&None, &Some(list)).unwrap_err();
-        assert!(err.contains("20"), "got: {err}");
+        assert!(err.to_string().contains("20"), "got: {err}");
     }
 
     #[tokio::test]
@@ -354,7 +352,7 @@ mod tests {
             if reference == "a" {
                 Ok(result_with(&[(1, 5)], 1, false))
             } else {
-                Err(format!("boom {reference}"))
+                Err(Error::TelegramApi(format!("boom {reference}")))
             }
         })
         .await;
@@ -362,6 +360,9 @@ mod tests {
         assert_eq!(outcomes[0].channel, "a");
         assert!(outcomes[0].result.is_ok());
         assert_eq!(outcomes[1].channel, "b");
-        assert_eq!(outcomes[1].result.as_ref().unwrap_err(), "boom b");
+        assert_eq!(
+            outcomes[1].result.as_ref().unwrap_err().to_string(),
+            "telegram API error: boom b"
+        );
     }
 }

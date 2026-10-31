@@ -1,6 +1,8 @@
 //! get_messages_media_batch: payload cap and rate-limit charging/refunds.
 
-use super::media_batch_fixtures::{no_media, not_found, ok_outcome, request, summary_of};
+use super::media_batch_fixtures::{
+    media_batch, no_media, not_found, ok_outcome, request, summary_of,
+};
 use crate::error::Error;
 use crate::mcp::server::McpServer;
 use crate::rate_limiter::MockRateLimiterTrait;
@@ -58,11 +60,11 @@ async fn payload_cap_downscales_then_reports_cap_reached() {
     client
         .expect_download_messages_media()
         .return_once(|_, _, _| {
-            Ok(vec![
+            Ok(media_batch(vec![
                 ok_outcome(10, 1200, 1200),
                 ok_outcome(11, 1200, 1200),
                 ok_outcome(12, 1200, 1200),
-            ])
+            ]))
         });
 
     let server = McpServer::new(Arc::new(client), Arc::new(permissive_limiter()))
@@ -107,14 +109,14 @@ async fn cap_reached_ids_are_reported_in_request_order() {
     client
         .expect_download_messages_media()
         .return_once(|_, _, _| {
-            Ok(vec![
+            Ok(media_batch(vec![
                 ok_outcome(10, 1200, 1200),
                 ok_outcome(11, 1200, 1200),
                 ok_outcome(12, 1200, 1200),
                 ok_outcome(13, 1200, 1200),
                 ok_outcome(14, 1200, 1200),
                 ok_outcome(15, 1200, 1200),
-            ])
+            ]))
         });
 
     let server = McpServer::new(Arc::new(client), Arc::new(permissive_limiter()))
@@ -151,14 +153,14 @@ async fn payload_cap_drops_refund_their_cost() {
     client
         .expect_download_messages_media()
         .return_once(|_, _, _| {
-            Ok(vec![
+            Ok(media_batch(vec![
                 ok_outcome(10, 1200, 1200),
                 ok_outcome(11, 1200, 1200),
                 ok_outcome(12, 1200, 1200),
                 ok_outcome(13, 1200, 1200),
                 ok_outcome(14, 1200, 1200),
                 ok_outcome(15, 1200, 1200),
-            ])
+            ]))
         });
 
     let mut limiter = MockRateLimiterTrait::new();
@@ -193,7 +195,12 @@ async fn a_generous_cap_returns_every_image() {
     let mut client = MockTelegramClientTrait::new();
     client
         .expect_download_messages_media()
-        .return_once(|_, _, _| Ok(vec![ok_outcome(10, 200, 100), ok_outcome(11, 200, 100)]));
+        .return_once(|_, _, _| {
+            Ok(media_batch(vec![
+                ok_outcome(10, 200, 100),
+                ok_outcome(11, 200, 100),
+            ]))
+        });
 
     let server = McpServer::new(Arc::new(client), Arc::new(permissive_limiter()))
         .with_media_batch_max_total_bytes(8 * 1024 * 1024);
@@ -216,13 +223,13 @@ async fn charges_for_every_requested_id_then_refunds_the_failures() {
     client
         .expect_download_messages_media()
         .return_once(|_, _, _| {
-            Ok(vec![
+            Ok(media_batch(vec![
                 ok_outcome(10, 80, 80),
                 no_media(11),
                 ok_outcome(12, 80, 80),
                 not_found(13),
                 ok_outcome(14, 80, 80),
-            ])
+            ]))
         });
 
     let mut limiter = MockRateLimiterTrait::new();
@@ -256,7 +263,12 @@ async fn a_fully_successful_batch_refunds_nothing() {
     let mut client = MockTelegramClientTrait::new();
     client
         .expect_download_messages_media()
-        .return_once(|_, _, _| Ok(vec![ok_outcome(10, 80, 80), ok_outcome(11, 80, 80)]));
+        .return_once(|_, _, _| {
+            Ok(media_batch(vec![
+                ok_outcome(10, 80, 80),
+                ok_outcome(11, 80, 80),
+            ]))
+        });
 
     let mut limiter = MockRateLimiterTrait::new();
     limiter
@@ -331,7 +343,13 @@ async fn an_enormous_media_cost_refunds_without_overflowing() {
     let mut client = MockTelegramClientTrait::new();
     client
         .expect_download_messages_media()
-        .return_once(|_, _, _| Ok(vec![not_found(10), not_found(11), not_found(12)]));
+        .return_once(|_, _, _| {
+            Ok(media_batch(vec![
+                not_found(10),
+                not_found(11),
+                not_found(12),
+            ]))
+        });
 
     let mut limiter = MockRateLimiterTrait::new();
     limiter.expect_acquire().times(1).returning(|_| Ok(()));

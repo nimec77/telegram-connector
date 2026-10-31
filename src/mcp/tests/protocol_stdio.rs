@@ -279,3 +279,6 @@ mod failures;
 mod matrix;
 #[path = "protocol_progress.rs"]
 mod progress;
+
+#[path = "protocol_contract.rs"]
+mod contract;

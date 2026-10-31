@@ -1,22 +1,40 @@
 //! Typed domain/client failures and fixed unavailable-state identities.
 //!
-//! MCP tool boundaries preserve their existing string errors. Application setup
-//! and configuration continue to use contextual `anyhow` errors. String payloads
+//! Canonical MCP boundaries map variants to safe ToolError values; legacy adapters
+//! preserve text errors. Application setup/configuration use contextual `anyhow`. String payloads
 //! below are not automatically redacted: constructors/callers must exclude secrets.
 #![warn(missing_docs)]
 
 use thiserror::Error;
 
 /// Domain/client operation failure. Existing exhaustive matches must handle new variants.
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum Error {
+    /// Failure in local response assembly or a worker task; no provider payload.
+    #[error("internal error: {0}")]
+    Internal(&'static str),
+    /// The requested desktop operation is unavailable on this platform.
+    #[error("open_message_in_telegram is only supported on macOS")]
+    UnsupportedPlatform,
+    /// The local desktop launcher refused or could not execute the request.
+    #[error("{message}")]
+    DesktopOpenFailed {
+        /// Safe process failure description.
+        message: String,
+        /// Validated link attempted by the launcher.
+        link: String,
+    },
+    /// Every channel attempt failed; retain each typed cause until output conversion.
+    #[error("{}", display_channel_failures(.0))]
+    AllChannelsFailed(Vec<(String, Error)>),
+
     /// A valid message identifier has no live message in the resolved channel.
     #[error("invalid input: Message {message_id} not found or deleted in channel {channel}")]
     MessageNotFound {
         /// Supplied channel reference.
         channel: String,
         /// Positive message ID.
-        message_id: i32,
+        message_id: i64,
     },
     /// No eligible channel/group matches the supplied reference.
     #[error("invalid input: Channel not found: {0}")]
@@ -24,6 +42,14 @@ pub enum Error {
     /// A bare ID or title identifies more than one distinct channel/group.
     #[error("ambiguous channel reference: {0}; use an unambiguous username")]
     AmbiguousChannel(String),
+    /// More than one subscribed channel/group has the requested title.
+    #[error("ambiguous title: {count} subscribed chats are named '{identifier}'")]
+    AmbiguousTitle {
+        /// Original title.
+        identifier: String,
+        /// Number of distinct matches.
+        count: usize,
+    },
     /// A resolved peer is outside the channel/group tool domain.
     #[error("not a channel or group")]
     UnsupportedPeer,
@@ -116,6 +142,32 @@ pub enum StateUnavailable {
     /// Enabled replay storage is unavailable, rather than empty or disabled.
     #[error("response replay unavailable: interrupted critical section")]
     ResponseBuffer,
+}
+
+// Legacy output serialization is intentionally textual. Canonical output maps variants
+// to ToolError before serializing, so provider details cannot cross that boundary.
+impl serde::Serialize for Error {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::ChannelNotFound(reference) => {
+                serializer.serialize_str(&format!("Channel not found: {reference}"))
+            }
+            Self::UnsupportedPeer => serializer.serialize_str("Not a channel or group"),
+            _ => serializer.collect_str(self),
+        }
+    }
+}
+
+fn display_channel_failures(failures: &[(String, Error)]) -> String {
+    format!(
+        "all {} channels failed: {}",
+        failures.len(),
+        failures
+            .iter()
+            .map(|(channel, error)| format!("{channel}: {error}"))
+            .collect::<Vec<_>>()
+            .join("; ")
+    )
 }
 
 #[cfg(test)]

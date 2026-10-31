@@ -291,6 +291,7 @@ pub(crate) fn convert_raw_message(
     let link = build_message_link(peer, message_id)?;
 
     Some(Message {
+        peer_namespace: Some(super::channel::peer_namespace(peer)),
         id: message_id,
         channel_id,
         channel_name,

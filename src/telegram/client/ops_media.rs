@@ -63,7 +63,7 @@ impl TelegramClient {
         channel_ref: &str,
         message_ids: &[i32],
         max_dimension: u32,
-    ) -> Result<Vec<MediaFetchOutcome>, Error> {
+    ) -> Result<crate::telegram::types::MediaBatch, Error> {
         use futures::StreamExt as _;
 
         validate_channel_identifier(channel_ref)?;
@@ -146,7 +146,13 @@ impl TelegramClient {
             "Batch media download complete"
         );
 
-        Ok(outcomes)
+        Ok(crate::telegram::types::MediaBatch {
+            channel_id: crate::telegram::converters::channel_identity(&peer)
+                .ok_or(Error::UnsupportedPeer)?
+                .id,
+            peer_namespace: crate::telegram::converters::peer_namespace(&peer),
+            outcomes,
+        })
     }
 
     /// Select and download a message's visual media: the photo itself, or the
@@ -260,6 +266,18 @@ impl TelegramClient {
         );
 
         Ok(MediaDownload {
+            channel_id: crate::telegram::types::ChannelId::new(
+                msg.peer_id().bare_id().ok_or(Error::UnsupportedPeer)?,
+            )?,
+            peer_namespace: match msg.peer_id().kind() {
+                grammers_session::types::PeerKind::User => return Err(Error::UnsupportedPeer),
+                grammers_session::types::PeerKind::Chat => {
+                    crate::telegram::types::PeerNamespace::Chat
+                }
+                grammers_session::types::PeerKind::Channel => {
+                    crate::telegram::types::PeerNamespace::Channel
+                }
+            },
             bytes,
             media_type,
             is_thumbnail,

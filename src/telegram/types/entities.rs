@@ -10,6 +10,9 @@ use serde::{Deserialize, Serialize};
 /// A Telegram message.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Message {
+    /// Internal source namespace, excluded from the legacy representation.
+    #[serde(skip)]
+    pub peer_namespace: Option<crate::telegram::types::PeerNamespace>,
     pub id: MessageId,
     pub channel_id: ChannelId,
     pub channel_name: ChannelName,
@@ -165,6 +168,8 @@ pub struct ChannelPage {
 /// B2), where a sentinel would fabricate a `t.me/unknown/…` link.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChannelIdentity {
+    /// Namespace of the already-resolved peer.
+    pub peer_namespace: super::ids::PeerNamespace,
     pub id: ChannelId,
     pub username: Option<String>,
 }
@@ -172,13 +177,14 @@ pub struct ChannelIdentity {
 /// Outcome of resolving one identifier in resolve_channels (work-order A7).
 /// Exactly one of `channel` / `error` is present.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ChannelResolution {
+#[serde(bound(deserialize = "E: Deserialize<'de>"))]
+pub struct ChannelResolution<E = String> {
     #[schemars(description = "The identifier as passed in the request")]
     pub identifier: String,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub channel: Option<Channel>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub error: Option<String>,
+    pub error: Option<E>,
 }
 
 /// Result of a batch message fetch: found messages plus the ids Telegram
@@ -194,6 +200,10 @@ pub struct ChannelResolution {
 /// not represent domain-side.
 #[derive(Debug, Clone)]
 pub struct MessageBatch {
+    /// Resolved numeric channel, retained even when every requested message is missing.
+    pub channel_id: ChannelId,
+    /// Namespace of the resolved channel/group.
+    pub peer_namespace: super::ids::PeerNamespace,
     pub messages: Vec<Message>,
     pub missing_ids: Vec<i64>,
 }
@@ -234,6 +244,7 @@ mod tests {
 
     fn create_test_message() -> Message {
         Message {
+            peer_namespace: Some(crate::telegram::types::PeerNamespace::Channel),
             id: MessageId::new(1).unwrap(),
             channel_id: ChannelId::new(100).unwrap(),
             channel_name: ChannelName::new("Test").unwrap(),

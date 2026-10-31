@@ -24,6 +24,7 @@ use grammers_client::tl;
 /// ```
 pub fn create_test_message(id: i64, text: &str, channel_id: i64) -> Message {
     Message {
+        peer_namespace: Some(crate::telegram::types::PeerNamespace::Channel),
         id: MessageId::new(id).expect("Test message ID must be positive"),
         channel_id: ChannelId::new(channel_id).expect("Test channel ID must be positive"),
         channel_name: ChannelName::new("Test Channel").expect("Valid channel name"),

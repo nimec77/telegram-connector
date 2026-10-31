@@ -181,6 +181,8 @@ async fn via_get_messages_batch() -> String {
     let mut telegram = MockTelegramClientTrait::new();
     telegram.expect_get_messages_batch().returning(|_, _| {
         Ok(MessageBatch {
+            channel_id: crate::telegram::types::ChannelId::new(100).expect("fixture channel"),
+            peer_namespace: crate::telegram::types::PeerNamespace::Channel,
             messages: vec![fixture()],
             missing_ids: Vec::new(),
         })
@@ -303,6 +305,8 @@ async fn get_messages_batch_issues_exactly_one_client_call() {
         .times(1)
         .return_once(move |_, _| {
             Ok(MessageBatch {
+                channel_id: crate::telegram::types::ChannelId::new(100).expect("fixture channel"),
+                peer_namespace: crate::telegram::types::PeerNamespace::Channel,
                 messages,
                 missing_ids: Vec::new(),
             })

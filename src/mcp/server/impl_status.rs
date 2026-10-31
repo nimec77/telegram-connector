@@ -4,15 +4,16 @@
 //! delegate to them. Split out per LM-3 (`server.rs` was 880 lines).
 
 use super::McpServer;
+use crate::error::Error;
 use crate::mcp::tools::{
     BufferedResponseEntry, GetLastResponsesRequest, LastResponsesResponse, MediaLimits,
-    RateLimiterCosts, RateLimiterStatus, StatusResponse, json_response,
+    RateLimiterCosts, RateLimiterStatus, StatusResponse,
 };
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
 
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {
-    pub(super) async fn check_mcp_status_impl(&self) -> Result<String, String> {
+    pub(super) async fn check_mcp_status_data(&self) -> Result<StatusResponse, Error> {
         let account = self.telegram_client.cached_account_status().await;
         let tokens = self.rate_limiter.try_available_tokens();
         let token_unavailable = tokens.as_ref().err().map(ToString::to_string);
@@ -50,45 +51,43 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             premium: account.premium,
         };
 
-        json_response(&response)
+        Ok(response)
     }
 
-    pub(super) async fn get_last_responses_impl(
+    pub(super) async fn get_last_responses_data(
         &self,
         request: GetLastResponsesRequest,
-    ) -> Result<String, String> {
+    ) -> Result<LastResponsesResponse, Error> {
         let include_binary = request.include_binary.unwrap_or(false);
         let snapshot = self
             .response_buffer
-            .try_snapshot(request.n.map(|n| n as usize))
-            .map_err(|error| crate::error::Error::from(error).to_string())?;
+            .try_snapshot(request.n.map(|n| n as usize))?;
         let entries = snapshot.responses;
         let responses: Vec<BufferedResponseEntry> = entries
             .into_iter()
             .map(|entry| {
-                // Payload was valid JSON when written; Null only on corruption.
-                let mut response =
-                    serde_json::from_str(&entry.payload).unwrap_or(serde_json::Value::Null);
+                let mut response = serde_json::from_str(&entry.payload)
+                    .map_err(|_| Error::Internal("invalid replay JSON"))?;
                 if !include_binary {
                     omit_binary_blocks(&mut response);
                 }
-                BufferedResponseEntry {
+                Ok(BufferedResponseEntry {
                     request_id: entry.request_id,
                     tool_name: entry.tool_name,
                     written_at: chrono::DateTime::<chrono::Utc>::from(entry.written_at)
                         .to_rfc3339(),
                     size_bytes: entry.size_bytes,
                     response,
-                }
+                })
             })
-            .collect();
+            .collect::<Result<_, Error>>()?;
 
         let response = LastResponsesResponse {
             buffered: snapshot.buffered,
             responses,
         };
 
-        json_response(&response)
+        Ok(response)
     }
 }
 

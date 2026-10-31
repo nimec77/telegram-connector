@@ -8,8 +8,8 @@ use telegram_connector::mcp::tools::StatusResponse;
 use telegram_connector::telegram::transcription::TranscriptionDeadline;
 use telegram_connector::telegram::types::{
     AccountStatus, Channel, ChannelIdentity, ChannelPage, ChannelResolution, ChannelStats,
-    HistoryParams, MediaDownload, MediaFetchOutcome, Message, MessageBatch, SearchParams,
-    SearchResult, TranscriptionOutcome,
+    HistoryParams, MediaDownload, Message, MessageBatch, SearchParams, SearchResult,
+    TranscriptionOutcome,
 };
 use telegram_connector::{Config, Error, RateLimiter, RateLimiterTrait, TelegramClientTrait};
 
@@ -86,7 +86,7 @@ impl TelegramClientTrait for InertClient {
         _channel_ref: &str,
         _message_ids: &[i32],
         _max_dimension: u32,
-    ) -> Result<Vec<MediaFetchOutcome>, Error> {
+    ) -> Result<telegram_connector::telegram::types::MediaBatch, Error> {
         unavailable()
     }
     async fn transcribe_audio(
@@ -100,7 +100,7 @@ impl TelegramClientTrait for InertClient {
     async fn resolve_channels(
         &self,
         _identifiers: &[String],
-    ) -> Result<Vec<ChannelResolution>, Error> {
+    ) -> Result<Vec<ChannelResolution<Error>>, Error> {
         unavailable()
     }
     async fn get_channel_stats(
@@ -123,6 +123,7 @@ async fn main() -> anyhow::Result<()> {
     config.server.validate()?;
     let limiter = Arc::new(RateLimiter::new(&config.rate_limiting));
     let server = McpServer::new(Arc::new(InertClient), Arc::clone(&limiter))
+        .with_output_format(config.server.output_format)
         .with_observability(&config.observability)
         .with_media_download_cost(config.rate_limiting.media_download_cost)
         .with_transcription_cost(config.rate_limiting.transcription_cost)

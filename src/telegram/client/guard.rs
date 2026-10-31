@@ -24,7 +24,7 @@ fn not_found(channel_ref: &str, message_id: i32) -> Error {
     );
     Error::MessageNotFound {
         channel: channel_ref.to_string(),
-        message_id,
+        message_id: i64::from(message_id),
     }
 }
 

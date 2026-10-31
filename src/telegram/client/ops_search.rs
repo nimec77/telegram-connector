@@ -5,7 +5,7 @@
 use super::TelegramClient;
 use super::cursor::cursor_wire_bounds;
 use super::raw_pager::{RawChannelSearchPager, RawGlobalSearchPager};
-use super::resolve::peer_to_ref;
+use super::resolve::{NumericSelection, peer_to_ref};
 use super::results::assemble_search_result;
 use super::search_budget::SearchBudget;
 use super::walk::{BelowCutoff, Fetched, Flow, MessageWalk, WalkConfig};
@@ -137,63 +137,60 @@ impl TelegramClient {
                     self.search_deadline_secs,
                 );
                 let mut channels_scanned = 0u32;
-                // Find the channel in our dialogs
+                // Complete this existing dialog traversal before trusting a numeric match.
+                // A namespace retained from username resolution narrows the same pass;
+                // a bare numeric input remains fail-closed across eligible namespaces.
                 let mut dialogs = self.client.iter_dialogs();
-
+                let mut selected =
+                    NumericSelection::with_namespace(channel_id.get(), params.channel_namespace);
                 while let Some(dialog) = dialogs
                     .next()
                     .await
-                    .map_err(|e| Error::TelegramApi(format!("Failed to iterate dialogs: {}", e)))?
+                    .map_err(|e| Error::TelegramApi(format!("Failed to iterate dialogs: {e}")))?
                 {
-                    // The dialog walk is on the deadline too: a large dialog list, or
-                    // a `channel_id` the account has not joined (which walks every
-                    // dialog before concluding), would otherwise run past the budget
-                    // into `search_secs` and error — the exact outcome the deadline
-                    // exists to replace with a graceful partial. Checking here also
-                    // latches `timed_out`, so a slow walk is reported rather than
-                    // looking like a fast empty result.
                     if walk.expired() {
                         break;
                     }
                     let peer = dialog.peer();
-                    if peer.id().bare_id() == Some(channel_id.get()) {
-                        channels_scanned += 1;
-
-                        // Search in this specific channel via the raw
-                        // messages.Search pager: same request as grammers'
-                        // search_messages, but the response envelope is
-                        // kept so forwards get attributed (zero extra calls).
-                        let peer_ref = peer_to_ref(peer).await?;
-                        let mut pager =
-                            RawChannelSearchPager::new(&self.client, peer_ref).query(&params.query);
-                        if let Some(before) = before_offset {
-                            pager = pager.offset_id(before);
+                    selected.consider(
+                        crate::telegram::converters::peer_namespace(peer),
+                        peer.id().bare_id(),
+                        || peer.clone(),
+                    )?;
+                }
+                // An incomplete traversal cannot establish unambiguous identity. Keep
+                // the existing deadline's successful empty partial instead of fetching
+                // from a provisional match, or starting a new deadline/resolution pass.
+                if !walk.expired()
+                    && let Some(peer) = selected.finish()
+                {
+                    channels_scanned += 1;
+                    let peer_ref = peer_to_ref(&peer).await?;
+                    let mut pager =
+                        RawChannelSearchPager::new(&self.client, peer_ref).query(&params.query);
+                    if let Some(before) = before_offset {
+                        pager = pager.offset_id(before);
+                    }
+                    if let Some(ref filter) = params.media_filter {
+                        pager = pager.filter(convert_media_filter(filter));
+                    }
+                    loop {
+                        if walk.expired() {
+                            break;
                         }
-
-                        // Apply media filter if specified
-                        if let Some(ref media_filter) = params.media_filter {
-                            pager = pager.filter(convert_media_filter(media_filter));
+                        let next = pager
+                            .next()
+                            .await
+                            .map_err(|e| Error::TelegramApi(format!("Search failed: {e}")))?;
+                        let page_size = pager.take_last_page_size();
+                        let fetched = next.map(|(raw, entities)| Fetched {
+                            raw,
+                            entities,
+                            peer: Some(&peer),
+                        });
+                        if walk.step(fetched, page_size) == Flow::Stop {
+                            break;
                         }
-
-                        loop {
-                            if walk.expired() {
-                                break;
-                            }
-                            let next = pager
-                                .next()
-                                .await
-                                .map_err(|e| Error::TelegramApi(format!("Search failed: {}", e)))?;
-                            let page_size = pager.take_last_page_size();
-                            let fetched = next.map(|(raw, entities)| Fetched {
-                                raw,
-                                entities,
-                                peer: Some(peer),
-                            });
-                            if walk.step(fetched, page_size) == Flow::Stop {
-                                break;
-                            }
-                        }
-                        break;
                     }
                 }
                 let (page, budget) = walk.into_parts();

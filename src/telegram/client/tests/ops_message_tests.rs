@@ -37,7 +37,8 @@ fn every_requested_id_lands_in_exactly_one_bucket() {
         }),
     );
 
-    let batch = partition_batch(&[1, 2, 3], &mut by_id, &peer, &entities, "@канал");
+    let batch = partition_batch(&[1, 2, 3], &mut by_id, &peer, &entities, "@канал")
+        .expect("valid fixture peer");
 
     assert_eq!(batch.messages.len(), 1, "only id 1 exists");
     assert_eq!(batch.missing_ids, vec![2, 3]);
@@ -63,7 +64,8 @@ fn a_message_empty_placeholder_is_missing_not_a_fabricated_message() {
         }),
     );
 
-    let batch = partition_batch(&[9], &mut by_id, &peer, &entities, "@канал");
+    let batch =
+        partition_batch(&[9], &mut by_id, &peer, &entities, "@канал").expect("valid fixture peer");
 
     assert!(batch.messages.is_empty());
     assert_eq!(batch.missing_ids, vec![9]);
@@ -83,7 +85,8 @@ fn a_present_message_that_fails_conversion_is_reported_missing_not_dropped() {
     let mut by_id = HashMap::new();
     by_id.insert(0, raw_tl_message(0, 1_000, 11));
 
-    let batch = partition_batch(&[0], &mut by_id, &peer, &entities, "@канал");
+    let batch =
+        partition_batch(&[0], &mut by_id, &peer, &entities, "@канал").expect("valid fixture peer");
 
     assert!(batch.messages.is_empty());
     assert_eq!(batch.missing_ids, vec![0]);
@@ -95,7 +98,8 @@ fn requested_order_is_preserved_in_missing_ids() {
     let entities = EntityLookup::from_envelope(&[], &[]);
     let mut by_id = HashMap::new();
 
-    let batch = partition_batch(&[5, 3, 9], &mut by_id, &peer, &entities, "@канал");
+    let batch = partition_batch(&[5, 3, 9], &mut by_id, &peer, &entities, "@канал")
+        .expect("valid fixture peer");
 
     assert_eq!(batch.missing_ids, vec![5, 3, 9]);
 }

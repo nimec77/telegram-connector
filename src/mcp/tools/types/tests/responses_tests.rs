@@ -40,6 +40,7 @@ fn status_response_serializes() {
 #[test]
 fn message_link_response_serializes() {
     let response = MessageLinkResponse {
+        resolved_channel: None,
         channel_id: "123".to_string(),
         message_id: 456,
         https_link: "https://t.me/c/123/456".to_string(),
@@ -102,6 +103,7 @@ fn message_response_maps_and_omits_absent_fields() {
     use crate::telegram::types::{ChannelId, ChannelName, MediaType, Message, MessageId, Username};
 
     let msg = Message {
+        peer_namespace: Some(crate::telegram::types::PeerNamespace::Channel),
         id: MessageId::new(1).unwrap(),
         channel_id: ChannelId::new(100).unwrap(),
         channel_name: ChannelName::new("Test").unwrap(),
@@ -145,6 +147,7 @@ fn message_response_maps_video_info() {
     };
 
     let msg = Message {
+        peer_namespace: Some(crate::telegram::types::PeerNamespace::Channel),
         id: MessageId::new(1).unwrap(),
         channel_id: ChannelId::new(100).unwrap(),
         channel_name: ChannelName::new("Test").unwrap(),
@@ -195,6 +198,7 @@ fn search_response_maps_from_search_result() {
 
     let result = SearchResult {
         messages: vec![Message {
+            peer_namespace: Some(crate::telegram::types::PeerNamespace::Channel),
             id: MessageId::new(1).unwrap(),
             channel_id: ChannelId::new(100).unwrap(),
             channel_name: ChannelName::new("Test").unwrap(),
@@ -236,7 +240,7 @@ fn search_response_maps_from_search_result() {
         },
     };
 
-    let dto = SearchResponse::from(result);
+    let dto = SearchResponse::<String>::from(result);
     assert_eq!(dto.messages.len(), 1);
     assert_eq!(dto.returned, 1);
     let json = serde_json::to_value(&dto).unwrap();

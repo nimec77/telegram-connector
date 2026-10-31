@@ -37,9 +37,10 @@ pub(crate) fn truncate_text(msg: &mut MessageResponse, max_chars: u32) {
 /// strip it from every message (A4). Caller guarantees single-channel
 /// scope; the header is read from the first message, and an empty result
 /// keeps `channel: None`.
-fn compact_response(resp: &mut SearchResponse) {
+fn compact_response<E: serde::Serialize>(resp: &mut SearchResponse<E>) {
     resp.channel = resp.messages.first().and_then(|m| {
         Some(ChannelHeader {
+            peer_namespace: m.peer_namespace,
             id: m.channel_id?,
             name: m.channel_name.clone()?,
             username: m.channel_username.clone(),
@@ -72,11 +73,12 @@ pub(crate) enum CursorPolicy {
 
 /// Multi-channel compact hoisting (A3): build the id-keyed header map from
 /// the messages, strip name/username, keep channel_id on every message.
-fn compact_response_multi(resp: &mut SearchResponse) {
+fn compact_response_multi<E: serde::Serialize>(resp: &mut SearchResponse<E>) {
     let mut map = std::collections::BTreeMap::new();
     for m in &resp.messages {
         if let (Some(id), Some(name)) = (m.channel_id, m.channel_name.clone()) {
             map.entry(id.get().to_string()).or_insert(ChannelHeader {
+                peer_namespace: m.peer_namespace,
                 id,
                 name,
                 username: m.channel_username.clone(),
@@ -99,15 +101,15 @@ fn compact_response_multi(resp: &mut SearchResponse) {
 /// After popping: `returned`, `has_more`, `next_cursor` (when
 /// `CursorPolicy::SingleChannel`), and `channels_in_results` (full format only) are
 /// recomputed so the metadata stays honest (B6).
-fn fit_to_budget(
-    resp: &mut SearchResponse,
+fn fit_to_budget<E: serde::Serialize>(
+    resp: &mut SearchResponse<E>,
     budget: usize,
     cursor_policy: CursorPolicy,
-) -> Result<(), String> {
+) -> Result<(), crate::error::Error> {
     let mut popped = false;
     loop {
         let len = serde_json::to_string(resp)
-            .map_err(|e| format!("Failed to serialize response: {}", e))?
+            .map_err(|_| crate::error::Error::Internal("response serialization failed"))?
             .len();
         if len <= budget || resp.messages.len() <= 1 {
             break;
@@ -136,14 +138,14 @@ fn fit_to_budget(
 /// was truncated and the scope is single-channel, (3) compact hoisting, then
 /// (4) byte-budget fitting. Shared by `search_messages_impl` and
 /// `get_recent_messages_impl` so the order and conditions live in one place.
-pub(crate) fn shape_response(
-    resp: &mut SearchResponse,
+pub(crate) fn shape_response<E: serde::Serialize>(
+    resp: &mut SearchResponse<E>,
     format: ResponseFormat,
     max_text_length: u32,
     cursor_policy: CursorPolicy,
     byte_budget: usize,
     scope: CompactScope,
-) -> Result<(), String> {
+) -> Result<(), crate::error::Error> {
     for msg in &mut resp.messages {
         truncate_text(msg, max_text_length);
     }
@@ -154,6 +156,26 @@ pub(crate) fn shape_response(
         resp.next_cursor = Some(NextCursor { before_id: last.id });
     }
     if format == ResponseFormat::Compact {
+        let mut headers = std::collections::HashMap::new();
+        for message in &resp.messages {
+            let key = match scope {
+                CompactScope::Single => None,
+                CompactScope::Multi => message.channel_id,
+            };
+            let identity = (
+                message.channel_id,
+                message.peer_namespace,
+                message.channel_name.as_ref(),
+                message.channel_username.as_ref(),
+            );
+            if let Some(previous) = headers.insert(key, identity)
+                && previous != identity
+            {
+                return Err(crate::error::Error::AmbiguousChannel(
+                    "conflicting compact headers".into(),
+                ));
+            }
+        }
         match scope {
             CompactScope::Single => compact_response(resp),
             CompactScope::Multi => compact_response_multi(resp),
@@ -169,11 +191,11 @@ pub(crate) fn shape_response(
 pub(crate) fn fit_batch_to_budget(
     resp: &mut MessagesBatchResponse,
     budget: usize,
-) -> Result<(), String> {
+) -> Result<(), crate::error::Error> {
     let mut omitted = Vec::new();
     loop {
         let len = serde_json::to_string(resp)
-            .map_err(|e| format!("Failed to serialize response: {}", e))?
+            .map_err(|_| crate::error::Error::Internal("response serialization failed"))?
             .len();
         if len <= budget || resp.messages.len() <= 1 {
             break;
@@ -199,6 +221,7 @@ mod tests {
 
     fn wire_message(id: i64, text: &str) -> MessageResponse {
         MessageResponse {
+            peer_namespace: Some(crate::telegram::types::PeerNamespace::Channel),
             id: MessageId::new(id).expect("id"),
             channel_id: ChannelId::new(100).ok(),
             channel_name: ChannelName::new("Test").ok(),
@@ -244,7 +267,7 @@ mod tests {
 
     #[test]
     fn compact_hoists_channel_and_strips_messages() {
-        let mut resp = SearchResponse {
+        let mut resp: SearchResponse = SearchResponse {
             channel: None,
             channels: None,
             messages: vec![wire_message(2, "b"), wire_message(1, "a")],
@@ -271,7 +294,7 @@ mod tests {
 
     #[test]
     fn compact_on_empty_result_keeps_null_header() {
-        let mut resp = SearchResponse {
+        let mut resp: SearchResponse = SearchResponse {
             channel: None,
             channels: None,
             messages: vec![],
@@ -378,7 +401,7 @@ mod tests {
 
     #[test]
     fn multi_compact_builds_channels_map_and_keeps_channel_id() {
-        let mut resp = SearchResponse {
+        let mut resp: SearchResponse = SearchResponse {
             channel: None,
             channels: None,
             messages: vec![wire_message(2, "b"), wire_message(1, "a")],
@@ -405,6 +428,7 @@ mod tests {
     #[test]
     fn batch_budget_pops_tail_into_omitted_ids() {
         let mut resp = MessagesBatchResponse {
+            resolved_channel: None,
             channel_id: "swodki".into(),
             messages: (1..=5)
                 .map(|i| wire_message(i, &"я".repeat(2_000)))

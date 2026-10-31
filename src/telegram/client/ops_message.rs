@@ -93,13 +93,7 @@ impl TelegramClient {
             })
             .await?;
 
-        Ok(partition_batch(
-            message_ids,
-            &mut by_id,
-            &peer,
-            &entities,
-            channel_ref,
-        ))
+        partition_batch(message_ids, &mut by_id, &peer, &entities, channel_ref)
     }
 }
 
@@ -116,7 +110,7 @@ fn partition_batch(
     peer: &grammers_client::peer::Peer,
     entities: &EntityLookup,
     channel_ref: &str,
-) -> crate::telegram::MessageBatch {
+) -> Result<crate::telegram::MessageBatch, Error> {
     let mut messages = Vec::with_capacity(message_ids.len());
     let mut missing_ids = Vec::with_capacity(message_ids.len());
     for &message_id in message_ids {
@@ -137,10 +131,14 @@ fn partition_batch(
             _ => missing_ids.push(i64::from(message_id)),
         }
     }
-    crate::telegram::MessageBatch {
+    Ok(crate::telegram::MessageBatch {
+        channel_id: crate::telegram::converters::channel_identity(peer)
+            .ok_or(Error::UnsupportedPeer)?
+            .id,
+        peer_namespace: crate::telegram::converters::peer_namespace(peer),
         messages,
         missing_ids,
-    }
+    })
 }
 
 #[cfg(test)]
