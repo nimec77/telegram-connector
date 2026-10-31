@@ -2,10 +2,13 @@
 //!
 //! Unit of `client` (LM-2).
 
+use super::TelegramClient;
+use super::cursor::cursor_wire_bounds;
 use super::raw_pager::{RawChannelSearchPager, RawGlobalSearchPager};
+use super::resolve::peer_to_ref;
+use super::results::assemble_search_result;
 use super::search_budget::SearchBudget;
 use super::walk::{BelowCutoff, Fetched, Flow, MessageWalk, WalkConfig};
-use super::{TelegramClient, assemble_search_result, cursor_wire_bounds, peer_to_ref};
 use crate::error::Error;
 use crate::telegram::albums::PageAccumulator;
 use crate::telegram::converters::convert_media_filter;

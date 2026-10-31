@@ -2,8 +2,9 @@
 //!
 //! Unit of `client` (LM-2).
 
+use super::TelegramClient;
 use super::raw_pager::RawHistoryPager;
-use super::{TelegramClient, peer_to_ref, validate_channel_identifier};
+use super::resolve::{peer_to_ref, validate_channel_identifier};
 use crate::error::Error;
 use crate::telegram::albums::collapse_albums;
 use crate::telegram::converters::{convert_raw_message, timestamp_from_raw};

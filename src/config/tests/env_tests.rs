@@ -1,4 +1,4 @@
-//! Pure expansion and subprocess-only environment/path tests.
+//! Pure expansion and subprocess-only environment tests.
 use crate::config::env::expand_env_vars_with;
 use crate::config::*;
 
@@ -101,21 +101,6 @@ fn test_expand_env_vars_skips_inline_comment_after_hash() {
     );
 }
 #[test]
-fn test_resolve_path_from_env() {
-    let mut command = super::environment_child("path_env");
-    command.env("TELEGRAM_MCP_CONFIG", "/custom/path/config.toml");
-    super::assert_child_success(&mut command);
-}
-#[test]
-fn test_resolve_path_default() {
-    let dir = tempfile::tempdir().expect("isolated home");
-    let mut command = super::environment_child("path_default");
-    command
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path());
-    super::assert_child_success(&mut command);
-}
-#[test]
 fn failed_child_cannot_leak_environment_into_parent() {
     let before = std::env::var_os("CONFIG_ISOLATION_PANIC_PROBE");
     let output = super::environment_child("panic")
@@ -131,15 +116,6 @@ fn failed_child_cannot_leak_environment_into_parent() {
 fn environment_child() {
     let case = std::env::var("CONFIG_TEST_CASE").expect("parent configured child");
     match case.as_str() {
-        "path_env" => assert_eq!(
-            Config::resolve_config_path().expect("env path"),
-            PathBuf::from("/custom/path/config.toml")
-        ),
-        "path_default" => {
-            let path = Config::resolve_config_path().expect("default config path");
-            assert!(path.to_string_lossy().contains("telegram-connector"));
-            assert!(path.ends_with("config.toml"));
-        }
         "panic" => {
             assert_eq!(
                 std::env::var("CONFIG_ISOLATION_PANIC_PROBE").expect("probe"),

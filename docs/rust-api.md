@@ -46,10 +46,16 @@ is not evidence that downstream users do not exist. Every existing public path i
 | `telegram::transcription::TranscriptionDeadline` | Required in the public client trait signature. `new` starts one absolute Tokio budget after validation/acquisition; copies do not renew it. Zero expires immediately before any production stage; `instant` is absolute and `timeout_secs` retains the requested diagnostic budget. Internal polling/guards stay private. |
 | `telegram::timeout` | Retained empty public module. `with_timeout` remains crate-private; no general timeout helper is newly published. |
 
-Already internal: config defaults/environment expansion, MCP fanout/media-budget/shaping,
-Telegram albums/envelope, client operations/raw pagers/guards/search-budget/walk/resolve
-helpers, runtime state/transport/processing and converter implementation modules. No field
-visibility is widened for later module moves. Test-only helpers and mocks are not supported
+The `config` facade explicitly reexports its stable types; private `types`, `loading` and
+`validation` siblings own representation, loading/CLI overrides and validation respectively.
+Splitting inherent impls preserves all method paths. The crate-visible image floor remains
+`config::MIN_IMAGE_BASE64_BYTES`. The path resolver stays private to loading.
+
+Already internal: config representation/loading/validation/defaults/environment expansion;
+MCP fanout/media-budget/shaping; Telegram albums/envelope and client operations/raw pagers/
+guards/search-budget/walk/cursor/results/resolve helpers; runtime state/transport/processing;
+and converter implementation modules. No field
+visibility is widened for module layout. Test-only helpers and mocks are not supported
 external APIs.
 
 ## Errors, deadlines and partial results

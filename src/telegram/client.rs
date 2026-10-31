@@ -10,8 +10,8 @@ use crate::error::Error;
 use crate::telegram::trait_def::TelegramClientTrait;
 use crate::telegram::transcription::TranscriptionDeadline;
 use crate::telegram::types::{
-    AccountStatus, HistoryParams, MediaDownload, MediaFetchOutcome, MessageId, QueryMetadata,
-    SearchParams, SearchResult, TranscriptionOutcome,
+    AccountStatus, HistoryParams, MediaDownload, MediaFetchOutcome, SearchParams, SearchResult,
+    TranscriptionOutcome,
 };
 use grammers_client::Client;
 use grammers_session::storages::SqliteSession;
@@ -21,6 +21,7 @@ use tokio::task::JoinHandle;
 
 mod auth;
 mod channels;
+mod cursor;
 mod guard;
 mod lifecycle;
 mod ops_history;
@@ -34,6 +35,7 @@ mod raw_fetch;
 mod raw_page;
 mod raw_pager;
 mod resolve;
+mod results;
 mod search_budget;
 mod walk;
 
@@ -50,122 +52,6 @@ pub(crate) mod client_fixture;
 mod session_upgrade_tests;
 
 pub(crate) use resolve::username_to_resolve;
-
-/// Convert a resolved peer into the `PeerRef` that grammers RPC calls take.
-///
-/// grammers 0.10 split two failure modes that used to be one `Option`; keep
-/// them distinguishable in logs: `Err` is a session/storage error, `Ok(None)`
-/// means the peer is not in the session cache (no usable access hash).
-async fn peer_to_ref(
-    peer: &grammers_client::peer::Peer,
-) -> Result<grammers_session::types::PeerRef, Error> {
-    peer.to_ref()
-        .await
-        .map_err(|e| Error::TelegramApi(format!("Failed to convert peer to PeerRef: {e}")))?
-        .ok_or_else(|| {
-            Error::TelegramApi("Peer has no PeerRef (not in the session cache)".to_string())
-        })
-}
-
-/// Convert the optional cursor bounds to Telegram's `i32` wire ids (A8).
-/// MTProto message ids are `i32`; an out-of-range cursor cannot be sent, so
-/// it is rejected with the field name in the error.
-fn cursor_wire_bounds(
-    before_id: Option<MessageId>,
-    after_id: Option<MessageId>,
-) -> Result<(Option<i32>, Option<i32>), Error> {
-    fn wire(field: &str, id: Option<MessageId>) -> Result<Option<i32>, Error> {
-        match id {
-            Some(id) => id
-                .as_i32()
-                .ok_or_else(|| {
-                    Error::InvalidInput(format!(
-                        "{field} {} exceeds Telegram's message id range",
-                        id.get()
-                    ))
-                })
-                .map(Some),
-            None => Ok(None),
-        }
-    }
-    Ok((wire("before_id", before_id)?, wire("after_id", after_id)?))
-}
-
-/// Build the `SearchResult` envelope shared by `search_messages_impl` and
-/// `get_recent_messages_impl`.
-///
-/// `channels_in_results` is computed here as the count of distinct channels
-/// among `messages`. For history — which fetches from exactly one peer —
-/// that count is always 0 or 1, which is exactly what the hand-rolled
-/// `if messages.is_empty() { 0 } else { 1 }` it replaces used to produce;
-/// the two forms are equivalent only because of that single-peer property.
-///
-/// `partial` is deliberately paired with `timed_out`, never with `has_more`:
-/// expiry stopped the walk without proving anything lies beyond the page,
-/// while a full page proves the opposite.
-///
-/// That pairing can still be a conservative false positive: the deadline is
-/// checked at the top of an iteration, so expiry landing on what would have
-/// been the terminal iteration reports a complete result set as partial.
-/// Avoiding that needs lookahead the loop does not have, and the error is in
-/// the safe direction — it is not a bug to go fix later.
-///
-/// Sorting is NOT applied here: `search_messages_impl` sorts by timestamp
-/// descending before calling this, while `get_recent_messages_impl` relies on
-/// its pager's already-reverse-chronological order. Folding a sort in here
-/// would silently start sorting history results.
-///
-/// Eight positional arguments trips clippy's default `too_many_arguments`
-/// threshold; each one is an independent, already-computed value the two
-/// call sites have on hand (no natural sub-grouping), so bundling them into
-/// a params struct would only relocate the count, not reduce it.
-#[allow(clippy::too_many_arguments)]
-fn assemble_search_result(
-    messages: Vec<crate::telegram::Message>,
-    budget: &search_budget::SearchBudget,
-    has_more: bool,
-    query: String,
-    window_from: chrono::DateTime<chrono::Utc>,
-    window_to: Option<chrono::DateTime<chrono::Utc>>,
-    channels_scanned: Option<u32>,
-    search_time_ms: u64,
-) -> SearchResult {
-    let channels_in_results = messages
-        .iter()
-        .map(|m| m.channel_id.get())
-        .collect::<std::collections::HashSet<_>>()
-        .len() as u32;
-    SearchResult {
-        returned: messages.len() as u64,
-        has_more,
-        search_time_ms,
-        query_metadata: QueryMetadata {
-            query,
-            window_from,
-            window_to,
-            channels_scanned,
-            channels_in_results,
-            timed_out: budget.timed_out(),
-            partial: budget.timed_out(),
-            pages_fetched: budget.pages_fetched(),
-            messages_scanned: budget.messages_scanned(),
-        },
-        messages,
-    }
-}
-
-/// Reject an empty channel identifier before it reaches peer resolution.
-///
-/// Shared client-wide so every entry point reports the same error for the
-/// same caller mistake.
-fn validate_channel_identifier(identifier: &str) -> Result<(), Error> {
-    if identifier.is_empty() {
-        return Err(Error::InvalidInput(
-            "Channel identifier cannot be empty".to_string(),
-        ));
-    }
-    Ok(())
-}
 
 /// Telegram client wrapping grammers-client
 pub struct TelegramClient {

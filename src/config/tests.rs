@@ -4,6 +4,8 @@ use crate::config::defaults::{
     default_observability_config, default_timeout_config, default_transcription_config,
     default_transcription_cost,
 };
+use secrecy::SecretString;
+use std::path::PathBuf;
 /// Re-exec a single ignored entrypoint. Command configures a new process environment;
 /// neither this test process nor the child ever mutates its own environment.
 fn environment_child(case: &str) -> std::process::Command {

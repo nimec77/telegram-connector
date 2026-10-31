@@ -2,11 +2,40 @@
 //!
 //! Unit of `client` (LM-2).
 
-use super::{TelegramClient, validate_channel_identifier};
+use super::TelegramClient;
 use crate::error::Error;
 use crate::telegram::converters::channel_identity;
 use crate::telegram::timeout::with_timeout;
 use crate::telegram::types::{ChannelIdentity, Username};
+
+/// Convert a resolved peer into the `PeerRef` that grammers RPC calls take.
+///
+/// grammers 0.10 split two failure modes that used to be one `Option`; keep
+/// them distinguishable in logs: `Err` is a session/storage error, `Ok(None)`
+/// means the peer is not in the session cache (no usable access hash).
+pub(super) async fn peer_to_ref(
+    peer: &grammers_client::peer::Peer,
+) -> Result<grammers_session::types::PeerRef, Error> {
+    peer.to_ref()
+        .await
+        .map_err(|e| Error::TelegramApi(format!("Failed to convert peer to PeerRef: {e}")))?
+        .ok_or_else(|| {
+            Error::TelegramApi("Peer has no PeerRef (not in the session cache)".to_string())
+        })
+}
+
+/// Reject an empty channel identifier before it reaches peer resolution.
+///
+/// Shared client-wide so every entry point reports the same error for the
+/// same caller mistake.
+pub(super) fn validate_channel_identifier(identifier: &str) -> Result<(), Error> {
+    if identifier.is_empty() {
+        return Err(Error::InvalidInput(
+            "Channel identifier cannot be empty".to_string(),
+        ));
+    }
+    Ok(())
+}
 
 impl TelegramClient {
     /// Canonical channel-reference resolver: a numeric ref is found by walking the

@@ -2,8 +2,9 @@
 //!
 //! Unit of `client` (LM-2).
 
+use super::TelegramClient;
 use super::guard::require_found;
-use super::{TelegramClient, peer_to_ref, validate_channel_identifier};
+use super::resolve::{peer_to_ref, validate_channel_identifier};
 use crate::error::Error;
 use crate::telegram::converters::{convert_media_to_type, extract_audio_duration};
 use crate::telegram::timeout::with_timeout;

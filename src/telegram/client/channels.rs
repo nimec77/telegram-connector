@@ -2,7 +2,8 @@
 //!
 //! Unit of `client` (LM-2).
 
-use super::{TelegramClient, peer_to_ref, validate_channel_identifier};
+use super::TelegramClient;
+use super::resolve::{peer_to_ref, validate_channel_identifier};
 use crate::error::Error;
 use crate::telegram::converters::{
     convert_discovered_peer, convert_peer_to_channel, message_timestamp,

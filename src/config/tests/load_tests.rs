@@ -1,6 +1,8 @@
 //! File-loading tests use immutable parent environments and isolated child overrides.
 use crate::config::*;
+use secrecy::ExposeSecret;
 use std::fs;
+use std::path::PathBuf;
 
 fn run_config_child(case: &str, content: &str) {
     let dir = tempfile::tempdir().expect("config dir");

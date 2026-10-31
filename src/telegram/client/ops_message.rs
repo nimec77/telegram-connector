@@ -2,9 +2,10 @@
 //!
 //! Unit of `client` (LM-2).
 
+use super::TelegramClient;
 use super::guard::{is_empty_variant, require_found_raw};
 use super::raw_fetch::fetch_messages_by_id;
-use super::{TelegramClient, peer_to_ref, validate_channel_identifier};
+use super::resolve::{peer_to_ref, validate_channel_identifier};
 use crate::error::Error;
 use crate::telegram::converters::convert_raw_message;
 use crate::telegram::envelope::EntityLookup;

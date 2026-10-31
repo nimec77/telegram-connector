@@ -2,8 +2,10 @@
 //! also the empty-identifier guard; from Task 7 of audit-stage-4 on, also
 //! `assemble_search_result`).
 
+use super::cursor::cursor_wire_bounds;
+use super::resolve::validate_channel_identifier;
+use super::results::assemble_search_result;
 use super::search_budget::SearchBudget;
-use super::*;
 use crate::telegram::types::MessageId;
 
 fn mid(id: i64) -> MessageId {

@@ -2,11 +2,12 @@
 //!
 //! Unit of `client` (LM-2).
 
+use super::cursor::cursor_wire_bounds;
 use super::raw_pager::RawHistoryPager;
+use super::resolve::peer_to_ref;
+use super::results::assemble_search_result;
 use super::walk::{BelowCutoff, Fetched, Flow, MessageWalk, WalkConfig};
-use super::{
-    TelegramClient, assemble_search_result, cursor_wire_bounds, peer_to_ref, username_to_resolve,
-};
+use super::{TelegramClient, username_to_resolve};
 use crate::error::Error;
 use crate::telegram::timeout::with_timeout;
 use crate::telegram::types::{ChannelId, HistoryParams, SearchResult};

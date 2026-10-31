@@ -4,6 +4,8 @@ use crate::config::defaults::{
     default_download_secs, default_limits_config, default_timeout_config,
 };
 use crate::config::*;
+use secrecy::{ExposeSecret, SecretString};
+use std::path::PathBuf;
 
 #[test]
 fn test_has_auth_credentials_all_present() {

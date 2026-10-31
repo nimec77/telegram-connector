@@ -5,6 +5,7 @@ use crate::config::defaults::{
     default_search_deadline_seconds, default_timeout_config,
 };
 use crate::config::*;
+use std::path::PathBuf;
 
 // ========================================================================
 // File Logging Config Tests
