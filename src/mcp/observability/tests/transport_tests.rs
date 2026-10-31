@@ -234,3 +234,78 @@ async fn string_request_id_recovery_keeps_the_original_display_value() {
     assert_eq!(buffer.last(None)[0].request_id, "opaque-id");
     assert!(metrics.abandoned_requests().is_empty());
 }
+
+#[tokio::test]
+async fn poisoned_correlation_does_not_buffer_recovery_or_stop_transport() {
+    let (mut transport, metrics, buffer) = instrumented(vec![
+        call_tool_request(1, "search_messages"),
+        call_tool_request(2, "get_last_responses"),
+    ]);
+    transport.receive().await.expect("first request");
+    transport.send(tool_response(1)).await.expect("first write");
+    transport.receive().await.expect("recovery still received");
+    super::super::metrics::tests::poison(&metrics, false);
+    transport
+        .send(tool_response(2))
+        .await
+        .expect("recovery still sent");
+    assert_eq!(metrics.requests_received(), 2);
+    assert_eq!(metrics.responses_written(), 2);
+    assert_eq!(
+        buffer.len(),
+        1,
+        "uncorrelated recovery must not enter replay"
+    );
+    assert_eq!(buffer.last(None)[0].request_id, "1");
+    transport.inner.fail_sends = true;
+    assert_eq!(
+        transport
+            .send(tool_response(3))
+            .await
+            .expect_err("inner failure")
+            .kind(),
+        std::io::ErrorKind::BrokenPipe
+    );
+}
+
+#[tokio::test]
+async fn independent_observability_poison_never_changes_inner_transport_result() {
+    for last_write in [true, false] {
+        let (mut transport, metrics, buffer) =
+            instrumented(vec![call_tool_request(1, "search_messages")]);
+        if last_write {
+            super::super::metrics::tests::poison(&metrics, true);
+        } else {
+            super::super::buffer::tests::poison(&buffer);
+        }
+        let message = transport.receive().await.expect("request forwarded");
+        assert!(matches!(message, JsonRpcMessage::Request(_)));
+        transport
+            .send(tool_response(1))
+            .await
+            .expect("write still succeeds");
+        assert_eq!(metrics.requests_received(), 1);
+        assert_eq!(metrics.responses_written(), 1);
+        assert!(
+            metrics
+                .try_abandoned_requests()
+                .expect("healthy correlation")
+                .is_empty()
+        );
+        if last_write {
+            assert_eq!(buffer.try_len(), Ok(1));
+        } else {
+            assert_eq!(metrics.try_last_write_age_secs(), Ok(Some(0)));
+        }
+        transport.inner.fail_sends = true;
+        assert_eq!(
+            transport
+                .send(tool_response(2))
+                .await
+                .expect_err("inner failure")
+                .kind(),
+            std::io::ErrorKind::BrokenPipe
+        );
+        assert_eq!(metrics.responses_written(), 1);
+    }
+}

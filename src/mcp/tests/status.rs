@@ -21,7 +21,9 @@ async fn check_status_returns_connection_info() {
         });
 
     let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_available_tokens().return_once(|| 45.5);
+    mock_limiter
+        .expect_try_available_tokens()
+        .return_once(|| Ok(45.5));
     mock_limiter.expect_capacity().return_once(|| 50.0);
     mock_limiter.expect_refill_rate().return_once(|| 2.0);
 
@@ -36,7 +38,7 @@ async fn check_status_returns_connection_info() {
     assert!(result.is_ok());
     let response: StatusResponse = serde_json::from_str(&result.unwrap()).unwrap();
     assert!(response.telegram_connected);
-    assert_eq!(response.rate_limiter.tokens, 45.5);
+    assert_eq!(response.rate_limiter.tokens, Some(45.5));
     assert_eq!(response.server_version, env!("CARGO_PKG_VERSION"));
     assert_eq!(response.premium, Some(true));
 }
@@ -54,7 +56,9 @@ async fn check_status_reports_disconnected() {
         });
 
     let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_available_tokens().return_once(|| 0.0);
+    mock_limiter
+        .expect_try_available_tokens()
+        .return_once(|| Ok(0.0));
     mock_limiter.expect_capacity().return_once(|| 50.0);
     mock_limiter.expect_refill_rate().return_once(|| 2.0);
 
@@ -69,7 +73,7 @@ async fn check_status_reports_disconnected() {
     assert!(result.is_ok());
     let response: StatusResponse = serde_json::from_str(&result.unwrap()).unwrap();
     assert!(!response.telegram_connected);
-    assert_eq!(response.rate_limiter.tokens, 0.0);
+    assert_eq!(response.rate_limiter.tokens, Some(0.0));
 }
 
 #[tokio::test]
@@ -83,7 +87,9 @@ async fn check_status_includes_session_counters() {
             ..Default::default()
         });
     let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_available_tokens().return_once(|| 10.0);
+    mock_limiter
+        .expect_try_available_tokens()
+        .return_once(|| Ok(10.0));
     mock_limiter.expect_capacity().return_once(|| 50.0);
     mock_limiter.expect_refill_rate().return_once(|| 2.0);
 
@@ -115,7 +121,9 @@ async fn check_status_age_is_none_before_first_write() {
             ..Default::default()
         });
     let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_available_tokens().return_once(|| 10.0);
+    mock_limiter
+        .expect_try_available_tokens()
+        .return_once(|| Ok(10.0));
     mock_limiter.expect_capacity().return_once(|| 50.0);
     mock_limiter.expect_refill_rate().return_once(|| 2.0);
 
@@ -143,7 +151,9 @@ async fn check_status_reports_rate_limiter_budget() {
         });
 
     let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_available_tokens().return_once(|| 23.5);
+    mock_limiter
+        .expect_try_available_tokens()
+        .return_once(|| Ok(23.5));
     mock_limiter.expect_capacity().return_once(|| 50.0);
     mock_limiter.expect_refill_rate().return_once(|| 2.0);
 
@@ -156,7 +166,7 @@ async fn check_status_reports_rate_limiter_budget() {
         .await;
 
     let response: StatusResponse = serde_json::from_str(&result.unwrap()).unwrap();
-    assert_eq!(response.rate_limiter.tokens, 23.5);
+    assert_eq!(response.rate_limiter.tokens, Some(23.5));
     assert_eq!(response.rate_limiter.capacity, 50.0);
     assert_eq!(response.rate_limiter.refill_per_sec, 2.0);
     assert_eq!(response.rate_limiter.costs.search, 1);
@@ -177,7 +187,9 @@ async fn status_response_has_no_deprecated_alias() {
         });
 
     let mut mock_limiter = MockRateLimiterTrait::new();
-    mock_limiter.expect_available_tokens().return_once(|| 45.5);
+    mock_limiter
+        .expect_try_available_tokens()
+        .return_once(|| Ok(45.5));
     mock_limiter.expect_capacity().return_once(|| 50.0);
     mock_limiter.expect_refill_rate().return_once(|| 2.0);
 
@@ -207,7 +219,7 @@ async fn status_reports_media_batch_limits_from_config() {
         });
 
     let mut limiter = MockRateLimiterTrait::new();
-    limiter.expect_available_tokens().returning(|| 60.0);
+    limiter.expect_try_available_tokens().returning(|| Ok(60.0));
     limiter.expect_capacity().returning(|| 60.0);
     limiter.expect_refill_rate().returning(|| 2.0);
 
@@ -236,7 +248,7 @@ async fn unknown_cached_status_is_free_and_does_not_refresh() {
         .expect_cached_account_status()
         .return_once(AccountStatus::default);
     let mut limiter = MockRateLimiterTrait::new();
-    limiter.expect_available_tokens().return_const(0.0);
+    limiter.expect_try_available_tokens().return_const(Ok(0.0));
     limiter.expect_capacity().return_const(50.0);
     limiter.expect_refill_rate().return_const(2.0);
     let server = McpServer::new(Arc::new(client), Arc::new(limiter));
@@ -247,5 +259,5 @@ async fn unknown_cached_status_is_free_and_does_not_refresh() {
     let status: StatusResponse = serde_json::from_str(&json).expect("status JSON");
     assert!(!status.telegram_connected);
     assert_eq!(status.premium, None);
-    assert_eq!(status.rate_limiter.tokens, 0.0);
+    assert_eq!(status.rate_limiter.tokens, Some(0.0));
 }

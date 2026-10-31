@@ -451,3 +451,36 @@ async fn poisoned_limiter_blocks_tool_rpc_after_local_validation() {
         assert!(error.contains(expected), "{error}");
     }
 }
+
+#[tokio::test]
+async fn poisoned_limiter_status_keeps_independent_budget_metadata() {
+    use crate::mcp::server::McpServer;
+    use crate::telegram::{AccountStatus, MockTelegramClientTrait};
+    use rmcp::handler::server::common::RequestId;
+    use rmcp::model::NumberOrString;
+    let limiter = Arc::new(RateLimiter::new(&test_config(5, 1.0)));
+    let poisoner = Arc::clone(&limiter);
+    assert!(
+        std::thread::spawn(move || {
+            let _guard = poisoner.bucket.lock().expect("healthy bucket");
+            panic!("intentional poison");
+        })
+        .join()
+        .is_err()
+    );
+    let mut client = MockTelegramClientTrait::new();
+    client
+        .expect_cached_account_status()
+        .returning(AccountStatus::default);
+    let server = McpServer::new(Arc::new(client), limiter);
+    let response = server
+        .check_mcp_status(RequestId(NumberOrString::Number(1)))
+        .await
+        .expect("usable status");
+    let json: serde_json::Value = serde_json::from_str(&response).expect("JSON");
+    assert!(json["rate_limiter"]["tokens"].is_null());
+    assert!(json["rate_limiter"]["unavailable"].as_str().is_some());
+    assert_eq!(json["rate_limiter"]["capacity"], 5.0);
+    assert_eq!(json["rate_limiter"]["refill_per_sec"], 1.0);
+    assert!(json.get("last_response_write_unavailable").is_none());
+}

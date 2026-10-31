@@ -14,12 +14,16 @@ use crate::telegram::TelegramClientTrait;
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {
     pub(super) async fn check_mcp_status_impl(&self) -> Result<String, String> {
         let account = self.telegram_client.cached_account_status().await;
-        let tokens = self.rate_limiter.available_tokens();
+        let tokens = self.rate_limiter.try_available_tokens();
+        let token_unavailable = tokens.as_ref().err().map(ToString::to_string);
+        let last_write = self.metrics.try_last_write_age_secs();
+        let last_response_write_unavailable = last_write.as_ref().err().map(ToString::to_string);
 
         let response = StatusResponse {
             telegram_connected: account.authorized,
             rate_limiter: RateLimiterStatus {
-                tokens,
+                tokens: tokens.ok(),
+                unavailable: token_unavailable,
                 capacity: self.rate_limiter.capacity(),
                 refill_per_sec: self.rate_limiter.refill_rate(),
                 costs: RateLimiterCosts {
@@ -39,7 +43,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             server_version: env!("CARGO_PKG_VERSION").to_string(),
             requests_received: self.metrics.requests_received(),
             responses_written: self.metrics.responses_written(),
-            last_response_write_age_secs: self.metrics.last_write_age_secs(),
+            last_response_write_age_secs: last_write.ok().flatten(),
+            last_response_write_unavailable,
             session_started_at: self.metrics.session_started_at_rfc3339(),
             session_uptime_secs: self.metrics.uptime_secs(),
             premium: account.premium,
@@ -53,7 +58,11 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         request: GetLastResponsesRequest,
     ) -> Result<String, String> {
         let include_binary = request.include_binary.unwrap_or(false);
-        let entries = self.response_buffer.last(request.n.map(|n| n as usize));
+        let snapshot = self
+            .response_buffer
+            .try_snapshot(request.n.map(|n| n as usize))
+            .map_err(|error| crate::error::Error::from(error).to_string())?;
+        let entries = snapshot.responses;
         let responses: Vec<BufferedResponseEntry> = entries
             .into_iter()
             .map(|entry| {
@@ -75,7 +84,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             .collect();
 
         let response = LastResponsesResponse {
-            buffered: self.response_buffer.len(),
+            buffered: snapshot.buffered,
             responses,
         };
 

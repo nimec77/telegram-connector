@@ -2,8 +2,9 @@
 //!
 //! Unit of `observability` (LM-5).
 
+use crate::error::StateUnavailable;
 use std::collections::VecDeque;
-use std::sync::{Mutex, PoisonError};
+use std::sync::Mutex;
 use std::time::SystemTime;
 
 /// One response kept for recovery via `get_last_responses`.
@@ -28,6 +29,13 @@ pub struct BufferedResponse {
 pub const OVERSIZED_PAYLOAD_STUB: &str =
     r#"{"omitted":"payload exceeded max_buffered_payload_bytes"}"#;
 
+/// A consistent replay snapshot and its total retained entry count.
+#[derive(Debug)]
+pub struct ResponseSnapshot {
+    pub responses: Vec<BufferedResponse>,
+    pub buffered: usize,
+}
+
 /// Ring buffer of the last N serialized responses (capacity 0 = disabled).
 pub struct ResponseBuffer {
     capacity: usize,
@@ -44,34 +52,92 @@ impl ResponseBuffer {
         }
     }
 
-    pub fn push(&self, mut entry: BufferedResponse) {
+    /// Best-effort compatibility write; unavailable replay refuses the entry.
+    /// Use [`Self::try_push`] to observe failure.
+    pub fn push(&self, entry: BufferedResponse) {
+        let _ = self.try_push(entry);
+    }
+
+    /// Retain a response unless buffering is disabled.
+    ///
+    /// # Errors
+    /// Returns [`StateUnavailable::ResponseBuffer`] if enabled replay is poisoned.
+    pub fn try_push(&self, mut entry: BufferedResponse) -> Result<(), StateUnavailable> {
         if self.capacity == 0 {
-            return;
+            return Ok(());
         }
         if entry.payload.len() > self.max_payload_bytes {
             entry.payload = OVERSIZED_PAYLOAD_STUB.to_string();
         }
-        let mut entries = self.entries.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut entries = self
+            .entries
+            .lock()
+            .map_err(|_| StateUnavailable::ResponseBuffer)?;
         if entries.len() == self.capacity {
             entries.pop_front();
         }
         entries.push_back(entry);
+        Ok(())
     }
 
-    /// The most recent `n` entries, newest first. `None` returns everything.
+    /// Read newest-first responses and total count under one lock.
+    /// Disabled buffering is an ordinary successful empty snapshot.
+    ///
+    /// # Errors
+    /// Returns [`StateUnavailable::ResponseBuffer`] if enabled replay is poisoned.
+    pub fn try_snapshot(&self, n: Option<usize>) -> Result<ResponseSnapshot, StateUnavailable> {
+        if self.capacity == 0 {
+            return Ok(ResponseSnapshot {
+                responses: Vec::new(),
+                buffered: 0,
+            });
+        }
+        let entries = self
+            .entries
+            .lock()
+            .map_err(|_| StateUnavailable::ResponseBuffer)?;
+        Ok(ResponseSnapshot {
+            responses: entries
+                .iter()
+                .rev()
+                .take(n.unwrap_or(entries.len()))
+                .cloned()
+                .collect(),
+            buffered: entries.len(),
+        })
+    }
+
+    /// Compatibility snapshot: suppresses untrusted responses on unavailable storage.
+    /// Empty therefore means either absent or unavailable; use [`Self::try_snapshot`]
+    /// for diagnostics/recovery. `None` returns all retained entries, newest first.
     pub fn last(&self, n: Option<usize>) -> Vec<BufferedResponse> {
-        let entries = self.entries.lock().unwrap_or_else(PoisonError::into_inner);
-        let n = n.unwrap_or(entries.len()).min(entries.len());
-        entries.iter().rev().take(n).cloned().collect()
+        self.try_snapshot(n)
+            .map(|snapshot| snapshot.responses)
+            .unwrap_or_default()
     }
 
-    pub fn len(&self) -> usize {
+    /// Count retained entries.
+    ///
+    /// # Errors
+    /// Returns [`StateUnavailable::ResponseBuffer`] if enabled replay is poisoned.
+    pub fn try_len(&self) -> Result<usize, StateUnavailable> {
+        if self.capacity == 0 {
+            return Ok(0);
+        }
         self.entries
             .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .len()
+            .map(|entries| entries.len())
+            .map_err(|_| StateUnavailable::ResponseBuffer)
     }
 
+    /// Compatibility count: zero also means unavailable, conservatively exposing no
+    /// replayable entries. Use [`Self::try_len`] when availability matters.
+    pub fn len(&self) -> usize {
+        self.try_len().unwrap_or(0)
+    }
+
+    /// Compatibility predicate: unavailable replay is treated as having no usable entries.
+    /// Use [`Self::try_len`] to distinguish unavailability from ordinary emptiness.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -83,4 +149,4 @@ pub const GET_LAST_RESPONSES_TOOL: &str = "get_last_responses";
 
 #[cfg(test)]
 #[path = "tests/buffer_tests.rs"]
-mod tests;
+pub(crate) mod tests;

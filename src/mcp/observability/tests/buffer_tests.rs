@@ -88,3 +88,74 @@ fn push_keeps_payload_at_or_under_threshold() {
     let entries = buffer.last(None);
     assert_eq!(entries[0].payload, "y".repeat(100));
 }
+
+#[test]
+fn poisoned_buffer_does_not_replay_interrupted_state() {
+    let buffer = std::sync::Arc::new(ResponseBuffer::new(5, usize::MAX));
+    buffer.push(entry("old"));
+    poison(&buffer);
+    assert!(matches!(
+        buffer.try_snapshot(None),
+        Err(StateUnavailable::ResponseBuffer)
+    ));
+    assert_eq!(buffer.try_len(), Err(StateUnavailable::ResponseBuffer));
+    assert_eq!(
+        buffer.try_push(entry("new")),
+        Err(StateUnavailable::ResponseBuffer)
+    );
+    buffer.push(entry("new"));
+    assert!(
+        buffer.last(None).is_empty(),
+        "must not replay interrupted state"
+    );
+}
+
+#[tokio::test]
+async fn poisoned_replay_is_a_tool_error() {
+    use crate::mcp::server::McpServer;
+    use crate::mcp::tools::GetLastResponsesRequest;
+    use crate::rate_limiter::MockRateLimiterTrait;
+    use crate::telegram::MockTelegramClientTrait;
+    use rmcp::handler::server::common::RequestId;
+    use rmcp::handler::server::wrapper::Parameters;
+    use rmcp::model::NumberOrString;
+    let server = McpServer::new(
+        std::sync::Arc::new(MockTelegramClientTrait::new()),
+        std::sync::Arc::new(MockRateLimiterTrait::new()),
+    );
+    let buffer = server.response_buffer();
+    buffer.push(entry("1"));
+    assert!(
+        std::thread::spawn(move || {
+            let _guard = buffer.entries.lock().expect("healthy replay");
+            panic!("intentional replay poison");
+        })
+        .join()
+        .is_err()
+    );
+    let result = server
+        .get_last_responses(
+            Parameters(GetLastResponsesRequest {
+                n: None,
+                include_binary: None,
+            }),
+            RequestId(NumberOrString::Number(1)),
+        )
+        .await;
+    assert!(
+        result.is_err(),
+        "unavailable replay must not succeed as empty history"
+    );
+}
+
+pub(crate) fn poison(buffer: &std::sync::Arc<ResponseBuffer>) {
+    let poisoner = std::sync::Arc::clone(buffer);
+    assert!(
+        std::thread::spawn(move || {
+            let _guard = poisoner.entries.lock().expect("healthy replay");
+            panic!("intentional replay poison");
+        })
+        .join()
+        .is_err()
+    );
+}

@@ -82,7 +82,9 @@ impl<T: Transport<RoleServer>> Transport<RoleServer> for InstrumentedTransport<T
                 Ok(()) => {
                     let write_elapsed = write_started.elapsed();
                     let write_ms = write_elapsed.as_millis() as u64;
-                    let in_flight = metrics.record_response_written(&request_key);
+                    let observation = metrics.observe_response_written(&request_key);
+                    let correlation_available = observation.request.is_ok();
+                    let in_flight = observation.request.ok().flatten();
                     let tool_name = in_flight
                         .as_ref()
                         .map(|request| request.tool_name.clone())
@@ -109,9 +111,10 @@ impl<T: Transport<RoleServer>> Transport<RoleServer> for InstrumentedTransport<T
                         );
                     }
                     if let Some(payload) = payload
+                        && correlation_available
                         && tool_name != GET_LAST_RESPONSES_TOOL
                     {
-                        buffer.push(BufferedResponse {
+                        let _ = buffer.try_push(BufferedResponse {
                             request_id,
                             tool_name,
                             written_at: SystemTime::now(),
@@ -143,7 +146,7 @@ impl<T: Transport<RoleServer>> Transport<RoleServer> for InstrumentedTransport<T
                     ClientRequest::CallToolRequest(call) => call.params.name.as_ref(),
                     _ => method,
                 };
-                self.metrics.record_request(&request_id, tool);
+                let _ = self.metrics.try_record_request(&request_id, tool);
                 tracing::debug!(request_id = %request_id, method, tool, "Request received");
             }
             Some(_) => {}

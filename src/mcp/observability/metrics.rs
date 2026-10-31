@@ -2,9 +2,10 @@
 //!
 //! Unit of `observability` (LM-5).
 
+use crate::error::StateUnavailable;
 use std::collections::HashMap;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, PoisonError};
 use std::time::{Instant, SystemTime};
 
 /// A request that has been received but not yet answered.
@@ -12,6 +13,14 @@ use std::time::{Instant, SystemTime};
 pub struct InFlightRequest {
     pub tool_name: String,
     pub received_at: Instant,
+}
+
+/// Independent outcomes from recording a successful write. A failed timestamp update
+/// does not prevent request correlation, or vice versa.
+#[derive(Debug)]
+pub struct WriteObservation {
+    pub request: Result<Option<InFlightRequest>, StateUnavailable>,
+    pub last_write: Result<(), StateUnavailable>,
 }
 
 /// Counters and in-flight request tracking for one stdio session.
@@ -45,12 +54,26 @@ impl SessionMetrics {
         }
     }
 
-    /// Record an inbound JSON-RPC request.
+    /// Record a request best-effort; the independent atomic count always advances.
+    /// Use [`Self::try_record_request`] to observe correlation availability.
     pub fn record_request(&self, request_id: &str, tool_name: &str) {
+        let _ = self.try_record_request(request_id, tool_name);
+    }
+
+    /// Record an inbound request and preserve availability information.
+    ///
+    /// # Errors
+    /// Returns [`StateUnavailable::InFlight`] on poisoned correlation state.
+    /// The independent request counter is still incremented.
+    pub fn try_record_request(
+        &self,
+        request_id: &str,
+        tool_name: &str,
+    ) -> Result<(), StateUnavailable> {
         self.requests_received.fetch_add(1, Ordering::Relaxed);
         self.in_flight
             .lock()
-            .unwrap_or_else(PoisonError::into_inner)
+            .map_err(|_| StateUnavailable::InFlight)?
             .insert(
                 request_id.to_string(),
                 InFlightRequest {
@@ -58,20 +81,39 @@ impl SessionMetrics {
                     received_at: Instant::now(),
                 },
             );
+        Ok(())
     }
 
-    /// Record a successfully written response. Returns the matching in-flight
-    /// request, if any, so the caller can log tool name and total duration.
+    /// Compatibility write accounting. Returns no match if correlation is unavailable;
+    /// it loses the distinction between absent and unavailable request identity.
+    /// Use [`Self::observe_response_written`] when that distinction matters.
     pub fn record_response_written(&self, request_id: &str) -> Option<InFlightRequest> {
+        self.observe_response_written(request_id)
+            .request
+            .ok()
+            .flatten()
+    }
+
+    /// Count a successful write and attempt each independent mutex update separately.
+    /// No protected contents are read after poisoning.
+    pub fn observe_response_written(&self, request_id: &str) -> WriteObservation {
         self.responses_written.fetch_add(1, Ordering::Relaxed);
-        *self
+        let last_write = self
             .last_write
             .lock()
-            .unwrap_or_else(PoisonError::into_inner) = Some(Instant::now());
-        self.in_flight
+            .map(|mut written| {
+                *written = Some(Instant::now());
+            })
+            .map_err(|_| StateUnavailable::LastWrite);
+        let request = self
+            .in_flight
             .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .remove(request_id)
+            .map(|mut pending| pending.remove(request_id))
+            .map_err(|_| StateUnavailable::InFlight);
+        WriteObservation {
+            request,
+            last_write,
+        }
     }
 
     /// Release cancelled or unwritable work without counting a successful response.
@@ -89,12 +131,21 @@ impl SessionMetrics {
         self.responses_written.load(Ordering::Relaxed)
     }
 
-    /// Seconds since the last successful response write; `None` before the first.
+    /// Compatibility snapshot: `None` also means unavailable. This omits an untrusted
+    /// timestamp conservatively; diagnostics must use [`Self::try_last_write_age_secs`].
     pub fn last_write_age_secs(&self) -> Option<u64> {
+        self.try_last_write_age_secs().ok().flatten()
+    }
+
+    /// Seconds since the last successful write; `Ok(None)` before the first write.
+    ///
+    /// # Errors
+    /// Returns [`StateUnavailable::LastWrite`] on poisoned timestamp state.
+    pub fn try_last_write_age_secs(&self) -> Result<Option<u64>, StateUnavailable> {
         self.last_write
             .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .map(|written| written.elapsed().as_secs())
+            .map_err(|_| StateUnavailable::LastWrite)
+            .map(|written| written.map(|instant| instant.elapsed().as_secs()))
     }
 
     pub fn session_started_at_rfc3339(&self) -> String {
@@ -105,14 +156,27 @@ impl SessionMetrics {
         self.started_instant.elapsed().as_secs()
     }
 
-    /// Ids and tool names of requests received but never answered.
+    /// Compatibility snapshot: omits all identities when correlation is unavailable.
+    /// This prevents using untrusted identities but loses availability information;
+    /// diagnostics must use [`Self::try_abandoned_requests`].
     pub fn abandoned_requests(&self) -> Vec<(String, String)> {
+        self.try_abandoned_requests().unwrap_or_default()
+    }
+
+    /// Ids and tool names received but never answered.
+    ///
+    /// # Errors
+    /// Returns [`StateUnavailable::InFlight`] on poisoned correlation state.
+    pub fn try_abandoned_requests(&self) -> Result<Vec<(String, String)>, StateUnavailable> {
         self.in_flight
             .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .iter()
-            .map(|(id, request)| (id.clone(), request.tool_name.clone()))
-            .collect()
+            .map_err(|_| StateUnavailable::InFlight)
+            .map(|pending| {
+                pending
+                    .iter()
+                    .map(|(id, request)| (id.clone(), request.tool_name.clone()))
+                    .collect()
+            })
     }
 
     /// One-line session summary, emitted at stdin EOF and on signal shutdown.
@@ -122,8 +186,8 @@ impl SessionMetrics {
             uptime_secs = self.uptime_secs(),
             requests_received = self.requests_received(),
             responses_written = self.responses_written(),
-            last_write_age_secs = ?self.last_write_age_secs(),
-            abandoned_in_flight = ?self.abandoned_requests(),
+            last_write_age_secs = ?self.try_last_write_age_secs(),
+            abandoned_in_flight = ?self.try_abandoned_requests(),
             "Session summary"
         );
     }
@@ -131,4 +195,4 @@ impl SessionMetrics {
 
 #[cfg(test)]
 #[path = "tests/metrics_tests.rs"]
-mod tests;
+pub(crate) mod tests;

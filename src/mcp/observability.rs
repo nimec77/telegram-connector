@@ -13,6 +13,7 @@ mod transport;
 
 pub use buffer::{
     BufferedResponse, GET_LAST_RESPONSES_TOOL, OVERSIZED_PAYLOAD_STUB, ResponseBuffer,
+    ResponseSnapshot,
 };
-pub use metrics::{InFlightRequest, SessionMetrics};
+pub use metrics::{InFlightRequest, SessionMetrics, WriteObservation};
 pub use transport::InstrumentedTransport;

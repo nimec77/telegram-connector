@@ -35,6 +35,11 @@ pub struct StatusResponse {
     )]
     pub last_response_write_age_secs: Option<u64>,
 
+    /// Present only when timestamp state is unavailable. Without this field, a null
+    /// age means no successful write has occurred yet.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub last_response_write_unavailable: Option<String>,
+
     #[schemars(description = "Session start time (RFC3339 UTC)")]
     pub session_started_at: String,
 
@@ -51,8 +56,12 @@ pub struct StatusResponse {
 /// Rate-limiter budget breakdown (work-order D5).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct RateLimiterStatus {
-    #[schemars(description = "Tokens currently available")]
-    pub tokens: f64,
+    #[schemars(description = "Tokens currently available (null when unavailable)")]
+    pub tokens: Option<f64>,
+
+    /// Present only when the token snapshot is unavailable; capacity/refill remain valid.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub unavailable: Option<String>,
 
     #[schemars(description = "Bucket capacity (maximum tokens)")]
     pub capacity: f64,
