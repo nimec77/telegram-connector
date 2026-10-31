@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-10-31
+
 ### Fixed
 
 - Log retention removes only old regular files matching the application's exact daily
