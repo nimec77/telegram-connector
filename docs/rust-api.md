@@ -147,6 +147,13 @@ already-installed tracing is accepted. Retention deletes only owned dated regula
 by modification age, best effort, and leaves foreign files untouched.
 
 Server builders are inert and consume `self`; validate configuration before applying them.
+All six consuming `with_*` builders carry a useful `must_use` message so discarding the
+configured server warns. Names, signatures and return types remain unchanged. Established
+fallible `ChannelId`, `MessageId`, `UserId`, `Username`, `ChannelName` and `TelegramClient`
+`new` methods retain their names for compatibility; new fallible constructors prefer
+`try_new`. Existing conversions preserve validation; no extra aliases or conversion
+traits were added without a caller need. Internal album/cursor modes do not change the
+public request/domain boolean fields or response JSON.
 `with_observability` creates a new empty replay buffer, so old cloned handles remain old;
 metrics stay shared. Serving reserves stdout for MCP, owns protocol cleanup, and reports
 setup, I/O, SDK/task and signal-trigger errors after cleanup. Shutdown has one drain budget;
@@ -164,5 +171,17 @@ to the production API. The old ignored `parse_channel_id` doctest now runs.
 `missing_docs` is enabled on completed leaves: config, error, link, domain IDs/names and
 observability buffer/metrics. It is intentionally not a blanket crate-wide deny. Existing
 public field construction, constructor names and builder signatures stay compatible.
-Documentation is checked with `cargo doc --offline --locked --no-deps` and
-`cargo test --offline --locked --doc`, alongside all-target clippy and the full offline suite.
+Cargo now enables `clippy::wildcard_imports`, `clippy::missing_errors_doc`, and
+`clippy::return_self_not_must_use` across project targets; no blanket pedantic/restriction
+group or per-function lint suppression is used. `must_use_candidate` remains advisory.
+Project targets forbid unsafe code, including tests/examples under the all-target check;
+dependency internals remain outside that policy. Retained `logging::cleanup_old_logs`
+currently returns only `Ok`, skipping filesystem failures best effort; its `Result`
+signature remains compatible and the error contract documents that fact.
+
+`just check` and CI enforce warning-free `RUSTDOCFLAGS="-D warnings" cargo doc --locked
+--no-deps` and executable doctests via `cargo test --locked`. `just check-docs` also runs
+explicit `cargo test --locked --doc`. Use `--offline` locally when dependencies are cached.
+The S6 measured gate is 866 library tests and 3 passing doctests with no selected lint or
+rustdoc warnings; four ignored unit entries are subprocess implementations invoked by
+ordinary parent tests. Independent S6 review remains separate from implementation evidence.

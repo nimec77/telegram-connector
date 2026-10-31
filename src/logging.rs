@@ -143,6 +143,10 @@ pub fn redact_phone(phone: &str) -> String {
 /// are eligible, using filesystem modification age. Foreign files/directories
 /// remain untouched. Per-entry metadata/removal errors are skipped, so the count
 /// is best effort rather than a guarantee that all old logs were deleted.
+///
+/// # Errors
+/// Currently returns only `Ok`; filesystem failures are skipped as described above.
+/// The fallible signature is retained for Rust API compatibility.
 pub fn cleanup_old_logs(config: &LoggingConfig) -> anyhow::Result<usize> {
     // Skip if file logging disabled or max_days is 0 (infinite retention)
     if !config.file_enabled || config.max_log_days == 0 {

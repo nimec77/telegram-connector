@@ -2,7 +2,7 @@
 
 The [Rust coding manual](rust-style.md) is authoritative for Rust style, API design,
 errors, ownership, concurrency, documentation, and tests. Its adoption exceptions cover
-extracted test globs, the rmcp router layout, established constructors/builders, and
+extracted test globs, the rmcp router layout, established fallible constructors, and
 documented conservative diagnostic wrappers. Production imports now name their owning
 modules explicitly. Follow [AGENTS.md](../AGENTS.md) for repository workflow, source
 navigation, dependency constraints,
@@ -43,7 +43,14 @@ runs the same gate as CI:
 cargo fmt --all --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
+RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps
 ```
+
+`cargo test` runs doctests too; `just check-docs` runs focused warning-free rustdoc and
+explicit doctests. Cargo warns on wildcard imports, missing error contracts and consuming
+`Self` returns without `must_use`; Clippy's `-D warnings` enforces these selected lints.
+`missing_docs` remains module-scoped, `must_use_candidate` advisory, and project targets
+forbid unsafe code. See manual §9 for exact scope and legitimate compatibility exceptions.
 
 All must pass before commit. Use `--offline` for Cargo dependency resolution when
 cached; tests use mocks and need no Telegram credentials or live session.

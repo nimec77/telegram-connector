@@ -26,6 +26,9 @@ fn error_detail(e: Error) -> String {
 /// * `Ok(ChannelId)` - Valid channel ID
 /// * `Err(String)` - Error message describing the issue
 ///
+/// # Errors
+/// Returns a string error if the input is not an `i64` or is not positive.
+///
 /// # Example
 /// ```
 /// use telegram_connector::mcp::tools::parse_channel_id;
@@ -75,6 +78,9 @@ pub(crate) fn validate_channel_reference(reference: &str) -> Result<(), String> 
 /// # Returns
 /// * `Ok(MessageId)` - Valid message ID
 /// * `Err(String)` - Error message describing the issue
+///
+/// # Errors
+/// Returns a string error when `id` is not positive.
 pub fn parse_message_id(id: i64) -> Result<MessageId, String> {
     MessageId::new(id).map_err(|e| format!("Invalid message_id: {}", error_detail(e)))
 }
@@ -203,6 +209,10 @@ pub(crate) fn validate_date_window(
 /// Centralizes the `serde_json::to_string(..).map_err(|e| e.to_string())` tail
 /// repeated by every `*_impl` method, mapping serialization failures to the
 /// `String` error half of the rmcp `Result<String, String>` tool contract.
+///
+/// # Errors
+/// Returns the serializer error as a string if the value cannot be represented
+/// as JSON, including failure from a caller-provided `Serialize` implementation.
 pub fn json_response<T: serde::Serialize>(value: &T) -> Result<String, String> {
     serde_json::to_string(value).map_err(|e| e.to_string())
 }

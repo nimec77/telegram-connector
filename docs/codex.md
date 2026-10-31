@@ -41,6 +41,7 @@ Without just, use the same commands CI runs:
 cargo fmt --all --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
+RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps
 ```
 
 `rust-toolchain.toml` selects nightly, rustfmt, and clippy, matching the existing

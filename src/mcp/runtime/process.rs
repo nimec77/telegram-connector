@@ -22,6 +22,10 @@ pub fn run<F: Future<Output = anyhow::Result<()>>>(application: F) -> anyhow::Re
 
 /// Install and await shutdown signals. Registration errors propagate to the
 /// protocol supervisor, which drains accepted work before returning the error.
+///
+/// # Errors
+/// Returns signal-handler registration or Ctrl-C listener failure. On Unix, also
+/// returns an error if the SIGTERM stream closes without receiving a signal.
 pub async fn shutdown_signal() -> io::Result<()> {
     #[cfg(unix)]
     {

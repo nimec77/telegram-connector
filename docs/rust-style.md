@@ -3,10 +3,9 @@
 Version: adopted 2026-10-31. This manual is the authoritative Rust style policy for this
 Cargo/Tokio application and its exported library surface. [AGENTS.md](../AGENTS.md)
 defines repository workflow and operational invariants; [conventions.md](conventions.md)
-provides development commands and test locations. This policy includes the transitional
-exceptions below; adoption does not claim that all existing code already complies. The
-[alignment plan](superpowers/plans/2026-10-31-rust-standards-alignment.md) schedules the
-remaining migration.
+provides development commands and test locations. This policy includes the compatibility
+and architectural exceptions below. The [alignment plan](superpowers/plans/2026-10-31-rust-standards-alignment.md)
+records completed implementation stages, measured checks and pending independent review.
 
 ## External guide and applicability
 
@@ -40,17 +39,15 @@ MCP wire compatibility: one can change without the other.
 
 ### Adoption exceptions
 
-These scoped exceptions preserve existing architecture and compatibility while migration
-work receives behavior tests and review. New code follows the rules below unless it shares
-one of these explicit constraints.
+These scoped exceptions preserve existing architecture and Rust API compatibility.
+New code follows the rules below unless it shares one of these explicit constraints.
 
 | Scope | Exception and reason | Validation / retirement |
 | --- | --- | --- |
 | Extracted `#[cfg(test)]` / `#[path]` test modules | Test-local `super::*` imports remain permitted so fixtures can exercise their parent module without maintaining a duplicate prelude. | Preserve offline behavior tests; this is an intentional test-only exception. |
 | `src/mcp/server.rs` | Keep the complete single `#[tool_router]` impl visible to rmcp and entry points thin; its coordination role overrides cosmetic file-size rules. | Tool registration and self-contained schema tests protect the macro contract; operation bodies stay in `server/impl_*.rs`. |
 | `src/telegram/client.rs` | Keep client state and the complete thin trait dispatcher together so descendant operation modules can use private state. Pure cursor/result helpers and async resolution/session helpers live in focused siblings. | Existing helper, converter and operation tests protect the move; no field visibility widening. |
-| Established public fallible `new` constructors | Retain existing names and signatures for Rust API compatibility. New fallible APIs prefer `try_new`; compatibility migrations must be explicit. | [API inventory](rust-api.md) retains the supported/compatibility constructors; S6 reviews ergonomics without silent breaking renames. |
-| Existing consuming `with_*` builders | Retain their consuming names/signatures, including established fallible builders; the conversion naming rules do not require a rename. | S6 adds targeted `#[must_use]` checks for consuming returns and reviews fallible API documentation. |
+| Established public fallible `new` constructors | Retain existing names and signatures for Rust API compatibility. New fallible APIs prefer `try_new`; compatibility migrations must be explicit. | [API inventory](rust-api.md) retains the supported/compatibility constructors; S6 retained these names after reviewing current callers; no unused aliases or conversion traits were added. |
 | Legacy diagnostic getters and best-effort recorders | Established getters retain conservative fallbacks without inspecting poisoned contents: zero tokens/count, empty replay/identities, absent timestamp/correlation. These lose failure information; `refund` refuses unavailable state. | New/internal consumers use fallible `try_*` snapshots or independent write observations. Status distinguishes absent from unavailable; replay failure is a typed error. Keep this narrow compatibility exception documented in the [API inventory](rust-api.md). |
 | Poison/isolation regression tests | Controlled unit-test threads and isolated child tests intentionally panic to exercise interrupted-state handling and process isolation. | Join poison threads and inspect child status. This test-only exception never authorizes catching production panics to resume protected state. |
 
@@ -112,8 +109,9 @@ Avoid mechanical renames of established MCP tools or serialized fields for Rust 
 [Naming conventions](https://rust-lang.github.io/api-guidelines/naming.html).
 
 Required: conversions that can reject input use `TryFrom`/`FromStr` or a fallible named
-constructor; infallible value conversion uses `From`. Derive traits when their semantics
-match the type. `Default` must represent a valid useful state, not a fabricated positive
+constructor; prefer `try_new` for new fallible constructors. Established public `new`
+names remain compatibility exceptions. Infallible value conversion uses `From`.
+Derive traits when their semantics match the type. `Default` must represent a valid useful state, not a fabricated positive
 ID or a placeholder credential. Do not add `Copy`/`Clone` to resources merely because a
 lint suggests it. Preserve error causes where safe; errors containing strings cannot be
 made `Copy` without changing their meaning.
@@ -126,6 +124,10 @@ construction and at external deserialization boundaries; no conversion may bypas
 invariant. Keep flexible scalar coercion in MCP request parsing, not in the domain.
 Use named option structs or enums when positional flags are ambiguous. JSON booleans
 with explicit field names need not become JSON enums merely for internal Rust style.
+Internal `AlbumMode::{Collapse, Separate}` names page/walk behavior; named domain flags
+convert once at each history/channel/global operation boundary. `CursorPolicy` separately
+models single-channel continuation versus unavailable cursors, independent of `CompactScope`.
+Global search can retain single-header compaction while having no message-ID cursor.
 [Type safety](https://rust-lang.github.io/api-guidelines/type-safety.html).
 
 Prefer `&str`, `&[T]`, `&Path` and `&T` for reading. Take owned values when retaining or
@@ -184,10 +186,12 @@ fallible snapshots and must not interpret wrapper fallbacks as valid recovered d
 
 ## 7. Unsafe code, toolchains and macros
 
-Required: keep product code safe. Any unavoidable unsafe block needs a local `SAFETY:`
-argument identifying all callers, lifetimes and synchronization obligations. Performance
-justifications need measurements. Config tests use pure injected expansion lookups and
-subprocesses configured through `Command::env`/`env_remove` for real loader/path behavior.
+Required: project-owned Cargo targets forbid unsafe code through `[lints.rust]`.
+The all-target check includes tests, examples and current macro expansion; dependencies
+are outside that scope. Introducing unsafe requires an explicit policy change and a
+local `SAFETY:` argument identifying all callers, lifetimes and synchronization obligations.
+Performance justifications need measurements. Config tests use pure injected expansion
+lookups and subprocesses configured through `Command::env`/`env_remove` for real loader/path behavior.
 Neither parent nor child mutates its own environment; cooperative mutexes cannot prove
 process-wide environment safety. Process-global logging initialization also stays in child
 tests so parallel unrelated tests cannot acquire a global subscriber.
@@ -208,8 +212,8 @@ Use `# Errors`, `# Panics` and `# Safety` only when applicable; avoid comments t
 the identifier. [Documentation guidance](https://rust-lang.github.io/api-guidelines/documentation.html).
 
 Mark consuming builders whose return must be used, such as `McpServer::with_observability`,
-with `#[must_use]`. Examine other pure functions individually. `Result` already warns
-when discarded; duplicate annotations with no useful message add little. `len` APIs keep
+with a useful `#[must_use]` message; all six current server builders are covered.
+Examine other pure functions individually. `Result` already warns when discarded; duplicate annotations with no useful message add little. `len` APIs keep
 their `is_empty` companion. Public `const fn` and exhaustive shapes are compatibility
 commitments, not automatic performance improvements.
 
@@ -226,11 +230,29 @@ Run the existing gate after code changes:
 cargo fmt --all --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
+RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps
 ```
 
-Use `--offline` when dependencies are cached. The adoption plan adds focused lint and
-rustdoc enforcement gradually. Do not enable all pedantic/restriction lints, apply all
-automatic fixes, or add source-text tests that merely count annotations.
+`cargo test` includes executable doctests. `just check-docs` runs warning-free rustdoc
+and explicit `cargo test --locked --doc` for focused documentation work. CI uses the same
+checks after fetching locked dependencies. Use `--offline` when dependencies are cached.
+
+Cargo enables only `clippy::wildcard_imports`, `clippy::missing_errors_doc`, and
+`clippy::return_self_not_must_use` at warning level across project targets; the gate's
+`-D warnings` makes violations fail. Existing test-local `super::*` and deliberate facade
+reexports are permitted by the wildcard lint without suppressions. `missing_docs` remains
+scoped to documented config, error, link, IDs/names and buffer/metrics modules.
+`clippy::must_use_candidate` stays advisory: ordinary getters, pure converters and internal
+pager builders are reviewed for caller benefit rather than annotated en masse. Established
+fallible APIs already return must-use `Result`; `cleanup_old_logs` documents that its retained
+fallible signature currently returns only `Ok` and skips filesystem failures best effort.
+Do not enable all pedantic/restriction lints, apply all automatic fixes, or add source-text
+tests that merely count annotations.
+
+Current S6 evidence (2026-10-31, pinned nightly): the exact three selected lints are clean
+on all targets; full parallel tests pass (866 library, 3 doctests; four child entrypoints
+are invoked by parent tests), and rustdoc passes with `-D warnings`. This is scoped
+manual enforcement, not a claim that every advisory library guideline is a crate-wide lint.
 
 Review each change for observable behavior, error meaning, ownership, lock scope, public
 surface, wire compatibility, tests and bounds. Keep style-only diffs separate from security

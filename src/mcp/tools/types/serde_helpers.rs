@@ -19,6 +19,10 @@ use serde::{Deserialize, Deserializer};
 /// JSON `null` as `None`. Handles MCP clients that send `"field": ""`
 /// instead of omitting the field. Non-empty values parse with `T`'s own
 /// `Deserialize`, so `T`'s error text is preserved.
+///
+/// # Errors
+/// Returns a deserializer error for malformed input or when a nonempty value
+/// is rejected by `T`'s deserializer.
 pub fn flexible_opt_enum<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
 where
     D: Deserializer<'de>,
@@ -37,6 +41,10 @@ where
 /// or a numeric string. The string form is trimmed before parsing. An
 /// empty/whitespace string or a JSON `null` becomes `None`. Floats,
 /// negatives (for unsigned `T`), out-of-range, and non-numeric values error.
+///
+/// # Errors
+/// Returns a deserializer error for an incompatible scalar or when the value
+/// cannot be represented or parsed as `T`.
 pub fn flexible_opt_int<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
 where
     D: Deserializer<'de>,
@@ -69,6 +77,10 @@ where
 ///
 /// The string form is trimmed before parsing. Empty, non-numeric, or float
 /// values produce an error.
+///
+/// # Errors
+/// Returns a deserializer error for incompatible types, an out-of-range number,
+/// or a string that cannot be parsed as `i64`.
 pub fn flexible_i64<'de, D>(deserializer: D) -> Result<i64, D::Error>
 where
     D: Deserializer<'de>,
@@ -92,6 +104,10 @@ where
 /// Deserialize `String` accepting either a JSON string or an integer JSON number.
 ///
 /// Integer numbers are stringified (`123` -> `"123"`). Float numbers error.
+///
+/// # Errors
+/// Returns a deserializer error unless the input is a string or an integer
+/// representable as `i64`.
 pub fn flexible_string<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: Deserializer<'de>,
@@ -113,6 +129,10 @@ where
 ///
 /// Integer numbers are stringified. An empty/whitespace string or JSON `null`
 /// becomes `None`. Float numbers error.
+///
+/// # Errors
+/// Returns a deserializer error unless the input is null, a string, or an
+/// integer representable as `i64`.
 pub fn flexible_opt_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
     D: Deserializer<'de>,
@@ -136,6 +156,10 @@ where
 /// strings `"true"`/`"false"`/`"1"`/`"0"` (case-insensitive, trimmed).
 ///
 /// An empty/whitespace string or JSON `null` becomes `None`. Anything else errors.
+///
+/// # Errors
+/// Returns a deserializer error for incompatible types or a scalar outside the
+/// documented boolean spellings and integer values.
 pub fn flexible_opt_bool<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
 where
     D: Deserializer<'de>,

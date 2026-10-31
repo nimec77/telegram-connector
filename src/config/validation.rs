@@ -4,6 +4,10 @@ use super::{Config, LimitsConfig, RateLimitConfig, SearchConfig, ServerConfig, T
 
 impl ServerConfig {
     /// Reject unbounded input/admission and unreasonable drain budgets.
+    ///
+    /// # Errors
+    /// Returns an error when request bytes or in-flight admission are outside their
+    /// supported ranges, or the shutdown budget exceeds one hour.
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
             (1..=16_777_216).contains(&self.max_request_bytes),
@@ -23,6 +27,9 @@ impl ServerConfig {
 
 impl TimeoutConfig {
     /// Reject zero values — a zero budget would cancel every call instantly.
+    ///
+    /// # Errors
+    /// Returns an error when any resolution, history, search, or download budget is zero.
     pub fn validate(&self) -> anyhow::Result<()> {
         if self.resolve_secs == 0 {
             anyhow::bail!("telegram.timeouts.resolve_secs must be > 0");
@@ -59,6 +66,9 @@ impl SearchConfig {
     /// Reject a zero deadline (would end every search before its first page) or a
     /// deadline above `MAX_SEARCH_DEADLINE_SECONDS` (would overflow the `Instant`
     /// arithmetic in `SearchBudget::new`).
+    ///
+    /// # Errors
+    /// Returns an error when the search deadline is outside 1..=3600 seconds.
     pub fn validate(&self) -> anyhow::Result<()> {
         if self.deadline_seconds == 0 {
             anyhow::bail!("search.deadline_seconds must be > 0");
@@ -84,6 +94,10 @@ impl RateLimitConfig {
     /// A cost above `max_tokens` means every call of that kind fails even on
     /// a full bucket; the check also keeps per-call costs proportionate to
     /// the bucket's capacity.
+    ///
+    /// # Errors
+    /// Returns an error for a NaN/non-positive refill rate or a media/transcription
+    /// cost exceeding bucket capacity.
     pub fn validate(&self) -> anyhow::Result<()> {
         if self.refill_rate.is_nan() || self.refill_rate <= 0.0 {
             anyhow::bail!(
@@ -119,6 +133,10 @@ impl LimitsConfig {
     /// cap set below it makes every image in every batch call report
     /// `payload_cap_reached` after the downloads already happened — a silent,
     /// costly no-op at runtime. Failing fast at startup is cheaper.
+    ///
+    /// # Errors
+    /// Returns an error for a zero response budget or a media batch budget below
+    /// the minimum useful image allowance.
     pub fn validate(&self) -> anyhow::Result<()> {
         if self.response_byte_budget == 0 {
             anyhow::bail!("limits.response_byte_budget must be > 0");

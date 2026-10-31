@@ -17,6 +17,7 @@ the primary development agent; the stdio service supports any compatible MCP cli
   cargo fmt --all --check
   cargo clippy --locked --all-targets -- -D warnings
   cargo test --locked
+  RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps
   ```
 
 - Offline tests use mocks; Telegram credentials and a live session are not required.
@@ -85,8 +86,9 @@ the installed ast-index skill when available.
   checked-in formatter settings (§1). Never commit config/session files. The existing
   MCP tool boundary converts errors to strings as required by its API.
 - The manual’s adoption exceptions preserve extracted test globs, the macro router
-  layout, established fallible `new` and consuming `with_*` APIs, and the pending S4 import
-  migration sites; they do not authorize new violations outside those scopes.
+  layout, established fallible `new` APIs, and conservative diagnostic wrappers; they do
+  not authorize new violations outside those scopes. Consuming server builders have
+  `must_use`; selected Cargo lints and warning-free rustdoc enforce the cleaned scopes.
 - Keep changes focused and add no dependency for an operation existing code can
   perform simply.
 

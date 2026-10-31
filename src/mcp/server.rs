@@ -95,6 +95,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
     /// Apply `[observability]` settings, replacing the replay buffer with an empty
     /// one. Existing cloned handles still refer to their previous buffer.
+    #[must_use = "this builder returns the configured server"]
     pub fn with_observability(mut self, config: &ObservabilityConfig) -> Self {
         self.response_buffer = Arc::new(ResponseBuffer::new(
             config.response_buffer_size,
@@ -106,6 +107,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
     /// Set the rate-limiter cost charged per get_message_media call
     /// (`[rate_limiting] media_download_cost`, default 3).
+    #[must_use = "this builder returns the configured server"]
     pub fn with_media_download_cost(mut self, cost: u32) -> Self {
         self.media_download_cost = cost;
         self
@@ -113,6 +115,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
     /// Set the rate-limiter cost charged per transcribe_voice_message call
     /// (`[rate_limiting] transcription_cost`, default 5).
+    #[must_use = "this builder returns the configured server"]
     pub fn with_transcription_cost(mut self, cost: u32) -> Self {
         self.transcription_cost = cost;
         self
@@ -120,6 +123,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
     /// Set the transcription `timeout_seconds` bounds: the default applied when a
     /// request omits it, and the max it is clamped to (`[transcription]`, AD-6).
+    #[must_use = "this builder returns the configured server"]
     pub fn with_transcription_timeouts(mut self, default_secs: u32, max_secs: u32) -> Self {
         self.transcription_default_timeout_secs = default_secs;
         self.transcription_max_timeout_secs = max_secs;
@@ -128,6 +132,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
     /// Set the serialized-response byte cap for message-stream tools
     /// (`[limits] response_byte_budget`, default 40 000).
+    #[must_use = "this builder returns the configured server"]
     pub fn with_response_byte_budget(mut self, bytes: u64) -> Self {
         self.response_byte_budget = bytes as usize;
         self
@@ -135,6 +140,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
     /// Set the total base64 payload cap for `get_messages_media_batch`
     /// (`[limits] media_batch_max_total_bytes`, default 8 MiB).
+    #[must_use = "this builder returns the configured server"]
     pub fn with_media_batch_max_total_bytes(mut self, bytes: u64) -> Self {
         self.media_batch_max_total_bytes = bytes as usize;
         self
@@ -269,6 +275,10 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     /// Serve stdio until EOF with default bounded runtime settings.
     /// This does not install OS signal handlers; use [`Self::run_stdio_with_shutdown`]
     /// for a trigger. The same I/O/lifecycle errors and teardown limits apply.
+    ///
+    /// # Errors
+    /// Returns runtime setup, transport I/O, or SDK/task failures after cleanup,
+    /// as described by [`Self::run_stdio_with_shutdown`].
     pub async fn run_stdio(self) -> anyhow::Result<()> {
         self.run_stdio_with_shutdown(ServerConfig::default(), std::future::pending())
             .await

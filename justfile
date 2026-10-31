@@ -26,8 +26,8 @@ fmt-check:
 lint:
     cargo clippy --locked --all-targets -- -D warnings
 
-# Pre-commit gate: fmt-check + clippy + all tests
-check: fmt-check lint test
+# Pre-commit gate: formatting, Clippy, all tests/doctests, and warning-free rustdoc
+check: fmt-check lint test doc
 
 # Run the MCP server binary
 run:
@@ -43,7 +43,10 @@ security:
 policy-test:
     python3 -m unittest discover -s scripts -p test_dependency_policy.py
 
+# Warning-free public API documentation
+doc:
+    RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps
+
 # Public API documentation and executable examples
-check-docs:
-    cargo doc --offline --locked --no-deps
-    cargo test --offline --locked --doc
+check-docs: doc
+    cargo test --locked --doc
