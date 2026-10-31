@@ -3,9 +3,9 @@
 Date: 2026-10-31. Baseline: `40f7b114f7024822ee1c77445d46e0ee4ab733b2`, package 0.22.6.
 Status: analysis and proposal only; no implementation authorized by this document.
 
-Follow-up requests are incorporated through the [Rust coding manual](../../rust-style.md),
-[standards alignment plan](../plans/2026-10-31-rust-standards-alignment.md), and
-[media delivery analysis](2026-10-31-media-delivery-design.md).
+Follow-up requests are incorporated through the [Rust coding manual](../../rust-style.md)
+and [media delivery analysis](2026-10-31-media-delivery-design.md). The completed standards
+alignment plan is archived in Git history.
 
 ## Scope and decisions
 

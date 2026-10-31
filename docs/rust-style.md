@@ -4,8 +4,9 @@ Version: adopted 2026-10-31. This manual is the authoritative Rust style policy 
 Cargo/Tokio application and its exported library surface. [AGENTS.md](../AGENTS.md)
 defines repository workflow and operational invariants; [conventions.md](conventions.md)
 provides development commands and test locations. This policy includes the compatibility
-and architectural exceptions below. The [alignment plan](superpowers/plans/2026-10-31-rust-standards-alignment.md)
-records completed implementation stages, measured checks and pending independent review.
+and architectural exceptions below. Standards alignment stages S1–S6 and the subsequent
+domain deserialization invariant fix are complete and independently reviewed; the completed
+alignment plan is archived in Git history.
 
 ## External guide and applicability
 

@@ -6,10 +6,9 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Current state
 
-- **Package v0.22.10; unreleased modernization is on the feature branch.** There are
-  16 tools. Task 7 adds default `json_v1` typed structured output with matching text and
-  explicit legacy mode; see [tool-contract.md](tool-contract.md). macOS Task 7 validation
-  passed 892 library tests and 3 doctests. This is not a version bump or release claim.
+- **Modernization through Task 7 is complete.** There are 16 tools. Task 7 adds default
+  `json_v1` typed structured output with matching text and explicit legacy mode; see [tool-contract.md](tool-contract.md). macOS Task 7 validation
+  passed 892 library tests and 3 doctests. The remaining roadmap is still pending.
   Required nightly is 2026-10-31; rmcp is 3.8; all three grammers crates use reviewed
   Codeberg revision `1e31e73cd9797790905bbea82cd75adcbe6f1242` (0.11).
 - **Coverage baseline remains the 2026-08-22 measurement:** 78.33% lines for the library

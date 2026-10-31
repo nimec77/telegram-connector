@@ -13,9 +13,9 @@ fix RPC safety at the narrowest existing operation boundary.
 
 **Spec:** [Audit and proposed design](../specs/2026-10-31-development-audit-design.md).
 
-**Additional requested workstreams:** [Rust coding manual](../../rust-style.md),
-[standards alignment plan](2026-10-31-rust-standards-alignment.md), and
-[media delivery proposal](../specs/2026-10-31-media-delivery-design.md).
+**Additional requested workstreams:** [Rust coding manual](../../rust-style.md) and
+[media delivery proposal](../specs/2026-10-31-media-delivery-design.md). The completed
+standards alignment plan is archived in Git history.
 
 **Status:** Tasks 1–7 and Rust standards alignment are complete; execution stopped
 after Task 7 at the user's request. Task 8/media-M1 and final Task 10 acceptance remain
@@ -300,8 +300,8 @@ scoped validator policy in `d6a9bc8` were independently approved. macOS passed
 892 library tests and 3 doctests, formatting, all-target Clippy, warning-free docs,
 wire/schema/process checks and fresh dependency/security checks. See
 [the migration guide](../../tool-contract.md) for the new default, legacy mode,
-Rust API compatibility and the work deferred to Task 8. The user's narrowed scope
-ends after Task 7; no merge or version change is included.
+Rust API compatibility and the work deferred to Task 8. The user subsequently authorized
+a version bump and integration into the primary branch; Task 8 remains pending.
 
 ## Task 8: Preserve budgets and isolate recovery across the new contract
 
