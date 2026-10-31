@@ -2,7 +2,16 @@
 //!
 //! Unit of `client` (LM-2).
 
-use super::*;
+use super::TelegramClient;
+use crate::config::{SearchConfig, TelegramConfig};
+use crate::error::Error;
+use crate::telegram::timeout::with_timeout;
+use crate::telegram::types::AccountStatus;
+use grammers_client::{Client, tl};
+use grammers_mtsender::SenderPool;
+use grammers_session::storages::SqliteSession;
+use std::path::Path;
+use std::sync::Arc;
 
 impl TelegramClient {
     /// Create a new Telegram client

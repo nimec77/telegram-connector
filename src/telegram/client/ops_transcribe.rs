@@ -3,7 +3,14 @@
 //! Unit of `client` (LM-2).
 
 use super::guard::require_found;
-use super::*;
+use super::{TelegramClient, peer_to_ref, validate_channel_identifier};
+use crate::error::Error;
+use crate::telegram::converters::{convert_media_to_type, extract_audio_duration};
+use crate::telegram::timeout::with_timeout;
+use crate::telegram::transcription::TranscriptionDeadline;
+use crate::telegram::types::{TranscriptionOutcome, TranscriptionState};
+use grammers_client::tl;
+use std::time::Duration as StdDuration;
 
 impl TelegramClient {
     pub(super) async fn transcribe_audio_impl(

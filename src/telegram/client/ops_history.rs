@@ -4,7 +4,13 @@
 
 use super::raw_pager::RawHistoryPager;
 use super::walk::{BelowCutoff, Fetched, Flow, MessageWalk, WalkConfig};
-use super::*;
+use super::{
+    TelegramClient, assemble_search_result, cursor_wire_bounds, peer_to_ref, username_to_resolve,
+};
+use crate::error::Error;
+use crate::telegram::timeout::with_timeout;
+use crate::telegram::types::{ChannelId, HistoryParams, SearchResult};
+use std::time::Instant;
 
 impl TelegramClient {
     pub(super) async fn get_recent_messages_impl(

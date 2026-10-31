@@ -2,7 +2,9 @@
 //!
 //! Unit of `client` (LM-2).
 
-use super::*;
+use super::TelegramClient;
+use crate::error::Error;
+use crate::telegram::timeout::with_timeout;
 
 use grammers_client::SignInError;
 use grammers_client::client::{LoginToken, PasswordToken};

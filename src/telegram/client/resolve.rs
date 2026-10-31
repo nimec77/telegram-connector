@@ -2,7 +2,11 @@
 //!
 //! Unit of `client` (LM-2).
 
-use super::*;
+use super::{TelegramClient, validate_channel_identifier};
+use crate::error::Error;
+use crate::telegram::converters::channel_identity;
+use crate::telegram::timeout::with_timeout;
+use crate::telegram::types::{ChannelIdentity, Username};
 
 impl TelegramClient {
     /// Canonical channel-reference resolver: a numeric ref is found by walking the

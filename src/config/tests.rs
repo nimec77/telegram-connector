@@ -1,4 +1,9 @@
 use super::*;
+use crate::config::defaults::{
+    default_limits_config, default_max_download_bytes, default_media_download_cost,
+    default_observability_config, default_timeout_config, default_transcription_config,
+    default_transcription_cost,
+};
 /// Re-exec a single ignored entrypoint. Command configures a new process environment;
 /// neither this test process nor the child ever mutates its own environment.
 fn environment_child(case: &str) -> std::process::Command {

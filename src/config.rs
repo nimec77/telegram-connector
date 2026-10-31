@@ -12,7 +12,6 @@ use std::path::PathBuf;
 pub(crate) mod defaults;
 mod env;
 
-use defaults::*;
 use env::expand_env_vars;
 
 /// Complete connector configuration; secrets remain wrapped in `SecretString`.
@@ -21,25 +20,25 @@ pub struct Config {
     /// MTProto session, credentials, download bounds and RPC budgets.
     pub telegram: TelegramConfig,
     /// Search accumulation budget and partial-result policy.
-    #[serde(default = "default_search_config")]
+    #[serde(default = "defaults::default_search_config")]
     pub search: SearchConfig,
     /// Account token bucket and weighted operation costs.
-    #[serde(default = "default_rate_limit_config")]
+    #[serde(default = "defaults::default_rate_limit_config")]
     pub rate_limiting: RateLimitConfig,
     /// Tracing output and daily file retention settings.
-    #[serde(default = "default_logging_config")]
+    #[serde(default = "defaults::default_logging_config")]
     pub logging: LoggingConfig,
     /// Input, admission and graceful-drain limits.
-    #[serde(default = "default_server_config")]
+    #[serde(default = "defaults::default_server_config")]
     pub server: ServerConfig,
     /// Response recovery storage and write diagnostics.
-    #[serde(default = "default_observability_config")]
+    #[serde(default = "defaults::default_observability_config")]
     pub observability: ObservabilityConfig,
     /// Default and maximum transcription request budgets.
-    #[serde(default = "default_transcription_config")]
+    #[serde(default = "defaults::default_transcription_config")]
     pub transcription: TranscriptionConfig,
     /// MCP message-stream and image payload budgets.
-    #[serde(default = "default_limits_config")]
+    #[serde(default = "defaults::default_limits_config")]
     pub limits: LimitsConfig,
 }
 
@@ -47,13 +46,13 @@ pub struct Config {
 #[derive(Debug, Clone, Deserialize)]
 pub struct ServerConfig {
     /// One absolute drain budget after EOF or shutdown; zero cancels immediately.
-    #[serde(default = "default_shutdown_timeout")]
+    #[serde(default = "defaults::default_shutdown_timeout")]
     pub shutdown_timeout_seconds: u64,
     /// Maximum incoming NDJSON frame, including its newline (independent of output limits).
-    #[serde(default = "default_max_request_bytes")]
+    #[serde(default = "defaults::default_max_request_bytes")]
     pub max_request_bytes: usize,
     /// Maximum admitted requests, including responses waiting to be written.
-    #[serde(default = "default_max_in_flight_requests")]
+    #[serde(default = "defaults::default_max_in_flight_requests")]
     pub max_in_flight_requests: usize,
 }
 
@@ -94,15 +93,15 @@ pub struct TelegramConfig {
     #[serde(default, deserialize_with = "deserialize_optional_secret_string")]
     pub phone_number: Option<SecretString>,
     /// Session file path (always used)
-    #[serde(default = "default_session_file")]
+    #[serde(default = "defaults::default_session_file")]
     pub session_file: PathBuf,
     /// Per-call-type timeout budgets for grammers network operations.
-    #[serde(default = "default_timeout_config")]
+    #[serde(default = "defaults::default_timeout_config")]
     pub timeouts: TimeoutConfig,
     /// Hard cap (bytes) on a single media download; transfers exceeding it are
     /// rejected before and during streaming. Default 20 MiB. Pairs with
     /// `[rate_limiting] media_download_cost`, which prices the download (AD-6).
-    #[serde(default = "default_max_download_bytes")]
+    #[serde(default = "defaults::default_max_download_bytes")]
     pub max_download_bytes: u64,
 }
 
@@ -115,16 +114,16 @@ pub struct TelegramConfig {
 pub struct TimeoutConfig {
     /// Resolve/dialog lookups, account checks and authentication RPCs. Interactive
     /// code/password entry is not timed; each login RPC gets this budget.
-    #[serde(default = "default_resolve_secs")]
+    #[serde(default = "defaults::default_resolve_secs")]
     pub resolve_secs: u64,
     /// History/message fetches, subscribed-channel enumeration and transcription RPCs.
-    #[serde(default = "default_history_secs")]
+    #[serde(default = "defaults::default_history_secs")]
     pub history_secs: u64,
     /// Search walks (single-channel `search_iter`, global `search_all_messages`).
-    #[serde(default = "default_search_secs")]
+    #[serde(default = "defaults::default_search_secs")]
     pub search_secs: u64,
     /// Wall-clock budget for a full in-memory media download.
-    #[serde(default = "default_download_secs")]
+    #[serde(default = "defaults::default_download_secs")]
     pub download_secs: u64,
 }
 
@@ -206,7 +205,7 @@ pub struct SearchConfig {
     /// search returns the results gathered so far with `timed_out`/`partial`
     /// set — never an error. Must stay below `[telegram.timeouts] search_secs`
     /// (default 120) to be reachable.
-    #[serde(default = "default_search_deadline_seconds")]
+    #[serde(default = "defaults::default_search_deadline_seconds")]
     pub deadline_seconds: u64,
 }
 
@@ -233,17 +232,17 @@ impl SearchConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct RateLimitConfig {
     /// Initial and maximum token capacity; builders do not validate this automatically.
-    #[serde(default = "default_max_tokens")]
+    #[serde(default = "defaults::default_max_tokens")]
     pub max_tokens: u32,
     /// Tokens restored per elapsed second on acquisition or snapshot.
-    #[serde(default = "default_refill_rate")]
+    #[serde(default = "defaults::default_refill_rate")]
     pub refill_rate: f64,
     /// Tokens charged per get_message_media call (searches cost 1).
-    #[serde(default = "default_media_download_cost")]
+    #[serde(default = "defaults::default_media_download_cost")]
     pub media_download_cost: u32,
     /// Tokens charged per transcribe_voice_message call (Telegram's weekly
     /// transcription quota makes these calls precious; searches cost 1).
-    #[serde(default = "default_transcription_cost")]
+    #[serde(default = "defaults::default_transcription_cost")]
     pub transcription_cost: u32,
 }
 
@@ -292,10 +291,10 @@ impl RateLimitConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct TranscriptionConfig {
     /// Wait applied when a request omits `timeout_seconds`.
-    #[serde(default = "default_transcription_default_timeout")]
+    #[serde(default = "defaults::default_transcription_default_timeout")]
     pub default_timeout_seconds: u32,
     /// Upper bound the request's `timeout_seconds` is clamped to.
-    #[serde(default = "default_transcription_max_timeout")]
+    #[serde(default = "defaults::default_transcription_max_timeout")]
     pub max_timeout_seconds: u32,
 }
 
@@ -305,14 +304,14 @@ pub struct LimitsConfig {
     /// Cap (bytes) on a serialized message-stream response. When exceeded,
     /// trailing messages are dropped and `has_more`/`next_cursor` are set.
     /// At least one message is always returned, even over-budget.
-    #[serde(default = "default_response_byte_budget")]
+    #[serde(default = "defaults::default_response_byte_budget")]
     pub response_byte_budget: u64,
 
     /// Cap (bytes of base64 payload, as sent to the client) on the total image
     /// payload of one `get_messages_media_batch` call. Base64 is 4/3 the size
     /// of the underlying JPEG, and base64 is what consumes client context, so
     /// the budget is counted in base64 bytes.
-    #[serde(default = "default_media_batch_max_total_bytes")]
+    #[serde(default = "defaults::default_media_batch_max_total_bytes")]
     pub media_batch_max_total_bytes: u64,
 }
 
@@ -345,19 +344,19 @@ impl LimitsConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct LoggingConfig {
     /// Tracing filter used when `RUST_LOG` is absent or invalid.
-    #[serde(default = "default_log_level")]
+    #[serde(default = "defaults::default_log_level")]
     pub level: String,
     /// Stderr format selector (`json` chooses JSON; other values use pretty text).
-    #[serde(default = "default_log_format")]
+    #[serde(default = "defaults::default_log_format")]
     pub format: String,
     /// Enable file logging (default: true)
-    #[serde(default = "default_file_enabled")]
+    #[serde(default = "defaults::default_file_enabled")]
     pub file_enabled: bool,
     /// Directory for log files (default: ~/.config/telegram-connector/logs/)
-    #[serde(default = "default_log_path")]
+    #[serde(default = "defaults::default_log_path")]
     pub file_path: PathBuf,
     /// Number of days to retain log files (default: 7)
-    #[serde(default = "default_max_log_days")]
+    #[serde(default = "defaults::default_max_log_days")]
     pub max_log_days: u32,
 }
 
@@ -369,26 +368,26 @@ pub struct LoggingConfig {
 pub struct ObservabilityConfig {
     /// WARN when a stdout write+flush exceeds this many milliseconds.
     /// 0 makes every write WARN (field diagnostic mode).
-    #[serde(default = "default_slow_write_threshold_ms")]
+    #[serde(default = "defaults::default_slow_write_threshold_ms")]
     pub slow_write_threshold_ms: u64,
 
     /// Ring buffer capacity for `get_last_responses` (0 disables buffering).
-    #[serde(default = "default_response_buffer_size")]
+    #[serde(default = "defaults::default_response_buffer_size")]
     pub response_buffer_size: usize,
 
     /// Responses larger than this many bytes are recorded in the ring buffer
     /// with a stub payload instead of the full body (get_message_media responses
     /// are ~1.5 MB of base64; replaying them via get_last_responses is useless).
-    #[serde(default = "default_max_buffered_payload_bytes")]
+    #[serde(default = "defaults::default_max_buffered_payload_bytes")]
     pub max_buffered_payload_bytes: usize,
 }
 
 impl Default for ObservabilityConfig {
     fn default() -> Self {
         Self {
-            slow_write_threshold_ms: default_slow_write_threshold_ms(),
-            response_buffer_size: default_response_buffer_size(),
-            max_buffered_payload_bytes: default_max_buffered_payload_bytes(),
+            slow_write_threshold_ms: defaults::default_slow_write_threshold_ms(),
+            response_buffer_size: defaults::default_response_buffer_size(),
+            max_buffered_payload_bytes: defaults::default_max_buffered_payload_bytes(),
         }
     }
 }

@@ -1,7 +1,7 @@
 //! Serde default-value providers for config fields.
 //!
 //! Unit of `config` (LM-6). Referenced by `#[serde(default = "...")]`
-//! attributes via the `use defaults::*;` glob in `config.rs`.
+//! attributes and ordinary calls via explicit `defaults::` paths in `config.rs`.
 
 use super::{
     LimitsConfig, LoggingConfig, ObservabilityConfig, RateLimitConfig, SearchConfig, ServerConfig,

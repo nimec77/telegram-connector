@@ -3,8 +3,9 @@
 The [Rust coding manual](rust-style.md) is authoritative for Rust style, API design,
 errors, ownership, concurrency, documentation, and tests. Its adoption exceptions cover
 extracted test globs, the rmcp router layout, established constructors/builders, and
-documented conservative diagnostic wrappers and pending S4 import migration. Follow
-[AGENTS.md](../AGENTS.md) for repository workflow, source navigation, dependency constraints,
+documented conservative diagnostic wrappers. Production imports now name their owning
+modules explicitly. Follow [AGENTS.md](../AGENTS.md) for repository workflow, source
+navigation, dependency constraints,
 and review invariants. The [Rust API inventory](rust-api.md) classifies supported,
 transitional and internal surfaces and records error/deadline/compatibility contracts.
 

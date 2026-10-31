@@ -1,4 +1,9 @@
 //! Defaults and in-memory TOML table parsing (no env, no files).
+use crate::config::defaults::{
+    config_dir_join, default_file_enabled, default_limits_config, default_log_path,
+    default_logging_config, default_max_log_days, default_rate_limit_config,
+    default_search_deadline_seconds, default_timeout_config,
+};
 use crate::config::*;
 
 // ========================================================================

@@ -2,7 +2,13 @@
 //!
 //! Unit of `client` (LM-2).
 
-use super::*;
+use super::{TelegramClient, peer_to_ref, validate_channel_identifier};
+use crate::error::Error;
+use crate::telegram::converters::{
+    convert_discovered_peer, convert_peer_to_channel, message_timestamp,
+};
+use crate::telegram::timeout::with_timeout;
+use grammers_client::tl;
 
 impl TelegramClient {
     pub(super) async fn get_subscribed_channels_impl(

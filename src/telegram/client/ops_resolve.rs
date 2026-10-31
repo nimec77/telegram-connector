@@ -4,8 +4,11 @@
 //! and titles; only unmatched username-shaped identifiers spend a
 //! `resolve_username` RPC.
 
-use super::*;
-use crate::telegram::types::{Channel, ChannelResolution};
+use super::TelegramClient;
+use crate::error::Error;
+use crate::telegram::converters::convert_peer_to_channel;
+use crate::telegram::timeout::with_timeout;
+use crate::telegram::types::{Channel, ChannelResolution, Username};
 
 /// Verdict of matching one identifier against the subscribed dialog list.
 #[derive(Debug)]

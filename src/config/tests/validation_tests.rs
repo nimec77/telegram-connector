@@ -1,5 +1,8 @@
 //! Validation rules, credential predicates, and secret redaction.
 use super::create_test_config;
+use crate::config::defaults::{
+    default_download_secs, default_limits_config, default_timeout_config,
+};
 use crate::config::*;
 
 #[test]

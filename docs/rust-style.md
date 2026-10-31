@@ -52,7 +52,6 @@ one of these explicit constraints.
 | Existing consuming `with_*` builders | Retain their consuming names/signatures, including established fallible builders; the conversion naming rules do not require a rename. | S6 adds targeted `#[must_use]` checks for consuming returns and reviews fallible API documentation. |
 | Legacy diagnostic getters and best-effort recorders | Established getters retain conservative fallbacks without inspecting poisoned contents: zero tokens/count, empty replay/identities, absent timestamp/correlation. These lose failure information; `refund` refuses unavailable state. | New/internal consumers use fallible `try_*` snapshots or independent write observations. Status distinguishes absent from unavailable; replay failure is a typed error. Keep this narrow compatibility exception documented in the [API inventory](rust-api.md). |
 | Poison/isolation regression tests | Controlled unit-test threads and isolated child tests intentionally panic to exercise interrupted-state handling and process isolation. | Join poison threads and inspect child status. This test-only exception never authorizes catching production panics to resume protected state. |
-| Existing production glob imports and broad parent glue | S4's explicit-import migration is pending; preserve existing imports in this formatting-only adoption. New production imports use explicit dependencies. | S4 inventories affected leaves, checks wildcard imports, and reruns tool/schema tests and the full gate. |
 
 ## 1. Formatting and imports
 

@@ -5,9 +5,14 @@
 use super::raw_pager::{RawChannelSearchPager, RawGlobalSearchPager};
 use super::search_budget::SearchBudget;
 use super::walk::{BelowCutoff, Fetched, Flow, MessageWalk, WalkConfig};
-use super::*;
+use super::{TelegramClient, assemble_search_result, cursor_wire_bounds, peer_to_ref};
+use crate::error::Error;
 use crate::telegram::albums::PageAccumulator;
+use crate::telegram::converters::convert_media_filter;
+use crate::telegram::timeout::with_timeout;
+use crate::telegram::types::{ChannelId, SearchParams, SearchResult};
 use chrono::{DateTime, Utc};
+use std::time::Instant;
 use tracing::Instrument;
 
 impl TelegramClient {

@@ -3,7 +3,14 @@
 //! Unit of `client` (LM-2).
 
 use super::guard::require_found;
-use super::*;
+use super::{TelegramClient, peer_to_ref, validate_channel_identifier};
+use crate::error::Error;
+use crate::telegram::converters::{
+    convert_media_to_type, extract_video_info, select_size_candidate, size_candidates,
+};
+use crate::telegram::timeout::with_timeout;
+use crate::telegram::types::{MediaDownload, MediaFetchError, MediaFetchOutcome, MediaType};
+use grammers_client::media::Media;
 
 /// Concurrent media downloads in flight within one batch call.
 ///

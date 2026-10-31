@@ -1,6 +1,7 @@
 //! Account RPC policy below the whole-client mock seam.
 use super::*;
 use std::future::{pending, ready};
+use std::time::Duration as StdDuration;
 
 #[tokio::test(start_paused = true)]
 async fn startup_status_times_out() {

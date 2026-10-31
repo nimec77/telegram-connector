@@ -5,28 +5,18 @@
 //! `client/` submodules (LM-2). The struct stays here so every submodule (a
 //! descendant) can reach its private fields.
 
-use crate::config::{SearchConfig, TelegramConfig, TimeoutConfig};
+use crate::config::TimeoutConfig;
 use crate::error::Error;
-use crate::telegram::converters::{
-    channel_identity, convert_discovered_peer, convert_media_filter, convert_media_to_type,
-    convert_peer_to_channel, convert_raw_message, extract_audio_duration, extract_video_info,
-    message_timestamp, select_size_candidate, size_candidates, timestamp_from_raw,
-};
-use crate::telegram::timeout::with_timeout;
 use crate::telegram::trait_def::TelegramClientTrait;
 use crate::telegram::transcription::TranscriptionDeadline;
 use crate::telegram::types::{
-    AccountStatus, ChannelId, ChannelIdentity, HistoryParams, MediaDownload, MediaFetchError,
-    MediaFetchOutcome, MediaType, MessageId, QueryMetadata, SearchParams, SearchResult,
-    TranscriptionOutcome, TranscriptionState, Username,
+    AccountStatus, HistoryParams, MediaDownload, MediaFetchOutcome, MessageId, QueryMetadata,
+    SearchParams, SearchResult, TranscriptionOutcome,
 };
-use grammers_client::media::Media;
-use grammers_client::{Client, tl};
-use grammers_mtsender::SenderPool;
+use grammers_client::Client;
 use grammers_session::storages::SqliteSession;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{Duration as StdDuration, Instant};
 use tokio::task::JoinHandle;
 
 mod auth;

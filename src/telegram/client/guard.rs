@@ -5,7 +5,8 @@
 //! normal-looking `Message` (epoch date, empty text). Mapping it blindly
 //! fabricates a message (work-order B1) — these helpers make the case explicit.
 
-use super::*;
+use crate::error::Error;
+use grammers_client::tl;
 
 /// True when the raw TL message is the `MessageEmpty` placeholder.
 pub(super) fn is_empty_variant(raw: &tl::enums::Message) -> bool {

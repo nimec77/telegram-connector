@@ -4,8 +4,12 @@
 
 use super::guard::{is_empty_variant, require_found_raw};
 use super::raw_fetch::fetch_messages_by_id;
-use super::*;
+use super::{TelegramClient, peer_to_ref, validate_channel_identifier};
+use crate::error::Error;
+use crate::telegram::converters::convert_raw_message;
 use crate::telegram::envelope::EntityLookup;
+use crate::telegram::timeout::with_timeout;
+use grammers_client::tl;
 
 impl TelegramClient {
     pub(super) async fn get_message_by_id_impl(

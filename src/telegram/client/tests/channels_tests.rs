@@ -1,9 +1,11 @@
 //! Tests for channel discovery/subscription helpers (`channels`).
 
 use super::*;
+use grammers_client::Client;
 use grammers_client::peer::Peer;
 use grammers_mtsender::SenderPool;
 use grammers_session::storages::MemorySession;
+use std::sync::Arc;
 
 /// Build an inert `Client` for offline `Peer::from_raw` construction: the
 /// `SenderPool` runner is never spawned, so no I/O can happen. Same trick as
