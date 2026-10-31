@@ -49,13 +49,16 @@ pub trait TelegramClientTrait: Send + Sync {
     /// Uses `iter_messages()` to iterate message history, not search.
     /// Media filter is applied client-side.
     ///
-    /// Resolution is separately bounded before the history walk. History has
+    /// Username resolution is best effort: a miss or failure falls back to a
+    /// dialog walk when a numeric channel ID is available. Without a usable
+    /// fallback, the call returns an invalid-reference error. Resolution stages
+    /// are separately bounded before the history walk. History has
     /// no cooperative search deadline: history timeout/RPC failure is an error,
     /// not a successful partial. Cursor bounds are exclusive and channel-scoped.
     ///
     /// # Errors
     /// Rejects zero limit, unusable reference or out-of-range cursors, and
-    /// propagates resolution/history timeouts and upstream failures.
+    /// propagates final dialog/history timeouts and upstream failures.
     async fn get_recent_messages(&self, params: &HistoryParams) -> Result<SearchResult, Error>;
 
     /// Get information about a specific channel by username or ID
