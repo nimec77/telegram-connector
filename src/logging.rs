@@ -147,13 +147,30 @@ pub fn cleanup_old_logs(config: &LoggingConfig) -> anyhow::Result<usize> {
     for entry in entries.flatten() {
         let path = entry.path();
 
-        // Only process log files (pattern: telegram-connector.log.YYYY-MM-DD)
+        // The daily appender puts its date between the prefix and suffix:
+        // telegram-connector.YYYY-MM-DD.log. Backups and foreign logs are not ours.
         let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if !file_name.contains(".log") {
+        let Some(date) = file_name
+            .strip_prefix("telegram-connector.")
+            .and_then(|name| name.strip_suffix(".log"))
+        else {
+            continue;
+        };
+        if date.len() != 10
+            || !date.bytes().enumerate().all(|(index, byte)| {
+                if matches!(index, 4 | 7) {
+                    byte == b'-'
+                } else {
+                    byte.is_ascii_digit()
+                }
+            })
+            || chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_err()
+        {
             continue;
         }
 
         if let Ok(metadata) = entry.metadata()
+            && metadata.is_file()
             && let Ok(modified) = metadata.modified()
             && modified < cutoff
             && std::fs::remove_file(&path).is_ok()

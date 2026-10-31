@@ -393,3 +393,55 @@ fn cleanup_handles_empty_directory() {
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), 0);
 }
+
+#[test]
+fn cleanup_preserves_foreign_logs_and_backups() {
+    use filetime::{FileTime, set_file_mtime};
+
+    let temp_dir = tempfile::tempdir().expect("log directory");
+    let old_names = [
+        "telegram-connector.2025-01-01.log",
+        "telegram-connector.2025-01-02.log",
+    ];
+    let preserved_names = [
+        "other-service.log",
+        "notes.log.backup",
+        "telegram-connector.2025-01-01.log.backup",
+        "telegram-connector.log.2025-01-01",
+        "telegram-connector.2025-01-01-12.log",
+        "telegram-connector.2025-02-30.log",
+        "telegram-connector.not-a-date.log",
+        "telegram-connector.2025-1-01.log",
+        "telegram-connector.2025-01-01.log.extra.log",
+    ];
+    let old_time = FileTime::from_system_time(
+        std::time::SystemTime::now() - std::time::Duration::from_secs(10 * 86400),
+    );
+    for name in old_names.iter().chain(&preserved_names) {
+        let path = temp_dir.path().join(name);
+        std::fs::write(&path, b"log data").expect("fixture file");
+        set_file_mtime(&path, old_time).expect("old fixture mtime");
+    }
+    let recent = temp_dir.path().join("telegram-connector.2025-01-03.log");
+    std::fs::write(&recent, b"recent log").expect("recent file");
+    let directory = temp_dir.path().join("telegram-connector.2025-01-04.log");
+    std::fs::create_dir(&directory).expect("directory fixture");
+    set_file_mtime(&directory, old_time).expect("old directory mtime");
+    let config = LoggingConfig {
+        file_enabled: true,
+        file_path: temp_dir.path().to_path_buf(),
+        max_log_days: 7,
+        level: "info".to_string(),
+        format: "compact".to_string(),
+    };
+
+    assert_eq!(cleanup_old_logs(&config).expect("cleanup"), 2);
+    for name in old_names {
+        assert!(!temp_dir.path().join(name).exists(), "old log {name}");
+    }
+    for name in preserved_names {
+        assert!(temp_dir.path().join(name).is_file(), "preserve {name}");
+    }
+    assert!(recent.is_file());
+    assert!(directory.is_dir());
+}
