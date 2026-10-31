@@ -2,7 +2,6 @@ use crate::error::Error;
 use crate::logging::redact_phone;
 use crate::telegram::client::TelegramClient;
 use dialoguer::{Input, Password};
-use grammers_client::SignInError;
 
 /// Interactive authentication flow for Telegram
 ///
@@ -36,12 +35,12 @@ pub async fn interactive_auth(
         .map_err(|e| Error::Auth(format!("Failed to read input: {}", e)))?;
 
     // Sign in with code
-    match client.client().sign_in(&token, &code).await {
-        Ok(_) => {
+    match client.sign_in(&token, &code).await? {
+        None => {
             tracing::info!("Successfully authenticated");
             Ok(())
         }
-        Err(SignInError::PasswordRequired(password_token)) => {
+        Some(password_token) => {
             // 2FA is enabled, prompt for password
             if let Some(hint) = password_token.hint() {
                 println!("2FA enabled. Password hint: {}", hint);
@@ -59,6 +58,5 @@ pub async fn interactive_auth(
             tracing::info!("Successfully authenticated with 2FA");
             Ok(())
         }
-        Err(e) => Err(Error::Auth(format!("Sign in failed: {}", e))),
     }
 }
