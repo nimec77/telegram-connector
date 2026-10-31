@@ -6,7 +6,7 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Current state
 
-- **v0.22.5** (released 2026-08-16), 16 MCP tools (16th:
+- **v0.22.6** (released 2026-08-22), 16 MCP tools (16th:
   `get_messages_media_batch`). 758 lib tests passing, 5 ignored (the 2026-08-22
   review pass removed 23 tests of since-deleted dead API and added 8).
   Coverage **78.33% lines** (`cargo llvm-cov --lib`; 76.19% for a full `cargo llvm-cov`
@@ -40,6 +40,12 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   `RawChannelSearchPager` first — not a redesign.
 
 ## Key decisions
+
+- **Codex development:** `AGENTS.md` is the canonical repository guide.
+  Shared Codex skills live in `.agents/skills/`; obsolete Claude files were removed.
+  Keep personal permissions/config outside version control. `just check` matches
+  CI (locked dependencies, all-target clippy). Nightly is selected explicitly in
+  `rust-toolchain.toml`, not implied by the edition. See `docs/codex.md` for setup.
 
 - **grammers pinned by `rev` on Codeberg, all three crates bumped together.** GitHub is a
   stale mirror (upstream left Feb 2026); tracking `branch = "master"` would re-create "fresh

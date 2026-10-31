@@ -1,8 +1,8 @@
 # Telegram MCP Connector
 
-A Model Context Protocol (MCP) service that enables Claude to search and interact with
-Telegram channels and messages in real-time. Built in Rust using the `rmcp` SDK and the
-`grammers` Telegram client.
+A Model Context Protocol (MCP) service that enables Codex and other MCP clients to search
+and interact with Telegram channels and messages in real-time. Built in Rust using
+the `rmcp` SDK and the `grammers` Telegram client.
 
 ## Features
 
@@ -24,7 +24,7 @@ Telegram channels and messages in real-time. Built in Rust using the `rmcp` SDK 
 ## Architecture
 
 ```
-MCP Client (Claude Desktop)
+MCP Client (Codex or another stdio client)
         │ JSON-RPC over stdio
 MCP Server Layer — 16 tools (rmcp, src/mcp/)
         │
@@ -41,7 +41,7 @@ parameters.
 
 ## Prerequisites
 
-- **Rust** — 2024 edition (nightly toolchain)
+- **Rust** — 2024 edition; `rust-toolchain.toml` selects nightly with rustfmt and clippy
 - **Telegram account** with phone number, and API credentials from https://my.telegram.org
 - **Telegram Desktop** — only for the `open_message_in_telegram` tool (macOS only)
 
@@ -50,7 +50,7 @@ parameters.
 ```bash
 git clone https://github.com/nimec77/telegram-connector.git
 cd telegram-connector
-cargo build --release        # binary at target/release/telegram-mcp
+cargo build --locked --release  # binary at target/release/telegram-mcp
 ```
 
 Get API credentials at https://my.telegram.org → "API development tools" → create an
@@ -128,15 +128,28 @@ Options:
   -V, --version              Print version
 ```
 
-Claude Desktop config (`~/.config/claude-desktop/config.json`), then restart Claude Desktop:
+### Connect Codex
 
-```json
-{
-  "mcpServers": {
-    "telegram": { "command": "/path/to/telegram-mcp", "args": [] }
-  }
-}
+After authenticating with `--setup`, merge this table into `~/.codex/config.toml`,
+replacing both paths with absolute paths:
+
+```toml
+[mcp_servers.telegram]
+command = "/absolute/path/to/telegram-connector/target/release/telegram-mcp"
+args = ["--config", "/absolute/path/to/telegram-connector-config.toml"]
+startup_timeout_sec = 30
+tool_timeout_sec = 180
 ```
+
+Restart the Codex session and check `/mcp` for the active server. The longer tool
+timeout accommodates voice transcription, which can take up to 120 seconds.
+See [the configuration example](.codex/config.toml.example) and
+[Codex development guide](docs/codex.md) for CLI registration, project setup,
+and recommended tools. These settings follow the
+[official Codex MCP documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+
+Other MCP clients can launch the same binary with the same `--config` argument
+over stdio using their own MCP configuration format.
 
 ## MCP Tools
 
@@ -212,15 +225,18 @@ the quick reference.
   verify stdio isn't blocked, check the logs.
 - **"Config file not found"** — put `config.toml` in the platform config dir (see table
   above), or pass `--config` / set `TELEGRAM_MCP_CONFIG`.
-- **Tool not found** — verify the tool name and restart Claude Desktop after config changes.
+- **Tool not found** — verify the tool name, restart the MCP client after config changes,
+  and check `/mcp` in Codex.
 
 ## Development
 
 ```bash
-cargo test                                              # all tests
-cargo fmt --check && cargo clippy -- -D warnings && cargo test   # pre-commit gate
+just check          # format check, all-target clippy, and tests (matches CI)
+cargo test --locked # all tests; no Telegram credentials required
 ```
 
 The same commands are available as `just` recipes (`just` to list, `just check` for the full
-gate). Project docs for contributors live in `CLAUDE.md` (architecture, workflow) and
-`docs/` (`conventions.md`, `memory.md`).
+gate). Start Codex in the repository to load [AGENTS.md](AGENTS.md) and discover the
+repository skills in `.agents/skills/`. See [docs/codex.md](docs/codex.md) for the
+migration analysis and optional integrations, and `docs/conventions.md` /
+`docs/memory.md` for conventions and durable project knowledge.

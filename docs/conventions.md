@@ -19,7 +19,7 @@ while green. **No production code without a failing test.**
 ## Code Style
 
 - **Format:** `cargo fmt` (default settings); run `cargo fmt --all` after every change
-- **Lint:** `cargo clippy -- -D warnings`
+- **Lint:** `cargo clippy --locked --all-targets -- -D warnings`
 - **Naming:** snake_case functions, PascalCase types
 - **Docs:** `///` on public API only
 - **Line length:** 100 characters
@@ -83,7 +83,11 @@ Branch, commit, and open PRs freely (in-house flow, no approval gate).
 ## Pre-Commit Checklist
 
 ```bash
-cargo fmt --check && cargo clippy -- -D warnings && cargo test
+cargo fmt --all --check && cargo clippy --locked --all-targets -- -D warnings && cargo test --locked
 ```
 
 All must pass before commit.
+
+`just check` runs the same gate as CI. `rust-toolchain.toml` selects nightly with
+rustfmt and clippy. Repository agent instructions live in `AGENTS.md`; Codex setup
+and optional development tools are documented in `docs/codex.md`.

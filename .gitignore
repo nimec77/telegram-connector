@@ -5,7 +5,10 @@
 # IDE
 .idea/
 .vscode/
-.claude/
+# Personal Codex overrides; shared examples and .agents/skills stay versioned.
+/AGENTS.override.md
+# Superpowers execution scratch (active plans/specs remain in docs/).
+/.superpowers/
 *.swp
 *.swo
 *~

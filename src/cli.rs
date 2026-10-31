@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 /// Telegram MCP Connector - A Model Context Protocol service for Telegram
 ///
-/// This service enables Claude to search Russian-language Telegram channels
+/// This service enables MCP clients such as Codex to search Telegram channels
 /// and messages in real-time.
 #[derive(Parser, Debug)]
 #[command(name = "telegram-mcp")]

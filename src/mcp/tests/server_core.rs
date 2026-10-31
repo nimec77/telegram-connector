@@ -106,7 +106,7 @@ fn tools_list_hints_gated_on_protocol_version() {
     assert_eq!(legacy.tools.len(), 16); // tool list itself is unaffected
 
     // ...and neither does a client that never negotiated a protocol version at
-    // all (the legacy `initialize`-handshake fallback CLAUDE.md documents).
+    // all (the legacy `initialize`-handshake fallback AGENTS.md documents).
     let unversioned = server.tools_list_result_for(None);
     assert_eq!(unversioned.ttl_ms, None);
     assert!(unversioned.cache_scope.is_none());

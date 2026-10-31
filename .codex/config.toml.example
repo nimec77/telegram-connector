@@ -1,0 +1,13 @@
+# Merge this table into your Codex configuration; do not overwrite existing tables.
+# Replace both paths with absolute paths. Authenticate separately with --setup first.
+# This example is not loaded automatically and contains no Telegram credentials.
+[mcp_servers.telegram]
+command = "/absolute/path/to/telegram-connector/target/release/telegram-mcp"
+args = ["--config", "/absolute/path/to/telegram-connector-config.toml"]
+startup_timeout_sec = 30
+# Transcription can take 120 seconds, above Codex's default 60-second tool timeout.
+tool_timeout_sec = 180
+
+# Optional, read-only official documentation for Codex/OpenAI integration work:
+# [mcp_servers.openaiDeveloperDocs]
+# url = "https://developers.openai.com/mcp"
