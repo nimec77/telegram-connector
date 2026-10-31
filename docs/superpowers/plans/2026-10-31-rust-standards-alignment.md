@@ -9,8 +9,9 @@ and the macro-constrained MCP router; improve boundaries and enforcement increme
 **Spec:** [Rust coding manual](../../rust-style.md).
 **Parent:** [Development roadmap](2026-10-31-development-roadmap.md).
 **Status:** S1–S5 are implemented and independently approved. S6 is implemented and
-validated; its independent alignment review is pending. Parent owns final whole-branch
-review and integration.
+validated; independent review approved its Rust/refactor/build changes and requested the
+documentation disposition recorded below. Documentation-fix re-review is pending. Parent
+owns final whole-branch review and integration; Task7 owns the remaining serde invariant fix.
 
 ## Global constraints
 
@@ -205,8 +206,8 @@ SHA-256 `4e88de47c5afcefd1dfb2d323ea18ecb2ff40b2ecd1fbfe43c922c48f9cec221`.
   on the selected toolchain and document any narrow exceptions with reasons.
 - [x] Run full gate and rustdoc checks and update the baseline. No broad
   pedantic/restriction deny or automatic whole-crate fix.
-- [ ] Obtain independent S6 review against the adopted manual (coordinator dispatch);
-  final whole-branch review/integration belongs to parent.
+- [ ] Obtain scoped documentation-fix re-review and final S6 approval against the adopted
+  manual (coordinator dispatch); final whole-branch review/integration belongs to parent.
 
 **Implementation and validation (2026-10-31):** Six consuming server builders now have
 useful `must_use` messages. `AlbumMode` names page/walk constructor mode and converts the
@@ -230,7 +231,17 @@ Current measurements use selected `nightly-2026-10-31` and the shared Cargo targ
 | Full gate | Formatting, selected Clippy, parallel full tests: 866 library passed, four child entrypoints invoked by parent tests; three doctests passed. |
 | Local/CI wiring | `just check` includes warning-free rustdoc; full cargo test runs doctests. `just check-docs` also has explicit doc tests. Pinned CI actions and other jobs preserved. |
 
-Independent S6 approval is pending; these are author-observed implementation checks.
+Independent S6 review approved the Rust/refactor/build changes. Its Important documentation
+finding is dispositioned by the explicit temporary legacy `Deserialize` exception in the
+[manual](../../rust-style.md#adoption-exceptions) and
+[API inventory](../../rust-api.md#temporary-legacy-deserialize-exception-task7); documentation-fix
+re-review is pending. `ChannelId`, `MessageId`, `UserId`, `Username` and `ChannelName` still
+bypass constructor validation during derived deserialization. Parent requires Task7 to
+behavior-test validated deserialization delegating existing constructors/`TryFrom`, preserve
+valid JSON scalar forms, intentionally reject formerly accepted constructor-invalid values
+in the 0.23 migration, and remove the exception before final acceptance. S6 does not fix
+that behavior or claim unconditional manual alignment. The checks above are author-observed
+implementation evidence, not evidence that this inherited invariant bypass is resolved.
 
 ## Integration and effort
 

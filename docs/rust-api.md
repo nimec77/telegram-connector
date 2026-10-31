@@ -58,6 +58,30 @@ and converter implementation modules. No field
 visibility is widened for module layout. Test-only helpers and mocks are not supported
 external APIs.
 
+## Temporary legacy Deserialize exception (Task7)
+
+The [manual's temporary exception](rust-style.md#adoption-exceptions) covers precisely
+`ChannelId`, `MessageId`, `UserId`, `Username` and `ChannelName`. Their current transparent
+derived `Deserialize` implementations read the underlying scalar without invoking the
+constructor. They therefore do not enforce these existing constructor contracts:
+
+| Types | Existing constructor contract bypassed by legacy deserialization |
+| --- | --- |
+| `ChannelId`, `MessageId`, `UserId` | The `i64` must be positive; zero and negative values are rejected by `new`. Message wire-range checks remain a separate operation concern. |
+| `Username` | Nonempty, at most 32 bytes, every character Unicode alphanumeric or underscore; the constructor neither trims nor removes `@`. This is the observed-name policy, which accepts short names, not the stricter input-resolution shape predicate. |
+| `ChannelName` | Trim surrounding whitespace, reject an empty trimmed name, and store the trimmed value. Legacy deserialization accepts blank values and retains surrounding whitespace. |
+
+This is an inherited domain-invariant bypass, not strict validation compliance or a
+behavior fix in S6. It affects direct Rust/serde consumers and may affect stored DTOs;
+it does not by itself demonstrate a new S6 MCP boundary-validation regression.
+
+Parent assigns the behavior change to Task7: write failing observable deserialization
+regressions first, then delegate validated deserialization to the existing constructors
+or `TryFrom`, preserve valid numeric/string JSON forms, and remove this temporary exception
+before final acceptance. Formerly accepted constructor-invalid values must become rejected
+as an intentional compatibility change in the 0.23 migration. This enforces existing
+invariants; it does not introduce a new identifier format or stricter username policy.
+
 ## Errors, deadlines and partial results
 
 The production client returns typed `Error`; the MCP boundary preserves established strings
@@ -151,9 +175,10 @@ All six consuming `with_*` builders carry a useful `must_use` message so discard
 configured server warns. Names, signatures and return types remain unchanged. Established
 fallible `ChannelId`, `MessageId`, `UserId`, `Username`, `ChannelName` and `TelegramClient`
 `new` methods retain their names for compatibility; new fallible constructors prefer
-`try_new`. Existing conversions preserve validation; no extra aliases or conversion
-traits were added without a caller need. Internal album/cursor modes do not change the
-public request/domain boolean fields or response JSON.
+`try_new`. Constructor validation is unchanged; the five wrappers' legacy derived
+`Deserialize` bypass remains under the [temporary Task7 exception](#temporary-legacy-deserialize-exception-task7).
+No extra aliases or conversion traits were added without a caller need. Internal album/cursor
+modes do not change the public request/domain boolean fields or response JSON.
 `with_observability` creates a new empty replay buffer, so old cloned handles remain old;
 metrics stay shared. Serving reserves stdout for MCP, owns protocol cleanup, and reports
 setup, I/O, SDK/task and signal-trigger errors after cleanup. Shutdown has one drain budget;
