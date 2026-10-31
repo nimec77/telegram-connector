@@ -97,6 +97,18 @@ def validate_metadata(metadata, policy, today=None):
         raise PolicyError("resolve graph is malformed") from error
     if not complete:
         raise PolicyError("all resolved packages must be present; do not use --no-deps")
+    for node in resolve["nodes"]:
+        dependencies = node.get("dependencies")
+        named_edges = node.get("deps")
+        if not isinstance(dependencies, list) or not isinstance(named_edges, list):
+            raise PolicyError("resolve nodes require complete dependency edges")
+        if any(not isinstance(item, str) or item not in by_id for item in dependencies):
+            raise PolicyError("dependency edge references an absent package")
+        if any(not isinstance(edge, dict) or not isinstance(edge.get("pkg"), str)
+               or edge["pkg"] not in by_id for edge in named_edges):
+            raise PolicyError("named dependency edge references an absent package")
+        if set(dependencies) != {edge["pkg"] for edge in named_edges}:
+            raise PolicyError("dependency edge representations disagree")
     root = by_id.get(root_id)
     if root is None or root["name"] != ROOT_PACKAGE or root.get("source") is not None:
         raise PolicyError("only the exact local telegram-connector root can be exempt")

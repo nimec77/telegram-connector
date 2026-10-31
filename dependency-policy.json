@@ -78,6 +78,17 @@
       "owner": "nimec77",
       "expires": "2027-01-31",
       "rationale": "Existing directories dependency; version-scoped reviewed declaration, with MPL obligations retained."
+    },
+    {
+      "name": "zlib-rs",
+      "version": "0.6.8",
+      "expression": "Zlib",
+      "choice": [
+        "Zlib"
+      ],
+      "owner": "nimec77",
+      "expires": "2027-01-31",
+      "rationale": "Reviewed flate2 backend declaration and standard Zlib source notice; retain origin, altered-source marking and notice obligations. Exact package/version only."
     }
   ]
 }

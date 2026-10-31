@@ -19,7 +19,10 @@ def metadata():
             {"id": "root", "name": "telegram-connector", "version": "0.22.10", "source": None, "license": None},
             {"id": "dep", "name": "example-dependency", "version": "1.0.0", "source": REGISTRY, "license": "MIT"},
         ],
-        "resolve": {"root": "root", "nodes": [{"id": "root"}, {"id": "dep"}]},
+        "resolve": {"root": "root", "nodes": [
+            {"id": "root", "dependencies": ["dep"], "deps": [{"name": "example_dependency", "pkg": "dep", "dep_kinds": [{"kind": None, "target": None}]}]},
+            {"id": "dep", "dependencies": [], "deps": []},
+        ]},
     }
 
 
@@ -71,6 +74,19 @@ class DependencyPolicyTests(unittest.TestCase):
         self.metadata["resolve"]["nodes"].pop()
         with self.assertRaises(PolicyError): self.check()
 
+    def test_removing_package_and_node_cannot_leave_a_dangling_dependency(self):
+        self.metadata["packages"].pop()
+        self.metadata["resolve"]["nodes"].pop()
+        with self.assertRaises(PolicyError): self.check()
+
+    def test_dependency_and_named_edge_references_must_agree(self):
+        self.metadata["resolve"]["nodes"][0]["deps"] = []
+        with self.assertRaises(PolicyError): self.check()
+
+    def test_node_edge_fields_cannot_be_omitted(self):
+        del self.metadata["resolve"]["nodes"][0]["dependencies"]
+        with self.assertRaises(PolicyError): self.check()
+
     def test_duplicate_package_ids_are_rejected(self):
         self.metadata["packages"].append(copy.deepcopy(self.metadata["packages"][0]))
         with self.assertRaises(PolicyError): self.check()
@@ -96,7 +112,7 @@ class DependencyPolicyTests(unittest.TestCase):
         other = copy.deepcopy(self.metadata["packages"][1])
         other.update(id="other", name="other-grammers-package", source="git+https://codeberg.org/Lonami/grammers?rev=" + "0" * 40 + "#" + "0" * 40)
         self.metadata["packages"].append(other)
-        self.metadata["resolve"]["nodes"].append({"id": "other"})
+        self.metadata["resolve"]["nodes"].append({"id": "other", "dependencies": [], "deps": []})
         self.assert_code("git_revision_mismatch")
 
     def test_stale_github_mirror_is_rejected(self):
