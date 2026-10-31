@@ -3,22 +3,33 @@
 //! Unit of `config` (LM-6).
 
 pub(crate) fn expand_env_vars(value: &str) -> anyhow::Result<String> {
+    expand_env_vars_with(value, |name| std::env::var(name))
+}
+
+/// Pure expansion seam: environment access is supplied by the caller.
+pub(super) fn expand_env_vars_with(
+    value: &str,
+    mut lookup: impl FnMut(&str) -> Result<String, std::env::VarError>,
+) -> anyhow::Result<String> {
     let lines: Vec<String> = value
         .split('\n')
-        .map(|line| {
+        .enumerate()
+        .map(|(line_index, line)| {
             if line.trim_start().starts_with('#') {
                 Ok(line.to_string())
             } else {
-                expand_env_vars_in_line(line)
+                expand_env_vars_in_line(line, line_index + 1, &mut lookup)
             }
         })
         .collect::<anyhow::Result<_>>()?;
     Ok(lines.join("\n"))
 }
 
-fn expand_env_vars_in_line(value: &str) -> anyhow::Result<String> {
-    use anyhow::Context;
-
+fn expand_env_vars_in_line(
+    value: &str,
+    line_number: usize,
+    lookup: &mut impl FnMut(&str) -> Result<String, std::env::VarError>,
+) -> anyhow::Result<String> {
     let mut result = value.to_string();
     let mut search_from = 0;
 
@@ -27,12 +38,16 @@ fn expand_env_vars_in_line(value: &str) -> anyhow::Result<String> {
         if let Some(end_offset) = result[start..].find('}') {
             let end = start + end_offset;
             let var_name = &result[start + 2..end];
-            let var_value = std::env::var(var_name).with_context(|| {
-                format!(
-                    "Environment variable '{}' not found. \
-                     Referenced in config as '${{{}}}'. \
-                     Ensure it is set in the process environment.",
-                    var_name, var_name
+            // VarError::NotUnicode owns the raw value. Never retain it as a source:
+            // Debug/error-chain rendering would disclose non-Unicode credentials.
+            let var_value = lookup(var_name).map_err(|error| {
+                let condition = match error {
+                    std::env::VarError::NotPresent => "not found",
+                    std::env::VarError::NotUnicode(_) => "is not valid Unicode",
+                };
+                anyhow::anyhow!(
+                    "Environment variable '{}' {}. Referenced in config as '${{{}}}' at line {}. Ensure it is set in the process environment.",
+                    var_name, condition, var_name, line_number
                 )
             })?;
 

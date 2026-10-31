@@ -1,147 +1,101 @@
-//! File-based Config::load_from tests — every env-mutating loader in one auditable place.
-use super::EnvGuard;
+//! File-loading tests use immutable parent environments and isolated child overrides.
 use crate::config::*;
-use std::{env, fs};
+use std::fs;
 
-#[ignore = "for CI/CD passing tests"]
+fn run_config_child(case: &str, content: &str) {
+    let dir = tempfile::tempdir().expect("config dir");
+    let path = dir.path().join("config.toml");
+    fs::write(&path, content).expect("config fixture");
+    let mut command = super::environment_child(case);
+    command
+        .env("TELEGRAM_MCP_CONFIG", &path)
+        .env("TEST_API_ID", "98765")
+        .env("TEST_API_HASH", "expanded_hash")
+        .env("TEST_PHONE", "+9876543210")
+        .env("CONFIG_PARSE_TEST_HASH", "FAKE_CONFIG_PARSE_HASH_7c3a")
+        .env("CONFIG_PARSE_TEST_PHONE", "+15550001234");
+    super::assert_child_success(&mut command);
+}
+
 #[test]
 fn test_load_valid_config() {
-    let mut env_guard = EnvGuard::new();
-    let temp_dir = env::temp_dir();
-    let config_path = temp_dir.join("test_config.toml");
-    let config_content = r#"
-[telegram]
-api_id = 12345
-api_hash = "test_hash"
-phone_number = "+1234567890"
-session_file = "/tmp/session.bin"
-
-[rate_limiting]
-max_tokens = 50
-refill_rate = 2.0
-
-[logging]
-level = "info"
-format = "compact"
-"#;
-    fs::write(&config_path, config_content).unwrap();
-
-    env_guard.set("TELEGRAM_MCP_CONFIG", &config_path);
-    let result = Config::load_from(None);
-    fs::remove_file(&config_path).ok();
-
-    assert!(result.is_ok());
-    let config = result.unwrap();
-    assert_eq!(config.telegram.api_id, 12345);
-    assert_eq!(
-        config.telegram.api_hash.as_ref().map(|s| s.expose_secret()),
-        Some("test_hash")
+    run_config_child(
+        "valid",
+        "[telegram]\napi_id = 12345\napi_hash = \"test_hash\"\nphone_number = \"+1234567890\"\n",
     );
 }
-
-#[ignore = "for CI/CD passing tests"]
 #[test]
 fn test_load_config_with_env_vars() {
-    let mut env_guard = EnvGuard::new();
-    let temp_dir = env::temp_dir();
-    let config_path = temp_dir.join("test_config_env.toml");
-    // Test that ALL fields can use ${VAR} syntax, including numeric api_id
-    let config_content = r#"
-[telegram]
-api_id = "${TEST_API_ID}"
-api_hash = "${TEST_API_HASH}"
-phone_number = "${TEST_PHONE}"
-session_file = "/tmp/session.bin"
-
-[rate_limiting]
-max_tokens = 50
-refill_rate = 2.0
-
-[logging]
-level = "info"
-format = "compact"
-"#;
-    fs::write(&config_path, config_content).unwrap();
-
-    env_guard.set("TEST_API_ID", "98765");
-    env_guard.set("TEST_API_HASH", "expanded_hash");
-    env_guard.set("TEST_PHONE", "+9876543210");
-    env_guard.set("TELEGRAM_MCP_CONFIG", &config_path);
-
-    let result = Config::load_from(None);
-
-    fs::remove_file(&config_path).ok();
-
-    assert!(result.is_ok());
-    let config = result.unwrap();
-    assert_eq!(config.telegram.api_id, 98765);
-    assert_eq!(
-        config.telegram.api_hash.as_ref().map(|s| s.expose_secret()),
-        Some("expanded_hash")
-    );
-    assert_eq!(
-        config
-            .telegram
-            .phone_number
-            .as_ref()
-            .map(|s| s.expose_secret()),
-        Some("+9876543210")
+    run_config_child(
+        "expanded",
+        "[telegram]\napi_id = \"${TEST_API_ID}\"\napi_hash = \"${TEST_API_HASH}\"\nphone_number = \"${TEST_PHONE}\"\n",
     );
 }
-
 #[test]
 fn test_load_missing_config() {
-    let mut env_guard = EnvGuard::new();
-    env_guard.set("TELEGRAM_MCP_CONFIG", "/nonexistent/path/config.toml");
-    let result = Config::load_from(None);
-
-    assert!(result.is_err());
+    let dir = tempfile::tempdir().expect("config dir");
+    let mut command = super::environment_child("missing");
+    command.env("TELEGRAM_MCP_CONFIG", dir.path().join("missing.toml"));
+    super::assert_child_success(&mut command);
 }
-
 #[test]
 fn test_load_invalid_toml() {
-    let mut env_guard = EnvGuard::new();
-    let temp_dir = env::temp_dir();
-    let config_path = temp_dir.join("test_invalid.toml");
-    fs::write(&config_path, "this is not valid TOML {{{}}}").unwrap();
-
-    env_guard.set("TELEGRAM_MCP_CONFIG", &config_path);
-    let result = Config::load_from(None);
-    fs::remove_file(&config_path).ok();
-
-    assert!(result.is_err());
+    run_config_child("invalid", "this is not valid TOML {{{}}}");
 }
-
-#[ignore = "for CI/CD passing tests"]
 #[test]
 fn test_load_config_with_file_logging_options() {
-    let mut env_guard = EnvGuard::new();
-    let temp_dir = env::temp_dir();
-    let config_path = temp_dir.join("test_file_logging_config.toml");
-    let config_content = r#"
-[telegram]
-api_id = 12345
-api_hash = "test_hash"
-phone_number = "+1234567890"
+    run_config_child(
+        "logging",
+        "[telegram]\napi_id = 12345\n[logging]\nlevel = \"debug\"\nformat = \"json\"\nfile_enabled = false\nfile_path = \"/custom/log/path\"\nmax_log_days = 14\n",
+    );
+}
 
-[logging]
-level = "debug"
-format = "json"
-file_enabled = false
-file_path = "/custom/log/path"
-max_log_days = 14
-"#;
-    fs::write(&config_path, config_content).unwrap();
-
-    env_guard.set("TELEGRAM_MCP_CONFIG", &config_path);
+pub(super) fn run_child_case(case: &str) {
+    if case == "parse_secrets" {
+        config_parse_secrets_case();
+        return;
+    }
     let result = Config::load_from(None);
-    fs::remove_file(&config_path).ok();
-
-    assert!(result.is_ok());
-    let config = result.unwrap();
-    assert!(!config.logging.file_enabled);
-    assert_eq!(config.logging.file_path, PathBuf::from("/custom/log/path"));
-    assert_eq!(config.logging.max_log_days, 14);
+    match case {
+        "valid" => {
+            let config = result.expect("valid config");
+            assert_eq!(config.telegram.api_id, 12345);
+            assert_eq!(
+                config.telegram.api_hash.as_ref().map(|s| s.expose_secret()),
+                Some("test_hash")
+            );
+        }
+        "expanded" => {
+            let config = result.expect("expanded config");
+            assert_eq!(config.telegram.api_id, 98765);
+            assert_eq!(
+                config.telegram.api_hash.as_ref().map(|s| s.expose_secret()),
+                Some("expanded_hash")
+            );
+            assert_eq!(
+                config
+                    .telegram
+                    .phone_number
+                    .as_ref()
+                    .map(|s| s.expose_secret()),
+                Some("+9876543210")
+            );
+        }
+        "logging" => {
+            let config = result.expect("logging config");
+            assert!(!config.logging.file_enabled);
+            assert_eq!(config.logging.file_path, PathBuf::from("/custom/log/path"));
+            assert_eq!(config.logging.max_log_days, 14);
+        }
+        "missing" | "invalid" => assert!(result.is_err()),
+        "unset" => {
+            let error = result.expect_err("unset environment must fail");
+            let message = format!("{error:#}");
+            assert!(message.contains("STAGE4_DEFINITELY_UNSET"));
+            assert!(!message.contains("Failed to parse config.toml"));
+        }
+        _ => panic!("unknown child case"),
+    }
 }
 
 // ============================================================================
@@ -151,7 +105,7 @@ max_log_days = 14
 // `toml::from_str` -> per-sub-config `validate()` pipeline in `load_from`
 // (`src/config.rs:351`), via real temp files, rather than calling `validate()`
 // directly on hand-built structs (as `validation_tests.rs` does). None of
-// these tests mutate the process environment, so none take `EnvGuard`.
+// these tests mutate the process environment.
 // ============================================================================
 
 #[test]
@@ -298,48 +252,22 @@ fn an_unreadable_file_reports_a_read_failure() {
     assert!(format!("{err:#}").contains("Failed to read config"));
 }
 
-// `expand_env_vars` (src/config/env.rs:5, called at src/config.rs:364, BEFORE
-// TOML parsing) resolves each `${VAR}` via `std::env::var` and, on an unset
-// variable, returns `Err` wrapped with a message naming the variable — it
-// does not expand to an empty string. This was confirmed both by reading
-// `expand_env_vars_in_line` (src/config/env.rs:19-64, the `with_context`
-// closure at line 30) and by the pre-existing
-// `test_expand_env_vars_missing_variable_returns_error` unit test in
-// `src/config/tests/env_tests.rs`. Because expansion runs before
-// `toml::from_str`, this fails at the expansion stage, not the
-// "Failed to parse config.toml" stage — this test pins that ordering by
-// asserting on the unset variable's name (stable, first-party wording) and
-// asserting the parse-stage marker is NOT what fired.
 #[test]
 fn an_unset_env_var_in_a_config_value_is_reported_not_silently_accepted() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = dir.path().join("config.toml");
-    fs::write(
-        &path,
+    run_config_child(
+        "unset",
         "[telegram]\napi_id = \"${STAGE4_DEFINITELY_UNSET}\"\n",
-    )
-    .expect("write");
-
-    let err = Config::load_from(Some(&path)).expect_err("an unset var must not load cleanly");
-    let message = format!("{err:#}");
-
-    assert!(
-        message.contains("STAGE4_DEFINITELY_UNSET"),
-        "expected the unset variable's name in the error, got: {message}"
-    );
-    assert!(
-        !message.contains("Failed to parse config.toml"),
-        "expansion must fail before the TOML parse stage is reached, got: {message}"
     );
 }
 
 #[test]
 fn config_parse_error_redacts_literal_and_expanded_secrets() {
-    let mut env_guard = EnvGuard::new();
+    run_config_child("parse_secrets", "[telegram]\napi_id = 1\n");
+}
+
+fn config_parse_secrets_case() {
     let hash = "FAKE_CONFIG_PARSE_HASH_7c3a";
     let phone = "+15550001234";
-    env_guard.set("CONFIG_PARSE_TEST_HASH", hash);
-    env_guard.set("CONFIG_PARSE_TEST_PHONE", phone);
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("config.toml");
 

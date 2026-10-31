@@ -1,68 +1,33 @@
 use super::*;
-use std::env;
-use std::ffi::OsString;
-use std::sync::{Mutex, MutexGuard, PoisonError};
-
-/// Serializes tests that mutate process environment variables. The test
-/// harness runs tests on parallel threads within one process and the
-/// environment is process-global. Tests never take this lock directly —
-/// construct an `EnvGuard`, which holds the lock and restores every touched
-/// variable on drop, even on panic.
-static ENV_LOCK: Mutex<()> = Mutex::new(());
-
-fn env_lock() -> MutexGuard<'static, ()> {
-    ENV_LOCK.lock().unwrap_or_else(PoisonError::into_inner)
+/// Re-exec a single ignored entrypoint. Command configures a new process environment;
+/// neither this test process nor the child ever mutates its own environment.
+fn environment_child(case: &str) -> std::process::Command {
+    let mut command = std::process::Command::new(std::env::current_exe().expect("test executable"));
+    command
+        .args([
+            "--exact",
+            "config::tests::env_tests::environment_child",
+            "--ignored",
+            "--test-threads=1",
+        ])
+        .env("CONFIG_TEST_CASE", case)
+        .env_remove("TELEGRAM_MCP_CONFIG")
+        .env_remove("STAGE4_DEFINITELY_UNSET");
+    command
 }
 
-/// RAII guard for tests that mutate process environment variables.
-///
-/// Construction takes `ENV_LOCK`, serializing all env-mutating tests.
-/// `set`/`remove` record a variable's prior value the first time they touch
-/// it, and `Drop` restores every touched variable — so a failing assertion
-/// cannot leak env state into subsequent tests (before this guard, cleanup
-/// ran only on the success path).
-///
-/// Note: never construct two guards in one scope — `new()` takes the
-/// non-reentrant `ENV_LOCK`, so nesting self-deadlocks.
-struct EnvGuard {
-    saved: Vec<(&'static str, Option<OsString>)>,
-    _lock: MutexGuard<'static, ()>,
-}
-
-impl EnvGuard {
-    fn new() -> Self {
-        Self {
-            saved: Vec::new(),
-            _lock: env_lock(),
-        }
-    }
-
-    fn set(&mut self, key: &'static str, value: impl AsRef<std::ffi::OsStr>) {
-        self.save(key);
-        unsafe { env::set_var(key, value) };
-    }
-
-    fn remove(&mut self, key: &'static str) {
-        self.save(key);
-        unsafe { env::remove_var(key) };
-    }
-
-    fn save(&mut self, key: &'static str) {
-        if !self.saved.iter().any(|(k, _)| *k == key) {
-            self.saved.push((key, env::var_os(key)));
-        }
-    }
-}
-
-impl Drop for EnvGuard {
-    fn drop(&mut self) {
-        for (key, old) in self.saved.iter().rev() {
-            match old {
-                Some(value) => unsafe { env::set_var(key, value) },
-                None => unsafe { env::remove_var(key) },
-            }
-        }
-    }
+fn assert_child_success(command: &mut std::process::Command) {
+    let output = command.output().expect("config subprocess");
+    assert!(
+        output.status.success(),
+        "config child failed:\n{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("1 passed"),
+        "child entrypoint did not run"
+    );
 }
 
 fn create_test_config(api_id: i32, api_hash: Option<&str>, phone_number: Option<&str>) -> Config {
