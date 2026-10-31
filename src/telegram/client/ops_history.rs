@@ -9,6 +9,7 @@ use super::results::assemble_search_result;
 use super::walk::{BelowCutoff, Fetched, Flow, MessageWalk, WalkConfig};
 use super::{TelegramClient, username_to_resolve};
 use crate::error::Error;
+use crate::telegram::albums::AlbumMode;
 use crate::telegram::timeout::with_timeout;
 use crate::telegram::types::{ChannelId, HistoryParams, SearchResult};
 use std::time::Instant;
@@ -88,6 +89,7 @@ impl TelegramClient {
         // through the existing error path (A8).
         let (before_offset, after_bound) = cursor_wire_bounds(params.before_id, params.after_id)?;
 
+        let album_mode = AlbumMode::from_collapse_albums(params.collapse_albums);
         let (page, budget) = with_timeout("iter_messages", self.timeouts.history_secs, async {
             let cfg = WalkConfig {
                 cutoff_time,
@@ -98,7 +100,7 @@ impl TelegramClient {
             };
             // Deadline 0: the spec scopes the search deadline to search, so
             // history's budget carries counters only and never expires.
-            let mut walk = MessageWalk::new(cfg, params.collapse_albums, params.limit as usize, 0);
+            let mut walk = MessageWalk::new(cfg, album_mode, params.limit as usize, 0);
             // Raw GetHistory pager instead of grammers' iter_messages: same
             // request, but it keeps the response envelope so forwards get
             // attributed from data already in hand (zero extra calls).

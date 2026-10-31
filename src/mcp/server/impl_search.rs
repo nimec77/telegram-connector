@@ -191,13 +191,17 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "Search results"
         );
 
-        let cursor_eligible = params.channel_id.is_some();
+        let cursor_policy = if params.channel_id.is_some() {
+            shaping::CursorPolicy::SingleChannel
+        } else {
+            shaping::CursorPolicy::Unavailable
+        };
         let mut response = SearchResponse::from(result);
         shaping::shape_response(
             &mut response,
             format,
             max_text_length,
-            cursor_eligible,
+            cursor_policy,
             self.response_byte_budget,
             shaping::CompactScope::Single,
         )?;
@@ -271,7 +275,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             &mut response,
             page.format,
             page.max_text_length,
-            /* cursor_eligible */ false,
+            shaping::CursorPolicy::Unavailable,
             self.response_byte_budget,
             shaping::CompactScope::Multi,
         )?;
@@ -405,13 +409,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "Recent messages results"
         );
 
-        let cursor_eligible = true; // get_recent_messages: always single-channel
         let mut response = SearchResponse::from(result);
         shaping::shape_response(
             &mut response,
             format,
             max_text_length,
-            cursor_eligible,
+            shaping::CursorPolicy::SingleChannel,
             self.response_byte_budget,
             shaping::CompactScope::Single,
         )?;

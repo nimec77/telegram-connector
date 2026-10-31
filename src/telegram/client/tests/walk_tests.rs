@@ -59,7 +59,7 @@ fn an_empty_round_trip_still_counts_a_page() {
     // The `None` fetch means the pager is exhausted, but the round trip that
     // discovered that still cost the caller latency — `pages_fetched` reports
     // round trips, so accounting must happen before the terminal Stop.
-    let mut walk = MessageWalk::new(open_config(at(1_000)), false, 10, 0);
+    let mut walk = MessageWalk::new(open_config(at(1_000)), AlbumMode::Separate, 10, 0);
 
     assert_eq!(walk.step(None, Some(0)), Flow::Stop);
     assert_eq!(walk.pages_fetched(), 1);
@@ -70,7 +70,7 @@ fn an_empty_round_trip_still_counts_a_page() {
 fn a_full_page_stops_the_walk_and_latches_has_more() {
     let client = inert_client();
     let peer = channel_peer(&client, 11);
-    let mut walk = MessageWalk::new(open_config(at(1_000)), false, 1, 0);
+    let mut walk = MessageWalk::new(open_config(at(1_000)), AlbumMode::Separate, 1, 0);
 
     assert_eq!(
         walk.step(Some(fetched(2, 2_000, &peer)), Some(2)),
@@ -95,7 +95,7 @@ fn a_message_newer_than_to_date_is_skipped_not_stopped() {
         to_date: Some(at(2_000)),
         ..open_config(at(1_000))
     };
-    let mut walk = MessageWalk::new(cfg, false, 10, 0);
+    let mut walk = MessageWalk::new(cfg, AlbumMode::Separate, 10, 0);
 
     assert_eq!(
         walk.step(Some(fetched(9, 3_000, &peer)), None),
@@ -108,7 +108,7 @@ fn a_message_newer_than_to_date_is_skipped_not_stopped() {
 fn below_cutoff_stops_on_the_reverse_chronological_paths() {
     let client = inert_client();
     let peer = channel_peer(&client, 11);
-    let mut walk = MessageWalk::new(open_config(at(1_000)), false, 10, 0);
+    let mut walk = MessageWalk::new(open_config(at(1_000)), AlbumMode::Separate, 10, 0);
 
     assert_eq!(walk.step(Some(fetched(9, 500, &peer)), None), Flow::Stop);
     assert_eq!(walk.kept(), 0);
@@ -124,7 +124,7 @@ fn below_cutoff_skips_on_the_global_path() {
         below_cutoff: BelowCutoff::Skip,
         ..open_config(at(1_000))
     };
-    let mut walk = MessageWalk::new(cfg, false, 10, 0);
+    let mut walk = MessageWalk::new(cfg, AlbumMode::Separate, 10, 0);
 
     assert_eq!(
         walk.step(Some(fetched(9, 500, &peer)), None),
@@ -140,7 +140,7 @@ fn a_message_with_no_readable_timestamp_takes_the_below_cutoff_path() {
     // the *stop* semantics apply, matching the original `is_none_or`.
     let client = inert_client();
     let peer = channel_peer(&client, 11);
-    let mut walk = MessageWalk::new(open_config(at(1_000)), false, 10, 0);
+    let mut walk = MessageWalk::new(open_config(at(1_000)), AlbumMode::Separate, 10, 0);
 
     let empty = Fetched {
         raw: grammers_client::tl::enums::Message::Empty(grammers_client::tl::types::MessageEmpty {
@@ -163,7 +163,7 @@ fn the_after_bound_is_exclusive_at_its_own_id() {
         after_bound: Some(5),
         ..open_config(at(1_000))
     };
-    let mut walk = MessageWalk::new(cfg, false, 10, 0);
+    let mut walk = MessageWalk::new(cfg, AlbumMode::Separate, 10, 0);
 
     assert_eq!(
         walk.step(Some(fetched(6, 2_000, &peer)), None),
@@ -187,7 +187,7 @@ fn a_media_filter_miss_skips_without_stopping() {
         media_filter: Some(&filter),
         ..open_config(at(1_000))
     };
-    let mut walk = MessageWalk::new(cfg, false, 10, 0);
+    let mut walk = MessageWalk::new(cfg, AlbumMode::Separate, 10, 0);
 
     assert_eq!(
         walk.step(Some(fetched(9, 2_000, &peer)), None),
@@ -204,7 +204,7 @@ fn a_media_filter_miss_skips_without_stopping() {
 fn a_message_whose_chat_did_not_resolve_is_skipped() {
     // Global search only: the envelope did not name this message's chat, so
     // there is no identity to attribute it to. Skip, never fabricate.
-    let mut walk = MessageWalk::new(open_config(at(1_000)), false, 10, 0);
+    let mut walk = MessageWalk::new(open_config(at(1_000)), AlbumMode::Separate, 10, 0);
 
     let orphan = Fetched {
         raw: raw_tl_message(9, 2_000, 11),
@@ -227,7 +227,7 @@ fn an_admitted_album_is_not_split_at_the_limit_boundary() {
     let peer = channel_peer(&client, 11);
     // limit 1 with collapse on: the first message opens the only allowed
     // post; a sibling of that same post must still be admitted.
-    let mut walk = MessageWalk::new(open_config(at(1_000)), true, 1, 0);
+    let mut walk = MessageWalk::new(open_config(at(1_000)), AlbumMode::Collapse, 1, 0);
 
     let album_member = |id: i32| Fetched {
         raw: raw_tl_message_grouped(id, 2_000, 11, 77),
@@ -269,7 +269,7 @@ fn the_after_bound_check_wins_over_the_media_filter_at_the_same_id() {
         media_filter: Some(&filter),
         ..open_config(at(1_000))
     };
-    let mut walk = MessageWalk::new(cfg, false, 10, 0);
+    let mut walk = MessageWalk::new(cfg, AlbumMode::Separate, 10, 0);
 
     assert_eq!(
         walk.step(Some(fetched(5, 2_000, &peer)), None),
@@ -287,7 +287,7 @@ fn exact_date_boundaries_are_admitted_after_server_window_widening() {
         to_date: Some(at(2_000)),
         ..open_config(at(1_000))
     };
-    let mut walk = MessageWalk::new(cfg, false, 10, 0);
+    let mut walk = MessageWalk::new(cfg, AlbumMode::Separate, 10, 0);
     assert_eq!(
         walk.step(Some(fetched(4, 2_001, &peer)), None),
         Flow::Continue
@@ -317,7 +317,7 @@ fn equal_album_ids_in_two_channels_do_not_bypass_the_walk_limit() {
     let client = inert_client();
     let first = channel_peer(&client, 11);
     let other = channel_peer(&client, 22);
-    let mut walk = MessageWalk::new(open_config(at(1_000)), true, 1, 0);
+    let mut walk = MessageWalk::new(open_config(at(1_000)), AlbumMode::Collapse, 1, 0);
     for id in [4, 3] {
         let item = Fetched {
             raw: raw_tl_message_grouped(id, 2_000, 11, 77),

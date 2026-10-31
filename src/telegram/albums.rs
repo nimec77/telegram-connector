@@ -51,6 +51,24 @@ impl PostCounter {
     }
 }
 
+/// Whether a result page counts album siblings as one post or separate messages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AlbumMode {
+    Collapse,
+    Separate,
+}
+
+impl AlbumMode {
+    /// Translate the named request/domain flag once at an operation boundary.
+    pub(crate) fn from_collapse_albums(collapse_albums: bool) -> Self {
+        if collapse_albums {
+            Self::Collapse
+        } else {
+            Self::Separate
+        }
+    }
+}
+
 /// Accumulates one result page inside a fetch loop, owning the post-level
 /// limit decision the three fetch loops used to hand-inline (audit S3.2):
 /// with `collapse_albums`, a message that would START a post beyond `limit`
@@ -62,17 +80,17 @@ impl PostCounter {
 pub(crate) struct PageAccumulator {
     messages: Vec<Message>,
     counter: PostCounter,
-    collapse: bool,
+    album_mode: AlbumMode,
     limit: usize,
     has_more: bool,
 }
 
 impl PageAccumulator {
-    pub(crate) fn new(collapse_albums: bool, limit: usize) -> Self {
+    pub(crate) fn new(album_mode: AlbumMode, limit: usize) -> Self {
         Self {
             messages: Vec::new(),
             counter: PostCounter::default(),
-            collapse: collapse_albums,
+            album_mode,
             limit,
             has_more: false,
         }
@@ -82,7 +100,7 @@ impl PageAccumulator {
     /// the caller stops fetching.
     #[must_use = "a false return means the page is full and the caller must stop fetching"]
     pub(crate) fn push(&mut self, message: Message) -> bool {
-        let admitted = if self.collapse {
+        let admitted = if self.album_mode == AlbumMode::Collapse {
             self.counter.admit(album_key(&message), self.limit)
         } else {
             self.messages.len() < self.limit
@@ -106,7 +124,7 @@ impl PageAccumulator {
 
     /// Finish the page: collapse album siblings when enabled.
     pub(crate) fn into_messages(self) -> Vec<Message> {
-        if self.collapse {
+        if self.album_mode == AlbumMode::Collapse {
             collapse_albums(self.messages)
         } else {
             self.messages
@@ -278,7 +296,7 @@ mod tests {
 
     #[test]
     fn accumulator_admits_album_siblings_beyond_limit_and_latches_has_more() {
-        let mut page = PageAccumulator::new(true, 1);
+        let mut page = PageAccumulator::new(AlbumMode::Collapse, 1);
         assert!(page.push(album_member(1, 7, "caption")));
         assert!(
             page.push(album_member(2, 7, "")),
@@ -291,7 +309,7 @@ mod tests {
 
     #[test]
     fn accumulator_without_collapse_refuses_at_limit() {
-        let mut page = PageAccumulator::new(false, 2);
+        let mut page = PageAccumulator::new(AlbumMode::Separate, 2);
         assert!(page.push(create_test_message(1, "a", 100)));
         assert!(page.push(create_test_message(2, "b", 100)));
         assert!(!page.push(create_test_message(3, "c", 100)));
@@ -301,7 +319,7 @@ mod tests {
 
     #[test]
     fn accumulator_reports_no_has_more_when_nothing_refused() {
-        let mut page = PageAccumulator::new(true, 5);
+        let mut page = PageAccumulator::new(AlbumMode::Collapse, 5);
         assert!(page.push(create_test_message(1, "a", 100)));
         assert!(!page.has_more());
     }
@@ -310,7 +328,7 @@ mod tests {
     fn album_siblings_stay_separate_when_collapse_is_off() {
         // With collapse off, `into_messages` must not merge siblings — each
         // raw message is its own post, and `limit` counts raw messages.
-        let mut page = PageAccumulator::new(false, 10);
+        let mut page = PageAccumulator::new(AlbumMode::Separate, 10);
         assert!(page.push(album_member(1, 77, "a")));
         assert!(page.push(album_member(2, 77, "b")));
 

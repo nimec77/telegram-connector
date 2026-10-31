@@ -62,6 +62,14 @@ pub(crate) enum CompactScope {
     Multi,
 }
 
+/// Whether message IDs can identify a continuation in this result scope.
+/// Independent of compact header layout: global search has no channel cursor.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CursorPolicy {
+    SingleChannel,
+    Unavailable,
+}
+
 /// Multi-channel compact hoisting (A3): build the id-keyed header map from
 /// the messages, strip name/username, keep channel_id on every message.
 fn compact_response_multi(resp: &mut SearchResponse) {
@@ -89,12 +97,12 @@ fn compact_response_multi(resp: &mut SearchResponse) {
 /// empty page with `has_more: true` for the same cursor, so a single
 /// over-budget message is returned as-is (the one documented overrun).
 /// After popping: `returned`, `has_more`, `next_cursor` (when
-/// `cursor_eligible`), and `channels_in_results` (full format only) are
+/// `CursorPolicy::SingleChannel`), and `channels_in_results` (full format only) are
 /// recomputed so the metadata stays honest (B6).
 fn fit_to_budget(
     resp: &mut SearchResponse,
     budget: usize,
-    cursor_eligible: bool,
+    cursor_policy: CursorPolicy,
 ) -> Result<(), String> {
     let mut popped = false;
     loop {
@@ -110,7 +118,9 @@ fn fit_to_budget(
     if popped {
         resp.returned = resp.messages.len() as u64;
         resp.has_more = true;
-        if cursor_eligible && let Some(last) = resp.messages.last() {
+        if cursor_policy == CursorPolicy::SingleChannel
+            && let Some(last) = resp.messages.last()
+        {
             resp.next_cursor = Some(NextCursor { before_id: last.id });
         }
         let count = unique_channel_count(&resp.messages);
@@ -130,7 +140,7 @@ pub(crate) fn shape_response(
     resp: &mut SearchResponse,
     format: ResponseFormat,
     max_text_length: u32,
-    cursor_eligible: bool,
+    cursor_policy: CursorPolicy,
     byte_budget: usize,
     scope: CompactScope,
 ) -> Result<(), String> {
@@ -138,7 +148,7 @@ pub(crate) fn shape_response(
         truncate_text(msg, max_text_length);
     }
     if resp.has_more
-        && cursor_eligible
+        && cursor_policy == CursorPolicy::SingleChannel
         && let Some(last) = resp.messages.last()
     {
         resp.next_cursor = Some(NextCursor { before_id: last.id });
@@ -149,7 +159,7 @@ pub(crate) fn shape_response(
             CompactScope::Multi => compact_response_multi(resp),
         }
     }
-    fit_to_budget(resp, byte_budget, cursor_eligible)
+    fit_to_budget(resp, byte_budget, cursor_policy)
 }
 
 /// Pop trailing messages from a batch response until it serializes within
@@ -322,7 +332,7 @@ mod tests {
     #[test]
     fn budget_pops_oldest_and_sets_cursor() {
         let mut resp = budget_fixture(50, 400);
-        fit_to_budget(&mut resp, 10_000, true).expect("fit");
+        fit_to_budget(&mut resp, 10_000, CursorPolicy::SingleChannel).expect("fit");
         let len = serde_json::to_string(&resp).expect("json").len();
         assert!(len <= 10_000, "must end under budget, got {len}");
         assert!(resp.messages.len() < 50, "must have dropped messages");
@@ -337,7 +347,7 @@ mod tests {
     #[test]
     fn budget_keeps_at_least_one_message() {
         let mut resp = budget_fixture(3, 5_000);
-        fit_to_budget(&mut resp, 100, true).expect("fit");
+        fit_to_budget(&mut resp, 100, CursorPolicy::SingleChannel).expect("fit");
         assert_eq!(
             resp.messages.len(),
             1,
@@ -349,7 +359,7 @@ mod tests {
     #[test]
     fn budget_leaves_fitting_response_untouched() {
         let mut resp = budget_fixture(2, 10);
-        fit_to_budget(&mut resp, 40_000, true).expect("fit");
+        fit_to_budget(&mut resp, 40_000, CursorPolicy::SingleChannel).expect("fit");
         assert_eq!(resp.messages.len(), 2);
         assert!(!resp.has_more);
         assert!(resp.next_cursor.is_none());
@@ -358,7 +368,7 @@ mod tests {
     #[test]
     fn budget_without_cursor_eligibility_sets_no_cursor() {
         let mut resp = budget_fixture(50, 400);
-        fit_to_budget(&mut resp, 10_000, false).expect("fit");
+        fit_to_budget(&mut resp, 10_000, CursorPolicy::Unavailable).expect("fit");
         assert!(resp.has_more);
         assert!(
             resp.next_cursor.is_none(),

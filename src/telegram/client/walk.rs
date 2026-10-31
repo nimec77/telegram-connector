@@ -7,7 +7,7 @@
 //! `MockTelegramClientTrait` replaces the whole client.
 
 use super::search_budget::SearchBudget;
-use crate::telegram::albums::PageAccumulator;
+use crate::telegram::albums::{AlbumMode, PageAccumulator};
 use crate::telegram::converters::{
     convert_raw_message, matches_media_filter_raw, timestamp_from_raw,
 };
@@ -66,13 +66,13 @@ pub(super) struct MessageWalk<'a> {
 impl<'a> MessageWalk<'a> {
     pub(super) fn new(
         cfg: WalkConfig<'a>,
-        collapse_albums: bool,
+        album_mode: AlbumMode,
         limit: usize,
         deadline_secs: u64,
     ) -> Self {
         Self {
             cfg,
-            page: PageAccumulator::new(collapse_albums, limit),
+            page: PageAccumulator::new(album_mode, limit),
             budget: SearchBudget::new(deadline_secs),
         }
     }

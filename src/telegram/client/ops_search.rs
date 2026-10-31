@@ -10,7 +10,7 @@ use super::results::assemble_search_result;
 use super::search_budget::SearchBudget;
 use super::walk::{BelowCutoff, Fetched, Flow, MessageWalk, WalkConfig};
 use crate::error::Error;
-use crate::telegram::albums::PageAccumulator;
+use crate::telegram::albums::{AlbumMode, PageAccumulator};
 use crate::telegram::converters::convert_media_filter;
 use crate::telegram::timeout::with_timeout;
 use crate::telegram::types::{ChannelId, SearchParams, SearchResult};
@@ -117,6 +117,7 @@ impl TelegramClient {
         before_offset: Option<i32>,
         after_bound: Option<i32>,
     ) -> Result<(PageAccumulator, u32, SearchBudget), Error> {
+        let album_mode = AlbumMode::from_collapse_albums(params.collapse_albums);
         with_timeout(
             "search_messages_channel",
             self.timeouts.search_secs,
@@ -131,7 +132,7 @@ impl TelegramClient {
                 };
                 let mut walk = MessageWalk::new(
                     cfg,
-                    params.collapse_albums,
+                    album_mode,
                     params.limit as usize,
                     self.search_deadline_secs,
                 );
@@ -210,6 +211,7 @@ impl TelegramClient {
         params: &SearchParams,
         cutoff_time: DateTime<Utc>,
     ) -> Result<(PageAccumulator, SearchBudget), Error> {
+        let album_mode = AlbumMode::from_collapse_albums(params.collapse_albums);
         let start_time = Instant::now();
         let span = tracing::debug_span!(
             "search_global",
@@ -234,7 +236,7 @@ impl TelegramClient {
                 };
                 let mut walk = MessageWalk::new(
                     cfg,
-                    params.collapse_albums,
+                    album_mode,
                     params.limit as usize,
                     self.search_deadline_secs,
                 );
