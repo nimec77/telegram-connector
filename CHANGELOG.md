@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Log retention removes only old regular files matching the application's exact daily
+  rolling filename, preserving foreign logs, backups, malformed names and directories.
+- Received short Telegram usernames survive channel and forward conversion, including
+  serialized attribution and public message links.
+
 ## [0.22.10] - 2026-10-31
 
 ### Fixed

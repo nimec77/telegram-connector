@@ -17,10 +17,10 @@ fix RPC safety at the narrowest existing operation boundary.
 [standards alignment plan](2026-10-31-rust-standards-alignment.md), and
 [media delivery proposal](../specs/2026-10-31-media-delivery-design.md).
 
-**Status:** Tasks 1–3 were authorized and completed on 2026-10-31. Tasks 4–10 and
-the additional workstreams remain proposed. File/API names in unimplemented tasks are
-proposed interfaces. Recheck exact dependency targets when each task starts; the audit
-records the 2026-10-31 snapshot.
+**Status:** All remaining tasks and linked alignment/media-M1 work are authorized.
+Tasks 1–4 are complete. Tasks 5–10 and standards alignment are in progress; optional
+media M2/M3 remain separate product decisions. Fresh dependency targets are verified
+when each migration begins.
 
 ## Global constraints
 
@@ -160,15 +160,21 @@ or credentials were used. Version 0.22.8 and dependency pins are unchanged.
 `src/telegram/converters/channel.rs`, related forward/message converters and their tests.
 **Produces:** narrowly scoped cleanup and consistent received-username validation.
 
-- [ ] Add `cleanup_preserves_foreign_logs_and_backups` with old app rolling logs,
+- [x] Add `cleanup_preserves_foreign_logs_and_backups` with old app rolling logs,
   `other-service.log`, `notes.log.backup`, recent files and directories. Assert only old
   owned rolling files are removed. Derive the exact supported filename pattern from the
   appender (`telegram-connector` prefix, `log` suffix, daily rotation), not a stale comment.
-- [ ] Add conversion regressions for real short-name fixtures such as `mash`, and 3-char
+- [x] Add conversion regressions for real short-name fixtures such as `mash`, and 3-char
   upstream names, through channel and forwarded-message output. Keep blank/invalid forms
   rejected. Use observed-username validation rather than new-username registration rules.
-- [ ] Run logging/conversion/domain tests and quality gate. Review and commit these as
+- [x] Run logging/conversion/domain tests and quality gate. Review and commit these as
   independently revertible fixes; update the resolved memory open item when merged.
+
+**Verification:** Commits `27d5399` and `098b1f5`. Retention and short-name
+regressions failed before production edits; focused suites and `just check` passed
+(791 library tests, 5 ignored, 1 doctest ignored). Independent review approved spec and
+quality with no findings. The controller verified the unchanged appender builder and
+pinned tracing-appender date/prefix/suffix assembly; central memory is corrected.
 
 ## Task 5: Establish stdio conformance tests and update rmcp
 

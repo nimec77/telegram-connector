@@ -29,9 +29,6 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Open items
 
-- **`Username::new`'s 5-char minimum silently drops real 3–4-char usernames** (e.g. `@mash`)
-  from `channel_username` and forward enrichment. Fix belongs in
-  `src/telegram/types/names.rs`; needs its own ticket.
 - **Raw pagers exist only because grammers pins `Message.peers: PeerMap` `pub(crate)`**
   (verified at pinned rev = upstream HEAD). If a future grammers rev exposes public peer
   resolution, collapse `raw_pager`/`raw_fetch` back to the high-level iterators.
@@ -176,8 +173,9 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 - **jiff stays at the boundary**: grammers 0.10 message dates are jiff `Timestamp`; the
   domain stays chrono, converted at the single `message_timestamp` site via `.as_second()`
   (Telegram dates are second-precision).
-- **Any sentinel routed through `Username::new` must be 5–32 chars** — `"user"` (4 chars)
-  was a latent panic.
+- **Received usernames use observed-name validation:** nonempty, at most 32 bytes,
+  with the existing alphanumeric/underscore policy. Real short names survive channel and
+  forward conversion. Input resolution retains its stricter ASCII `is_valid_shape` check.
 - **grammers `Peer` IS unit-testable since 0.10**: `MemorySession::default()` + destructured
   `SenderPool::new` (runner never spawned) + `Client::new(handle)` does no I/O; see
   `community_peer()` in `converters/channel.rs` tests.
@@ -195,8 +193,9 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   of them is correct. Real logging-init failures come from `build_file_layer` instead.
 - **No `sleep()` in proptest** — it froze the suite; time-dependent behavior belongs in
   paused-clock tokio tests.
-- **`tracing_appender` names files `app.log.YYYY-MM-DD`** — `path.extension()` returns the
-  date; match on `file_name.contains(".log")`.
+- **Owned rolling logs are `telegram-connector.YYYY-MM-DD.log`** with the configured
+  daily appender prefix/suffix. Retention matches that exact valid-date pattern and regular
+  files before checking age; foreign logs, backups, malformed names and directories survive.
 - **`value.clamp(1, max)` panics when a config-driven `max == 0`** — use
   `value.min(max).max(1)`.
 - **`defaults.rs` is not the deployment.** Claims about "the current value" are only
