@@ -89,6 +89,28 @@
       "owner": "nimec77",
       "expires": "2027-01-31",
       "rationale": "Reviewed flate2 backend declaration and standard Zlib source notice; retain origin, altered-source marking and notice obligations. Exact package/version only."
+    },
+    {
+      "name": "borrow-or-share",
+      "version": "0.2.4",
+      "expression": "MIT-0",
+      "choice": [
+        "MIT-0"
+      ],
+      "owner": "nimec77",
+      "expires": "2027-01-31",
+      "rationale": "Reviewed jsonschema dev-only dependency declaration and MIT-0 license; exact package/version only, no root licensing change."
+    },
+    {
+      "name": "foldhash",
+      "version": "0.2.0",
+      "expression": "Zlib",
+      "choice": [
+        "Zlib"
+      ],
+      "owner": "nimec77",
+      "expires": "2027-01-31",
+      "rationale": "Reviewed jsonschema/hashbrown dev dependency Zlib notice; retain origin, altered-source marking and source notice obligations; exact package/version only."
     }
   ]
 }

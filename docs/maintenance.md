@@ -33,8 +33,10 @@ for review. Existing option-ext 0.2.0 has a version-scoped MPL-2.0 exception own
 nimec77, expiring 2027-01-31; it does not authorize arbitrary copyleft dependencies.
 The flate2 backend zlib-rs 0.6.8 has an equally exact Zlib declaration exception,
 with the same owner/expiry and retained origin/notice obligations. This does not
-approve Zlib for arbitrary packages. All packages from an allowed Git repository
-must use one full revision.
+approve Zlib for arbitrary packages. The jsonschema development validator adds exact
+borrow-or-share 0.2.4 MIT-0 and foldhash 0.2.0 Zlib exceptions with the same owner/expiry;
+their published notices were reviewed and do not broaden global license choices.
+All packages from an allowed Git repository must use one full revision.
 
 Run policy fixtures with `python3 -m unittest discover -s scripts -p
 test_dependency_policy.py`. They reject unlicensed external/path packages,
