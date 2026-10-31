@@ -46,6 +46,8 @@ fn raw_channel(id: i64, broadcast: bool) -> tl::types::Channel {
         broadcast_messages_allowed: false,
         monoforum: false,
         forum_tabs: false,
+        in_news: false,
+        pinned_msg_id: None,
         id,
         access_hash: Some(1234),
         title: "Test Channel".to_string(),

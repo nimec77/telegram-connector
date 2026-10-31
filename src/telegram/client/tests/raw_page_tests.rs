@@ -157,3 +157,38 @@ fn unpack_page_treats_not_modified_as_an_empty_final_page() {
     assert!(page.messages.is_empty());
     assert!(page.last_chunk);
 }
+
+#[test]
+fn same_number_user_and_channel_select_their_own_envelope_identity() {
+    use crate::test_helpers::raw_tl_user;
+    use grammers_client::Client;
+    use grammers_mtsender::SenderPool;
+    use grammers_session::storages::MemorySession;
+    use grammers_session::types::PeerId;
+    use std::sync::Arc;
+
+    let SenderPool { handle, .. } = SenderPool::new(Arc::new(MemorySession::default()), 1);
+    let client = Client::new(handle);
+    let chats = vec![tl::enums::Chat::Channel(raw_tl_channel(
+        11, "Channel", None,
+    ))];
+    let users = vec![tl::enums::User::User(raw_tl_user(
+        11,
+        Some("User"),
+        None,
+        None,
+    ))];
+    let channel = raw_tl_message(1, 1_700_000_000, 11);
+    let mut user = raw_tl_message(2, 1_700_000_000, 11);
+    if let tl::enums::Message::Service(message) = &mut user {
+        message.peer_id = tl::enums::Peer::User(tl::types::PeerUser { user_id: 11 });
+    }
+    let channel_peer = chat_peer_for_message(&client, &channel, &chats, &users).expect("channel");
+    let user_peer = chat_peer_for_message(&client, &user, &chats, &users).expect("user");
+    assert_eq!(channel_peer.id(), PeerId::channel_unchecked(11));
+    assert_eq!(user_peer.id(), PeerId::user_unchecked(11));
+    assert_ne!(channel_peer.id(), user_peer.id());
+    // This characterizes the untyped numeric resolver's ambiguity without
+    // asserting a live collision: its bare-id predicate accepts both.
+    assert_eq!(channel_peer.id().bare_id(), user_peer.id().bare_id());
+}

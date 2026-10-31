@@ -79,3 +79,28 @@ fn index_messages_keeps_empty_placeholders_for_the_caller_to_classify() {
 
     assert!(indexed.contains_key(&609784));
 }
+
+#[test]
+fn same_bare_number_from_other_peer_kinds_cannot_enter_a_channel_batch() {
+    let messages = [
+        tl::enums::Peer::Channel(tl::types::PeerChannel { channel_id: 11 }),
+        tl::enums::Peer::Chat(tl::types::PeerChat { chat_id: 11 }),
+        tl::enums::Peer::User(tl::types::PeerUser { user_id: 11 }),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(index, peer)| {
+        let mut raw = raw_tl_message(index as i32 + 1, 1_700_000_000, 11);
+        if let tl::enums::Message::Service(message) = &mut raw {
+            message.peer_id = peer;
+        }
+        raw
+    })
+    .collect();
+    let indexed = index_messages(messages, channel_ref(11));
+    assert_eq!(indexed.len(), 1);
+    assert!(
+        indexed.contains_key(&1),
+        "only the channel namespace is retained"
+    );
+}

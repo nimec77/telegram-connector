@@ -396,6 +396,8 @@ fn public_channel_peer(id: i64, username: &str) -> Peer {
         broadcast_messages_allowed: false,
         monoforum: false,
         forum_tabs: false,
+        in_news: false,
+        pinned_msg_id: None,
         id,
         access_hash: Some(0),
         title: "Test Channel".to_string(),

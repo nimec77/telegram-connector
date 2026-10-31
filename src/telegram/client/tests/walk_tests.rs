@@ -278,3 +278,72 @@ fn the_after_bound_check_wins_over_the_media_filter_at_the_same_id() {
     );
     assert_eq!(walk.kept(), 0);
 }
+
+#[test]
+fn exact_date_boundaries_are_admitted_after_server_window_widening() {
+    let client = inert_client();
+    let peer = channel_peer(&client, 11);
+    let cfg = WalkConfig {
+        to_date: Some(at(2_000)),
+        ..open_config(at(1_000))
+    };
+    let mut walk = MessageWalk::new(cfg, false, 10, 0);
+    assert_eq!(
+        walk.step(Some(fetched(4, 2_001, &peer)), None),
+        Flow::Continue
+    );
+    assert_eq!(walk.kept(), 0);
+    assert_eq!(
+        walk.step(Some(fetched(3, 2_000, &peer)), None),
+        Flow::Continue
+    );
+    assert_eq!(
+        walk.step(Some(fetched(2, 1_000, &peer)), None),
+        Flow::Continue
+    );
+    assert_eq!(walk.step(Some(fetched(1, 999, &peer)), None), Flow::Stop);
+    let (page, _) = walk.into_parts();
+    let ids: Vec<_> = page
+        .into_messages()
+        .iter()
+        .map(|message| message.id.get())
+        .collect();
+    assert_eq!(ids, [3, 2]);
+}
+
+#[test]
+fn equal_album_ids_in_two_channels_do_not_bypass_the_walk_limit() {
+    use crate::test_helpers::raw_tl_message_grouped;
+    let client = inert_client();
+    let first = channel_peer(&client, 11);
+    let other = channel_peer(&client, 22);
+    let mut walk = MessageWalk::new(open_config(at(1_000)), true, 1, 0);
+    for id in [4, 3] {
+        let item = Fetched {
+            raw: raw_tl_message_grouped(id, 2_000, 11, 77),
+            entities: no_entities(),
+            peer: Some(&first),
+        };
+        assert_eq!(walk.step(Some(item), None), Flow::Continue);
+    }
+    let item = Fetched {
+        raw: raw_tl_message_grouped(4, 2_000, 22, 77),
+        entities: no_entities(),
+        peer: Some(&other),
+    };
+    assert_eq!(walk.step(Some(item), None), Flow::Stop);
+    let (page, _) = walk.into_parts();
+    assert!(page.has_more());
+    let messages = page.into_messages();
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].channel_id.get(), 11);
+    assert_eq!(
+        messages[0]
+            .album
+            .as_ref()
+            .expect("admitted album")
+            .message_ids
+            .len(),
+        2
+    );
+}

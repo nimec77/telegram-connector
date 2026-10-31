@@ -178,6 +178,8 @@ mod tests {
             broadcast_messages_allowed: false,
             monoforum: false,
             forum_tabs: false,
+            in_news: false,
+            pinned_msg_id: None,
             id,
             access_hash: Some(0),
             title: title.to_string(),

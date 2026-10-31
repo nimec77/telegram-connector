@@ -145,3 +145,31 @@ fn apply_window_lands_both_bounds_on_the_tl_request() {
     assert_eq!(request.min_date, 1_699_999_999, "lower bound is min_date");
     assert_eq!(request.max_date, 1_700_086_401, "upper bound is max_date");
 }
+
+#[test]
+fn identical_message_offsets_keep_each_history_request_channel_scoped() {
+    for channel_id in [11, 22] {
+        let peer = tl::enums::InputPeer::Channel(tl::types::InputPeerChannel {
+            channel_id,
+            access_hash: channel_id * 10,
+        });
+        let mut request = history_request(peer, 600);
+        assert_eq!(
+            request.offset_id, 600,
+            "before cursor remains exclusive RPC offset"
+        );
+        let page = unpack_page(
+            raw_tl_messages_slice(vec![raw_tl_message(500, 1_700_000_000, channel_id)], None),
+            100,
+        );
+        advance_history_offsets(&mut request, &page);
+        assert_eq!(request.offset_id, 500);
+        match request.peer {
+            tl::enums::InputPeer::Channel(peer) => {
+                assert_eq!(peer.channel_id, channel_id);
+                assert_eq!(peer.access_hash, channel_id * 10);
+            }
+            other => panic!("cursor lost channel identity: {other:?}"),
+        }
+    }
+}

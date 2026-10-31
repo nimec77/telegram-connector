@@ -55,6 +55,10 @@ mod helpers_tests;
 #[path = "client/tests/client_fixture.rs"]
 pub(crate) mod client_fixture;
 
+#[cfg(test)]
+#[path = "client/tests/session_upgrade_tests.rs"]
+mod session_upgrade_tests;
+
 pub(crate) use resolve::username_to_resolve;
 
 /// Convert a resolved peer into the `PeerRef` that grammers RPC calls take.

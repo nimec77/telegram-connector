@@ -20,9 +20,9 @@ rmcp = { version = "3.8", features = ["server"] }
 # Pinned by rev, not branch: Codeberg master is active and ships breaking
 # changes; bump the rev deliberately (all three together) and expect to
 # absorb API churn when you do.
-grammers-client = { git = "https://codeberg.org/Lonami/grammers", rev = "9fef0bae1e59b6138ae7777c783983934a80e129" }
-grammers-session = { git = "https://codeberg.org/Lonami/grammers", rev = "9fef0bae1e59b6138ae7777c783983934a80e129" }
-grammers-mtsender = { git = "https://codeberg.org/Lonami/grammers", rev = "9fef0bae1e59b6138ae7777c783983934a80e129" }
+grammers-client = { git = "https://codeberg.org/Lonami/grammers", rev = "1e31e73cd9797790905bbea82cd75adcbe6f1242" }
+grammers-session = { git = "https://codeberg.org/Lonami/grammers", rev = "1e31e73cd9797790905bbea82cd75adcbe6f1242" }
+grammers-mtsender = { git = "https://codeberg.org/Lonami/grammers", rev = "1e31e73cd9797790905bbea82cd75adcbe6f1242" }
 
 # Async
 # Explicit feature list rather than `full`: "net" and "fs" are unused here, and
@@ -84,6 +84,8 @@ image = { version = "0.25", default-features = false, features = ["jpeg"] }
 base64 = "0.23.1"
 
 [dev-dependencies]
+# Recreate the previous SQLite session schema offline; same storage line/features as grammers.
+libsql = { version = "0.10.0", default-features = false, features = ["core"] }
 # PNG codec for tests: create_test_jpeg & non-JPEG re-encode test write_to PNG
 image = { version = "0.25", default-features = false, features = ["png"] }
 # `test-util` enables the pausable clock (`start_paused`, `time::advance`) used by

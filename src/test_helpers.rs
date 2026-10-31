@@ -239,6 +239,8 @@ pub fn raw_tl_channel(id: i64, title: &str, username: Option<&str>) -> tl::types
         broadcast_messages_allowed: false,
         monoforum: false,
         forum_tabs: false,
+        in_news: false,
+        pinned_msg_id: None,
         id,
         access_hash: Some(0),
         title: title.to_string(),
