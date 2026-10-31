@@ -41,6 +41,11 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Key decisions
 
+- **Validation ownership:** remaining agent work uses macOS checks. The user handles
+  Linux setup/validation if needed. Do not install Linux tooling, provision VMs/containers
+  or arrange Linux runs unless explicitly requested later; Linux results do not block
+  completion. Existing CI configuration remains. See the active roadmap's validation policy.
+
 - **Codex development:** `AGENTS.md` is the canonical repository guide.
   Shared Codex skills live in `.agents/skills/`; obsolete Claude files were removed.
   `$bump-version` updates package/lockfile versions and rolls Unreleased notes into

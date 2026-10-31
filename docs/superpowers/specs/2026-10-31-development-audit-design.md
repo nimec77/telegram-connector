@@ -209,7 +209,9 @@ All confirmed findings addressed with behavior regressions; all direct dependenc
 the latest non-yanked stable release when implemented; transitive dependencies at their
 latest compatible releases with any upstream blockers documented; fresh advisory scan
 clean or narrowly justified exceptions; core stdio matrix proven for modern and retained
-legacy clients; all 16 canonical tool outputs validate; relevant macOS/Linux checks pass.
+legacy clients; all 16 canonical tool outputs validate; relevant macOS checks pass.
+For the remaining work, Linux setup and validation are owner-managed if needed and are
+not an agent acceptance gate, per the user's [validation ownership instruction](../plans/2026-10-31-development-roadmap.md#validation-ownership-for-remaining-tasks).
 No feature is advertised merely because its SDK type exists. No broad rewrite, remote
 deployment, live account mutation, or release publication is part of this analysis.
 

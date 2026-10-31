@@ -17,10 +17,11 @@ fix RPC safety at the narrowest existing operation boundary.
 [standards alignment plan](2026-10-31-rust-standards-alignment.md), and
 [media delivery proposal](../specs/2026-10-31-media-delivery-design.md).
 
-**Status:** All remaining tasks and linked alignment/media-M1 work are authorized.
-Tasks 1–5 are complete. Tasks 6–10 and standards alignment are in progress; optional
-media M2/M3 remain separate product decisions. Fresh dependency targets are verified
-when each migration begins.
+**Status:** Tasks 1–7 and Rust standards alignment are complete; execution stopped
+after Task 7 at the user's request. Task 8/media-M1 and final Task 10 acceptance remain
+pending. Task 9 automation was implemented earlier; its final acceptance follows the
+validation ownership below. Optional media M2/M3 remain separate product decisions.
+This plan update does not resume implementation.
 
 ## Global constraints
 
@@ -35,6 +36,23 @@ when each migration begins.
   search deadline, image budgets and secret redaction.
 - Feature branches for execution; preserve unrelated work. Review each stage before merge.
 - No lockfile deletion, broad rewrite, remote deployment or release publication by default.
+
+## Validation ownership for remaining tasks
+
+The user requires **macOS-only agent validation** for the remaining work. Linux setup,
+checks and troubleshooting are the user's responsibility if they later need them.
+
+- Run the relevant quality, release, protocol, security and performance checks on macOS.
+- Do not install Linux tooling, create or start VMs/containers, arrange Linux runners,
+  or perform Linux validation unless the user explicitly requests that work later.
+- Linux results are not a completion or release-readiness gate for the remaining agent
+  tasks. Do not ask the user to run Linux checks to unblock this plan.
+- Existing Linux CI configuration and historical results remain recorded; this instruction
+  does not request CI removal or new Linux runs. Report the platform actually verified.
+
+This user instruction supersedes earlier Linux/platform acceptance requirements in this
+plan and its linked design. The temporary Task 7 VM and its task-only Lima tooling were
+deleted at the user's request.
 
 ## Review focus
 
@@ -214,7 +232,8 @@ findings were reproduced, fixed and accepted on scoped re-review. Bootstrap stal
 policy is max(1s, configured grace), separate from immediate observed zero-grace
 shutdown. Official 2026 and 2025 MCP bases both allow omitted error IDs when unreadable;
 the test now asserts that dated-schema behavior. Global test-log noise is tracked for
-S2 isolation. Linux execution remains required by final acceptance.
+S2 isolation. Further Linux validation is owner-managed and is not required by the
+remaining-task acceptance policy above.
 
 ## Task 6: Refresh remaining dependencies, including Telegram
 
@@ -237,9 +256,10 @@ S2 isolation. Linux execution remains required by final acceptance.
 - [ ] Refresh remaining compatible transitives without deleting the lockfile. Inventory
   duplicate majors, yanked versions, licenses and sources. For every blocked latest major,
   record its upstream constraint and removal path; do not force incompatible versions.
-- [ ] Run quality gate, release build, fresh audit and platform checks per migration
-  group. No live migration is claimed from offline tests; use a disposable mocked session
-  fixture for session format checks. Commit each dependency group independently.
+- [ ] Run the macOS quality gate, release build and fresh audit per migration
+  group. Linux checks follow the owner-managed policy above. No live migration is claimed
+  from offline tests; use a disposable mocked session fixture for session format checks.
+  Commit each dependency group independently.
 
 ## Task 7: Add canonical typed JSON and output schemas
 
@@ -340,8 +360,10 @@ dependency-update configuration; `rust-toolchain.toml`, `justfile`, README/docs.
   updates separated. Grammers revisions require review; do not automate tracking master.
 - [ ] Introduce source/license/yank checks only with an explicit policy covering the
   existing Codeberg source; no blanket unknown-license approvals. Keep the normal gate fast.
-- [ ] Validate workflow/config syntax and run offline quality checks on Linux/macOS.
-  Document optional Windows support as unverified unless it is tested. Commit automation.
+- [ ] Validate workflow/config syntax and run offline quality checks on macOS.
+  Linux execution is owner-managed and is not required for acceptance. Document only
+  verified platform support; optional Windows support remains unverified unless tested.
+  Commit automation.
 
 ## Task 10: Final acceptance and independent review
 
@@ -350,7 +372,7 @@ dependency-update configuration; `rust-toolchain.toml`, `justfile`, README/docs.
 
 - [ ] Recheck all versions/advisories at release time; record installed/resolved values
   and any incompatible transitive blockers. Every direct crate has an explicit disposition.
-- [ ] Run `cargo fmt --all --check`, `cargo clippy --locked --all-targets -- -D warnings`,
+- [ ] On macOS, run `cargo fmt --all --check`, `cargo clippy --locked --all-targets -- -D warnings`,
   `cargo test --locked`, `cargo build --locked --release`, fresh `cargo audit`, and the
   modern/legacy conformance suite. Use `--offline` for cached compile/test work only;
   advisory freshness still needs an updated database.
