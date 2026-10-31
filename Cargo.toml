@@ -81,7 +81,7 @@ secrecy = { version = "0.10", features = ["serde"] }
 
 # Media processing
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
-base64 = "0.22"
+base64 = "0.23.1"
 
 [dev-dependencies]
 # PNG codec for tests: create_test_jpeg & non-JPEG re-encode test write_to PNG
