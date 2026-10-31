@@ -33,6 +33,8 @@ mod message_by_link;
 mod multi_channel;
 #[path = "tests/parity.rs"]
 mod parity;
+#[path = "tests/protocol_stdio.rs"]
+mod protocol_stdio;
 #[path = "tests/resolve.rs"]
 mod resolve;
 #[path = "tests/schema_integrity.rs"]
