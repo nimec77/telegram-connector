@@ -78,6 +78,15 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   pessimistic). Server-wide invariant on every tool: **local validation before `acquire`,
   every RPC after it** — a malformed id is rejected for free, a username resolve is never. Server defaults come from `config::defaults` with a
   desync-guard test; costs above `max_tokens` rejected at config load.
+- **Account status is cached and free to read.** `cached_account_status` takes no RPC;
+  `refresh_account_status` bounds authorization and best-effort Premium RPCs separately
+  by `resolve_secs`, storing independent successful-observation timestamps. Authorization
+  errors propagate without overwriting cache; Premium failures preserve the previous
+  observation. Startup refreshes once. Transcription refreshes an unknown Premium cache
+  only after acquisition; cached false Premium still rejects free. Channel list/basic/full
+  info cost one token per operation, including optional enrichment. A channel-list dialog
+  walk has one total `history_secs` deadline. The Codex example leaves 90 seconds for startup
+  (two default 30-second RPC budgets plus headroom).
 - **Timeouts:** three global knobs by call type (`resolve`/`history`/`search`, plus
   `download`), not per-tool; a multi-page `next().await` walk lives inside *one*
   `with_timeout` (budget = total elapsed). No retries — `Error::Timeout` goes to the client,

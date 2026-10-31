@@ -4,6 +4,7 @@
 //! delegate to them. Split out per LM-3 (`server.rs` was 880 lines).
 
 use super::McpServer;
+use crate::mcp::tools::helpers::validate_channel_reference;
 use crate::mcp::tools::{
     ChannelsResponse, GetChannelInfoRequest, GetChannelsRequest, json_response,
 };
@@ -17,6 +18,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     ) -> Result<String, String> {
         let limit = request.limit.unwrap_or(20);
         let offset = request.offset.unwrap_or(0);
+        if !(1..=500).contains(&limit) {
+            return Err("limit must be between 1 and 500".to_string());
+        }
+        self.rate_limiter
+            .acquire(1)
+            .await
+            .map_err(|e| e.to_string())?;
 
         let page = self
             .telegram_client
@@ -39,17 +47,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         request: GetChannelInfoRequest,
     ) -> Result<String, String> {
+        validate_channel_reference(&request.channel_identifier)?;
+        // One operation charge covers resolution and optional full enrichment.
+        self.rate_limiter
+            .acquire(1)
+            .await
+            .map_err(|e| e.to_string())?;
         let channel = if request.include_full.unwrap_or(false) {
-            // The full path issues an extra `channels.getFullChannel` RPC on top of
-            // resolution, so it is metered like every other RPC-issuing tool
-            // (search / history / link / discovery / media all acquire before the
-            // call). The basic path is left unmetered, as it is today — changing
-            // that is a separate decision about the whole channels module.
-            self.rate_limiter
-                .acquire(1)
-                .await
-                .map_err(|e| e.to_string())?;
-
             self.telegram_client
                 .get_full_channel_info(&request.channel_identifier)
                 .await

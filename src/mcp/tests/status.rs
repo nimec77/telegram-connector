@@ -3,7 +3,7 @@
 use crate::mcp::server::McpServer;
 use crate::mcp::tools::StatusResponse;
 use crate::rate_limiter::MockRateLimiterTrait;
-use crate::telegram::MockTelegramClientTrait;
+use crate::telegram::{AccountStatus, MockTelegramClientTrait};
 use rmcp::handler::server::common::RequestId;
 use rmcp::model::NumberOrString;
 use std::sync::Arc;
@@ -12,8 +12,13 @@ use std::sync::Arc;
 async fn check_status_returns_connection_info() {
     // Given: Server with mock client (connected) and rate limiter (tokens available)
     let mut mock_client = MockTelegramClientTrait::new();
-    mock_client.expect_is_connected().return_once(|| true);
-    mock_client.expect_is_premium().return_once(|| Some(true));
+    mock_client
+        .expect_cached_account_status()
+        .return_once(|| AccountStatus {
+            authorized: true,
+            premium: Some(true),
+            ..Default::default()
+        });
 
     let mut mock_limiter = MockRateLimiterTrait::new();
     mock_limiter.expect_available_tokens().return_once(|| 45.5);
@@ -40,8 +45,13 @@ async fn check_status_returns_connection_info() {
 async fn check_status_reports_disconnected() {
     // Given: Server with disconnected client
     let mut mock_client = MockTelegramClientTrait::new();
-    mock_client.expect_is_connected().return_once(|| false);
-    mock_client.expect_is_premium().return_once(|| Some(false));
+    mock_client
+        .expect_cached_account_status()
+        .return_once(|| AccountStatus {
+            authorized: false,
+            premium: Some(false),
+            ..Default::default()
+        });
 
     let mut mock_limiter = MockRateLimiterTrait::new();
     mock_limiter.expect_available_tokens().return_once(|| 0.0);
@@ -65,8 +75,13 @@ async fn check_status_reports_disconnected() {
 #[tokio::test]
 async fn check_status_includes_session_counters() {
     let mut mock_client = MockTelegramClientTrait::new();
-    mock_client.expect_is_connected().return_once(|| true);
-    mock_client.expect_is_premium().return_once(|| Some(false));
+    mock_client
+        .expect_cached_account_status()
+        .return_once(|| AccountStatus {
+            authorized: true,
+            premium: Some(false),
+            ..Default::default()
+        });
     let mut mock_limiter = MockRateLimiterTrait::new();
     mock_limiter.expect_available_tokens().return_once(|| 10.0);
     mock_limiter.expect_capacity().return_once(|| 50.0);
@@ -92,8 +107,13 @@ async fn check_status_includes_session_counters() {
 #[tokio::test]
 async fn check_status_age_is_none_before_first_write() {
     let mut mock_client = MockTelegramClientTrait::new();
-    mock_client.expect_is_connected().return_once(|| true);
-    mock_client.expect_is_premium().return_once(|| Some(false));
+    mock_client
+        .expect_cached_account_status()
+        .return_once(|| AccountStatus {
+            authorized: true,
+            premium: Some(false),
+            ..Default::default()
+        });
     let mut mock_limiter = MockRateLimiterTrait::new();
     mock_limiter.expect_available_tokens().return_once(|| 10.0);
     mock_limiter.expect_capacity().return_once(|| 50.0);
@@ -114,8 +134,13 @@ async fn check_status_age_is_none_before_first_write() {
 #[tokio::test]
 async fn check_status_reports_rate_limiter_budget() {
     let mut mock_client = MockTelegramClientTrait::new();
-    mock_client.expect_is_connected().return_once(|| true);
-    mock_client.expect_is_premium().return_once(|| Some(true));
+    mock_client
+        .expect_cached_account_status()
+        .return_once(|| AccountStatus {
+            authorized: true,
+            premium: Some(true),
+            ..Default::default()
+        });
 
     let mut mock_limiter = MockRateLimiterTrait::new();
     mock_limiter.expect_available_tokens().return_once(|| 23.5);
@@ -143,8 +168,13 @@ async fn check_status_reports_rate_limiter_budget() {
 async fn status_response_has_no_deprecated_alias() {
     // Arrange mocks exactly like the existing rate_limiter-block test
     let mut mock_client = MockTelegramClientTrait::new();
-    mock_client.expect_is_connected().return_once(|| true);
-    mock_client.expect_is_premium().return_once(|| Some(true));
+    mock_client
+        .expect_cached_account_status()
+        .return_once(|| AccountStatus {
+            authorized: true,
+            premium: Some(true),
+            ..Default::default()
+        });
 
     let mut mock_limiter = MockRateLimiterTrait::new();
     mock_limiter.expect_available_tokens().return_once(|| 45.5);
@@ -168,8 +198,13 @@ async fn status_response_has_no_deprecated_alias() {
 #[tokio::test]
 async fn status_reports_media_batch_limits_from_config() {
     let mut client = MockTelegramClientTrait::new();
-    client.expect_is_connected().returning(|| true);
-    client.expect_is_premium().returning(|| Some(true));
+    client
+        .expect_cached_account_status()
+        .returning(|| AccountStatus {
+            authorized: true,
+            premium: Some(true),
+            ..Default::default()
+        });
 
     let mut limiter = MockRateLimiterTrait::new();
     limiter.expect_available_tokens().returning(|| 60.0);
@@ -192,4 +227,25 @@ async fn status_reports_media_batch_limits_from_config() {
     assert_eq!(status.media.per_image_max_bytes, 1_572_864);
     assert_eq!(status.media.default_max_dimension, 1280);
     assert_eq!(status.media.max_dimension_limit, 2048);
+}
+
+#[tokio::test]
+async fn unknown_cached_status_is_free_and_does_not_refresh() {
+    let mut client = MockTelegramClientTrait::new();
+    client
+        .expect_cached_account_status()
+        .return_once(AccountStatus::default);
+    let mut limiter = MockRateLimiterTrait::new();
+    limiter.expect_available_tokens().return_const(0.0);
+    limiter.expect_capacity().return_const(50.0);
+    limiter.expect_refill_rate().return_const(2.0);
+    let server = McpServer::new(Arc::new(client), Arc::new(limiter));
+    let json = server
+        .check_mcp_status_impl()
+        .await
+        .expect("status remains available");
+    let status: StatusResponse = serde_json::from_str(&json).expect("status JSON");
+    assert!(!status.telegram_connected);
+    assert_eq!(status.premium, None);
+    assert_eq!(status.rate_limiter.tokens, 0.0);
 }

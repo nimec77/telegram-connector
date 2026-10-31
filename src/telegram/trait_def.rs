@@ -4,9 +4,9 @@
 
 use crate::error::Error;
 use crate::telegram::types::{
-    Channel, ChannelIdentity, ChannelPage, ChannelResolution, ChannelStats, HistoryParams,
-    MediaDownload, MediaFetchOutcome, Message, MessageBatch, SearchParams, SearchResult,
-    TranscriptionOutcome,
+    AccountStatus, Channel, ChannelIdentity, ChannelPage, ChannelResolution, ChannelStats,
+    HistoryParams, MediaDownload, MediaFetchOutcome, Message, MessageBatch, SearchParams,
+    SearchResult, TranscriptionOutcome,
 };
 
 /// Trait for Telegram client operations (allows mocking in tests)
@@ -48,8 +48,13 @@ pub trait TelegramClientTrait: Send + Sync {
     /// channel can still come back as `false`.
     async fn search_public_channels(&self, query: &str, limit: u32) -> Result<Vec<Channel>, Error>;
 
-    /// Check if client is connected and authorized
-    async fn is_connected(&self) -> bool;
+    /// Read local account observations without RPCs or rate-limit charges.
+    async fn cached_account_status(&self) -> AccountStatus;
+
+    /// Refresh authorization and best-effort Premium status with bounded RPCs.
+    /// Authorization transport failures are errors and preserve cached observations.
+    /// Call only at startup or after the calling tool acquires its operation charge.
+    async fn refresh_account_status(&self) -> Result<AccountStatus, Error>;
 
     /// Get a single message by its ID from a specific channel.
     ///
@@ -118,11 +123,6 @@ pub trait TelegramClientTrait: Send + Sync {
         message_id: i32,
         timeout_secs: u32,
     ) -> Result<TranscriptionOutcome, Error>;
-
-    /// Cached Telegram Premium flag for the connected account. Returns the cached
-    /// value; if unknown, performs one `get_me()` and caches it. Returns `None`
-    /// only when Premium status could not be determined.
-    async fn is_premium(&self) -> Option<bool>;
 
     /// Batch-resolve identifiers (numeric id, @username, or exact chat title)
     /// to channel entities in one dialog walk plus at most one

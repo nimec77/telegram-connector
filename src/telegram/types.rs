@@ -10,6 +10,7 @@
 //! - `entities` - Domain entities (Message, Channel)
 //! - `params` - Request/response types (SearchParams, HistoryParams, SearchResult)
 
+pub mod account;
 pub mod entities;
 pub mod ids;
 pub mod media;
@@ -17,6 +18,8 @@ pub mod names;
 pub mod params;
 pub mod stats;
 pub mod transcription;
+
+pub use account::AccountStatus;
 
 // Re-export all public types for convenience
 pub use entities::{

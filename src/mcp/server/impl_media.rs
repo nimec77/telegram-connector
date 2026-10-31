@@ -5,7 +5,7 @@
 
 use super::McpServer;
 use crate::error::Error;
-use crate::mcp::tools::helpers::wire_message_id;
+use crate::mcp::tools::helpers::{validate_channel_reference, wire_message_id};
 use crate::mcp::tools::image::{ProcessedImage, process_image, process_image_with_cap};
 use crate::mcp::tools::media_budget::Base64Budget;
 use crate::mcp::tools::{
@@ -187,6 +187,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         request: TranscribeVoiceMessageRequest,
     ) -> Result<String, String> {
+        validate_channel_reference(&request.channel_id)?;
         let message_id = parse_message_id(request.message_id)?;
         let wire_id = wire_message_id(message_id)?;
         // Bounds come from [transcription] config (AD-6). Floor at 1 and cap at the
@@ -198,10 +199,10 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             .min(self.transcription_max_timeout_secs)
             .max(1);
 
-        // Premium fast-fail: only a definitive `false` short-circuits (before
-        // spending a rate-limit token or a transcribeAudio call). Unknown
-        // (`None`) falls through to the RPC-error path.
-        if self.telegram_client.is_premium().await == Some(false) {
+        // Cached non-Premium observations can reject for free; a cache miss
+        // must not start account RPCs before acquiring the operation charge.
+        let cached = self.telegram_client.cached_account_status().await;
+        if cached.premium == Some(false) {
             return Err(Error::PremiumRequired.to_string());
         }
 
@@ -210,6 +211,20 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             .acquire(self.transcription_cost)
             .await
             .map_err(|e| e.to_string())?;
+
+        if cached.premium.is_none() {
+            let refreshed = self
+                .telegram_client
+                .refresh_account_status()
+                .await
+                .map_err(|e| e.to_string())?;
+            if !refreshed.authorized {
+                return Err(Error::Auth("Telegram account is not authenticated".into()).to_string());
+            }
+            if refreshed.premium == Some(false) {
+                return Err(Error::PremiumRequired.to_string());
+            }
+        }
 
         let outcome = self
             .telegram_client

@@ -12,10 +12,10 @@ pub mod types;
 pub use client::TelegramClient;
 pub use trait_def::TelegramClientTrait;
 pub use types::{
-    Channel, ChannelId, ChannelIdentity, ChannelName, ChannelPage, ChannelResolution, ChannelStats,
-    ChatType, HistoryParams, MediaFetchError, MediaFetchOutcome, MediaFilter, MediaType, Message,
-    MessageBatch, MessageId, QueryMetadata, SearchParams, SearchResult, StatsSample,
-    TranscriptionOutcome, TranscriptionState, UserId, Username,
+    AccountStatus, Channel, ChannelId, ChannelIdentity, ChannelName, ChannelPage,
+    ChannelResolution, ChannelStats, ChatType, HistoryParams, MediaFetchError, MediaFetchOutcome,
+    MediaFilter, MediaType, Message, MessageBatch, MessageId, QueryMetadata, SearchParams,
+    SearchResult, StatsSample, TranscriptionOutcome, TranscriptionState, UserId, Username,
 };
 
 // Re-export mock for tests

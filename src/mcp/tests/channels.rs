@@ -42,7 +42,7 @@ async fn get_subscribed_channels_returns_list() {
             })
         });
 
-    let mock_limiter = MockRateLimiterTrait::new();
+    let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     // When: Call get_subscribed_channels with defaults
@@ -84,7 +84,7 @@ async fn get_subscribed_channels_respects_pagination() {
             })
         });
 
-    let mock_limiter = MockRateLimiterTrait::new();
+    let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     // When: Call with custom pagination
@@ -121,7 +121,7 @@ async fn subscribed_channels_report_true_total_and_has_more() {
             })
         });
 
-    let mock_limiter = MockRateLimiterTrait::new();
+    let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GetChannelsRequest {
@@ -163,7 +163,7 @@ async fn get_channel_info_returns_channel_details() {
         .with(mockall::predicate::eq("testchannel"))
         .return_once(move |_| Ok(expected));
 
-    let mock_limiter = MockRateLimiterTrait::new();
+    let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     // When: Call get_channel_info
@@ -196,7 +196,7 @@ async fn get_channel_info_handles_error() {
         .with(mockall::predicate::eq("nonexistent"))
         .return_once(move |_| Err(Error::TelegramApi("Channel not found".to_string())));
 
-    let mock_limiter = MockRateLimiterTrait::new();
+    let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     // When: Call get_channel_info with nonexistent channel
@@ -239,7 +239,7 @@ async fn get_channel_info_unfetched_member_count_serializes_as_null() {
         .with(mockall::predicate::eq("unfetched"))
         .return_once(move |_| Ok(test_channel));
 
-    let mock_limiter = MockRateLimiterTrait::new();
+    let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GetChannelInfoRequest {
@@ -304,7 +304,7 @@ async fn include_full_absent_keeps_basic_path() {
         .with(mockall::predicate::eq("@news"))
         .return_once(|_| Ok(create_test_channel_named(42, "News Channel", true)));
 
-    let mock_limiter = MockRateLimiterTrait::new();
+    let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GetChannelInfoRequest {
@@ -337,7 +337,7 @@ async fn get_subscribed_channels_no_false_has_more_at_exact_boundary() {
             })
         });
 
-    let mock_limiter = MockRateLimiterTrait::new();
+    let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GetChannelsRequest {
@@ -378,7 +378,7 @@ async fn get_subscribed_channels_reports_has_more_when_more_exist() {
             })
         });
 
-    let mock_limiter = MockRateLimiterTrait::new();
+    let mock_limiter = permissive_limiter();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
     let request = GetChannelsRequest {
@@ -491,4 +491,73 @@ async fn include_full_passes_last_message_date_through() {
 
     let json: serde_json::Value = serde_json::from_str(&result).unwrap();
     assert_eq!(json["last_message_date"], "2026-08-10T05:55:12Z");
+}
+
+#[tokio::test]
+async fn channel_operations_cannot_bypass_an_exhausted_budget() {
+    for operation in ["list", "basic", "full"] {
+        let client = MockTelegramClientTrait::new();
+        let mut limiter = MockRateLimiterTrait::new();
+        limiter
+            .expect_acquire()
+            .with(mockall::predicate::eq(1))
+            .times(1)
+            .returning(|_| {
+                Err(crate::error::Error::RateLimit {
+                    retry_after_seconds: 7,
+                    detail: String::new(),
+                })
+            });
+        let server = McpServer::new(Arc::new(client), Arc::new(limiter));
+        let result = if operation == "list" {
+            server
+                .get_subscribed_channels_impl(GetChannelsRequest {
+                    limit: None,
+                    offset: None,
+                })
+                .await
+        } else {
+            server
+                .get_channel_info_impl(GetChannelInfoRequest {
+                    channel_identifier: "@news".into(),
+                    include_full: Some(operation == "full"),
+                })
+                .await
+        };
+        assert!(result.expect_err(operation).contains("rate limit"));
+    }
+}
+
+#[tokio::test]
+async fn invalid_channel_requests_spend_no_tokens() {
+    for identifier in ["", " ", "@", "bad-name", "0", "999999999999999999999999"] {
+        for include_full in [false, true] {
+            let server = McpServer::new(
+                Arc::new(MockTelegramClientTrait::new()),
+                Arc::new(MockRateLimiterTrait::new()),
+            );
+            let result = server
+                .get_channel_info_impl(GetChannelInfoRequest {
+                    channel_identifier: identifier.into(),
+                    include_full: Some(include_full),
+                })
+                .await;
+            assert!(result.is_err(), "must reject {identifier:?}");
+        }
+    }
+    for limit in [0, 501] {
+        let server = McpServer::new(
+            Arc::new(MockTelegramClientTrait::new()),
+            Arc::new(MockRateLimiterTrait::new()),
+        );
+        assert!(
+            server
+                .get_subscribed_channels_impl(GetChannelsRequest {
+                    limit: Some(limit),
+                    offset: None,
+                })
+                .await
+                .is_err()
+        );
+    }
 }

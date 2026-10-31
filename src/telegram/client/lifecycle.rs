@@ -10,7 +10,7 @@ impl TelegramClient {
     /// This handles both first-time setup (no session) and returning users (with session).
     /// If session exists, it will be loaded and used. Otherwise, a new session is created.
     ///
-    /// After creation, check `is_connected()` to determine if authentication is needed.
+    /// After creation, call `refresh_account_status()` to determine if authentication is needed.
     pub async fn new(config: &TelegramConfig, search: &SearchConfig) -> Result<Self, Error> {
         // Create parent directory if it doesn't exist
         if let Some(parent) = config.session_file.parent() {
@@ -52,7 +52,7 @@ impl TelegramClient {
             timeouts: config.timeouts.clone(),
             max_download_bytes: config.max_download_bytes,
             search_deadline_secs: search.deadline_seconds,
-            premium: tokio::sync::RwLock::new(None),
+            account_status: tokio::sync::RwLock::new(AccountStatus::default()),
             _runner_handle: runner_handle,
         })
     }
@@ -72,29 +72,70 @@ impl TelegramClient {
         &self.session_path
     }
 
-    pub(super) async fn is_connected_impl(&self) -> bool {
-        self.client.is_authorized().await.unwrap_or_default()
-    }
-
-    pub(super) async fn is_premium_impl(&self) -> Option<bool> {
-        if let Some(cached) = *self.premium.read().await {
-            return Some(cached);
-        }
-        match self.client.get_me().await {
-            Ok(me) => {
-                // grammers 0.10 dropped `User::is_premium`; read the flag from
-                // the now-public raw TL user object instead.
-                let premium = match &me.raw {
-                    grammers_client::tl::enums::User::User(u) => u.premium,
-                    grammers_client::tl::enums::User::Empty(_) => false,
-                };
-                *self.premium.write().await = Some(premium);
-                Some(premium)
-            }
-            Err(e) => {
-                tracing::warn!(error = %e, "Failed to determine Premium status");
-                None
-            }
-        }
+    pub(super) async fn refresh_account_status_impl(&self) -> Result<AccountStatus, Error> {
+        refresh_account_status_with(
+            &self.account_status,
+            self.timeouts.resolve_secs,
+            async {
+                self.client
+                    .is_authorized()
+                    .await
+                    .map_err(|e| Error::TelegramApi(format!("Authorization check failed: {e}")))
+            },
+            async {
+                let me = self
+                    .client
+                    .get_me()
+                    .await
+                    .map_err(|e| Error::TelegramApi(format!("Account lookup failed: {e}")))?;
+                match &me.raw {
+                    tl::enums::User::User(user) => Ok(user.premium),
+                    tl::enums::User::Empty(_) => {
+                        Err(Error::TelegramApi("Account lookup returned no user".into()))
+                    }
+                }
+            },
+        )
+        .await
     }
 }
+
+// The transport seam stays below TelegramClientTrait so timeout/cache policy is
+// exercised without replacing the production client with a whole-client mock.
+async fn refresh_account_status_with(
+    cache: &tokio::sync::RwLock<AccountStatus>,
+    timeout_secs: u64,
+    authorization: impl std::future::Future<Output = Result<bool, Error>>,
+    premium: impl std::future::Future<Output = Result<bool, Error>>,
+) -> Result<AccountStatus, Error> {
+    let authorized = with_timeout("account_authorization", timeout_secs, authorization).await?;
+    {
+        let mut status = cache.write().await;
+        status.authorized = authorized;
+        status.authorization_checked_at = Some(chrono::Utc::now());
+        if !authorized {
+            status.premium = None;
+            status.premium_checked_at = None;
+        }
+    }
+    if authorized {
+        match with_timeout("account_premium", timeout_secs, premium).await {
+            Ok(premium) => {
+                let mut status = cache.write().await;
+                // Do not restore account data after a concurrent successful logout observation.
+                if status.authorized {
+                    status.premium = Some(premium);
+                    status.premium_checked_at = Some(chrono::Utc::now());
+                }
+            }
+            Err(error) => {
+                tracing::warn!(%error, "Premium refresh failed; keeping last successful observation");
+            }
+        }
+    }
+    Ok(*cache.read().await)
+}
+
+#[cfg(test)]
+#[path = "tests/lifecycle_tests.rs"]
+mod tests;

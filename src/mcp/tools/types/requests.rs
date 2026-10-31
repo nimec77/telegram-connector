@@ -24,7 +24,7 @@ pub enum ResponseFormat {
 /// Request for get_subscribed_channels tool
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct GetChannelsRequest {
-    #[schemars(description = "Maximum number of channels to return (default: 50, max: 500)")]
+    #[schemars(description = "Maximum number of channels to return (default: 20, range: 1-500)")]
     #[serde(default, deserialize_with = "flexible_opt_int")]
     pub limit: Option<u32>,
 

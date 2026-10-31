@@ -54,7 +54,12 @@ async fn main() -> Result<()> {
         .context("Failed to create Telegram client")?;
 
     // Verify we have a valid session
-    if !telegram_client.is_connected().await {
+    if !telegram_client
+        .refresh_account_status()
+        .await
+        .context("Failed to check Telegram authorization")?
+        .authorized
+    {
         anyhow::bail!(
             "Not authenticated. Session file may be missing or invalid.\n\
             Run with --setup flag to authenticate first:\n\
@@ -73,7 +78,12 @@ async fn main() -> Result<()> {
 async fn run_setup_mode(client: &TelegramClient, config: &Config) -> Result<()> {
     println!("=== Telegram MCP Connector Setup ===\n");
 
-    if client.is_connected().await {
+    if client
+        .refresh_account_status()
+        .await
+        .context("Failed to check Telegram authorization")?
+        .authorized
+    {
         println!("Already authenticated!");
         println!("Session file: {}", client.session_path().display());
         return Ok(());
@@ -101,9 +111,6 @@ async fn run_setup_mode(client: &TelegramClient, config: &Config) -> Result<()> 
 async fn run_mcp_server(telegram_client: TelegramClient, config: Config) -> Result<()> {
     // Create rate limiter
     let rate_limiter = RateLimiter::new(&config.rate_limiting);
-
-    // Warm the Premium flag so check_mcp_status reports it from the first request.
-    let _ = telegram_client.is_premium().await;
 
     // Create MCP server
     let server = McpServer::new(Arc::new(telegram_client), Arc::new(rate_limiter))

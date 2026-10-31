@@ -17,10 +17,10 @@ fix RPC safety at the narrowest existing operation boundary.
 [standards alignment plan](2026-10-31-rust-standards-alignment.md), and
 [media delivery proposal](../specs/2026-10-31-media-delivery-design.md).
 
-**Status:** Task 1 was authorized and completed on 2026-10-31. Tasks 2–10 and the
-additional workstreams remain proposed. File/API names in unimplemented tasks are proposed
-interfaces. Recheck exact dependency targets when each task starts; the audit records the
-2026-10-31 snapshot.
+**Status:** Tasks 1–2 were authorized and completed on 2026-10-31. Tasks 3–10 and
+the additional workstreams remain proposed. File/API names in unimplemented tasks are
+proposed interfaces. Recheck exact dependency targets when each task starts; the audit
+records the 2026-10-31 snapshot.
 
 ## Global constraints
 
@@ -95,25 +95,36 @@ only numeric location because even parser messages and keys can contain secrets.
 `channels.rs`, `transcription.rs`, and shared fixtures affected by trait changes.
 **Produces:** explicit fallible network status refresh and cached status access.
 
-- [ ] Add pending-future/paused-time tests below the existing whole-client mock seam:
+- [x] Add pending-future/paused-time tests below the existing whole-client mock seam:
   `startup_status_times_out`, `dialog_walk_has_total_deadline`, and
   `transport_failure_is_not_reported_as_unauthenticated`.
-- [ ] Add tool tests proving invalid requests spend zero tokens and exhausted tokens
+- [x] Add tool tests proving invalid requests spend zero tokens and exhausted tokens
   start zero channel/Premium RPCs, including an empty Premium cache.
-- [ ] Separate cached status reads from fallible refresh. Proposed internal interface:
+- [x] Separate cached status reads from fallible refresh. Proposed internal interface:
   `refresh_account_status(&self) -> Result<AccountStatus, Error>`, with
   `AccountStatus { authorized: bool, premium: Option<bool> }`. Cache only successful
   observations with their timestamp; a failed refresh must not overwrite them as false.
   Retain prior bool wire fields in legacy mode; canonical mode may expose freshness/error.
-- [ ] Keep `check_mcp_status` zero-RPC and free; it reports cached observations. Refresh
+- [x] Keep `check_mcp_status` zero-RPC and free; it reports cached observations. Refresh
   during bounded startup and already charged account-dependent operations. Make Premium
   warmup nonfatal; differentiate actual unauthenticated status from network outage.
-- [ ] Bound the entire dialog walk using the existing history timeout and account RPCs
+- [x] Bound the entire dialog walk using the existing history timeout and account RPCs
   using the resolve timeout. Use one operation charge for channel list/basic info, with
   full-info enrichment included; do not introduce per-page charging unexpectedly.
-- [ ] Run focused status/channel/transcription tests and the quality gate. Review every
+- [x] Run focused status/channel/transcription tests and the quality gate. Review every
   path capable of issuing an RPC, including fallbacks, against the charge ordering.
-- [ ] Commit the bounded-status/metering change with its behavior documentation.
+- [x] Commit the bounded-status/metering change with its behavior documentation.
+
+**Verification (2026-10-31):** Stalled production-client and tool regressions
+reproduced the missing dialog deadline, RPCs before validation/acquisition, and the cold
+Premium path bypassing a denied budget. Restoring the former authorization policy caused
+startup timeout, transport-error and cache-preservation regressions to fail; the fixed
+implementation was restored. Focused client (85) and MCP (167) tests passed, followed by
+`just check`: formatting, all-target Clippy, and 774 library tests passed (5 ignored;
+one doctest ignored). Independent review found no issues. Tests use temporary sessions
+with an unpolled grammers runner; no Telegram network or credentials are required.
+Version 0.22.7 and dependency pins are unchanged. Startup examples allow 90 seconds for
+two default 30-second account RPC budgets; personal configuration is untouched.
 
 ## Task 3: Enforce transcription deadlines and clean cancellation
 

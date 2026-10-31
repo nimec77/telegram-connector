@@ -13,11 +13,11 @@ use crate::telegram::TelegramClientTrait;
 
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {
     pub(super) async fn check_mcp_status_impl(&self) -> Result<String, String> {
-        let connected = self.telegram_client.is_connected().await;
+        let account = self.telegram_client.cached_account_status().await;
         let tokens = self.rate_limiter.available_tokens();
 
         let response = StatusResponse {
-            telegram_connected: connected,
+            telegram_connected: account.authorized,
             rate_limiter: RateLimiterStatus {
                 tokens,
                 capacity: self.rate_limiter.capacity(),
@@ -42,7 +42,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             last_response_write_age_secs: self.metrics.last_write_age_secs(),
             session_started_at: self.metrics.session_started_at_rfc3339(),
             session_uptime_secs: self.metrics.uptime_secs(),
-            premium: self.telegram_client.is_premium().await,
+            premium: account.premium,
         };
 
         json_response(&response)

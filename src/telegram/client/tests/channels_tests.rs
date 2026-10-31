@@ -278,3 +278,19 @@ fn a_numeric_collision_across_namespaces_does_not_mark_a_channel_subscribed() {
         "a chat-namespace id must not match a channel-namespace id"
     );
 }
+
+#[tokio::test(start_paused = true)]
+async fn dialog_walk_has_total_deadline() {
+    let (client, _runner, _dir) = crate::telegram::client::client_fixture::stalled_client().await;
+    let start = tokio::time::Instant::now();
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(6),
+        client.get_subscribed_channels_impl(1, 0),
+    )
+    .await;
+    assert!(
+        matches!(result, Ok(Err(Error::Timeout { secs: 5, .. }))),
+        "{result:?}"
+    );
+    assert_eq!(start.elapsed(), std::time::Duration::from_secs(5));
+}

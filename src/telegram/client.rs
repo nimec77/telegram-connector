@@ -15,9 +15,9 @@ use crate::telegram::converters::{
 use crate::telegram::timeout::with_timeout;
 use crate::telegram::trait_def::TelegramClientTrait;
 use crate::telegram::types::{
-    ChannelId, ChannelIdentity, HistoryParams, MediaDownload, MediaFetchError, MediaFetchOutcome,
-    MediaType, MessageId, QueryMetadata, SearchParams, SearchResult, TranscriptionOutcome,
-    TranscriptionState, Username,
+    AccountStatus, ChannelId, ChannelIdentity, HistoryParams, MediaDownload, MediaFetchError,
+    MediaFetchOutcome, MediaType, MessageId, QueryMetadata, SearchParams, SearchResult,
+    TranscriptionOutcome, TranscriptionState, Username,
 };
 use grammers_client::Client;
 use grammers_client::media::Media;
@@ -50,6 +50,10 @@ mod walk;
 #[cfg(test)]
 #[path = "client/tests/helpers_tests.rs"]
 mod helpers_tests;
+
+#[cfg(test)]
+#[path = "client/tests/client_fixture.rs"]
+mod client_fixture;
 
 pub(crate) use resolve::username_to_resolve;
 
@@ -179,8 +183,8 @@ pub struct TelegramClient {
     max_download_bytes: u64,
     /// Wall-clock budget for a search accumulation loop (`[search] deadline_seconds`).
     search_deadline_secs: u64,
-    /// Cached Premium flag for the connected account (None = not yet determined).
-    premium: tokio::sync::RwLock<Option<bool>>,
+    /// Local observations; refreshes never hold this lock across network work.
+    account_status: tokio::sync::RwLock<AccountStatus>,
     _runner_handle: JoinHandle<()>,
 }
 
@@ -221,8 +225,12 @@ impl TelegramClientTrait for TelegramClient {
         self.search_public_channels_impl(query, limit).await
     }
 
-    async fn is_connected(&self) -> bool {
-        self.is_connected_impl().await
+    async fn cached_account_status(&self) -> AccountStatus {
+        *self.account_status.read().await
+    }
+
+    async fn refresh_account_status(&self) -> Result<AccountStatus, Error> {
+        self.refresh_account_status_impl().await
     }
 
     async fn get_message_by_id(
@@ -276,10 +284,6 @@ impl TelegramClientTrait for TelegramClient {
     ) -> Result<TranscriptionOutcome, Error> {
         self.transcribe_audio_impl(channel_ref, message_id, timeout_secs)
             .await
-    }
-
-    async fn is_premium(&self) -> Option<bool> {
-        self.is_premium_impl().await
     }
 
     async fn resolve_channels(

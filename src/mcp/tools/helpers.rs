@@ -4,7 +4,7 @@
 
 use crate::error::Error;
 use crate::link::ChannelRef;
-use crate::telegram::types::{ChannelId, MessageId};
+use crate::telegram::types::{ChannelId, MessageId, Username};
 
 /// The message inside `InvalidInput`, so tool-level prefixes don't stack on
 /// the variant's own `invalid input:` Display prefix (work-order D7).
@@ -46,6 +46,19 @@ pub(crate) fn parse_channel_reference(reference: &str) -> Result<ChannelRef, Str
         parse_channel_id(reference).map(ChannelRef::Id)
     } else {
         Ok(ChannelRef::Username(reference.to_string()))
+    }
+}
+
+/// Reject malformed username/numeric references before charging or resolving them.
+pub(crate) fn validate_channel_reference(reference: &str) -> Result<(), String> {
+    if reference.parse::<i64>().is_ok() || reference.bytes().all(|b| b.is_ascii_digit()) {
+        return parse_channel_id(reference).map(|_| ());
+    }
+    let username = reference.strip_prefix('@').unwrap_or(reference);
+    if Username::is_valid_shape(username) {
+        Ok(())
+    } else {
+        Err("Invalid channel reference: expected a username or positive numeric ID".to_string())
     }
 }
 

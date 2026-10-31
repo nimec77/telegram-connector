@@ -4,8 +4,8 @@ use crate::error::Error;
 use crate::mcp::server::McpServer;
 use crate::mcp::tools::{TranscribeVoiceMessageRequest, TranscribeVoiceMessageResponse};
 use crate::rate_limiter::MockRateLimiterTrait;
-use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::{MediaType, TranscriptionOutcome};
+use crate::telegram::{AccountStatus, MockTelegramClientTrait};
 use mockall::predicate::eq;
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;
@@ -30,7 +30,13 @@ fn server(
 #[tokio::test]
 async fn returns_transcription_text() {
     let mut client = MockTelegramClientTrait::new();
-    client.expect_is_premium().return_once(|| Some(true));
+    client
+        .expect_cached_account_status()
+        .return_once(|| AccountStatus {
+            authorized: true,
+            premium: Some(true),
+            ..Default::default()
+        });
     client
         .expect_transcribe_audio()
         .withf(|ch, id, t| ch == "news" && *id == 42 && *t == 30)
@@ -63,7 +69,13 @@ async fn returns_transcription_text() {
 #[tokio::test]
 async fn returns_partial_flag_and_video_note_type() {
     let mut client = MockTelegramClientTrait::new();
-    client.expect_is_premium().return_once(|| Some(true));
+    client
+        .expect_cached_account_status()
+        .return_once(|| AccountStatus {
+            authorized: true,
+            premium: Some(true),
+            ..Default::default()
+        });
     client.expect_transcribe_audio().return_once(|_, _, _| {
         Ok(TranscriptionOutcome {
             text: "часть".to_string(),
@@ -92,7 +104,13 @@ async fn returns_partial_flag_and_video_note_type() {
 #[tokio::test]
 async fn premium_absent_fast_fails_without_calling_transcribe() {
     let mut client = MockTelegramClientTrait::new();
-    client.expect_is_premium().return_once(|| Some(false));
+    client
+        .expect_cached_account_status()
+        .return_once(|| AccountStatus {
+            authorized: true,
+            premium: Some(false),
+            ..Default::default()
+        });
     // No expect_transcribe_audio: mockall panics if it is called.
     // No expect_acquire: the rate limiter must not be charged on fast-fail.
     let limiter = MockRateLimiterTrait::new();
@@ -111,7 +129,19 @@ async fn premium_absent_fast_fails_without_calling_transcribe() {
 #[tokio::test]
 async fn unknown_premium_proceeds() {
     let mut client = MockTelegramClientTrait::new();
-    client.expect_is_premium().return_once(|| None);
+    client
+        .expect_cached_account_status()
+        .return_once(|| AccountStatus {
+            authorized: true,
+            premium: None,
+            ..Default::default()
+        });
+    client.expect_refresh_account_status().return_once(|| {
+        Ok(AccountStatus {
+            authorized: true,
+            ..Default::default()
+        })
+    });
     client.expect_transcribe_audio().return_once(|_, _, _| {
         Ok(TranscriptionOutcome {
             text: "ok".to_string(),
@@ -136,7 +166,13 @@ async fn unknown_premium_proceeds() {
 #[tokio::test]
 async fn rejects_non_voice_media() {
     let mut client = MockTelegramClientTrait::new();
-    client.expect_is_premium().return_once(|| Some(true));
+    client
+        .expect_cached_account_status()
+        .return_once(|| AccountStatus {
+            authorized: true,
+            premium: Some(true),
+            ..Default::default()
+        });
     client.expect_transcribe_audio().return_once(|_, _, _| {
         Err(Error::NotTranscribable {
             media_type: "photo".to_string(),
@@ -160,7 +196,13 @@ async fn rejects_non_voice_media() {
 #[tokio::test]
 async fn surfaces_voice_too_long() {
     let mut client = MockTelegramClientTrait::new();
-    client.expect_is_premium().return_once(|| Some(true));
+    client
+        .expect_cached_account_status()
+        .return_once(|| AccountStatus {
+            authorized: true,
+            premium: Some(true),
+            ..Default::default()
+        });
     client
         .expect_transcribe_audio()
         .return_once(|_, _, _| Err(Error::VoiceTooLong));
@@ -181,7 +223,13 @@ async fn surfaces_voice_too_long() {
 #[tokio::test]
 async fn surfaces_flood_wait_retry_after() {
     let mut client = MockTelegramClientTrait::new();
-    client.expect_is_premium().return_once(|| Some(true));
+    client
+        .expect_cached_account_status()
+        .return_once(|| AccountStatus {
+            authorized: true,
+            premium: Some(true),
+            ..Default::default()
+        });
     client.expect_transcribe_audio().return_once(|_, _, _| {
         Err(Error::RateLimit {
             retry_after_seconds: 42,
@@ -223,7 +271,13 @@ fn media_type_wire_name_is_consistent_across_endpoints() {
 #[tokio::test]
 async fn clamps_request_timeout_to_configured_max() {
     let mut client = MockTelegramClientTrait::new();
-    client.expect_is_premium().return_once(|| Some(true));
+    client
+        .expect_cached_account_status()
+        .return_once(|| AccountStatus {
+            authorized: true,
+            premium: Some(true),
+            ..Default::default()
+        });
     client
         .expect_transcribe_audio()
         // The configured max is 45; a 999s request must clamp to it, proving the
@@ -269,4 +323,86 @@ async fn rejects_message_id_beyond_wire_range() {
         err.contains("exceeds Telegram's message id range"),
         "got: {err}"
     );
+}
+
+#[tokio::test]
+async fn exhausted_transcription_budget_never_checks_cold_premium() {
+    let mut client = MockTelegramClientTrait::new();
+    // A cache miss must not cause an account RPC before token acquisition.
+    client
+        .expect_cached_account_status()
+        .return_once(AccountStatus::default);
+    let mut limiter = MockRateLimiterTrait::new();
+    limiter.expect_acquire().with(eq(5)).return_once(|_| {
+        Err(Error::RateLimit {
+            retry_after_seconds: 7,
+            detail: String::new(),
+        })
+    });
+    let err = server(client, limiter)
+        .transcribe_voice_message_impl(request("news", 42, None))
+        .await
+        .expect_err("budget exhausted");
+    assert!(err.contains("rate limit"));
+}
+
+#[tokio::test]
+async fn invalid_transcription_channel_spends_no_tokens() {
+    for channel in ["", " ", "@", "bad-name", "0", "999999999999999999999999"] {
+        let err = server(MockTelegramClientTrait::new(), MockRateLimiterTrait::new())
+            .transcribe_voice_message_impl(request(channel, 42, None))
+            .await
+            .expect_err("invalid channel");
+        assert!(err.contains("channel"), "{err}");
+    }
+}
+
+#[tokio::test]
+async fn cold_premium_refresh_is_charged_before_rpc() {
+    let mut sequence = mockall::Sequence::new();
+    let mut client = MockTelegramClientTrait::new();
+    client
+        .expect_cached_account_status()
+        .return_once(AccountStatus::default);
+    let mut limiter = MockRateLimiterTrait::new();
+    limiter
+        .expect_acquire()
+        .with(eq(5))
+        .times(1)
+        .in_sequence(&mut sequence)
+        .return_once(|_| Ok(()));
+    client
+        .expect_refresh_account_status()
+        .times(1)
+        .in_sequence(&mut sequence)
+        .return_once(|| {
+            Ok(AccountStatus {
+                authorized: true,
+                premium: Some(false),
+                ..Default::default()
+            })
+        });
+    let err = server(client, limiter)
+        .transcribe_voice_message_impl(request("news", 42, None))
+        .await
+        .expect_err("not Premium");
+    assert!(err.contains("Premium"));
+}
+
+#[tokio::test]
+async fn cold_account_transport_error_remains_an_error() {
+    let mut client = MockTelegramClientTrait::new();
+    client
+        .expect_cached_account_status()
+        .return_once(AccountStatus::default);
+    client
+        .expect_refresh_account_status()
+        .return_once(|| Err(Error::TelegramApi("transport unavailable".into())));
+    let mut limiter = MockRateLimiterTrait::new();
+    limiter.expect_acquire().with(eq(5)).return_once(|_| Ok(()));
+    let err = server(client, limiter)
+        .transcribe_voice_message_impl(request("news", 42, None))
+        .await
+        .expect_err("account RPC failed");
+    assert!(err.contains("transport unavailable"));
 }

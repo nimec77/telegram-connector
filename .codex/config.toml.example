@@ -4,7 +4,8 @@
 [mcp_servers.telegram]
 command = "/absolute/path/to/telegram-connector/target/release/telegram-mcp"
 args = ["--config", "/absolute/path/to/telegram-connector-config.toml"]
-startup_timeout_sec = 30
+# Authorization and best-effort Premium lookup each use resolve_secs (30s default).
+startup_timeout_sec = 90
 # Transcription can take 120 seconds, above Codex's default 60-second tool timeout.
 tool_timeout_sec = 180
 

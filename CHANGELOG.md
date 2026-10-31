@@ -13,6 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   environment-expanded credentials from appearing in error messages, debug output,
   or nested error chains.
 
+- Startup authorization and Premium lookup now have configured timeout bounds;
+  transport failures retain their error instead of appearing unauthenticated.
+- Channel listing applies one total history timeout. Channel listing and basic/full
+  lookup acquire one token per operation after validating local inputs.
+- A cold Premium lookup for transcription runs only after rate-limit acquisition.
+  Cached non-Premium observations still reject without charge.
+
+### Changed
+
+- `check_mcp_status` reports cached authorization/Premium observations without RPCs.
+  Successful observations keep independent timestamps; failed refreshes preserve them.
+- The Rust client trait exposes `cached_account_status` and `refresh_account_status`
+  in place of the previous live boolean helpers.
+- The Codex example startup budget is 90 seconds, covering both default account RPC budgets.
+
 ### Security
 
 - Update `ctutils` to 0.4.7 and Tokio to 1.54.1 to resolve

@@ -78,9 +78,10 @@ codex mcp add telegram -- /absolute/path/to/telegram-connector/target/release/te
 codex mcp list
 ```
 
-Then add `startup_timeout_sec = 30` and `tool_timeout_sec = 180` to the generated
-server table. Codex defaults to a 60-second tool timeout, while transcription can
-take 120 seconds; the example leaves headroom. Restart the Codex session and use
+Then add `startup_timeout_sec = 90` and `tool_timeout_sec = 180` to the generated
+server table. Startup account RPCs can use two 30-second resolve budgets; 90 seconds
+leaves headroom. Codex defaults to a 60-second tool timeout, while transcription can
+take 120 seconds; the tool budget leaves headroom. Restart the Codex session and use
 `/mcp` to check its active connection. These CLI/TOML settings follow the
 [official MCP guide](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
 

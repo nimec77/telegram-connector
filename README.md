@@ -137,12 +137,14 @@ replacing both paths with absolute paths:
 [mcp_servers.telegram]
 command = "/absolute/path/to/telegram-connector/target/release/telegram-mcp"
 args = ["--config", "/absolute/path/to/telegram-connector-config.toml"]
-startup_timeout_sec = 30
+startup_timeout_sec = 90
 tool_timeout_sec = 180
 ```
 
-Restart the Codex session and check `/mcp` for the active server. The longer tool
-timeout accommodates voice transcription, which can take up to 120 seconds.
+Restart the Codex session and check `/mcp` for the active server. Startup allows
+one `resolve_secs` budget each for authorization and best-effort Premium lookup
+(up to 60 seconds with defaults); the 90-second client budget leaves headroom.
+The longer tool timeout accommodates voice transcription, which can take up to 120 seconds.
 See [the configuration example](.codex/config.toml.example) and
 [Codex development guide](docs/codex.md) for CLI registration, project setup,
 and recommended tools. These settings follow the
@@ -158,9 +160,9 @@ the quick reference.
 
 | Tool | Purpose | Key parameters |
 |------|---------|----------------|
-| `check_mcp_status` | Report connection status, live rate-limiter token budget/costs, and configured media limits so callers can plan batches. | (none) |
-| `get_subscribed_channels` | List all channels the account is subscribed to, with genuine `total` and derived `has_more`. | `limit`, `offset` |
-| `get_channel_info` | Get details for one channel; `include_full` adds `description`/`member_count`/`last_message_date` via extra RPCs for 1 token. | `channel_identifier`*, `include_full` |
+| `check_mcp_status` | Report cached authorization/Premium observations, live rate-limiter token budget/costs, and configured media limits; performs no Telegram RPCs. | (none) |
+| `get_subscribed_channels` | List subscribed channels with genuine `total` and `has_more`; one token per call, with a total history timeout. | `limit`, `offset` |
+| `get_channel_info` | Get details for one channel; `include_full` adds `description`/`member_count`/`last_message_date`. Both paths cost 1 token total. | `channel_identifier`*, `include_full` |
 | `generate_message_link` | Build shareable `https://t.me/...` and `tg://` links for a message (public vs. members-only `t.me/c/...` forms). | `channel_id`*, `message_id`*, `include_tg_protocol` |
 | `open_message_in_telegram` | Open a message directly in Telegram Desktop (macOS only; errors elsewhere). | `channel_id`*, `message_id`*, `use_tg_protocol` |
 | `search_messages` | Search messages globally, in one channel, or fanned out over up to 20 channels, with time windows and media-type filtering. | `query` (required unless `media_filter` set), `channel_id`, `channel_ids`, `hours_back`, `limit`, `media_filter`, `from_date`, `to_date`, `collapse_albums`, `before_id`, `after_id`, `max_text_length`, `format` (`full`/`compact`) |
@@ -177,9 +179,18 @@ the quick reference.
 
 ### Behavior notes
 
-- **Rate-limit costs:** metered search/history/info/link calls cost 1 token; media downloads
-  default 3; transcription defaults 5; `check_mcp_status`, `get_subscribed_channels`,
-  `get_last_responses`, and `get_channel_info` without `include_full` are free.
+- **Rate-limit costs:** search/history/channel-list/info/link calls cost 1 token; media
+  downloads default 3; transcription defaults 5. `check_mcp_status` and
+  `get_last_responses` are free. Local validation precedes acquisition. Channel-info
+  resolution and optional full enrichment share one operation charge.
+- **Account observations:** status reads cached authorization/Premium values. Startup
+  refreshes them using bounded RPCs; authorization transport failures are errors and
+  preserve prior observations. Premium lookup failure is nonfatal and preserves its last
+  successful value (or `null` if unknown). Transcription refreshes an unknown Premium
+  cache only after acquiring its operation charge; a cached non-Premium result rejects
+  without charge. Attempted account RPCs are not refunded.
+- **Channel listing:** `limit` defaults to 20 and accepts 1–500. One `history_secs` budget
+  covers the entire dialog walk across all pages; timeout returns an error.
 - **Fan-out token cost:** `channel_ids` fan-out atomically acquires one token per deduped
   channel; `get_messages_media_batch` acquires `media_download_cost × ids` up front and
   refunds ids that produced no image (whole-call failure refunds all but 1 token).

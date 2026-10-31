@@ -10,34 +10,41 @@ impl TelegramClient {
         limit: u32,
         offset: u32,
     ) -> Result<crate::telegram::ChannelPage, Error> {
-        let mut builder = ChannelPageBuilder::new(offset, limit);
-        let mut dialogs = self.client.iter_dialogs();
+        with_timeout(
+            "get_subscribed_channels",
+            self.timeouts.history_secs,
+            async {
+                let mut builder = ChannelPageBuilder::new(offset, limit);
+                let mut dialogs = self.client.iter_dialogs();
 
-        while let Some(dialog) = dialogs.next().await.map_err(|e| {
-            tracing::error!(error = %e, "Failed to iterate dialogs in get_subscribed_channels");
-            Error::TelegramApi(format!("Failed to iterate dialogs: {}", e))
-        })? {
-            if let Some(mut channel) = convert_peer_to_channel(dialog.peer()) {
-                // Free enrichment: the dialog already carries its top message (B8).
-                // This runs for every converted dialog in the walk, not only the
-                // ones that end up on the returned page — `admit` below decides
-                // page membership (offset/limit) afterwards. The cost is a pure
-                // timestamp conversion, so enriching before that decision is fine.
-                channel.last_message_date =
-                    dialog.last_message.as_ref().and_then(message_timestamp);
-                builder.admit(channel);
+                while let Some(dialog) = dialogs.next().await.map_err(|e| {
+                tracing::error!(error = %e, "Failed to iterate dialogs in get_subscribed_channels");
+                Error::TelegramApi(format!("Failed to iterate dialogs: {}", e))
+            })? {
+                if let Some(mut channel) = convert_peer_to_channel(dialog.peer()) {
+                    // Free enrichment: the dialog already carries its top message (B8).
+                    // This runs for every converted dialog in the walk, not only the
+                    // ones that end up on the returned page — `admit` below decides
+                    // page membership (offset/limit) afterwards. The cost is a pure
+                    // timestamp conversion, so enriching before that decision is fine.
+                    channel.last_message_date =
+                        dialog.last_message.as_ref().and_then(message_timestamp);
+                    builder.admit(channel);
+                }
             }
-        }
 
-        let page = builder.finish();
-        tracing::debug!(
-            returned = page.channels.len(),
-            total = page.total,
-            offset,
-            limit,
-            "get_subscribed_channels completed"
-        );
-        Ok(page)
+                let page = builder.finish();
+                tracing::debug!(
+                    returned = page.channels.len(),
+                    total = page.total,
+                    offset,
+                    limit,
+                    "get_subscribed_channels completed"
+                );
+                Ok(page)
+            },
+        )
+        .await
     }
 
     pub(super) async fn get_channel_info_impl(
