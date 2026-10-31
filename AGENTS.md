@@ -60,8 +60,10 @@ the installed ast-index skill when available.
   `src/mcp/server.rs`. The macro scans the impl before declarative macro expansion.
   Keep entry points thin; operation bodies live in `src/mcp/server/impl_*.rs`.
 - Request/response types live in `src/mcp/tools/types/`. Requests derive
-  `Deserialize` and schemars **v1** `JsonSchema`. Most tools return JSON strings;
-  media tools return `CallToolResult` for image content blocks.
+  `Deserialize` and schemars **v1** `JsonSchema`. Wire routes return `CallToolResult`:
+  canonical typed JSON in structuredContent plus matching text, followed by media image
+  blocks. Explicit legacy mode retains historical text shapes; direct Rust convenience
+  methods remain legacy adapters. See `docs/tool-contract.md`.
 - `src/telegram/trait_def.rs` is the client seam. Extend the trait, dispatch in
   `src/telegram/client.rs`, and implement operations in `client/ops_*.rs`.
 - Domain newtypes (`ChannelId`, `MessageId`, `UserId`, `Username`, `ChannelName`)

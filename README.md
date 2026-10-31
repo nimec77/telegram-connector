@@ -37,7 +37,7 @@ Telegram Cloud API
 
 **Key design patterns:** library + binary separation (`lib.rs` / `main.rs`); shared state
 via `Arc<T>`; traits + `mockall` for testability; JSON schemas via `schemars` for MCP tool
-parameters.
+parameters and canonical tool outputs.
 
 ## Prerequisites
 
@@ -97,6 +97,7 @@ phone_number = "+1234567890"
 # max_log_days = 7
 
 [server]
+# output_format = "json_v1"       # Default; use "legacy" for historical text responses.
 # shutdown_timeout_seconds = 5
 ```
 
@@ -179,6 +180,17 @@ the quick reference.
 
 ### Behavior notes
 
+- **Tool output migration:** all 16 tools default to a versioned JSON envelope in
+  `structuredContent` and matching text: `schema_version: "1"`, with exactly one of
+  `data` or `error` non-null. Channel/user IDs are decimal strings; message IDs remain
+  integers. Tool errors carry stable codes and set `isError: true`; partial successes
+  retain per-item errors. Set `[server] output_format = "legacy"` to retain historical
+  text shapes. This setting is independent of MCP protocol negotiation. See the
+  [contract and migration guide](docs/tool-contract.md) for schemas, media indices,
+  compatibility changes and remaining budget/recovery work.
+- **Channel identity:** bare numeric IDs that match distinct eligible Telegram peer
+  namespaces fail with `ambiguous_channel`. Use an unambiguous public username where
+  available. Numeric lookup scans the bounded dialog traversal before accepting a match.
 - **Rate-limit costs:** search/history/channel-list/info/link calls cost 1 token; media
   downloads default 3; transcription defaults 5. `check_mcp_status` and
   `get_last_responses` are free. Local validation precedes acquisition. Channel-info
@@ -204,9 +216,11 @@ the quick reference.
   `next_cursor: {"before_id": ...}` — pass it back as `before_id` for drift-free older
   pages; global search reports `has_more` without a cursor; cursors are rejected in
   `channel_ids` scope.
-- **Byte budgets:** responses are capped at `[limits] response_byte_budget` (default
-  40 000 bytes; trailing messages dropped, `has_more: true`); `get_messages_batch` lists
-  budget-dropped-but-existing ids in `omitted_ids` (distinct from `missing`).
+- **Byte budgets:** message payload shaping uses `[limits] response_byte_budget`
+  (default 40 000 bytes; trailing messages dropped, `has_more: true`);
+  `get_messages_batch` lists budget-dropped-but-existing ids in `omitted_ids`
+  (distinct from `missing`). This is not yet a cap on the complete serialized MCP
+  response, which also carries the envelope and matching JSON fallback.
 - **Partial results:** `search_messages` sets `query_metadata.timed_out`/`partial` (never an
   error) when `[search] deadline_seconds` expires; a deadline-truncated result does not set
   `has_more`.

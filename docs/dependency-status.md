@@ -2,6 +2,14 @@
 
 Fresh crates.io inventory completed at 2026-10-31T08:39:39.597680+00:00. This records the resolved dependency migration on nightly-2026-10-31, not just manifest requirements. Cargo.lock was updated in groups and retained throughout; incompatible upstream lines were not forced.
 
+The tables below are the **Task 6 migration snapshot**, before the Task 7 schema
+validator. Task 7 adds dev-only jsonschema 0.60.2 and 36 transitive package identities
+without removing/upgrading an existing identity: the graph now has **341 packages,
+340 external**, and 26 distinct direct registry dependencies. Its added older lines
+and exact license exceptions are recorded in [the contract guide](tool-contract.md#validator-dependency).
+Task 7 reran the full metadata policy and fresh source/advisory checks; the historical
+304-package counts and duplicate tables below describe Task 6, not the expanded graph.
+
 ## Direct dependencies
 
 All 25 distinct registry direct dependencies resolve to their current non-yanked stable release. The three direct grammers Git dependencies share the reviewed immutable Codeberg revision below. rmcp 3.8.0 was migrated in the preceding SDK work; this refresh preserves its runtime/protocol integration. Broad existing requirements that already admitted the latest lockfile release remain reviewed dispositions, not presumed stale versions.

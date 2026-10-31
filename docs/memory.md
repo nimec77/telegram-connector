@@ -6,17 +6,15 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Current state
 
-- **v0.22.6** (released 2026-08-22), 16 MCP tools (16th:
-  `get_messages_media_batch`). 758 lib tests passing, 5 ignored (the 2026-08-22
-  review pass removed 23 tests of since-deleted dead API and added 8).
-  Coverage **78.33% lines** (`cargo llvm-cov --lib`; 76.19% for a full `cargo llvm-cov`
-  run), compared approximately to the 75.1% audit-start baseline — that baseline predates
-  stages 2–3, so it isn't a clean stage-4-only delta. Near-100% on domain
-  types/converters/shaping, `MessageWalk`'s
-  decision logic (`walk.rs`) at 95%. The production `TelegramClient` ops layer is still
-  mostly 0% — the DI seam swaps exactly that code for mocks; `ops_history`/`ops_message`
-  moved off zero (12%/26%), `ops_search` stayed at 0% (thin glue below the seam, as
-  designed).
+- **Package v0.22.10; unreleased modernization is on the feature branch.** There are
+  16 tools. Task 7 adds default `json_v1` typed structured output with matching text and
+  explicit legacy mode; see [tool-contract.md](tool-contract.md). macOS Task 7 validation
+  passed 892 library tests and 3 doctests. This is not a version bump or release claim.
+  Required nightly is 2026-10-31; rmcp is 3.8; all three grammers crates use reviewed
+  Codeberg revision `1e31e73cd9797790905bbea82cd75adcbe6f1242` (0.11).
+- **Coverage baseline remains the 2026-08-22 measurement:** 78.33% lines for the library
+  (76.19% for the full run). It has not been remeasured for this branch. Domain/converter/
+  shaping coverage was near 100%; most production ops were below the mocked client seam.
 - **Audit 2026-08-15 is fully shipped and its spec deleted** (delete-on-merge; the file lives
   in git history). Four staged work packages — correctness fixes + dead code; module splits +
   test extraction; duplication/KISS refactors; ops-layer coverage via `MessageWalk` — plus the
@@ -29,6 +27,11 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Open items
 
+- **Task 8 and final acceptance remain pending.** Existing payload/image caps are not
+  complete serialized JSON-RPC/fallback accounting. Keyed conversation-isolated recovery,
+  bounded raw-media memory and session-path/sidecar permission hardening remain future
+  work. Task 7's diagnostic replay still uses the process-wide ring. Do not describe the
+  entire modernization design as complete or release it on that premise.
 - **Raw pagers exist only because grammers pins `Message.peers: PeerMap` `pub(crate)`**
   (verified at pinned rev = upstream HEAD). If a future grammers rev exposes public peer
   resolution, collapse `raw_pager`/`raw_fetch` back to the high-level iterators.
@@ -65,6 +68,15 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   both dated MCP schemas; do not replace the SDK serializer merely to insert generic
   JSON-RPC null IDs. Required CI/local nightly is pinned to 2026-10-31 with a separate
   scheduled floating-nightly check.
+- **Canonical output:** application `json_v1` is independent of protocol revision.
+  Concrete DTOs preserve channel/user IDs as strings, integer message IDs, UTC dates,
+  typed safe errors and source namespaces; legacy adapters preserve old healthy shapes.
+  Real wire tests validate all 16 advertised schemas across both modes/protocols. Never
+  convert by recursively rewriting JSON keys or recover typed errors from display text.
+  Domain Deserialize delegates to constructors. Numeric resolution scans one bounded
+  traversal, excludes users, deduplicates typed peers and rejects namespace collisions;
+  username-qualified search retains its namespace through the existing search walker.
+  Compact header conflicts fail closed; full output keeps explicit source identity.
 - **All tools in `server.rs` because `#[tool_router]` (attribute macro) scans the impl body
   before `macro_rules!` expansion** — a declaratively generated `#[tool]` method never
   registers. Boilerplate is factored via the `ToolInvocation` guard object instead.
@@ -184,7 +196,7 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 - **When grammers adds an enum variant, grep every `match` on it** — a `_` catch-all
   silently dropped `Peer::Community` (messages visible, channel invisible). Prefer
   exhaustive matches for foreign enums that grow.
-- **jiff stays at the boundary**: grammers 0.10 message dates are jiff `Timestamp`; the
+- **jiff stays at the boundary**: grammers 0.11 message dates are jiff `Timestamp`; the
   domain stays chrono, converted at the single `message_timestamp` site via `.as_second()`
   (Telegram dates are second-precision).
 - **Received usernames use observed-name validation:** nonempty, at most 32 bytes,

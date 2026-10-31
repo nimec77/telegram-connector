@@ -250,29 +250,38 @@ modify `src/mcp/tools/types.rs`, `types/responses.rs`, `tools/helpers.rs`,
 **Consumes:** upgraded rmcp and existing per-tool domain response types.
 **Produces:** `ToolResponse<T>`, `ToolError`, canonical/legacy output modes.
 
-- [ ] Define serialized contract types exactly as the design: tagged by
+- [x] Define serialized contract types exactly as the design: tagged by
   `schema_version:"1"`, mutually exclusive non-null `data` or `error`; error fields
   `code`, `message`, `retryable`, optional `retry_after_seconds`.
-- [ ] Add failing wire/serialization tests across all 16 tools: success, validation,
+- [x] Add failing wire/serialization tests across all 16 tools: success, validation,
   rate-limit, timeout, missing message and partial batch cases. Validate outputs against
   advertised JSON Schema 2020-12 with a dev-only validator justified by these assertions.
-- [ ] Include argument type/deserialization errors that occur before the tool method:
+- [x] Include argument type/deserialization errors that occur before the tool method:
   convert actionable argument failures into canonical `isError:true` results at the
   parsing/router boundary. Keep malformed CallToolRequest envelopes and unknown tools
   as JSON-RPC errors; verify both paths on the wire, without string-matching error text.
-- [ ] Add `[server] output_format = "json_v1" | "legacy"`, default `json_v1` for the
+- [x] Add `[server] output_format = "json_v1" | "legacy"`, default `json_v1` for the
   documented migration release. JSON mode emits the typed value in structuredContent
   and matching text fallback; legacy keeps old text shapes and no mismatched schema.
-- [ ] Convert operation helpers to typed results. Preserve typed library errors until
+- [x] Convert operation helpers to typed results. Preserve typed library errors until
   the tool boundary; map stable error codes there. Map protocol errors separately.
   Share `fn tool_result<T: Serialize + JsonSchema>(ToolResponse<T>) -> Result<CallToolResult, Error>`
   in the output boundary; register explicit schemas where rmcp cannot derive them.
-- [ ] Normalize canonical channel/user IDs to decimal strings, message IDs to integers,
+- [x] Normalize canonical channel/user IDs to decimal strings, message IDs to integers,
   dates to UTC RFC3339. Keep legacy IDs unchanged. Preserve partial-result metadata and
   self-contained schemas, including nested errors and media metadata.
-- [ ] Test annotations: reads are accurately marked; desktop opening is a side effect;
+- [x] Test annotations: reads are accurately marked; desktop opening is a side effect;
   transcription may spend quota. Do not mark every tool read-only/idempotent indiscriminately.
-- [ ] Run schema/wire/tool tests, quality gate and commit with migration documentation.
+- [x] Run schema/wire/tool tests, quality gate and commit with migration documentation.
+
+Task-scoped independent review approved spec compliance and quality for
+`ab560f3..f97921e`; the minor batch-media description correction in `b6a051d` and
+scoped validator policy in `d6a9bc8` were independently approved. macOS passed
+892 library tests and 3 doctests, formatting, all-target Clippy, warning-free docs,
+wire/schema/process checks and fresh dependency/security checks. See
+[the migration guide](../../tool-contract.md) for the new default, legacy mode,
+Rust API compatibility and the work deferred to Task 8. The user's narrowed scope
+ends after Task 7; no merge or version change is included.
 
 ## Task 8: Preserve budgets and isolate recovery across the new contract
 

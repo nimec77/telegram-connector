@@ -13,13 +13,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rolling filename, preserving foreign logs, backups, malformed names and directories.
 - Received short Telegram usernames survive channel and forward conversion, including
   serialized attribution and public message links.
+- Numeric channel resolution rejects ambiguous peer namespaces instead of selecting
+  the first match; username search retains its resolved namespace.
+- Domain ID/name deserialization enforces constructor invariants. Missing messages,
+  corrupt replay data and desktop-launch failures retain typed failure semantics.
 
 ### Changed
 
 - Development uses the authoritative Rust manual and reproducible module-grouped
   formatting, with documented compatibility and migration exceptions.
-
-
+- All 16 MCP tools default to `json_v1`: versioned structured JSON with matching text,
+  advertised output schemas, safe typed errors, decimal-string channel/user IDs and
+  integer message IDs. Set `[server] output_format = "legacy"` for historical text
+  shapes. See [the migration guide](docs/tool-contract.md), including Rust API changes
+  and the remaining full-response budget/recovery work.
 - Upgrade rmcp to 3.8 and explicitly support the tested modern 2026-07-28 and
   legacy 2025-11-25 revisions. Graceful shutdown now uses the configured deadline,
   including blocked output; bootstrap stalls have a documented one-second minimum.
