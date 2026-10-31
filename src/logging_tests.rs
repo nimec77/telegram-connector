@@ -71,39 +71,51 @@ fn redact_phone_multibyte_input_does_not_panic() {
 // Initialization Tests
 // ========================================================================
 
+fn run_init_child(level: &str, format: &str) {
+    let output = std::process::Command::new(std::env::current_exe().expect("test executable"))
+        .args([
+            "--exact",
+            "logging::tests::init_child",
+            "--ignored",
+            "--test-threads=1",
+        ])
+        .env("LOGGING_TEST_LEVEL", level)
+        .env("LOGGING_TEST_FORMAT", format)
+        .output()
+        .expect("logging child");
+    assert!(
+        output.status.success(),
+        "logging child failed: {} {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed"));
+}
+
 #[test]
 fn init_with_valid_config() {
-    // Test that init succeeds with a valid configuration
-    let config = LoggingConfig {
-        level: "info".to_string(),
-        format: "compact".to_string(),
-        file_enabled: false, // Disable file logging for tests
-        file_path: std::path::PathBuf::from("/tmp/test_logs"),
-        max_log_days: 7,
-    };
-
-    // Should not panic or return error
-    let result = init(&config);
-    assert!(result.is_ok());
+    run_init_child("info", "compact");
 }
 
 #[test]
 fn init_with_different_log_levels() {
-    // Test various log levels
-    let levels = vec!["trace", "debug", "info", "warn", "error"];
-
-    for level in levels {
-        let config = LoggingConfig {
-            level: level.to_string(),
-            format: "compact".to_string(),
-            file_enabled: false,
-            file_path: std::path::PathBuf::from("/tmp/test_logs"),
-            max_log_days: 7,
-        };
-
-        let result = init(&config);
-        assert!(result.is_ok(), "Failed to init with level: {}", level);
+    for level in ["trace", "debug", "info", "warn", "error"] {
+        run_init_child(level, "compact");
     }
+}
+
+#[test]
+#[ignore = "global subscriber is confined to a subprocess run by normal parent tests"]
+fn init_child() {
+    let config = LoggingConfig {
+        level: std::env::var("LOGGING_TEST_LEVEL").expect("parent level"),
+        format: std::env::var("LOGGING_TEST_FORMAT").expect("parent format"),
+        file_enabled: false,
+        file_path: std::path::PathBuf::from("unused"),
+        max_log_days: 7,
+    };
+    init(&config).expect("first init");
+    init(&config).expect("already initialized remains successful");
 }
 
 #[test]
@@ -126,20 +138,8 @@ fn init_propagates_a_file_layer_failure() {
 
 #[test]
 fn init_with_different_formats() {
-    // Test various formats
-    let formats = vec!["compact", "pretty", "json"];
-
-    for format in formats {
-        let config = LoggingConfig {
-            level: "info".to_string(),
-            format: format.to_string(),
-            file_enabled: false,
-            file_path: std::path::PathBuf::from("/tmp/test_logs"),
-            max_log_days: 7,
-        };
-
-        let result = init(&config);
-        assert!(result.is_ok(), "Failed to init with format: {}", format);
+    for format in ["compact", "pretty", "json"] {
+        run_init_child("info", format);
     }
 }
 
