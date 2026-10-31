@@ -15,7 +15,7 @@ are not portable project policy and have not been copied.
 
 The old release skill described a Synapse workspace and read `[workspace.package]`.
 This crate uses `[package]`. The replacement is a focused version-bump skill that
-updates the package and lockfile together without imposing a release workflow.
+updates the package, lockfile, and changelog together without imposing publication.
 
 `AGENTS.md` is now canonical. The former `CLAUDE.md` and `.claude/` directory have
 been removed. Codex discovers root project instructions from `AGENTS.md` and
@@ -102,10 +102,12 @@ Use $bump-version to bump the patch version.
 ```
 
 It accepts patch, minor, major, or an explicit target version; reads
-`[package].version`; updates `Cargo.toml` and `Cargo.lock`; and runs the Rust gate.
-Dry runs leave files untouched. Unrelated edits are preserved, and an empty
-Unreleased section does not block a version-only bump. Release notes and publication
-follow a separately requested release scope.
+`[package].version`; updates `Cargo.toml`, `Cargo.lock`, and `CHANGELOG.md`; and runs
+the Rust gate. Each bump moves the Unreleased notes into a dated target-version
+section and leaves a fresh empty Unreleased section. An empty Unreleased section
+still produces a dated version heading, without invented notes. Historical entries
+and unrelated edits are preserved. Dry runs describe all three changes without
+editing files. Commit, tag, push, and publication follow the user's authorized scope.
 
 The skill is self-contained Markdown with Codex UI metadata. There are no helper
 scripts or extra CI dependencies. Superpowers is useful when installed but is not

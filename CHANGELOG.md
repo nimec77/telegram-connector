@@ -7,8 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.10] - 2026-10-31
+
 ### Fixed
 
+- Transcription now uses one deadline across account lookup, resolution, initial RPC,
+  sleeps and polls. Expiry returns the latest partial, or a timeout before any state.
+  Polls stop at expiry; late completions cannot override it. Cancellation drops the
+  in-flight wait and schedules no further polls.
+
+### Changed
+
+- `TelegramClientTrait::transcribe_audio` receives an absolute `TranscriptionDeadline`
+  shared with the tool boundary instead of starting a new relative timeout.
+
+## [0.22.9] - 2026-10-31
+
+### Fixed
+
+- The `$bump-version` skill updates `CHANGELOG.md` alongside the manifest and
+  lockfile, moving Unreleased notes into a dated target-version section.
 - Config parse failures report only line and column, preventing literal or
   environment-expanded credentials from appearing in error messages, debug output,
   or nested error chains.
@@ -20,11 +38,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A cold Premium lookup for transcription runs only after rate-limit acquisition.
   Cached non-Premium observations still reject without charge.
 
-- Transcription now uses one deadline across account lookup, resolution, initial RPC,
-  sleeps and polls. Expiry returns the latest partial, or a timeout before any state.
-  Polls stop at expiry; late completions cannot override it. Cancellation drops the
-  in-flight wait and schedules no further polls.
-
 ### Changed
 
 - `check_mcp_status` reports cached authorization/Premium observations without RPCs.
@@ -32,9 +45,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Rust client trait exposes `cached_account_status` and `refresh_account_status`
   in place of the previous live boolean helpers.
 - The Codex example startup budget is 90 seconds, covering both default account RPC budgets.
-
-- `TelegramClientTrait::transcribe_audio` receives an absolute `TranscriptionDeadline`
-  shared with the tool boundary instead of starting a new relative timeout.
 
 ### Security
 

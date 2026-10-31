@@ -43,7 +43,8 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 - **Codex development:** `AGENTS.md` is the canonical repository guide.
   Shared Codex skills live in `.agents/skills/`; obsolete Claude files were removed.
-  `$bump-version` handles package/lockfile version updates.
+  `$bump-version` updates package/lockfile versions and rolls Unreleased notes into
+  a dated changelog section, leaving a fresh Unreleased section.
   Keep personal permissions/config outside version control. `just check` matches
   CI (locked dependencies, all-target clippy). Nightly is selected explicitly in
   `rust-toolchain.toml`, not implied by the edition. See `docs/codex.md` for setup.
