@@ -74,6 +74,13 @@ impl SessionMetrics {
             .remove(request_id)
     }
 
+    /// Release cancelled or unwritable work without counting a successful response.
+    pub(crate) fn discard_request(&self, request_id: &str) {
+        if let Ok(mut pending) = self.in_flight.lock() {
+            pending.remove(request_id);
+        }
+    }
+
     pub fn requests_received(&self) -> u64 {
         self.requests_received.load(Ordering::Relaxed)
     }

@@ -156,8 +156,8 @@ async fn send_error_propagates_and_skips_metrics() {
     let result = transport.send(tool_response(1)).await;
     assert!(result.is_err());
     assert_eq!(metrics.responses_written(), 0);
-    // Failed write leaves the request in-flight (it was never answered).
-    assert_eq!(metrics.abandoned_requests().len(), 1);
+    // Failed writes release active accounting without claiming delivery.
+    assert!(metrics.abandoned_requests().is_empty());
     assert!(buffer.is_empty());
 }
 
@@ -217,4 +217,20 @@ fn slow_write_predicate() {
     ));
     // Threshold 0 = every (nonzero) write warns.
     assert!(is_slow_write(Duration::from_micros(1), Duration::ZERO));
+}
+
+#[tokio::test]
+async fn string_request_id_recovery_keeps_the_original_display_value() {
+    let request: RxJsonRpcMessage<RoleServer> = serde_json::from_value(serde_json::json!({
+        "jsonrpc":"2.0","id":"opaque-id","method":"tools/call","params":{"name":"search_messages","arguments":{}}
+    })).expect("request");
+    let (mut transport, metrics, buffer) = instrumented(vec![request]);
+    transport.receive().await.expect("received");
+    let response: TxJsonRpcMessage<RoleServer> = serde_json::from_value(serde_json::json!({
+        "jsonrpc":"2.0","id":"opaque-id","result":{}
+    }))
+    .expect("response");
+    transport.send(response).await.expect("sent");
+    assert_eq!(buffer.last(None)[0].request_id, "opaque-id");
+    assert!(metrics.abandoned_requests().is_empty());
 }

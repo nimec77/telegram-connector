@@ -43,7 +43,7 @@ fn server_handler_provides_server_info() {
     // Then: InitializeResult contains expected metadata
     assert_eq!(
         result.protocol_version,
-        rmcp::model::ProtocolVersion::default()
+        rmcp::model::ProtocolVersion::V_2025_11_25
     );
     assert_eq!(result.server_info.name, "telegram-mcp");
     assert_eq!(result.server_info.version, env!("CARGO_PKG_VERSION"));

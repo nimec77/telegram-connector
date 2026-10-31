@@ -65,6 +65,13 @@ pub(crate) fn default_max_log_days() -> u32 {
     7
 }
 
+pub(crate) fn default_max_request_bytes() -> usize {
+    1_048_576
+}
+pub(crate) fn default_max_in_flight_requests() -> usize {
+    16
+}
+
 pub(crate) fn default_shutdown_timeout() -> u64 {
     5
 }
@@ -128,6 +135,8 @@ pub(crate) fn default_timeout_config() -> TimeoutConfig {
 pub(crate) fn default_server_config() -> ServerConfig {
     ServerConfig {
         shutdown_timeout_seconds: default_shutdown_timeout(),
+        max_request_bytes: default_max_request_bytes(),
+        max_in_flight_requests: default_max_in_flight_requests(),
     }
 }
 

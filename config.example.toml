@@ -35,9 +35,15 @@ phone_number = "+1234567890"
 # search_secs  = 120  # search_messages (single-channel and global)
 # download_secs = 120 # media downloads (get_message_media / get_messages_media_batch)
 
-# [server]
-# Optional: graceful-shutdown budget (seconds) for in-flight work on SIGINT/SIGTERM.
-# shutdown_timeout_seconds = 5             # Default: 5
+[server]
+# Absolute drain deadline for accepted requests AND pending stdout writes.
+# 0 cancels immediately; maximum 3600 seconds.
+shutdown_timeout_seconds = 5
+# Incoming NDJSON frame bytes including newline; independent of image output size.
+# Range: 1..=16777216.
+max_request_bytes = 1048576
+# Active requests including responses waiting for stdout. Range: 1..=1024.
+max_in_flight_requests = 16
 
 [search]
 # Wall-clock budget for a search's accumulation loop. On expiry the search

@@ -1,10 +1,10 @@
-use crate::config::ObservabilityConfig;
 use crate::config::defaults::{
     default_media_batch_max_total_bytes, default_media_download_cost, default_response_byte_budget,
     default_transcription_cost, default_transcription_default_timeout,
     default_transcription_max_timeout,
 };
-use crate::mcp::observability::{InstrumentedTransport, ResponseBuffer, SessionMetrics};
+use crate::config::{ObservabilityConfig, ServerConfig};
+use crate::mcp::observability::{ResponseBuffer, SessionMetrics};
 use crate::mcp::tools::{
     GenerateLinkRequest, GetChannelInfoRequest, GetChannelStatsRequest, GetChannelsRequest,
     GetLastResponsesRequest, GetMessageByLinkRequest, GetMessageMediaRequest,
@@ -22,7 +22,7 @@ use rmcp::model::{
     PaginatedRequestParams, ServerCapabilities,
 };
 use rmcp::service::{RequestContext, RoleServer};
-use rmcp::{ServerHandler, ServiceExt, tool, tool_handler, tool_router};
+use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -184,21 +184,44 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         }
     }
 
-    pub async fn run_stdio(self) -> anyhow::Result<()> {
-        use rmcp::transport::async_rw::AsyncRwTransport;
-        use tokio::io::{stdin, stdout};
+    /// Serve a configured stdio connection with graceful shutdown.
+    pub async fn run_stdio_with_shutdown<F>(
+        self,
+        config: ServerConfig,
+        shutdown: F,
+    ) -> anyhow::Result<()>
+    where
+        F: Future<Output = std::io::Result<()>> + Send,
+    {
+        self.run_io((tokio::io::stdin(), tokio::io::stdout()), config, shutdown)
+            .await
+    }
 
-        let transport = InstrumentedTransport::new(
-            AsyncRwTransport::new_server(stdin(), stdout()),
-            Arc::clone(&self.metrics),
-            Arc::clone(&self.response_buffer),
+    /// Serve an injectable byte stream using the production protocol runtime.
+    pub async fn run_io<I, O, F>(
+        self,
+        io: (I, O),
+        config: ServerConfig,
+        shutdown: F,
+    ) -> anyhow::Result<()>
+    where
+        I: tokio::io::AsyncRead + Unpin + Send + 'static,
+        O: tokio::io::AsyncWrite + Unpin + Send + 'static,
+        F: Future<Output = std::io::Result<()>> + Send,
+    {
+        let runtime = crate::mcp::runtime::Runtime::try_new(
+            config,
+            self.metrics(),
+            self.response_buffer(),
             self.slow_write_threshold,
-        );
+        )?;
+        runtime.serve(self, io, shutdown).await.map_err(Into::into)
+    }
 
-        let server = self.serve(transport).await?;
-        server.waiting().await?;
-
-        Ok(())
+    /// Serve stdio until EOF with default bounded runtime settings.
+    pub async fn run_stdio(self) -> anyhow::Result<()> {
+        self.run_stdio_with_shutdown(ServerConfig::default(), std::future::pending())
+            .await
     }
 }
 
@@ -553,11 +576,18 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> ServerHandler
     for McpServer<T, R>
 {
+    fn supported_protocol_versions(
+        &self,
+    ) -> std::borrow::Cow<'static, [rmcp::model::ProtocolVersion]> {
+        std::borrow::Cow::Borrowed(crate::mcp::runtime::SUPPORTED_VERSIONS)
+    }
+
     fn get_info(&self) -> InitializeResult {
         let server_info = Implementation::new("telegram-mcp", env!("CARGO_PKG_VERSION"));
         let capabilities = ServerCapabilities::builder().enable_tools().build();
 
         InitializeResult::new(capabilities)
+            .with_protocol_version(rmcp::model::ProtocolVersion::V_2025_11_25)
             .with_server_info(server_info)
             .with_instructions("Telegram MCP Connector - Search Russian Telegram channels")
     }

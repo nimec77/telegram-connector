@@ -1,15 +1,17 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use std::sync::Arc;
+use telegram_connector::mcp::runtime::process;
 use telegram_connector::mcp::server::McpServer;
 use telegram_connector::telegram::auth::interactive_auth;
 use telegram_connector::telegram::client::TelegramClient;
 use telegram_connector::{Cli, Config, RateLimiter, TelegramClientTrait, logging};
-use tokio::signal;
-use tokio::sync::oneshot;
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
+    process::run(application())
+}
+
+async fn application() -> Result<()> {
     // Parse CLI arguments
     let cli = Cli::parse();
 
@@ -123,66 +125,11 @@ async fn run_mcp_server(telegram_client: TelegramClient, config: Config) -> Resu
         .with_response_byte_budget(config.limits.response_byte_budget)
         .with_media_batch_max_total_bytes(config.limits.media_batch_max_total_bytes);
 
-    // Metrics handle survives the move of `server` into run_stdio
-    let metrics = server.metrics();
-
     tracing::info!("Starting MCP server on stdio...");
-
-    // Create shutdown channel
-    let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
-
-    // Spawn shutdown signal handler
-    let shutdown_timeout = config.server.shutdown_timeout_seconds;
-    tokio::spawn(async move {
-        wait_for_shutdown_signal().await;
-        tracing::info!("Shutdown signal received");
-        let _ = shutdown_tx.send(());
-    });
-
-    // Run MCP server with shutdown handling
-    tokio::select! {
-        result = server.run_stdio() => {
-            result.context("MCP server error")?;
-        }
-        _ = shutdown_rx => {
-            tracing::info!("Initiating graceful shutdown (timeout: {}s)...", shutdown_timeout);
-            metrics.log_summary("shutdown signal");
-        }
-    }
-
-    // Graceful shutdown: give ongoing operations time to complete
-    tracing::info!("Waiting for operations to complete...");
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-
+    server
+        .run_stdio_with_shutdown(config.server, process::shutdown_signal())
+        .await
+        .context("MCP server error")?;
     tracing::info!("Telegram MCP Connector stopped");
     Ok(())
-}
-
-/// Wait for shutdown signal (SIGTERM or SIGINT)
-async fn wait_for_shutdown_signal() {
-    let ctrl_c = async {
-        signal::ctrl_c()
-            .await
-            .expect("Failed to install Ctrl+C handler");
-    };
-
-    #[cfg(unix)]
-    let terminate = async {
-        signal::unix::signal(signal::unix::SignalKind::terminate())
-            .expect("Failed to install SIGTERM handler")
-            .recv()
-            .await;
-    };
-
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        _ = ctrl_c => {
-            tracing::debug!("Received SIGINT (Ctrl+C)");
-        }
-        _ = terminate => {
-            tracing::debug!("Received SIGTERM");
-        }
-    }
 }

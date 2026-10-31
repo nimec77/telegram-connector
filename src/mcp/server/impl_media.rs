@@ -39,6 +39,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             .unwrap_or(DEFAULT_MAX_DIMENSION)
             .clamp(MIN_DIMENSION, MAX_DIMENSION);
 
+        crate::mcp::runtime::report_progress("Media request validated").await;
+
         // Media downloads are heavier than searches; charge the configured cost.
         self.rate_limiter
             .acquire(self.media_download_cost)
@@ -51,11 +53,14 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             .await
             .map_err(|e| e.to_string())?;
 
+        crate::mcp::runtime::report_progress("Media downloaded").await;
         let bytes = std::mem::take(&mut download.bytes);
-        let processed = tokio::task::spawn_blocking(move || process_image(&bytes, max_dimension))
-            .await
-            .map_err(|e| format!("image encode task failed: {e}"))?
-            .map_err(|e| e.to_string())?;
+        let processed =
+            crate::mcp::runtime::image_job(move || process_image(&bytes, max_dimension))
+                .await
+                .map_err(|e| format!("image encode task failed: {e}"))?
+                .map_err(|e| e.to_string())?;
+        crate::mcp::runtime::report_progress("Image encoded").await;
         let metadata = media_metadata(
             request.channel_id.clone(),
             message_id.get(),
@@ -99,6 +104,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             .unwrap_or(DEFAULT_MAX_DIMENSION)
             .clamp(MIN_DIMENSION, MAX_DIMENSION);
 
+        crate::mcp::runtime::report_progress("Media request validated").await;
+
         // Acquire pessimistically for every requested id BEFORE any network
         // work: charging only for what succeeds would mean the limiter could
         // never refuse a batch, since the downloads would already have happened.
@@ -130,6 +137,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             }
         };
 
+        crate::mcp::runtime::report_progress("Media downloaded").await;
         let mut content = Vec::new();
         let mut failed = Vec::new();
         let mut total_base64_bytes = 0usize;
@@ -151,6 +159,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                 }
                 Err(reason) => failed.push(MediaBatchFailure { id, reason }),
             }
+            crate::mcp::runtime::report_progress("Media item processed").await;
         }
 
         // Ids that produced no image cost nothing — hand their tokens back.
@@ -200,6 +209,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             .min(self.transcription_max_timeout_secs)
             .max(1);
 
+        crate::mcp::runtime::report_progress("Transcription request validated").await;
+
         // Cached non-Premium observations can reject for free; a cache miss
         // must not start account RPCs before acquiring the operation charge.
         let cached = self.telegram_client.cached_account_status().await;
@@ -227,11 +238,14 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             }
         }
 
+        crate::mcp::runtime::report_progress("Transcription prepared").await;
         let outcome = self
             .telegram_client
             .transcribe_audio(&request.channel_id, wire_id, deadline)
             .await
             .map_err(|e| e.to_string())?;
+
+        crate::mcp::runtime::report_progress("Transcription received").await;
 
         // Only voice and video_note are transcribable. Pass the MediaType through
         // unchanged so its serde derive (snake_case) is the single source of the
@@ -322,7 +336,7 @@ async fn process_media_outcome(
     // hundreds of milliseconds of pure CPU. A panicked/cancelled task reports
     // the id rather than failing the batch.
     let bytes = std::mem::take(&mut download.bytes);
-    let processed = tokio::task::spawn_blocking(move || {
+    let processed = crate::mcp::runtime::image_job(move || {
         process_image_with_cap(&bytes, max_dimension, allowance)
     })
     .await

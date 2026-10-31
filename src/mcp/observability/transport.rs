@@ -55,8 +55,8 @@ impl<T: Transport<RoleServer>> Transport<RoleServer> for InstrumentedTransport<T
         // Pre-compute identity and payload here: the returned future must be
         // 'static, so it cannot borrow from self or the message.
         let response_id = match &item {
-            JsonRpcMessage::Response(response) => Some(response.id.to_string()),
-            JsonRpcMessage::Error(error) => error.id.as_ref().map(ToString::to_string),
+            JsonRpcMessage::Response(response) => Some(response.id.clone()),
+            JsonRpcMessage::Error(error) => error.id.clone(),
             _ => None,
         };
         // One extra serialization buys exact payload size + the recovery copy.
@@ -76,11 +76,13 @@ impl<T: Transport<RoleServer>> Transport<RoleServer> for InstrumentedTransport<T
             let Some(request_id) = response_id else {
                 return result; // notifications/requests pass through unaccounted
             };
+            let request_key = request_id.clone().into_json_value().to_string();
+            let request_id = request_id.to_string();
             match &result {
                 Ok(()) => {
                     let write_elapsed = write_started.elapsed();
                     let write_ms = write_elapsed.as_millis() as u64;
-                    let in_flight = metrics.record_response_written(&request_id);
+                    let in_flight = metrics.record_response_written(&request_key);
                     let tool_name = in_flight
                         .as_ref()
                         .map(|request| request.tool_name.clone())
@@ -119,6 +121,7 @@ impl<T: Transport<RoleServer>> Transport<RoleServer> for InstrumentedTransport<T
                     }
                 }
                 Err(error) => {
+                    metrics.discard_request(&request_key);
                     tracing::error!(
                         request_id = %request_id,
                         error = %error,
@@ -134,7 +137,7 @@ impl<T: Transport<RoleServer>> Transport<RoleServer> for InstrumentedTransport<T
         let message = self.inner.receive().await;
         match &message {
             Some(JsonRpcMessage::Request(request)) => {
-                let request_id = request.id.to_string();
+                let request_id = request.id.clone().into_json_value().to_string();
                 let method = request.request.method();
                 let tool = match &request.request {
                     ClientRequest::CallToolRequest(call) => call.params.name.as_ref(),

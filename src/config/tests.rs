@@ -97,6 +97,7 @@ fn create_test_config(api_id: i32, api_hash: Option<&str>, phone_number: Option<
         },
         server: ServerConfig {
             shutdown_timeout_seconds: 5,
+            ..ServerConfig::default()
         },
         observability: default_observability_config(),
         transcription: default_transcription_config(),
@@ -112,3 +113,25 @@ mod env_tests;
 mod load_tests;
 #[path = "tests/validation_tests.rs"]
 mod validation_tests;
+
+#[test]
+fn server_resource_limits_reject_invalid_values_at_load() {
+    for setting in [
+        "max_request_bytes = 0",
+        "max_request_bytes = 16777217",
+        "max_in_flight_requests = 0",
+        "max_in_flight_requests = 1025",
+        "shutdown_timeout_seconds = 3601",
+    ] {
+        let file = tempfile::NamedTempFile::new().expect("config fixture");
+        std::fs::write(
+            file.path(),
+            format!("[telegram]\napi_id = 1\n[server]\n{setting}\n"),
+        )
+        .expect("write config");
+        assert!(
+            Config::load_from(Some(file.path())).is_err(),
+            "accepted {setting}"
+        );
+    }
+}

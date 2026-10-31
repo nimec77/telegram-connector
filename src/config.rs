@@ -31,6 +31,37 @@ pub struct Config {
 pub struct ServerConfig {
     #[serde(default = "default_shutdown_timeout")]
     pub shutdown_timeout_seconds: u64,
+    /// Maximum incoming NDJSON frame, including its newline (independent of output limits).
+    #[serde(default = "default_max_request_bytes")]
+    pub max_request_bytes: usize,
+    /// Maximum admitted requests, including responses waiting to be written.
+    #[serde(default = "default_max_in_flight_requests")]
+    pub max_in_flight_requests: usize,
+}
+
+impl Default for ServerConfig {
+    fn default() -> Self {
+        defaults::default_server_config()
+    }
+}
+
+impl ServerConfig {
+    /// Reject unbounded input/admission and unreasonable drain budgets.
+    pub fn validate(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            (1..=16_777_216).contains(&self.max_request_bytes),
+            "server.max_request_bytes must be 1..=16777216"
+        );
+        anyhow::ensure!(
+            (1..=1024).contains(&self.max_in_flight_requests),
+            "server.max_in_flight_requests must be 1..=1024"
+        );
+        anyhow::ensure!(
+            self.shutdown_timeout_seconds <= 3600,
+            "server.shutdown_timeout_seconds must be <= 3600"
+        );
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -398,6 +429,10 @@ impl Config {
             .validate()
             .context("invalid rate_limiting configuration")?;
 
+        config
+            .server
+            .validate()
+            .context("invalid server configuration")?;
         Ok(config)
     }
 
