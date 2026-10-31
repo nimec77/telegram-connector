@@ -189,6 +189,12 @@ the quick reference.
   successful value (or `null` if unknown). Transcription refreshes an unknown Premium
   cache only after acquiring its operation charge; a cached non-Premium result rejects
   without charge. Attempted account RPCs are not refunded.
+- **Transcription deadline:** `timeout_seconds` is one total budget after token
+  acquisition, including cold account lookup, peer resolution, message validation,
+  the initial transcription RPC, sleeps and polls. Configured RPC caps still apply.
+  Expiry before the first transcription state returns a timeout error; after a state
+  exists, it returns the latest text with `partial: true`. Completions at or after
+  expiry cannot replace that partial. Cancellation stops scheduling further RPCs.
 - **Channel listing:** `limit` defaults to 20 and accepts 1–500. One `history_secs` budget
   covers the entire dialog walk across all pages; timeout returns an error.
 - **Fan-out token cost:** `channel_ids` fan-out atomically acquires one token per deduped

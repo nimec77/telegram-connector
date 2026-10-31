@@ -14,7 +14,7 @@ pub struct TranscriptionState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TranscriptionOutcome {
     pub text: String,
-    /// True if the timeout elapsed while the transcription was still pending.
+    /// True when expiry or a polling failure prevented a complete result.
     pub partial: bool,
     pub media_type: MediaType,
     pub duration_seconds: Option<u32>,

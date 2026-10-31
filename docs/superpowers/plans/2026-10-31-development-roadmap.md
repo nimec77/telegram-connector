@@ -17,7 +17,7 @@ fix RPC safety at the narrowest existing operation boundary.
 [standards alignment plan](2026-10-31-rust-standards-alignment.md), and
 [media delivery proposal](../specs/2026-10-31-media-delivery-design.md).
 
-**Status:** Tasks 1–2 were authorized and completed on 2026-10-31. Tasks 3–10 and
+**Status:** Tasks 1–3 were authorized and completed on 2026-10-31. Tasks 4–10 and
 the additional workstreams remain proposed. File/API names in unimplemented tasks are
 proposed interfaces. Recheck exact dependency targets when each task starts; the audit
 records the 2026-10-31 snapshot.
@@ -132,16 +132,27 @@ two default 30-second account RPC budgets; personal configuration is untouched.
 `src/mcp/server/impl_media.rs`, `src/mcp/tests/transcription.rs`.
 **Produces:** one deadline for the requested transcription operation.
 
-- [ ] Add paused-time regressions `timeout_shorter_than_poll_interval_does_not_poll`,
+- [x] Add paused-time regressions `timeout_shorter_than_poll_interval_does_not_poll`,
   `pending_poll_returns_latest_partial_at_deadline`, and
   `late_completion_does_not_override_deadline`.
-- [ ] Define `timeout_seconds` as the total operation budget starting after local
+- [x] Define `timeout_seconds` as the total operation budget starting after local
   validation/acquisition, including resolution, initial call, sleeps and polls. Pass an
   absolute Tokio `Instant` deadline internally; each RPC uses the smaller of remaining
   time and its configured timeout. Never restart the budget per poll.
-- [ ] If a state has been received, return its latest text with `partial:true` on expiry;
+- [x] If a state has been received, return its latest text with `partial:true` on expiry;
   before any state exists return a typed timeout. Cancelled requests start no further RPCs.
-- [ ] Run transcription tests with paused time, then the quality gate and commit.
+- [x] Run transcription tests with paused time, then the quality gate and commit.
+
+**Verification (2026-10-31):** Four polling regressions reproduced oversleep,
+late completion, a pending poll exceeding the budget, and setup resetting the clock.
+Production-client resolution and the MCP cold account refresh also exceeded a 1-second
+request before the fix. One absolute `TranscriptionDeadline` now covers all post-charge
+stages while preserving configured RPC caps. Cancellation tests confirm the in-flight
+future is dropped and no further poll starts. Independent review found one expiry-edge
+continuation defect; `stage_resuming_at_expiry_cannot_start_its_next_rpc` reproduced it,
+and a guard before every future poll fixed it. Final `just check` passed formatting,
+all-target Clippy and 785 library tests (5 ignored; one doctest ignored). No live network
+or credentials were used. Version 0.22.8 and dependency pins are unchanged.
 
 ## Task 4: Correct log retention and short usernames
 

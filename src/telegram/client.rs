@@ -14,6 +14,7 @@ use crate::telegram::converters::{
 };
 use crate::telegram::timeout::with_timeout;
 use crate::telegram::trait_def::TelegramClientTrait;
+use crate::telegram::transcription::TranscriptionDeadline;
 use crate::telegram::types::{
     AccountStatus, ChannelId, ChannelIdentity, HistoryParams, MediaDownload, MediaFetchError,
     MediaFetchOutcome, MediaType, MessageId, QueryMetadata, SearchParams, SearchResult,
@@ -53,7 +54,7 @@ mod helpers_tests;
 
 #[cfg(test)]
 #[path = "client/tests/client_fixture.rs"]
-mod client_fixture;
+pub(crate) mod client_fixture;
 
 pub(crate) use resolve::username_to_resolve;
 
@@ -280,9 +281,9 @@ impl TelegramClientTrait for TelegramClient {
         &self,
         channel_ref: &str,
         message_id: i32,
-        timeout_secs: u32,
+        deadline: TranscriptionDeadline,
     ) -> Result<TranscriptionOutcome, Error> {
-        self.transcribe_audio_impl(channel_ref, message_id, timeout_secs)
+        self.transcribe_audio_impl(channel_ref, message_id, deadline)
             .await
     }
 

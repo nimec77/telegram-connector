@@ -9,6 +9,72 @@ use std::future::Future;
 use std::time::Duration;
 use tokio::time::Instant;
 
+/// One absolute budget shared by every stage of a transcription request.
+#[derive(Debug, Clone, Copy)]
+pub struct TranscriptionDeadline {
+    at: Instant,
+    timeout_secs: u32,
+}
+
+impl TranscriptionDeadline {
+    /// Start the budget after local validation and rate-limit acquisition.
+    pub fn new(timeout_secs: u32) -> Self {
+        Self {
+            at: Instant::now() + Duration::from_secs(u64::from(timeout_secs)),
+            timeout_secs,
+        }
+    }
+
+    /// Absolute Tokio instant shared across all stages.
+    pub fn instant(self) -> Instant {
+        self.at
+    }
+
+    /// Original requested budget, retained for timeout diagnostics.
+    pub fn timeout_secs(self) -> u32 {
+        self.timeout_secs
+    }
+
+    fn expired(self) -> bool {
+        Instant::now() >= self.at
+    }
+
+    fn timeout_error(self) -> Error {
+        Error::Timeout {
+            operation: "transcribe_audio".to_string(),
+            secs: u64::from(self.timeout_secs),
+        }
+    }
+
+    /// Cancel a stage at the shared deadline; completion at expiry is too late.
+    /// Existing per-RPC timeout wrappers remain inside this outer bound.
+    pub(crate) async fn run<T>(
+        self,
+        future: impl Future<Output = Result<T, Error>>,
+    ) -> Result<T, Error> {
+        let mut future = std::pin::pin!(future);
+        let guarded = std::future::poll_fn(|cx| {
+            // Check every resumption, before a compound future can advance to
+            // another RPC when its current await completes at expiry.
+            if self.expired() {
+                std::task::Poll::Ready(Err(self.timeout_error()))
+            } else {
+                future.as_mut().poll(cx)
+            }
+        });
+        let result = tokio::time::timeout_at(self.at, guarded).await;
+        // A stage can also finish after using the remaining time in one poll.
+        // Keep the same strict expiry rule for that completion.
+        if self.expired() {
+            return Err(self.timeout_error());
+        }
+        match result {
+            Ok(result) => result,
+            Err(_) => Err(self.timeout_error()),
+        }
+    }
+}
+
 /// Seconds between re-invocations of `transcribeAudio` while pending.
 pub(crate) const POLL_INTERVAL_SECS: u64 = 2;
 
@@ -49,7 +115,7 @@ pub(crate) fn map_transcribe_rpc_error(err: InvocationError) -> Error {
     Error::TelegramApi(err.to_string())
 }
 
-/// Poll a pending transcription until it completes or `timeout` elapses.
+/// Poll a pending transcription using the operation's existing absolute deadline.
 ///
 /// `initial` is the result of the first `transcribeAudio` call. If it is already
 /// complete, returns immediately. Otherwise it re-invokes via `poll` every
@@ -59,7 +125,7 @@ pub(crate) fn map_transcribe_rpc_error(err: InvocationError) -> Error {
 /// `poll` failure degrades gracefully to the latest partial rather than erroring.
 pub(crate) async fn poll_until_complete<F, Fut>(
     initial: TranscriptionState,
-    timeout: Duration,
+    deadline: TranscriptionDeadline,
     interval: Duration,
     mut poll: F,
 ) -> (TranscriptionState, bool)
@@ -67,180 +133,33 @@ where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<TranscriptionState, Error>>,
 {
+    if deadline.expired() {
+        return (initial, true);
+    }
     if !initial.pending {
         return (initial, false);
     }
-
-    let deadline = Instant::now() + timeout;
     let mut latest = initial;
-
-    while Instant::now() < deadline {
-        tokio::time::sleep(interval).await;
-        match poll().await {
+    loop {
+        let wake_at = (Instant::now() + interval).min(deadline.instant());
+        tokio::time::sleep_until(wake_at).await;
+        // Do not even construct a new RPC future once the deadline is reached.
+        if deadline.expired() {
+            return (latest, true);
+        }
+        match deadline.run(poll()).await {
             Ok(state) => {
                 latest = state;
                 if !latest.pending {
                     return (latest, false);
                 }
             }
-            // Transient failure mid-poll: return what we have so far as partial.
+            // Expiry or a transient poll failure preserves the last observed text.
             Err(_) => return (latest, true),
         }
     }
-
-    (latest, true)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn rpc(name: &str, value: Option<u32>) -> InvocationError {
-        InvocationError::Rpc(grammers_mtsender::RpcError {
-            code: 400,
-            name: name.to_string(),
-            value,
-            caused_by: None,
-        })
-    }
-
-    fn state(text: &str, pending: bool) -> TranscriptionState {
-        TranscriptionState {
-            transcription_id: 1,
-            text: text.to_string(),
-            pending,
-        }
-    }
-
-    // ---- ensure_transcribable ----
-
-    #[test]
-    fn voice_is_transcribable() {
-        assert!(ensure_transcribable(MediaType::Voice).is_ok());
-    }
-
-    #[test]
-    fn video_note_is_transcribable() {
-        assert!(ensure_transcribable(MediaType::VideoNote).is_ok());
-    }
-
-    #[test]
-    fn photo_is_rejected_naming_type() {
-        let err = ensure_transcribable(MediaType::Photo).unwrap_err();
-        assert!(matches!(err, Error::NotTranscribable { .. }));
-        assert!(err.to_string().contains("photo"));
-    }
-
-    // ---- map_transcribe_rpc_error ----
-
-    #[test]
-    fn maps_premium_required() {
-        assert!(matches!(
-            map_transcribe_rpc_error(rpc("PREMIUM_ACCOUNT_REQUIRED", None)),
-            Error::PremiumRequired
-        ));
-    }
-
-    #[test]
-    fn maps_transcription_failed() {
-        assert!(matches!(
-            map_transcribe_rpc_error(rpc("TRANSCRIPTION_FAILED", None)),
-            Error::TranscriptionFailed(_)
-        ));
-    }
-
-    #[test]
-    fn maps_voice_too_long() {
-        assert!(matches!(
-            map_transcribe_rpc_error(rpc("MSG_VOICE_TOO_LONG", None)),
-            Error::VoiceTooLong
-        ));
-    }
-
-    #[test]
-    fn maps_flood_wait_to_rate_limit_with_seconds() {
-        match map_transcribe_rpc_error(rpc("FLOOD_WAIT", Some(31))) {
-            Error::RateLimit {
-                retry_after_seconds,
-                detail,
-            } => {
-                assert_eq!(retry_after_seconds, 31);
-                assert_eq!(detail, "");
-            }
-            other => panic!("expected RateLimit, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn maps_unknown_to_telegram_api() {
-        assert!(matches!(
-            map_transcribe_rpc_error(rpc("SOMETHING_ELSE", None)),
-            Error::TelegramApi(_)
-        ));
-    }
-
-    // ---- poll_until_complete ----
-
-    #[tokio::test]
-    async fn immediate_non_pending_returns_without_polling() {
-        let mut calls = 0u32;
-        let (final_state, partial) = poll_until_complete(
-            state("done", false),
-            Duration::from_secs(30),
-            Duration::from_secs(2),
-            || {
-                calls += 1;
-                async { Ok(state("unused", false)) }
-            },
-        )
-        .await;
-        assert_eq!(
-            calls, 0,
-            "poll must not run for an already-complete initial state"
-        );
-        assert!(!partial);
-        assert_eq!(final_state.text, "done");
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn pending_then_completed_returns_full_text() {
-        let mut calls = 0u32;
-        let (final_state, partial) = poll_until_complete(
-            state("partial", true),
-            Duration::from_secs(30),
-            Duration::from_secs(2),
-            || {
-                calls += 1;
-                let done = calls >= 2;
-                async move {
-                    Ok(TranscriptionState {
-                        transcription_id: 1,
-                        text: if done {
-                            "full text".to_string()
-                        } else {
-                            "partial".to_string()
-                        },
-                        pending: !done,
-                    })
-                }
-            },
-        )
-        .await;
-        assert!(!partial);
-        assert_eq!(final_state.text, "full text");
-        assert_eq!(calls, 2);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn pending_until_timeout_returns_partial() {
-        let (final_state, partial) = poll_until_complete(
-            state("so far", true),
-            Duration::from_secs(6),
-            Duration::from_secs(2),
-            || async { Ok(state("so far", true)) },
-        )
-        .await;
-        assert!(partial);
-        assert_eq!(final_state.text, "so far");
-    }
-}
+#[path = "tests/transcription_tests.rs"]
+mod tests;

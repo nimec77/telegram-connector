@@ -1,7 +1,7 @@
 //! An actual grammers client whose runner is retained but never polled: no I/O.
 use super::*;
 
-pub(super) async fn stalled_client() -> (TelegramClient, impl Send, tempfile::TempDir) {
+pub(crate) async fn stalled_client() -> (TelegramClient, impl Send, tempfile::TempDir) {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("session.db");
     let session = Arc::new(SqliteSession::open(&path).await.expect("temporary session"));

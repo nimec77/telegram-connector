@@ -3,6 +3,7 @@
 //! This trait allows mocking the Telegram client in tests.
 
 use crate::error::Error;
+use crate::telegram::transcription::TranscriptionDeadline;
 use crate::telegram::types::{
     AccountStatus, Channel, ChannelIdentity, ChannelPage, ChannelResolution, ChannelStats,
     HistoryParams, MediaDownload, MediaFetchOutcome, Message, MessageBatch, SearchParams,
@@ -115,13 +116,14 @@ pub trait TelegramClientTrait: Send + Sync {
     ///
     /// Resolves the peer once, validates the media type (rejecting non-voice /
     /// non-video_note with `Error::NotTranscribable`), invokes `TranscribeAudio`,
-    /// then polls by re-invoking until the transcription completes or
-    /// `timeout_secs` elapses (returning a partial result on timeout).
+    /// then polls until completion or the shared absolute deadline. Resolution,
+    /// message validation and every RPC consume the same budget. Expiry returns
+    /// the latest partial once a state exists, otherwise a typed timeout.
     async fn transcribe_audio(
         &self,
         channel_ref: &str,
         message_id: i32,
-        timeout_secs: u32,
+        deadline: TranscriptionDeadline,
     ) -> Result<TranscriptionOutcome, Error>;
 
     /// Batch-resolve identifiers (numeric id, @username, or exact chat title)

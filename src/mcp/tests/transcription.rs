@@ -39,7 +39,7 @@ async fn returns_transcription_text() {
         });
     client
         .expect_transcribe_audio()
-        .withf(|ch, id, t| ch == "news" && *id == 42 && *t == 30)
+        .withf(|ch, id, t| ch == "news" && *id == 42 && t.timeout_secs() == 30)
         .return_once(|_, _, _| {
             Ok(TranscriptionOutcome {
                 text: "привет мир".to_string(),
@@ -282,7 +282,7 @@ async fn clamps_request_timeout_to_configured_max() {
         .expect_transcribe_audio()
         // The configured max is 45; a 999s request must clamp to it, proving the
         // config value drives the clamp rather than the old hardcoded 120 (AD-6).
-        .withf(|_, _, t| *t == 45)
+        .withf(|_, _, t| t.timeout_secs() == 45)
         .return_once(|_, _, _| {
             Ok(TranscriptionOutcome {
                 text: "ok".to_string(),
@@ -405,4 +405,22 @@ async fn cold_account_transport_error_remains_an_error() {
         .await
         .expect_err("account RPC failed");
     assert!(err.contains("transport unavailable"));
+}
+
+#[tokio::test(start_paused = true)]
+async fn cold_account_refresh_shares_transcription_deadline() {
+    let (client, _runner, _dir) = crate::telegram::client::client_fixture::stalled_client().await;
+    let mut limiter = MockRateLimiterTrait::new();
+    limiter
+        .expect_acquire()
+        .with(eq(5))
+        .times(1)
+        .return_once(|_| Ok(()));
+    let server = McpServer::new(Arc::new(client), Arc::new(limiter)).with_transcription_cost(5);
+    let start = tokio::time::Instant::now();
+    server
+        .transcribe_voice_message_impl(request("news", 42, Some(1)))
+        .await
+        .expect_err("cold account lookup must share the 1-second total budget");
+    assert_eq!(start.elapsed(), std::time::Duration::from_secs(1));
 }

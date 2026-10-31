@@ -91,6 +91,14 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   `download`), not per-tool; a multi-page `next().await` walk lives inside *one*
   `with_timeout` (budget = total elapsed). No retries — `Error::Timeout` goes to the client,
   which decides.
+- **Transcription:** `TranscriptionDeadline` starts after acquisition and is copied
+  unchanged through cold account refresh, peer resolution, message validation, the
+  initial RPC and polling. Its absolute Tokio instant bounds existing per-RPC caps;
+  neither setup nor a poll restarts the budget. Before any state, expiry is a typed
+  timeout; afterwards, keep the latest partial. Check expiry before every future
+  poll and after completion so a continuation or ready result at expiry cannot
+  start another RPC or override the deadline. Cancellation
+  drops the awaited future and schedules no further polls.
 - **Search latency:** `messages.SearchGlobal` gets `min_date`/`max_date` server-side
   (44.86 s → 0.449 s); window deliberately widened **±1 s** because TL never documents
   inclusive/exclusive — client-side checks re-filter to exact bounds. Don't "fix" the ±1

@@ -332,7 +332,7 @@ pub struct TranscribeVoiceMessageRequest {
     pub message_id: i64,
 
     #[schemars(
-        description = "Seconds to wait for transcription to complete (default: 30, max: 120)"
+        description = "Total seconds after charging, including setup and polls (default 30, max 120)"
     )]
     #[serde(default, deserialize_with = "flexible_opt_int")]
     pub timeout_seconds: Option<u32>,

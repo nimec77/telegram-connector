@@ -15,6 +15,7 @@ use crate::mcp::tools::{
 };
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
+use crate::telegram::transcription::TranscriptionDeadline;
 use crate::telegram::types::{MediaDownload, MediaFetchError, MediaFetchOutcome};
 use rmcp::model::{CallToolResult, ContentBlock};
 
@@ -212,10 +213,10 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             .await
             .map_err(|e| e.to_string())?;
 
+        let deadline = TranscriptionDeadline::new(timeout_secs);
         if cached.premium.is_none() {
-            let refreshed = self
-                .telegram_client
-                .refresh_account_status()
+            let refreshed = deadline
+                .run(self.telegram_client.refresh_account_status())
                 .await
                 .map_err(|e| e.to_string())?;
             if !refreshed.authorized {
@@ -228,7 +229,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
         let outcome = self
             .telegram_client
-            .transcribe_audio(&request.channel_id, wire_id, timeout_secs)
+            .transcribe_audio(&request.channel_id, wire_id, deadline)
             .await
             .map_err(|e| e.to_string())?;
 
