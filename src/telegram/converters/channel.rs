@@ -232,6 +232,27 @@ mod tests {
     }
 
     #[test]
+    fn channel_conversion_preserves_received_short_usernames() {
+        for username in ["mash", "gif", "vid"] {
+            for broadcast in [true, false] {
+                let peer = channel_peer(1234, "Short username", Some(username), broadcast);
+                let channel = convert_peer_to_channel(&peer).expect("channel converts");
+                let json = serde_json::to_value(channel).expect("serializes");
+                assert_eq!(json["username"], username);
+            }
+        }
+    }
+
+    #[test]
+    fn channel_conversion_rejects_blank_and_invalid_usernames() {
+        for username in ["", " ", "bad name", "@mash", "bad-name"] {
+            let peer = channel_peer(1234, "Invalid username", Some(username), true);
+            let channel = convert_peer_to_channel(&peer).expect("channel converts");
+            assert_eq!(channel.username, None, "reject {username:?}");
+        }
+    }
+
+    #[test]
     fn peer_identity_maps_community_without_username() {
         let peer = community_peer(1234, "Test Community");
 

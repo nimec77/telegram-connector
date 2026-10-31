@@ -5,7 +5,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-/// Telegram username (alphanumeric + underscore, 5-32 chars)
+/// Observed Telegram username (alphanumeric + underscore, non-empty, at most 32 bytes).
+/// Short legacy and collectible usernames need not meet new-registration length rules.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(transparent)]
 pub struct Username(String);
@@ -14,9 +15,9 @@ impl Username {
     pub fn new(username: impl Into<String>) -> Result<Self, Error> {
         let username = username.into();
 
-        if username.len() < 5 || username.len() > 32 {
+        if username.is_empty() || username.len() > 32 {
             return Err(Error::InvalidInput(format!(
-                "Username must be 5-32 characters, got {}",
+                "Username must be 1-32 characters, got {}",
                 username.len()
             )));
         }
@@ -97,10 +98,20 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn username_rejects_too_short() {
-        let result = Username::new("abc");
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("5-32"));
+    fn username_accepts_received_short_names() {
+        for name in ["mash", "gif", "vid", "a", "ab"] {
+            assert_eq!(
+                Username::new(name).expect("observed username").as_str(),
+                name
+            );
+        }
+    }
+
+    #[test]
+    fn username_rejects_blank_and_invalid_forms() {
+        for name in ["", " ", "   ", "@mash", "bad name", "bad-name", "name\n"] {
+            assert!(Username::new(name).is_err(), "reject {name:?}");
+        }
     }
 
     #[test]

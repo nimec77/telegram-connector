@@ -227,6 +227,48 @@ fn convert_raw_message_enriches_forward_from_envelope() {
 }
 
 #[test]
+fn convert_raw_message_preserves_received_short_usernames() {
+    for username in ["mash", "gif", "vid"] {
+        let peer = public_channel_peer(1144180066, username);
+        let entities = EntityLookup::from_envelope(
+            &[tl::enums::Chat::Channel(raw_tl_channel(
+                1783384254,
+                "Forward origin",
+                Some(username),
+            ))],
+            &[],
+        );
+        let raw =
+            raw_forwarded_message(610121, fwd_header(channel_fwd_peer(1783384254), None, None));
+
+        let message = convert_raw_message(&raw, &peer, &entities).expect("converts");
+        let json = serde_json::to_value(message).expect("serializes");
+        assert_eq!(json["channel_username"], username);
+        assert_eq!(json["forwarded_from"]["channel_username"], username);
+        assert_eq!(json["link"], format!("https://t.me/{username}/610121"));
+    }
+}
+
+#[test]
+fn forward_conversion_rejects_blank_and_invalid_usernames() {
+    for username in ["", " ", "bad name", "@mash", "bad-name"] {
+        let entities = EntityLookup::from_envelope(
+            &[tl::enums::Chat::Channel(raw_tl_channel(
+                1783384254,
+                "Forward origin",
+                Some(username),
+            ))],
+            &[],
+        );
+        let info = extract_forward_info(
+            &fwd_header(channel_fwd_peer(1783384254), None, None),
+            &entities,
+        );
+        assert_eq!(info.channel_username, None, "reject {username:?}");
+    }
+}
+
+#[test]
 fn convert_raw_message_without_forward_leaves_field_absent_in_json() {
     let peer = public_channel_peer(1144180066, "swodki");
     let mut raw_inner = match raw_forwarded_message(610122, fwd_header(None, None, None)) {
