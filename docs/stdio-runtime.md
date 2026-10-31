@@ -49,8 +49,13 @@ whose bytes have already started writing is committed and finishes if cancellati
 races; clients must handle that protocol-defined delivery race. Only transport
 shutdown interrupts a partially written frame, after which the connection ends.
 
-An owned 8 KiB reader pump detects physical EOF even while the SDK is awaiting a
-bootstrap response write. EOF starts one absolute configured drain deadline;
+An owned 8 KiB reader pump detects physical EOF independently of SDK bootstrap
+writes when it can drain the input. A full bounded buffer can hide EOF behind unread
+bytes, so bootstrap response writes also have a separate stall limit of
+`max(1 second, shutdown_timeout_seconds)`, including writer-lock wait. On expiry the
+runtime closes the connection, cancels pending operations and joins the input pump.
+This startup resource limit applies even if EOF has not yet been observed; it does
+not enlarge the input buffer or replace SDK negotiation. EOF starts one absolute configured drain deadline;
 complete frames already buffered remain admissible until consumed EOF. OS signals
 close admission immediately without restarting an existing EOF deadline.
 Accepted operations and output writes may finish within it. Idle shutdown is
@@ -69,7 +74,10 @@ Bootstrap discover/initialize handlers must remain local and nonblocking. The
 production handlers perform no Telegram RPCs. Custom asynchronous bootstrap
 extensions are not a supported runtime guarantee: retaining the SDK bootstrap
 protects legacy negotiation and request isolation instead of duplicating them.
-The input pump does cover actual product bootstrap output blocked at EOF.
+The input pump and bootstrap write-stall guard cover actual product bootstrap
+output blocked at EOF, including input larger than the pump capacity. A zero-grace
+configuration still initializes normally; observed EOF/signals cancel immediately,
+but detecting a blocked bootstrap with hidden EOF can take up to one second.
 
 ## Offline verification and probe
 

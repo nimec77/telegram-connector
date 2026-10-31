@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Offline process lifecycle checks; pass the offline_mcp_fixture executable."""
 import json
+import os
 import selectors
 import signal
 import subprocess
@@ -46,8 +47,39 @@ def check(binary, pending, signal_shutdown):
             proc.kill()
         proc.communicate(timeout=3)
 
+def check_saturated_bootstrap(binary):
+    # Fill the child's output pipe before launch and never drain it. This makes
+    # even a small discovery response block independently of OS pipe capacity.
+    output_read, output_write = os.pipe()
+    proc = None
+    try:
+        os.set_blocking(output_write, False)
+        try:
+            while True:
+                os.write(output_write, b"x" * 4096)
+        except BlockingIOError:
+            pass
+        os.set_blocking(output_write, True)
+        proc = subprocess.Popen([binary], stdin=subprocess.PIPE, stdout=output_write,
+                                stderr=subprocess.PIPE)
+        request = {"jsonrpc": "2.0", "id": 1, "method": "server/discover",
+                   "params": {"_meta": META}}
+        data = json.dumps(request).encode() + b"\n" + b" " * 32768
+        # communicate bounds the producer too: stdin may itself back up once
+        # the bounded pump fills. stdout is our unread pipe, not proc.stdout.
+        proc.communicate(input=data, timeout=2.5)
+        assert proc.returncode == 0, "bootstrap stall must terminate cleanly"
+    finally:
+        if proc is not None and proc.poll() is None:
+            proc.kill()
+            proc.communicate(timeout=3)
+        os.close(output_read)
+        os.close(output_write)
+
+
 if __name__ == "__main__":
     for pending in (False, True):
         for signal_shutdown in (False, True):
             check(sys.argv[1], pending, signal_shutdown)
-    print("offline process lifecycle: idle and acknowledged-pending EOF/signal shutdown passed")
+    check_saturated_bootstrap(sys.argv[1])
+    print("offline process lifecycle: idle/pending EOF and signal shutdown plus saturated bootstrap passed")

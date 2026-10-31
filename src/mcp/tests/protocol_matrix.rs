@@ -320,3 +320,33 @@ async fn partial_input_survives_an_interleaved_response_write() {
     assert_eq!(wire.recv().await["id"], 2);
     wire.close().await;
 }
+
+#[tokio::test(start_paused = true)]
+async fn zero_grace_initialization_stays_usable_and_observed_signal_is_immediate() {
+    let mut wire = Wire::configured(
+        server(),
+        crate::config::ServerConfig {
+            shutdown_timeout_seconds: 0,
+            ..Default::default()
+        },
+        65536,
+    );
+    initialize(&mut wire).await;
+    wire.send(json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}))
+        .await;
+    assert_eq!(
+        wire.recv().await["result"]["tools"]
+            .as_array()
+            .expect("legacy tools")
+            .len(),
+        16
+    );
+    let signalled_at = tokio::time::Instant::now();
+    wire.shutdown
+        .take()
+        .expect("sender")
+        .send(())
+        .expect("signal");
+    wire.task.await.expect("stopped");
+    assert_eq!(signalled_at.elapsed(), Duration::ZERO);
+}

@@ -287,3 +287,85 @@ async fn signal_during_actual_product_bootstrap_write_is_bounded() {
         assert!(wire.metrics.abandoned_requests().is_empty());
     }
 }
+
+#[tokio::test]
+async fn invalid_no_id_envelopes_return_errors_before_notification_suppression() {
+    let mut wire = Wire::start();
+    for (index, malformed) in [
+        json!({"jsonrpc":"1.0","method":"notifications/unknown"}),
+        json!({"method":"notifications/unknown"}),
+        json!({"jsonrpc":"2.0","method":"notifications/unknown","result":{}}),
+        json!({"jsonrpc":"2.0","method":"notifications/unknown","params":[]}),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        wire.send(malformed).await;
+        wire.send(modern(json!(index), "tools/list")).await;
+        let fault = wire.recv().await;
+        assert_eq!(fault["error"]["code"], -32600);
+        assert!(fault["id"].is_null(), "uncorrelated malformed envelope");
+        assert_eq!(wire.recv().await["id"], index);
+    }
+    wire.send(json!({"jsonrpc":"2.0","method":"notifications/unknown"}))
+        .await;
+    wire.send(modern(json!(99), "tools/list")).await;
+    assert_eq!(
+        wire.recv().await["id"],
+        99,
+        "valid notifications remain reply-free"
+    );
+    wire.close().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn saturated_input_pump_cannot_hide_eof_behind_a_blocked_bootstrap_write() {
+    for (method, budget) in [
+        ("server/discover", 1),
+        ("initialize", 1),
+        ("server/discover", 0),
+        ("initialize", 0),
+    ] {
+        let handler = server();
+        let metrics = handler.metrics();
+        let runtime = crate::mcp::runtime::Runtime::try_new(
+            crate::config::ServerConfig {
+                shutdown_timeout_seconds: budget,
+                ..Default::default()
+            },
+            Arc::clone(&metrics),
+            handler.response_buffer(),
+            Duration::from_secs(1),
+        )
+        .expect("runtime");
+        let (mut peer_input, input) = tokio::io::duplex(65536);
+        let (output, mut peer_output) = tokio::io::duplex(32);
+        let task = tokio::spawn(async move {
+            runtime
+                .serve(handler, (input, output), std::future::pending())
+                .await
+        });
+        let opener = if method == "initialize" {
+            json!({"jsonrpc":"2.0","id":1,"method":method,"params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"offline","version":"1"}}})
+        } else {
+            modern(json!(1), method)
+        };
+        peer_input
+            .write_all(format!("{opener}\n{}", " ".repeat(32768)).as_bytes())
+            .await
+            .expect("buffered input");
+        peer_input.shutdown().await.expect("physical stdin closed");
+        peer_output
+            .read_exact(&mut [0; 1])
+            .await
+            .expect("bootstrap write started");
+        let stalled_at = tokio::time::Instant::now();
+        tokio::time::timeout(Duration::from_millis(1100), task)
+            .await
+            .expect("bootstrap stall deadline")
+            .expect("task")
+            .expect("bounded shutdown");
+        assert_eq!(stalled_at.elapsed(), Duration::from_secs(1));
+        assert!(metrics.abandoned_requests().is_empty());
+    }
+}

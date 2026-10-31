@@ -15,7 +15,7 @@ async fn completed_response_suppresses_progress_already_waiting_for_the_writer()
     let id = RequestId::Number(1);
     let token = ProgressToken(RequestId::Number(1));
     state
-        .admit(id.clone(), Some(token.clone()))
+        .admit(id.clone(), Some(token.clone()), false)
         .await
         .expect("admitted");
     let mut transport = StdioTransport::new(
@@ -67,7 +67,7 @@ async fn reordered_progress_never_decreases_on_the_wire() {
     );
     let token = ProgressToken(RequestId::Number(1));
     state
-        .admit(RequestId::Number(1), Some(token.clone()))
+        .admit(RequestId::Number(1), Some(token.clone()), false)
         .await
         .expect("admitted");
     let mut transport = StdioTransport::new(

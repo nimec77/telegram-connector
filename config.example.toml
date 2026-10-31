@@ -37,7 +37,9 @@ phone_number = "+1234567890"
 
 [server]
 # Absolute drain deadline for accepted requests AND pending stdout writes.
-# 0 cancels immediately; maximum 3600 seconds.
+# 0 cancels immediately once EOF/signal is observed; maximum 3600 seconds.
+# Bootstrap response write-stall limit is max(1 second, this budget), including
+# when a saturated input buffer hides EOF. The 1s floor permits normal startup.
 shutdown_timeout_seconds = 5
 # Incoming NDJSON frame bytes including newline; independent of image output size.
 # Range: 1..=16777216.

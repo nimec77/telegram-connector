@@ -17,6 +17,7 @@ use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, BufReader, Empty};
+use tokio::time::Instant;
 
 const MAX_PENDING_PROTOCOL_ERRORS: usize = 16;
 
@@ -187,10 +188,18 @@ where
                 // the SDK queue. Never write it or call the instrumentation future.
                 return Ok(());
             };
+            // A saturated bounded input pump cannot see EOF behind unread bytes.
+            // Bound bootstrap output independently, including writer-lock wait.
+            // The floor keeps zero-grace configurations usable with Tokio stdout;
+            // observed EOF/signals still take the immediate global-stop branch.
+            let bootstrap_deadline = operation.bootstrap.then(|| {
+                Instant::now() + Duration::from_secs(state.config.shutdown_timeout_seconds.max(1))
+            });
             let gate = tokio::select! {
                 biased;
                 _ = operation.cancelled() => return Ok(()),
                 _ = state.stopped() => return Ok(()),
+                _ = bootstrap_write_stalled(&state, bootstrap_deadline) => return Ok(()),
                 gate = state.write_gate.lock() => gate,
             };
             if *operation.cancelled.borrow() {
@@ -208,6 +217,7 @@ where
             let result = tokio::select! {
                 biased;
                 _ = state.stopped() => Err(io::Error::new(io::ErrorKind::Interrupted, "Shutdown deadline")),
+                _ = bootstrap_write_stalled(&state, bootstrap_deadline) => Err(io::Error::new(io::ErrorKind::TimedOut, "Bootstrap output stalled")),
                 result = send => result,
             };
             if let Some(id) = &response_id {
@@ -292,10 +302,9 @@ where
                 && value.get("params").is_none_or(Value::is_object)
                 && (notification || id.is_some());
             if !valid {
-                if !notification
-                    && !self
-                        .reject(id, ErrorData::invalid_request("Invalid request", None))
-                        .await
+                if !self
+                    .reject(id, ErrorData::invalid_request("Invalid request", None))
+                    .await
                 {
                     return None;
                 }
@@ -379,8 +388,15 @@ where
                         }
                         continue;
                     }
+                    let bootstrap = !self.started
+                        && matches!(
+                            request.request,
+                            ClientRequest::InitializeRequest(_)
+                                | ClientRequest::DiscoverRequest(_)
+                                | ClientRequest::PingRequest(_)
+                        );
                     if let Err(error) = state
-                        .admit(request.id.clone(), meta.get_progress_token())
+                        .admit(request.id.clone(), meta.get_progress_token(), bootstrap)
                         .await
                     {
                         if !self.reject(Some(request.id.clone()), error).await {
@@ -432,6 +448,15 @@ where
         self.rejections.clear();
         self.writer.close().await
     }
+}
+
+async fn bootstrap_write_stalled(state: &State, deadline: Option<Instant>) {
+    match deadline {
+        Some(deadline) => tokio::time::sleep_until(deadline).await,
+        None => std::future::pending::<()>().await,
+    }
+    tracing::warn!("Bootstrap output exceeded its write-stall budget; closing stdio");
+    state.stop().await;
 }
 
 #[cfg(test)]

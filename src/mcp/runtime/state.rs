@@ -11,6 +11,7 @@ use tokio::time::Instant;
 
 pub(super) struct Operation {
     pub token: Option<ProgressToken>,
+    pub bootstrap: bool,
     pub cancelled: watch::Sender<bool>,
     pub last_progress: Mutex<f64>,
 }
@@ -77,6 +78,7 @@ impl State {
         &self,
         id: RequestId,
         token: Option<ProgressToken>,
+        bootstrap: bool,
     ) -> Result<(), ErrorData> {
         let mut entries = self.operations.lock().await;
         if self.admission_closed.load(Ordering::Acquire)
@@ -109,6 +111,7 @@ impl State {
             id,
             Arc::new(Operation {
                 token,
+                bootstrap,
                 cancelled: watch::channel(false).0,
                 last_progress: Mutex::new(f64::NEG_INFINITY),
             }),
