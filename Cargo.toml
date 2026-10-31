@@ -35,7 +35,7 @@ grammers-mtsender = { git = "https://codeberg.org/Lonami/grammers", rev = "9fef0
 # signal: SIGINT/SIGTERM shutdown handling;
 # sync: `oneshot`, `RwLock`;
 # time: timeout budgets, `sleep`, `Instant`.
-tokio = { version = "1.52.3", features = [
+tokio = { version = "1.54.1", features = [
     "io-std",
     "macros",
     "process",
@@ -89,7 +89,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 # `test-util` enables the pausable clock (`start_paused`, `time::advance`) used by
 # the timeout/transcription tests. It is intentionally excluded from `full`, so it
 # must be requested explicitly here (dev-only, never compiled into release builds).
-tokio = { version = "1.52.3", features = ["test-util"] }
+tokio = { version = "1.54.1", features = ["test-util"] }
 tempfile = "3.27.0"
 proptest = "1.11.0"
 mockall = "0.14.0"

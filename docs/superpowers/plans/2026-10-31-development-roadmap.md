@@ -17,9 +17,10 @@ fix RPC safety at the narrowest existing operation boundary.
 [standards alignment plan](2026-10-31-rust-standards-alignment.md), and
 [media delivery proposal](../specs/2026-10-31-media-delivery-design.md).
 
-**Status:** Proposed roadmap, not implementation authorization. The user requested analysis
-and planning only. File/API names introduced below are proposed interfaces. Exact dependency
-targets must be rechecked when work starts; the audit includes the 2026-10-31 snapshot.
+**Status:** Task 1 was authorized and completed on 2026-10-31. Tasks 2–10 and the
+additional workstreams remain proposed. File/API names in unimplemented tasks are proposed
+interfaces. Recheck exact dependency targets when each task starts; the audit records the
+2026-10-31 snapshot.
 
 ## Global constraints
 
@@ -62,17 +63,28 @@ resource/file phases M2/M3 remain separate product decisions, not core acceptanc
 **Consumes:** existing config parser/error path and locked dependency graph.
 **Produces:** safe config diagnostics; patched ctutils/Tokio graph.
 
-- [ ] Add `config_parse_error_redacts_literal_and_expanded_secrets`: malformed syntax and
+- [x] Add `config_parse_error_redacts_literal_and_expanded_secrets`: malformed syntax and
   wrong types containing fake API hash/phone values; neither display, debug nor chained
   formatting may contain the values. Safe location information must remain useful.
-- [ ] Run `cargo test --locked config_parse_error` and record the pre-fix failure.
-- [ ] Sanitize TOML diagnostics at `Config::load_from` before retaining the source error;
+- [x] Run `cargo test --locked config_parse_error` and record the pre-fix failure.
+- [x] Sanitize TOML diagnostics at `Config::load_from` before retaining the source error;
   do not rely solely on replacing the top-level anyhow message.
-- [ ] Recheck registry/advisories; target `ctutils 0.4.7` and `tokio 1.54.1` or newer
+- [x] Recheck registry/advisories; target `ctutils 0.4.7` and `tokio 1.54.1` or newer
   stable versions. Use targeted Cargo updates, retaining Tokio dev `test-util`.
-- [ ] Run config regressions, `cargo tree --locked -i ctutils`, fresh `cargo audit`, and
+- [x] Run config regressions, `cargo tree --locked -i ctutils`, fresh `cargo audit`, and
   the full quality gate. The two known advisories must be resolved; document any new ones.
-- [ ] Review/commit as focused security patches. Do not wait for the full roadmap to ship them.
+- [x] Review/commit as focused security patches. Do not wait for the full roadmap to ship them.
+
+**Verification (2026-10-31):** The new config regression failed before the fix
+for all ten literal/environment-expanded syntax, type, and secret-key fixtures. All 78
+config tests then passed (5 ignored). `just check` passed formatting, all-target Clippy,
+and 759 library tests (5 ignored; one doctest ignored). Targeted updates changed only
+`ctutils 0.4.2 → 0.4.7` and `tokio 1.53.1 → 1.54.1`; both Tokio manifest floors now
+require 1.54.1 and dev `test-util` is retained. `cargo tree --locked -i ctutils` confirms
+the production crypto path uses 0.4.7. Fresh `cargo audit` reported zero vulnerabilities
+and no warnings against RustSec commit `2295466c4e9df26647fd67d8fa1c705ac2fc7f81`
+(2026-10-30). Independent review found no issues. Parser diagnostics deliberately retain
+only numeric location because even parser messages and keys can contain secrets.
 
 ## Task 2: Bound startup/status/channel work and close unmetered paths
 

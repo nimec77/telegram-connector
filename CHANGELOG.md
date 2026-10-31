@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   environment-expanded credentials from appearing in error messages, debug output,
   or nested error chains.
 
+### Security
+
+- Update `ctutils` to 0.4.7 and Tokio to 1.54.1 to resolve
+  RUSTSEC-2026-0385 and RUSTSEC-2026-0386.
+
 ## [0.22.6] - 2026-08-22
 
 ### Fixed
