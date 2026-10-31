@@ -8,7 +8,7 @@ and the macro-constrained MCP router; improve boundaries and enforcement increme
 **Tech Stack:** Rust 2024, nightly rustfmt/Clippy/rustdoc, existing test framework.
 **Spec:** [Rust coding manual](../../rust-style.md).
 **Parent:** [Development roadmap](2026-10-31-development-roadmap.md).
-**Status:** Analysis/proposed work only. No style/source/lint configuration changed yet.
+**Status:** All stages are authorized. S1 policy/formatting is complete; S2–S6 remain active implementation work.
 
 ## Global constraints
 
@@ -58,13 +58,19 @@ No lint was added to project configuration by this audit.
 **Files:** `docs/rust-style.md`, `docs/conventions.md`, `AGENTS.md`, create `rustfmt.toml`;
 format only the files reported by the check. **Produces:** one authoritative style policy.
 
-- [ ] Link the manual from project instructions and replace duplicated/conflicting style
+- [x] Link the manual from project instructions and replace duplicated/conflicting style
   prose with concise references. Record exceptions for extracted test globs, router layout,
   established fallible `new` constructors, and existing consuming `with_*` builders.
-- [ ] Add the manual's formatter settings after validating them on the selected nightly.
+- [x] Add the manual's formatter settings after validating them on the selected nightly.
   Keep toolchain dating coordinated with parent Task 9 rather than changing it twice.
-- [ ] Run formatter, inspect an exclusively mechanical diff, then `just check`.
-- [ ] Commit policy and formatting separately from all behavioral changes.
+- [x] Run formatter, inspect an exclusively mechanical diff, then `just check`.
+- [x] Commit policy and formatting separately from all behavioral changes.
+
+**Verification:** `e338fe7` adopts the manual and exact six formatter settings.
+Rust edits are exclusively import grouping and equivalent hexadecimal casing in nine
+files. Selected nightly accepted all settings without warnings; `just check` passed
+791 tests (5 ignored, 1 doctest ignored). Independent review approved spec and quality.
+Existing S2/S4 violations are explicit transitional exceptions, not claimed compliant.
 
 ## S2: Fix failure/safety policy before cosmetic restructuring
 

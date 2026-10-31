@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Received short Telegram usernames survive channel and forward conversion, including
   serialized attribution and public message links.
 
+### Changed
+
+- Development uses the authoritative Rust manual and reproducible module-grouped
+  formatting, with documented compatibility and migration exceptions.
+
 ## [0.22.10] - 2026-10-31
 
 ### Fixed
