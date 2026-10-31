@@ -304,7 +304,7 @@ async fn invalid_no_id_envelopes_return_errors_before_notification_suppression()
         wire.send(modern(json!(index), "tools/list")).await;
         let fault = wire.recv().await;
         assert_eq!(fault["error"]["code"], -32600);
-        assert!(fault["id"].is_null(), "uncorrelated malformed envelope");
+        assert!(fault.get("id").is_none(), "dated MCP omits unreadable IDs");
         assert_eq!(wire.recv().await["id"], index);
     }
     wire.send(json!({"jsonrpc":"2.0","method":"notifications/unknown"}))

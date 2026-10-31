@@ -27,6 +27,11 @@ Input size includes the frame's newline. Oversized frames are discarded through
 that newline and return -32600; later valid frames can still be processed. This
 limit does not constrain output images or recovery responses. Invalid JSON returns
 -32700; malformed envelopes return -32600 with a readable valid ID when possible.
+When an ID cannot be read, the error response omits the `id` key, following the dated
+[MCP 2026-07-28 error contract](https://modelcontextprotocol.io/specification/2026-07-28/basic#error-responses)
+and [MCP 2025-11-25 error contract](https://modelcontextprotocol.io/specification/2025-11-25/basic#error-responses).
+The SDK encoding is retained; generic non-MCP clients requiring explicit `id: null`
+are outside these supported dated contracts.
 Unknown methods return -32601; unknown tools return -32602. Typed tool argument
 failures retain the SDK's isError tool-result behavior.
 
