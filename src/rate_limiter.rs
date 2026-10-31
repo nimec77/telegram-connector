@@ -1,5 +1,5 @@
 use crate::config::RateLimitConfig;
-use crate::error::Error;
+use crate::error::{Error, StateUnavailable};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -76,20 +76,28 @@ impl RateLimiter {
         }
     }
 
-    /// Get the number of available tokens (after refill)
+    /// Compatibility snapshot: returns zero if the bucket is unavailable.
+    ///
+    /// This conservatively advertises no spendable tokens, but loses the distinction
+    /// between exhaustion and failure. Use [`Self::try_available_tokens`] for diagnostics.
     pub fn available_tokens(&self) -> f64 {
-        let mut bucket = self.bucket();
-        bucket.refill();
-        bucket.available()
+        self.try_available_tokens().unwrap_or(0.0)
     }
 
-    /// Lock the bucket, recovering from a poisoned lock: the bucket state is
-    /// a pair of plain numbers that is valid after any interleaving, so a
-    /// panic in another holder cannot leave it inconsistent.
-    fn bucket(&self) -> std::sync::MutexGuard<'_, TokenBucket> {
+    /// Get the available tokens after refill.
+    ///
+    /// # Errors
+    /// Returns [`StateUnavailable::RateLimiter`] if the bucket lock is poisoned.
+    pub fn try_available_tokens(&self) -> Result<f64, StateUnavailable> {
+        let mut bucket = self.bucket()?;
+        bucket.refill();
+        Ok(bucket.available())
+    }
+
+    fn bucket(&self) -> Result<std::sync::MutexGuard<'_, TokenBucket>, StateUnavailable> {
         self.bucket
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .map_err(|_| StateUnavailable::RateLimiter)
     }
 }
 
@@ -107,8 +115,17 @@ pub trait RateLimiterTrait: Send + Sync {
     /// while the net charge matches the work actually performed.
     fn refund(&self, tokens: u32);
 
-    /// Get available tokens
+    /// Get available tokens (legacy implementations may omit availability information).
     fn available_tokens(&self) -> f64;
+
+    /// Fallible snapshot. The default preserves existing implementations; implementations
+    /// with fallible storage should override it to report unavailable state.
+    ///
+    /// # Errors
+    /// Returns the component failure when the implementation cannot read its state.
+    fn try_available_tokens(&self) -> Result<f64, StateUnavailable> {
+        Ok(self.available_tokens())
+    }
 
     /// Bucket capacity (max tokens).
     fn capacity(&self) -> f64;
@@ -120,7 +137,7 @@ pub trait RateLimiterTrait: Send + Sync {
 #[async_trait::async_trait]
 impl RateLimiterTrait for RateLimiter {
     async fn acquire(&self, tokens: u32) -> Result<(), Error> {
-        let mut bucket = self.bucket();
+        let mut bucket = self.bucket()?;
         bucket
             .try_acquire(tokens)
             .map_err(|(available, retry_after_seconds)| Error::RateLimit {
@@ -130,11 +147,18 @@ impl RateLimiterTrait for RateLimiter {
     }
 
     fn refund(&self, tokens: u32) {
-        self.bucket().refund(tokens);
+        // Best effort only: refusing a refund cannot reopen failed admission.
+        if let Ok(mut bucket) = self.bucket() {
+            bucket.refund(tokens);
+        }
     }
 
     fn available_tokens(&self) -> f64 {
         RateLimiter::available_tokens(self)
+    }
+
+    fn try_available_tokens(&self) -> Result<f64, StateUnavailable> {
+        RateLimiter::try_available_tokens(self)
     }
 
     fn capacity(&self) -> f64 {

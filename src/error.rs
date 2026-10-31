@@ -2,6 +2,10 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum Error {
+    /// Shared state was interrupted; its protected contents cannot be trusted.
+    #[error(transparent)]
+    Unavailable(#[from] StateUnavailable),
+
     #[error("authentication failed: {0}")]
     Auth(String),
 
@@ -52,6 +56,20 @@ pub enum Error {
         "message is not transcribable (media type: {media_type}); only voice and video_note are supported"
     )]
     NotTranscribable { media_type: String },
+}
+
+/// Fixed identities for unavailable synchronized state. No panic payload or
+/// protected contents are retained in this error.
+#[derive(Error, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StateUnavailable {
+    #[error("rate limiter unavailable: interrupted critical section")]
+    RateLimiter,
+    #[error("last response write unavailable: interrupted critical section")]
+    LastWrite,
+    #[error("request correlation unavailable: interrupted critical section")]
+    InFlight,
+    #[error("response replay unavailable: interrupted critical section")]
+    ResponseBuffer,
 }
 
 #[cfg(test)]

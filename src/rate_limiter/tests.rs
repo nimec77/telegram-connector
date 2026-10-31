@@ -312,16 +312,37 @@ async fn refund_of_zero_is_a_no_op() {
 // Poison Recovery Tests
 // ========================================
 
-#[test]
-fn a_poisoned_bucket_lock_recovers_instead_of_panicking() {
+#[tokio::test]
+async fn poisoned_bucket_refuses_admission_even_after_refund() {
     let limiter = Arc::new(RateLimiter::new(&test_config(5, 1.0)));
     let poisoner = Arc::clone(&limiter);
-    let _ = std::thread::spawn(move || {
-        let _guard = poisoner.bucket.lock().unwrap();
-        panic!("poison the bucket lock");
-    })
-    .join();
-    assert_eq!(limiter.available_tokens(), 5.0);
+    assert!(
+        std::thread::spawn(move || {
+            let _guard = poisoner.bucket.lock().expect("healthy bucket");
+            // Intentional test-only panic simulates an interrupted critical section.
+            panic!("poison the bucket lock");
+        })
+        .join()
+        .is_err()
+    );
+    assert!(matches!(
+        limiter.acquire(1).await,
+        Err(Error::Unavailable(StateUnavailable::RateLimiter))
+    ));
+    assert_eq!(
+        limiter.try_available_tokens(),
+        Err(StateUnavailable::RateLimiter)
+    );
+    assert_eq!(limiter.available_tokens(), 0.0);
+    assert!(
+        limiter.acquire(0).await.is_err(),
+        "zero cost must also fail closed"
+    );
+    limiter.refund(5);
+    assert!(
+        limiter.acquire(1).await.is_err(),
+        "refund must not restore admission"
+    );
 }
 
 // ========================================
@@ -390,3 +411,43 @@ proptest! {
 // Note: prop_refill_eventually_succeeds was removed because it uses sleep()
 // which causes tests to hang/freeze. Refill behavior is already tested
 // by non-property tests: tokens_refill_after_waiting, acquire_after_refill_succeeds, etc.
+
+#[tokio::test]
+async fn poisoned_limiter_blocks_tool_rpc_after_local_validation() {
+    use crate::mcp::server::McpServer;
+    use crate::mcp::tools::GetChannelInfoRequest;
+    use crate::telegram::MockTelegramClientTrait;
+    use rmcp::handler::server::common::RequestId;
+    use rmcp::handler::server::wrapper::Parameters;
+    use rmcp::model::NumberOrString;
+    let limiter = Arc::new(RateLimiter::new(&test_config(5, 1.0)));
+    let poisoner = Arc::clone(&limiter);
+    assert!(
+        std::thread::spawn(move || {
+            let _guard = poisoner.bucket.lock().expect("healthy bucket");
+            panic!("intentional poison");
+        })
+        .join()
+        .is_err()
+    );
+    let mut client = MockTelegramClientTrait::new();
+    client.expect_get_channel_info().never();
+    client.expect_get_full_channel_info().never();
+    let server = McpServer::new(Arc::new(client), limiter);
+    for (identifier, expected) in [
+        ("@channel", "rate limiter unavailable"),
+        ("", "Invalid channel_id"),
+    ] {
+        let error = server
+            .get_channel_info(
+                Parameters(GetChannelInfoRequest {
+                    channel_identifier: identifier.into(),
+                    include_full: None,
+                }),
+                RequestId(NumberOrString::Number(1)),
+            )
+            .await
+            .expect_err("must refuse");
+        assert!(error.contains(expected), "{error}");
+    }
+}
