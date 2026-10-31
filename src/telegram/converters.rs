@@ -15,7 +15,7 @@ mod channel;
 mod media;
 mod message;
 
-pub(crate) use channel::channel_identity;
+pub(crate) use channel::{channel_identity, peer_namespace};
 pub use channel::{convert_discovered_peer, convert_peer_to_channel};
 pub(crate) use media::matches_media_filter_raw;
 pub use media::{

@@ -102,6 +102,7 @@ fn convert_peer_with_subscription(
     let (id, name, username) = peer_identity(peer)?;
 
     Some(Channel {
+        peer_namespace: Some(peer_namespace(peer)),
         id,
         name,
         username,
@@ -132,6 +133,19 @@ pub(crate) fn channel_identity(peer: &grammers_client::peer::Peer) -> Option<Cha
         Peer::User(u) => u.username().map(str::to_string),
     };
     Some(ChannelIdentity { id, username })
+}
+
+/// Keep peer namespaces outside SDK-coupled code in a neutral domain enum.
+pub(crate) fn peer_namespace(
+    peer: &grammers_client::peer::Peer,
+) -> crate::telegram::types::PeerNamespace {
+    use crate::telegram::types::PeerNamespace;
+    use grammers_session::types::PeerKind;
+    match peer.id().kind() {
+        PeerKind::User => PeerNamespace::User,
+        PeerKind::Chat => PeerNamespace::Chat,
+        PeerKind::Channel => PeerNamespace::Channel,
+    }
 }
 
 #[cfg(test)]

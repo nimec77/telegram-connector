@@ -132,6 +132,9 @@ pub enum ChatType {
 /// A Telegram channel or group.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Channel {
+    /// Internal identity namespace; legacy JSON does not carry it.
+    #[serde(skip)]
+    pub peer_namespace: Option<super::ids::PeerNamespace>,
     pub id: ChannelId,
     pub name: ChannelName,
     pub username: Option<Username>,
@@ -354,6 +357,7 @@ mod tests {
     #[test]
     fn channel_serialization() {
         let channel = Channel {
+            peer_namespace: Some(crate::telegram::types::PeerNamespace::Channel),
             id: ChannelId::new(200).unwrap(),
             name: ChannelName::new("Tech News").unwrap(),
             username: Some(Username::new("technews").unwrap()),
@@ -379,6 +383,7 @@ mod tests {
         // member_count is Option<u64>: None means "not fetched" and must stay
         // distinguishable from a real zero (CQ-4). It serializes as JSON null.
         let channel = Channel {
+            peer_namespace: Some(crate::telegram::types::PeerNamespace::Channel),
             id: ChannelId::new(201).unwrap(),
             name: ChannelName::new("No Count").unwrap(),
             username: Some(Username::new("nocount").unwrap()),

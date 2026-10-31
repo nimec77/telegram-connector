@@ -146,6 +146,7 @@ async fn get_channel_info_returns_channel_details() {
     // Given: Mock client returning channel details
     let mut mock_client = MockTelegramClientTrait::new();
     let test_channel = Channel {
+        peer_namespace: Some(crate::telegram::types::PeerNamespace::Channel),
         id: ChannelId::new(12345).unwrap(),
         name: ChannelName::new("Test Channel").unwrap(),
         username: Some(Username::new("testchannel").unwrap()),
@@ -223,6 +224,7 @@ async fn get_channel_info_unfetched_member_count_serializes_as_null() {
     // as member_count: null, not a misleading 0 (CQ-4).
     let mut mock_client = MockTelegramClientTrait::new();
     let test_channel = Channel {
+        peer_namespace: Some(crate::telegram::types::PeerNamespace::Channel),
         id: ChannelId::new(777).unwrap(),
         name: ChannelName::new("Unfetched").unwrap(),
         username: Some(Username::new("unfetched").unwrap()),

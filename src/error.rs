@@ -10,6 +10,24 @@ use thiserror::Error;
 /// Domain/client operation failure. Existing exhaustive matches must handle new variants.
 #[derive(Error, Debug)]
 pub enum Error {
+    /// A valid message identifier has no live message in the resolved channel.
+    #[error("invalid input: Message {message_id} not found or deleted in channel {channel}")]
+    MessageNotFound {
+        /// Supplied channel reference.
+        channel: String,
+        /// Positive message ID.
+        message_id: i32,
+    },
+    /// No eligible channel/group matches the supplied reference.
+    #[error("invalid input: Channel not found: {0}")]
+    ChannelNotFound(String),
+    /// A bare ID or title identifies more than one distinct channel/group.
+    #[error("ambiguous channel reference: {0}; use an unambiguous username")]
+    AmbiguousChannel(String),
+    /// A resolved peer is outside the channel/group tool domain.
+    #[error("not a channel or group")]
+    UnsupportedPeer,
+
     /// Shared state was interrupted; its protected contents cannot be trusted.
     #[error(transparent)]
     Unavailable(#[from] StateUnavailable),

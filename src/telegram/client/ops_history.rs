@@ -73,10 +73,16 @@ impl TelegramClient {
                 )?;
                 self.find_dialog_peer(id).await?.ok_or_else(|| {
                     tracing::warn!(channel_id = %id, "Channel not found in dialogs");
-                    Error::InvalidInput(format!("Channel not found: {}", id))
+                    Error::ChannelNotFound(id.to_string())
                 })?
             }
         };
+
+        if crate::telegram::converters::peer_namespace(&peer)
+            == crate::telegram::types::PeerNamespace::User
+        {
+            return Err(Error::UnsupportedPeer);
+        }
 
         // Numeric id of the resolved channel, for logging (derived from the peer
         // rather than pre-resolved in the server — AD-2).

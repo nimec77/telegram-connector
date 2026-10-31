@@ -196,3 +196,19 @@ explicit `cargo test --locked --doc`. Use `--offline` locally when dependencies 
 The S6 measured gate is 866 library tests and 3 passing doctests with no selected lint or
 rustdoc warnings; four ignored unit entries are subprocess implementations invoked by
 ordinary parent tests. Independent S6 review remains separate from implementation evidence.
+
+
+## Numeric channel resolution migration
+
+Bare numeric channel references now scan the complete bounded dialog traversal and reject
+matches across distinct basic-group/channel namespaces. Repeated observations of the same
+typed identity are deduplicated, and user peers are excluded. This can fetch more dialog
+pages than the previous first-match lookup, under the same resolve deadline and operation
+charge. An unambiguous public username remains available where the target has one; private
+colliding peers cannot be safely addressed by the existing bare-number language.
+
+Channel now carries optional internal `peer_namespace` metadata, omitted from legacy JSON.
+External Rust constructors/trait fixtures must populate it for namespace-aware resolution;
+legacy deserialization leaves it unknown rather than inventing an identity. Error gains
+MessageNotFound, ChannelNotFound, AmbiguousChannel and UnsupportedPeer variants. Existing
+missing-message Display text remains compatible; typed classification is now precise.

@@ -24,10 +24,21 @@ pub(super) enum MatchOutcome {
 pub(super) fn match_identifier(identifier: &str, dialogs: &[Channel]) -> MatchOutcome {
     let trimmed = identifier.trim();
     if let Ok(id) = trimmed.parse::<i64>() {
-        return match dialogs.iter().find(|c| c.id.get() == id) {
-            Some(c) => MatchOutcome::Found(c.clone()),
-            None => MatchOutcome::NotFound,
-        };
+        let mut selection = super::resolve::NumericSelection::new(id);
+        for channel in dialogs {
+            let Some(namespace) = channel.peer_namespace else {
+                continue;
+            };
+            if selection
+                .consider(namespace, Some(channel.id.get()), || channel.clone())
+                .is_err()
+            {
+                return MatchOutcome::Ambiguous(2);
+            }
+        }
+        return selection
+            .finish()
+            .map_or(MatchOutcome::NotFound, MatchOutcome::Found);
     }
     let bare = trimmed.strip_prefix('@').unwrap_or(trimmed);
     if Username::is_valid_shape(bare) {
@@ -135,6 +146,20 @@ mod tests {
     use super::*;
     use crate::telegram::types::{ChannelName, Username};
     use crate::test_helpers::create_test_channel;
+
+    #[test]
+    fn numeric_resolution_rejects_different_peer_namespaces() {
+        let channel = create_test_channel(123, "same");
+        let mut group = channel.clone();
+        group.chat_type = crate::telegram::types::ChatType::Group;
+        group.peer_namespace = Some(crate::telegram::types::PeerNamespace::Chat);
+        for candidates in [vec![channel.clone(), group.clone()], vec![group, channel]] {
+            assert!(matches!(
+                match_identifier("123", &candidates),
+                MatchOutcome::Ambiguous(2)
+            ));
+        }
+    }
 
     fn dialogs() -> Vec<Channel> {
         let mut family = create_test_channel(521440428, "family");

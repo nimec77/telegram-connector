@@ -26,7 +26,7 @@ pub use entities::{
     AlbumInfo, Channel, ChannelIdentity, ChannelPage, ChannelResolution, ChatType, ForwardInfo,
     LinkPreview, Message, MessageBatch, MessageReaction,
 };
-pub use ids::{ChannelId, MessageId, UserId};
+pub use ids::{ChannelId, MessageId, PeerNamespace, UserId};
 pub use media::{
     AudioInfo, AudioKind, DocumentInfo, MediaDownload, MediaFetchError, MediaFetchOutcome,
     MediaFilter, MediaType, PollInfo, PollOption, SizeCandidate, VideoInfo, VideoKind,

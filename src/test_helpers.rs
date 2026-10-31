@@ -105,6 +105,7 @@ pub fn create_test_message_with_link_preview(
 /// ```
 pub fn create_test_channel(id: i64, username: &str) -> Channel {
     Channel {
+        peer_namespace: Some(crate::telegram::types::PeerNamespace::Channel),
         id: ChannelId::new(id).expect("Test channel ID must be positive"),
         name: ChannelName::new(format!("Channel {}", username)).expect("Valid channel name"),
         username: Some(Username::new(username).expect("Valid username")),
@@ -127,6 +128,7 @@ pub fn create_test_channel_detailed(
     is_verified: bool,
 ) -> Channel {
     Channel {
+        peer_namespace: Some(crate::telegram::types::PeerNamespace::Channel),
         id: ChannelId::new(id).expect("Test channel ID must be positive"),
         name: ChannelName::new(name).expect("Valid channel name"),
         username: Some(Username::new(username).expect("Valid username")),
@@ -144,6 +146,7 @@ pub fn create_test_channel_detailed(
 /// state (fixed username "testchannel").
 pub fn create_test_channel_named(id: i64, name: &str, is_subscribed: bool) -> Channel {
     Channel {
+        peer_namespace: Some(crate::telegram::types::PeerNamespace::Channel),
         id: ChannelId::new(id).expect("Test channel ID must be positive"),
         name: ChannelName::new(name).expect("Valid channel name"),
         username: Some(Username::new("testchannel").expect("Valid username")),

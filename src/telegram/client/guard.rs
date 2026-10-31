@@ -22,9 +22,10 @@ fn not_found(channel_ref: &str, message_id: i32) -> Error {
         message_id,
         "Message not found or deleted"
     );
-    Error::InvalidInput(format!(
-        "Message {message_id} not found or deleted in channel {channel_ref}"
-    ))
+    Error::MessageNotFound {
+        channel: channel_ref.to_string(),
+        message_id,
+    }
 }
 
 /// The single fetched message from a high-level grammers fetch, or a
@@ -57,6 +58,12 @@ pub(super) fn require_found_raw(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn missing_message_is_distinct_from_invalid_arguments() {
+        let error = require_found_raw(None, "news", 7).expect_err("missing");
+        assert!(!matches!(error, Error::InvalidInput(_)));
+    }
 
     fn empty_raw(id: i32) -> tl::enums::Message {
         tl::enums::Message::Empty(tl::types::MessageEmpty { id, peer_id: None })
@@ -100,7 +107,7 @@ mod tests {
         let result = require_found(None, "swodki", 999_999_999);
 
         let err = result.expect_err("absent slot must be an error");
-        assert!(matches!(err, Error::InvalidInput(_)));
+        assert!(matches!(err, Error::MessageNotFound { .. }));
         assert_eq!(
             err.to_string(),
             "invalid input: Message 999999999 not found or deleted in channel swodki"
@@ -112,7 +119,7 @@ mod tests {
         let result = require_found_raw(None, "swodki", 999_999_999);
 
         let err = result.expect_err("absent slot must be an error");
-        assert!(matches!(err, Error::InvalidInput(_)));
+        assert!(matches!(err, Error::MessageNotFound { .. }));
         assert_eq!(
             err.to_string(),
             "invalid input: Message 999999999 not found or deleted in channel swodki",
@@ -125,7 +132,7 @@ mod tests {
         let result = require_found_raw(Some(empty_raw(609784)), "swodki", 609784);
 
         let err = result.expect_err("MessageEmpty placeholder must be an error");
-        assert!(matches!(err, Error::InvalidInput(_)));
+        assert!(matches!(err, Error::MessageNotFound { .. }));
         assert_eq!(
             err.to_string(),
             "invalid input: Message 609784 not found or deleted in channel swodki",

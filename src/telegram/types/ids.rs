@@ -10,6 +10,18 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+/// Neutral Telegram peer namespace. A bare numeric ID is unique only within it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PeerNamespace {
+    /// Individual account, excluded from channel/group resolution.
+    User,
+    /// Basic group.
+    Chat,
+    /// Broadcast, supergroup or community.
+    Channel,
+}
+
 /// Telegram channel ID (must be positive)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, JsonSchema)]
 #[serde(transparent)]

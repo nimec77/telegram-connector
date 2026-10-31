@@ -4,9 +4,9 @@
 
 use super::TelegramClient;
 use crate::error::Error;
-use crate::telegram::converters::channel_identity;
+use crate::telegram::converters::{channel_identity, peer_namespace};
 use crate::telegram::timeout::with_timeout;
-use crate::telegram::types::{ChannelIdentity, Username};
+use crate::telegram::types::{ChannelIdentity, PeerNamespace, Username};
 
 /// Convert a resolved peer into the `PeerRef` that grammers RPC calls take.
 ///
@@ -40,7 +40,7 @@ pub(super) fn validate_channel_identifier(identifier: &str) -> Result<(), Error>
 impl TelegramClient {
     /// Canonical channel-reference resolver: a numeric ref is found by walking the
     /// dialog list; anything else is treated as a username (leading `@` stripped).
-    /// Both forms hard-error with `InvalidInput` when nothing matches. This is the
+    /// Both forms return a typed not-found error when nothing matches. This is the
     /// single entry point — `get_channel_info`, `get_message_by_id`,
     /// `download_message_media`, and `transcribe_audio` all go through it (AD-1).
     pub(super) async fn resolve_peer(
@@ -51,16 +51,21 @@ impl TelegramClient {
             // Numeric ID — search through dialogs.
             self.find_dialog_peer(id).await?.ok_or_else(|| {
                 tracing::warn!(id, "Channel not found in dialogs by ID");
-                Error::InvalidInput(format!("Channel not found: {}", channel_ref))
+                Error::ChannelNotFound(channel_ref.to_string())
             })
         } else {
             // Username — resolve directly.
-            self.resolve_username_peer(channel_ref)
+            let peer = self
+                .resolve_username_peer(channel_ref)
                 .await?
                 .ok_or_else(|| {
                     tracing::warn!(channel_ref = %channel_ref, "Username not found");
-                    Error::InvalidInput(format!("Channel not found: {}", channel_ref))
-                })
+                    Error::ChannelNotFound(channel_ref.to_string())
+                })?;
+            if peer_namespace(&peer) == PeerNamespace::User {
+                return Err(Error::UnsupportedPeer);
+            }
+            Ok(peer)
         }
     }
 
@@ -94,7 +99,10 @@ impl TelegramClient {
     }
 
     /// Find a subscribed peer by its bare numeric ID by walking the dialog list,
-    /// bounded by the resolve timeout. `Ok(None)` means no dialog matched. Shared
+    /// bounded by one resolve timeout. The whole traversal is needed to detect
+    /// distinct eligible peer namespaces with the same bare ID. Duplicate typed
+    /// identities are harmless; user peers are ineligible. `Ok(None)` means no
+    /// eligible dialog matched. Shared
     /// by [`Self::resolve_peer`] and `get_recent_messages`'s dialog fallback.
     pub(super) async fn find_dialog_peer(
         &self,
@@ -102,15 +110,15 @@ impl TelegramClient {
     ) -> Result<Option<grammers_client::peer::Peer>, Error> {
         with_timeout("iter_dialogs", self.timeouts.resolve_secs, async {
             let mut dialogs = self.client.iter_dialogs();
+            let mut selected = NumericSelection::new(id);
             while let Some(dialog) = dialogs.next().await.map_err(|e| {
                 tracing::error!(error = %e, "Failed to iterate dialogs");
                 Error::TelegramApi(format!("Failed to iterate dialogs: {}", e))
             })? {
-                if dialog.peer().id().bare_id() == Some(id) {
-                    return Ok(Some(dialog.peer().clone()));
-                }
+                let peer = dialog.peer();
+                selected.consider(peer_namespace(peer), peer.id().bare_id(), || peer.clone())?;
             }
-            Ok(None)
+            Ok(selected.finish())
         })
         .await
     }
@@ -142,5 +150,77 @@ pub(crate) fn username_to_resolve(identifier: &str) -> Option<&str> {
         None
     } else {
         Some(identifier)
+    }
+}
+
+/// A bounded dialog traversal must finish before a provisional numeric match is trusted.
+pub(super) struct NumericSelection<T> {
+    id: i64,
+    selected: Option<(PeerNamespace, T)>,
+}
+impl<T> NumericSelection<T> {
+    pub(super) fn new(id: i64) -> Self {
+        Self { id, selected: None }
+    }
+    pub(super) fn consider(
+        &mut self,
+        namespace: PeerNamespace,
+        id: Option<i64>,
+        value: impl FnOnce() -> T,
+    ) -> Result<(), Error> {
+        if namespace == PeerNamespace::User || id != Some(self.id) {
+            return Ok(());
+        }
+        match &self.selected {
+            Some((existing, _)) if *existing != namespace => {
+                Err(Error::AmbiguousChannel(self.id.to_string()))
+            }
+            Some(_) => Ok(()),
+            None => {
+                self.selected = Some((namespace, value()));
+                Ok(())
+            }
+        }
+    }
+    pub(super) fn finish(self) -> Option<T> {
+        self.selected.map(|(_, value)| value)
+    }
+}
+
+#[cfg(test)]
+mod selection_tests {
+    use super::*;
+    #[test]
+    fn numeric_resolution_ignores_users_and_deduplicates_typed_ids() {
+        let mut selection = NumericSelection::new(123);
+        selection
+            .consider(PeerNamespace::User, Some(123), || "user")
+            .expect("skip");
+        selection
+            .consider(PeerNamespace::Channel, Some(124), || "other")
+            .expect("skip");
+        selection
+            .consider(PeerNamespace::Channel, Some(123), || "channel")
+            .expect("first");
+        selection
+            .consider(PeerNamespace::Channel, Some(123), || "duplicate")
+            .expect("same peer");
+        assert_eq!(selection.finish(), Some("channel"));
+    }
+    #[test]
+    fn numeric_resolution_rejects_ambiguous_orderings() {
+        for order in [
+            [PeerNamespace::Chat, PeerNamespace::Channel],
+            [PeerNamespace::Channel, PeerNamespace::Chat],
+        ] {
+            let mut selection = NumericSelection::new(123);
+            selection
+                .consider(order[0], Some(123), || ())
+                .expect("provisional");
+            assert!(matches!(
+                selection.consider(order[1], Some(123), || ()),
+                Err(Error::AmbiguousChannel(_))
+            ));
+        }
     }
 }
