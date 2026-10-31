@@ -91,6 +91,6 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 # must be requested explicitly here (dev-only, never compiled into release builds).
 tokio = { version = "1.54.1", features = ["test-util"] }
 tempfile = "3.27.0"
-proptest = "1.11.0"
+proptest = "1.12.0"
 mockall = "0.15.0"
 filetime = "0.2.29"
