@@ -423,9 +423,10 @@ where
                         ClientRequest::CallToolRequest(call) => call.params.name.as_ref(),
                         other => other.method(),
                     };
-                    state
-                        .metrics
-                        .record_request(&request.id.clone().into_json_value().to_string(), tool);
+                    let _ = state.metrics.try_record_request(
+                        &request.id.clone().into_json_value().to_string(),
+                        tool,
+                    );
                 }
                 JsonRpcMessage::Notification(notification) => {
                     if let ClientNotification::CancelledNotification(cancelled) =
