@@ -1,8 +1,7 @@
 //! Type-safe ID wrappers with validation.
 //!
 //! These wrapper types prevent accidental ID mixups at compile time. Constructors
-//! reject nonpositive IDs; derived deserialization preserves compatibility and
-//! does not run those checks. Message IDs are unique only within a channel.
+//! and deserialization both reject nonpositive IDs. Message IDs are unique only within a channel.
 
 #![warn(missing_docs)]
 
@@ -12,9 +11,16 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Telegram channel ID (must be positive)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, JsonSchema)]
 #[serde(transparent)]
-pub struct ChannelId(i64);
+pub struct ChannelId(#[schemars(range(min = 1))] i64);
+
+impl<'de> Deserialize<'de> for ChannelId {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = i64::deserialize(deserializer)?;
+        Self::new(value).map_err(serde::de::Error::custom)
+    }
+}
 
 impl ChannelId {
     /// Construct a positive ID without contacting Telegram.
@@ -45,9 +51,16 @@ impl fmt::Display for ChannelId {
 }
 
 /// Telegram message ID (must be positive)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, JsonSchema)]
 #[serde(transparent)]
-pub struct MessageId(i64);
+pub struct MessageId(#[schemars(range(min = 1))] i64);
+
+impl<'de> Deserialize<'de> for MessageId {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = i64::deserialize(deserializer)?;
+        Self::new(value).map_err(serde::de::Error::custom)
+    }
+}
 
 impl MessageId {
     /// Construct a positive ID without contacting Telegram.
@@ -84,9 +97,16 @@ impl fmt::Display for MessageId {
 }
 
 /// Telegram user ID (must be positive)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, JsonSchema)]
 #[serde(transparent)]
-pub struct UserId(i64);
+pub struct UserId(#[schemars(range(min = 1))] i64);
+
+impl<'de> Deserialize<'de> for UserId {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = i64::deserialize(deserializer)?;
+        Self::new(value).map_err(serde::de::Error::custom)
+    }
+}
 
 impl UserId {
     /// Construct a positive ID without contacting Telegram.
@@ -119,6 +139,27 @@ impl fmt::Display for UserId {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn serde_constructor_invariants_ids() {
+        for raw in ["0", "-1", "-9223372036854775808", "\"1\"", "null", "1.5"] {
+            assert!(
+                serde_json::from_str::<ChannelId>(raw).is_err(),
+                "channel: {raw}"
+            );
+            assert!(
+                serde_json::from_str::<MessageId>(raw).is_err(),
+                "message: {raw}"
+            );
+            assert!(serde_json::from_str::<UserId>(raw).is_err(), "user: {raw}");
+        }
+        for raw in ["1", "9007199254740993", "9223372036854775807"] {
+            let id: ChannelId = serde_json::from_str(raw).expect("valid channel");
+            assert_eq!(serde_json::to_string(&id).expect("serialize"), raw);
+            assert!(serde_json::from_str::<MessageId>(raw).is_ok());
+            assert!(serde_json::from_str::<UserId>(raw).is_ok());
+        }
+    }
 
     // =========================================================================
     // ChannelId Tests

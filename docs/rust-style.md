@@ -48,7 +48,6 @@ New code follows the rules below unless it shares one of these explicit constrai
 | `src/mcp/server.rs` | Keep the complete single `#[tool_router]` impl visible to rmcp and entry points thin; its coordination role overrides cosmetic file-size rules. | Tool registration and self-contained schema tests protect the macro contract; operation bodies stay in `server/impl_*.rs`. |
 | `src/telegram/client.rs` | Keep client state and the complete thin trait dispatcher together so descendant operation modules can use private state. Pure cursor/result helpers and async resolution/session helpers live in focused siblings. | Existing helper, converter and operation tests protect the move; no field visibility widening. |
 | Established public fallible `new` constructors | Retain existing names and signatures for Rust API compatibility. New fallible APIs prefer `try_new`; compatibility migrations must be explicit. | [API inventory](rust-api.md) retains the supported/compatibility constructors; S6 retained these names after reviewing current callers; no unused aliases or conversion traits were added. |
-| **Temporary: legacy `Deserialize` for `ChannelId`, `MessageId`, `UserId`, `Username`, `ChannelName`** | Transparent derived deserialization bypasses constructors: IDs can be nonpositive; usernames can be empty, exceed 32 bytes or contain characters other than Unicode alphanumeric/underscore; channel names can be blank or remain untrimmed. Constructor invariants are not enforced on this path. | Task7 must add behavior-tested deserialization delegating to existing constructors/`TryFrom`, preserve valid numeric/string JSON forms, and remove this exception before final acceptance. Rejecting formerly accepted constructor-invalid values is an intentional 0.23 compatibility migration; S6 changes no behavior. See the [exact API disposition](rust-api.md#temporary-legacy-deserialize-exception-task7). |
 | Legacy diagnostic getters and best-effort recorders | Established getters retain conservative fallbacks without inspecting poisoned contents: zero tokens/count, empty replay/identities, absent timestamp/correlation. These lose failure information; `refund` refuses unavailable state. | New/internal consumers use fallible `try_*` snapshots or independent write observations. Status distinguishes absent from unavailable; replay failure is a typed error. Keep this narrow compatibility exception documented in the [API inventory](rust-api.md). |
 | Poison/isolation regression tests | Controlled unit-test threads and isolated child tests intentionally panic to exercise interrupted-state handling and process isolation. | Join poison threads and inspect child status. This test-only exception never authorizes catching production panics to resume protected state. |
 
@@ -122,10 +121,8 @@ made `Copy` without changing their meaning.
 
 Required: keep distinct `ChannelId`, `MessageId`, `UserId`, and name types. Validate at
 construction and at external deserialization boundaries; no conversion may bypass the
-invariant. The explicitly temporary legacy `Deserialize` exception above remains an
-inherited deviation for the five named wrappers until Task7; S6 does not fix or establish
-strict compliance on that path. Keep flexible scalar coercion in MCP request parsing,
-not in the domain.
+invariant. IDs and names deserialize through their validating constructors. Keep flexible
+scalar coercion in MCP request parsing, not in the domain.
 Use named option structs or enums when positional flags are ambiguous. JSON booleans
 with explicit field names need not become JSON enums merely for internal Rust style.
 Internal `AlbumMode::{Collapse, Separate}` names page/walk behavior; named domain flags

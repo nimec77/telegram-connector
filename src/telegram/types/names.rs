@@ -1,6 +1,6 @@
 //! String wrappers for Telegram entities, validated by their constructors.
 //!
-//! Derived deserialization preserves compatibility and bypasses constructor checks.
+//! Deserialization delegates to the constructors and preserves their invariants.
 
 #![warn(missing_docs)]
 
@@ -11,9 +11,16 @@ use std::fmt;
 
 /// Observed Telegram username (alphanumeric + underscore, non-empty, at most 32 bytes).
 /// Short legacy and collectible usernames need not meet new-registration length rules.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, JsonSchema)]
 #[serde(transparent)]
-pub struct Username(String);
+pub struct Username(#[schemars(length(min = 1))] String);
+
+impl<'de> Deserialize<'de> for Username {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = String::deserialize(deserializer)?;
+        Self::new(value).map_err(serde::de::Error::custom)
+    }
+}
 
 impl Username {
     /// Construct an observed username without trimming or removing `@`.
@@ -74,9 +81,16 @@ impl fmt::Display for Username {
 }
 
 /// Non-empty channel/chat name
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(transparent)]
-pub struct ChannelName(String);
+pub struct ChannelName(#[schemars(length(min = 1))] String);
+
+impl<'de> Deserialize<'de> for ChannelName {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = String::deserialize(deserializer)?;
+        Self::new(value).map_err(serde::de::Error::custom)
+    }
+}
 
 impl ChannelName {
     /// Trim surrounding whitespace and construct a display name.
@@ -109,6 +123,35 @@ impl fmt::Display for ChannelName {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn serde_constructor_invariants_names() {
+        for raw in [
+            String::new(),
+            " ".into(),
+            "@name".into(),
+            "bad-name".into(),
+            "a".repeat(33),
+            "я".repeat(17),
+        ] {
+            assert!(
+                serde_json::from_value::<Username>(serde_json::json!(raw)).is_err(),
+                "{raw:?}"
+            );
+        }
+        for raw in ["", " ", "\n\t"] {
+            assert!(serde_json::from_value::<ChannelName>(serde_json::json!(raw)).is_err());
+        }
+        let name: ChannelName = serde_json::from_str(r#""  Новости  ""#).expect("nonblank");
+        assert_eq!(name.as_str(), "Новости");
+        for raw in ["a", "1", "я", "a_b"] {
+            let username: Username =
+                serde_json::from_value(serde_json::json!(raw)).expect("observed name");
+            assert_eq!(username.as_str(), raw);
+        }
+        assert!(serde_json::from_str::<Username>("12").is_err());
+        assert!(serde_json::from_str::<ChannelName>("12").is_err());
+    }
 
     // =========================================================================
     // Username Tests
