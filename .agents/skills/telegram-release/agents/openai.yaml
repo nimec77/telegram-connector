@@ -1,3 +1,0 @@
-interface:
-  display_name: "Telegram Release"
-  short_description: "Prepare a single-crate Telegram MCP release"

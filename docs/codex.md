@@ -13,14 +13,9 @@ Claude's `Task`, `Skill`, `AskUserQuestion`, `opus`/`sonnet`, or absent ticket f
 The local settings contained permission allowlists, no hooks. Personal permissions
 are not portable project policy and have not been copied.
 
-Two concrete problems were found while porting workflows:
-
-- The release skill described a Synapse workspace and read `[workspace.package]`.
-  This crate uses `[package]`; the old workflow stopped before preparing a release.
-- The changelog helper preferred tag `v0.22.4` over the newer `v0.22.6` release
-  commit. Its fallback delimiter also failed with macOS's awk. The port uses
-  first-parent release boundaries and portable tab delimiters, and does not equate
-  zero new commits with a verified changelog.
+The old release skill described a Synapse workspace and read `[workspace.package]`.
+This crate uses `[package]`. The replacement is a focused version-bump skill that
+updates the package and lockfile together without imposing a release workflow.
 
 `AGENTS.md` is now canonical. The former `CLAUDE.md` and `.claude/` directory have
 been removed. Codex discovers root project instructions from `AGENTS.md` and
@@ -96,30 +91,24 @@ spend account rate-limit tokens. For protocol diagnosis, use the
 live calls, the existing `python3 scripts/mcp_probe.py <binary> <calls.json>`
 provides round-trip timings. Both require an authenticated session for this server.
 
-## Repository skills
+## Version-bump skill
 
-These skills are checked in and require no global installation. Start a new Codex
-session after adding them. Use their `$name` invocation or let Codex select them
-for a matching request.
+The checked-in `$bump-version` skill needs no global installation. Start
+a new Codex session to discover it, then request, for example:
 
-| Skill | Purpose | Boundary |
-| --- | --- | --- |
-| `$telegram-changelog` | Reconstruct and deduplicate Unreleased notes from local Git history. | Leaves released sections and version numbers alone; no publication. |
-| `$telegram-release` | Prepare a single-crate patch/minor/major release and verify version/lockfile/changelog agreement. | Respects dry runs and preparation-only requests; commit/tag/push/publication follow the requested scope. |
-
-The changelog helper is Bash + Git; no executable bit is required. The bundled
-history tests run with Python's standard library:
-
-```bash
-python3 .agents/skills/telegram-changelog/scripts/test_history.py
+```text
+Use $bump-version to bump the patch version.
 ```
 
-`just skills-check` runs these tests and the Bash syntax check. CI runs the same
-helper checks in a separate job; Python is not required for the Rust quality gate.
+It accepts patch, minor, major, or an explicit target version; reads
+`[package].version`; updates `Cargo.toml` and `Cargo.lock`; and runs the Rust gate.
+Dry runs leave files untouched. Unrelated edits are preserved, and an empty
+Unreleased section does not block a version-only bump. Release notes and publication
+follow a separately requested release scope.
 
-The skills contain no Claude tool declarations, fixed model names, or ticket-state
-requirements. Superpowers is useful when installed, but is not required to build,
-test, or use these repository workflows.
+The skill is self-contained Markdown with Codex UI metadata. There are no helper
+scripts or extra CI dependencies. Superpowers is useful when installed but is not
+required to build, test, or use the repository skill.
 
 ## Where the former skills went
 
@@ -134,7 +123,7 @@ consolidation rather than a mechanical copy of overlapping orchestrators:
 | `run-reviewer`, `qa`, `validate` | Relevant tests, `just check`, independent review, and Superpowers review/verification skills when available. |
 | `docs-update`, `sync-phases` | Maintain the affected docs and one active plan checklist; no parallel ticket/phase state system. |
 | `project-conventions` and the ast-index rule | Root AGENTS.md, docs/conventions.md, and docs/memory.md. |
-| `changelog-from-commits`, `release` | The two repository skills above, with the identified failures corrected. |
+| `changelog-from-commits`, `release` | Replaced by the focused `$bump-version` skill; broader release work follows the user's requested scope. |
 | `rust-async-patterns`, `rust-best-practices`, `rust-learner`, `rust-refactor-helper` | Keep optional Rust references only when useful. Use current upstream crate docs and actual IDE/LSP capabilities; no copied tutorials or assumed Codex LSP tool. |
 
 ## Additional tools worth integrating

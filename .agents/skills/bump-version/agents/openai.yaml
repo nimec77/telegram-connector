@@ -1,0 +1,3 @@
+interface:
+  display_name: "Bump Version"
+  short_description: "Bump the crate version and synchronize Cargo.lock"

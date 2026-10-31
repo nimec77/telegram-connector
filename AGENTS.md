@@ -98,9 +98,9 @@ the installed ast-index skill when available.
 - When Superpowers is installed, use its planning, TDD, debugging, review, and
   verification workflows as appropriate. This repository's no-routine-checkpoint
   workflow takes precedence over generic skill approval pauses.
-- Repository skills in `.agents/skills/` are discovered by Codex:
-  `$telegram-changelog` updates unreleased notes from Git history;
-  `$telegram-release` prepares a single-crate release. Neither implies publication.
+- Repository skills in `.agents/skills/` are discovered by Codex.
+  `$bump-version` updates the crate version and lockfile for patch, minor,
+  major, or explicit version requests.
 - Delegate independent bounded tasks when available and authorized; assign file
   ownership and acceptance criteria. Otherwise complete the work inline. Use only
   actual available tools/models; do not rely on Claude `Task`/`Skill` APIs.

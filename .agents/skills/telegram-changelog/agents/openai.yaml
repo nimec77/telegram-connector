@@ -1,3 +1,0 @@
-interface:
-  display_name: "Telegram Changelog"
-  short_description: "Update release notes from local Git history"

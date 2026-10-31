@@ -13,7 +13,7 @@ portable instructions. Preserve the existing Rust architecture and MCP contract.
   settings. There are no hooks. Most ticket orchestrators overlap with Superpowers
   and require Claude-only tools, models, and absent ticket artifacts.
 - The old release skill targets Synapse and `[workspace.package]`; this repository
-  has one `[package]`. The changelog helper is useful and portable.
+  has one `[package]`. The requested replacement is a version-only bump workflow.
 - CI lints all targets; `just check` currently does not. Nightly is used by CI but
   not selected by a checked-in toolchain file. Edition 2024 alone does not select it.
 
@@ -24,7 +24,7 @@ portable instructions. Preserve the existing Rust architecture and MCP contract.
 2. Port all 21 skills: retains every entry point, but also duplicate orchestration,
    unavailable tools/models, obsolete paths, and unrelated release assumptions.
 3. **Selected by the implementer:** Codex as the primary workflow, with concise
-   canonical instructions, two scoped repository skills, portable MCP examples,
+   canonical instructions, one focused version-bump skill, portable MCP examples,
    and removal of obsolete Claude-specific files as requested. It addresses the
    actual integration gaps with less instruction duplication. The request and existing no-approval-gate workflow
    authorize proceeding without another design checkpoint.
@@ -33,10 +33,10 @@ portable instructions. Preserve the existing Rust architecture and MCP contract.
 
 - Root `AGENTS.md`: onboarding, architecture, ast-index rules, verification,
   durable memory, and code review rules. Remove `CLAUDE.md` and `.claude/`.
-- `.agents/skills/telegram-changelog/`: adapt the existing changelog helper and
-  reference. Resolve supporting resources relative to the skill directory.
-- `.agents/skills/telegram-release/`: single-crate release preparation, with
-  explicit separation between preparation and requested tagging/publication.
+- `.agents/skills/bump-version/`: update `[package].version` and the root package
+  in `Cargo.lock` for patch/minor/major or explicit version requests. Preserve
+  unrelated edits, support dry runs, and validate with the Rust gate. Remove the
+  superseded changelog/release skills and their helper scripts/tests.
 - `docs/codex.md`: analysis, setup, migration inventory, recommended integrations,
   optional coverage/security tooling, and the limits of offline verification.
 - `.codex/config.toml.example`: opt-in configuration with placeholder paths,
@@ -59,7 +59,7 @@ portable instructions. Preserve the existing Rust architecture and MCP contract.
 ## Verification
 
 Run the existing Rust gate with locked dependencies and all-target clippy; parse
-TOML and skill metadata; exercise the migrated helper in temporary Git repositories
-covering tags, release commits, no boundary, and no new commits. Test skill behavior
-in fresh contexts before and after adaptation. Review the final diff independently.
+TOML and skill metadata. Exercise the version-bump workflow in a disposable Rust
+crate, including an unrelated edit and empty Unreleased notes. Check that dry runs
+leave files unchanged. Review the integration for stale references to removed skills.
 Live Codex-to-Telegram authentication remains a documented manual check.
