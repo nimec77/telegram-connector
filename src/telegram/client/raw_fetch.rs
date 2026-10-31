@@ -4,8 +4,7 @@
 use super::raw_page::{raw_peer_id, unpack_page};
 use super::raw_pager::PAGE_LIMIT;
 use crate::telegram::envelope::EntityLookup;
-use grammers_client::Client;
-use grammers_client::tl;
+use grammers_client::{Client, tl};
 use grammers_mtsender::InvocationError;
 use grammers_session::types::{PeerId, PeerKind, PeerRef};
 use std::collections::HashMap;

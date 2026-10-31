@@ -20,9 +20,8 @@ use crate::telegram::types::{
     MediaFetchOutcome, MediaType, MessageId, QueryMetadata, SearchParams, SearchResult,
     TranscriptionOutcome, TranscriptionState, Username,
 };
-use grammers_client::Client;
 use grammers_client::media::Media;
-use grammers_client::tl;
+use grammers_client::{Client, tl};
 use grammers_mtsender::SenderPool;
 use grammers_session::storages::SqliteSession;
 use std::path::{Path, PathBuf};

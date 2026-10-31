@@ -241,10 +241,8 @@ async fn elapsed_setup_does_not_restart_the_poll_budget() {
 
 #[tokio::test(start_paused = true)]
 async fn cancellation_stops_scheduling_polls_and_drops_inflight_work() {
-    use std::sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-    };
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     struct Inflight(Arc<AtomicBool>);
     impl Drop for Inflight {
         fn drop(&mut self) {

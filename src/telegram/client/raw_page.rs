@@ -2,8 +2,7 @@
 //! by-id fetch: page unpacking, peer/id extraction, and buffer fill.
 
 use crate::telegram::envelope::EntityLookup;
-use grammers_client::Client;
-use grammers_client::tl;
+use grammers_client::{Client, tl};
 use std::collections::VecDeque;
 use std::sync::Arc;
 

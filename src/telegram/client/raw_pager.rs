@@ -12,8 +12,7 @@ use super::raw_page::{
 };
 use crate::telegram::envelope::EntityLookup;
 use chrono::{DateTime, Utc};
-use grammers_client::Client;
-use grammers_client::tl;
+use grammers_client::{Client, tl};
 use grammers_mtsender::InvocationError;
 use grammers_session::types::PeerRef;
 use std::collections::VecDeque;

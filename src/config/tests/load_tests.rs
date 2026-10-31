@@ -1,8 +1,7 @@
 //! File-based Config::load_from tests — every env-mutating loader in one auditable place.
 use super::EnvGuard;
 use crate::config::*;
-use std::env;
-use std::fs;
+use std::{env, fs};
 
 #[ignore = "for CI/CD passing tests"]
 #[test]

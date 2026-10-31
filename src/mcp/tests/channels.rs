@@ -3,9 +3,10 @@
 use crate::mcp::server::McpServer;
 use crate::mcp::tools::{ChannelsResponse, GetChannelInfoRequest, GetChannelsRequest};
 use crate::rate_limiter::MockRateLimiterTrait;
-use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::Username;
-use crate::telegram::{Channel, ChannelId, ChannelName, ChannelPage, ChatType};
+use crate::telegram::{
+    Channel, ChannelId, ChannelName, ChannelPage, ChatType, MockTelegramClientTrait,
+};
 use crate::test_helpers::{create_test_channel_named, permissive_limiter};
 use rmcp::handler::server::common::RequestId;
 use rmcp::handler::server::wrapper::Parameters;

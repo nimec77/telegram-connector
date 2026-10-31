@@ -20,7 +20,7 @@ const MAX_CAP_ITERATIONS: usize = 5;
 
 /// JPEG SOI magic — cheap already-JPEG sniff for the passthrough branch.
 fn is_jpeg(bytes: &[u8]) -> bool {
-    bytes.starts_with(&[0xFF, 0xD8])
+    bytes.starts_with(&[0xff, 0xd8])
 }
 
 /// A processed image ready to be returned as an MCP image content block.
@@ -194,7 +194,7 @@ mod tests {
         let decoded = base64::engine::general_purpose::STANDARD
             .decode(&processed.base64_jpeg)
             .unwrap();
-        assert_eq!(&decoded[..2], [0xFF, 0xD8], "output must be JPEG");
+        assert_eq!(&decoded[..2], [0xff, 0xd8], "output must be JPEG");
     }
 
     #[test]

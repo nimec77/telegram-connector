@@ -1,93 +1,49 @@
 # Development Conventions
 
-## TDD Workflow
+The [Rust coding manual](rust-style.md) is authoritative for Rust style, API design,
+errors, ownership, concurrency, documentation, and tests. Its adoption exceptions cover
+extracted test globs, the rmcp router layout, established constructors/builders, and
+pending S2 failure/safety and S4 import migrations. Follow [AGENTS.md](../AGENTS.md)
+for repository workflow, source navigation, dependency constraints, and review invariants.
 
-`RED → GREEN → REFACTOR` — write a failing test first, write minimal code to pass, refactor
-while green. **No production code without a failing test.**
+## Development workflow
 
-## KISS Principles
+Write a failing observable behavior test before changing production behavior, then
+implement and refactor while green (manual §9). Documentation and configuration changes
+need relevant validation rather than tests that match their wording. Keep changes focused;
+choose abstractions and dependencies for a concrete need.
 
-| Principle | Rule |
-|-----------|------|
-| Single Responsibility | One module = one purpose; compose small functions, no god functions |
-| No Premature Abstraction | Extract only after the Rule of Three (third duplication) |
-| Explicit over Implicit | Clear signatures; defaults as named constants, not magic numbers |
-| Flat over Nested | Prefer flat module structure; early returns / `let-else` guard clauses over nesting |
-| Delete over Comment | Remove dead code, don't comment it out (git has history) |
-| Minimal Dependencies | Don't add a crate for what a 3-line function can do |
-
-## Code Style
-
-- **Format:** `cargo fmt` (default settings); run `cargo fmt --all` after every change
-- **Lint:** `cargo clippy --locked --all-targets -- -D warnings`
-- **Naming:** snake_case functions, PascalCase types
-- **Docs:** `///` on public API only
-- **Line length:** 100 characters
-
-## Module System
-
-**No `mod.rs` files.** File-as-module pattern: `src/mcp.rs` declares `pub mod server;` etc.,
-submodules live in `src/mcp/`. Large `#[cfg(test)]` blocks move to `#[path]`-included sibling
-test files (`src/mcp/tests/*.rs`, `src/telegram/tests/*.rs`, `src/config/tests.rs`).
-
-## Error Handling
-
-| Layer | Crate | Usage |
-|-------|-------|-------|
-| Library | `thiserror` | Typed error variants in `src/error.rs` |
-| Application | `anyhow` | `.context("...")` at each layer + `?` propagation |
-
-- **NEVER `unwrap()`** in production code; never swallow errors with `unwrap_or_default()`
-- No stringly-typed errors (`Result<_, String>`) — use the typed enum
-- `expect()` with a clear message only in tests or truly impossible situations
-- Handle `Option` via `.context(...)`/`ok_or`, not `.unwrap()`
-
-## Domain Types (DDD)
-
-Wrap primitives in newtypes — `ChannelId(i64)`, `MessageId(i64)`, `UserId(i64)`,
-`Username(String)`, `ChannelName(String)` — so the compiler prevents argument mix-ups.
-Put behavior on the type (`Message::link()`), don't scatter free functions over anemic data.
-
-## Trait-Based Abstraction
-
-External dependencies live behind traits for testability: `TelegramClientTrait` /
-`RateLimiterTrait` with `#[cfg_attr(test, mockall::automock)]` + `#[async_trait]`.
-Shared state via `Arc<T>`; `McpServer<T, R>` composes `Arc<T>` + `Arc<R>` (generic DI, mocks
-in tests). Concrete types elsewhere — no generics until proven necessary.
-
-## Testing
+## Test locations
 
 | Type | Location | Tools |
-|------|----------|-------|
+| --- | --- | --- |
 | Unit | `#[cfg(test)]` / `#[path]` sibling files | `#[test]`, `mockall` |
 | Integration | `tests/` directory | `tokio::test` |
-| Property-based | Within unit/integration | `proptest` |
+| Property-based | Within unit/integration tests | `proptest` |
 
-- **Coverage target:** 80%+
-- Test public behavior, not private internals (internals-based tests break on refactor)
-- Don't write tests that only exercise the mock — they test nothing
+MCP tests live in `src/mcp/tests/`; shared fixtures live in `src/test_helpers.rs`.
+The coverage target is 80%+. Prioritize observable production decisions and invariants;
+a successful mock expectation alone is insufficient evidence.
 
-## Logging
+## Formatting and quality gate
 
-- Use `tracing` for structured async logging
-- **Never log:** phone numbers, API hashes, passwords, session tokens
-- Use the redaction helpers (`logging::redact_phone`) for sensitive data
-
-## Git Commits
-
-Branch, commit, and open PRs freely (in-house flow, no approval gate).
-
-- Small, atomic, one logical change; imperative mood
-- Format: `<type>: <description>` — types: `feat`, `fix`, `test`, `refactor`, `docs`, `chore`
-
-## Pre-Commit Checklist
+`rust-toolchain.toml` selects nightly with rustfmt and clippy. Run `cargo fmt --all`
+after Rust changes; the checked-in `rustfmt.toml` implements manual §1. `just check`
+runs the same gate as CI:
 
 ```bash
-cargo fmt --all --check && cargo clippy --locked --all-targets -- -D warnings && cargo test --locked
+cargo fmt --all --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
 ```
 
-All must pass before commit.
+All must pass before commit. Use `--offline` for Cargo dependency resolution when
+cached; tests use mocks and need no Telegram credentials or live session.
 
-`just check` runs the same gate as CI. `rust-toolchain.toml` selects nightly with
-rustfmt and clippy. Repository agent instructions live in `AGENTS.md`; Codex setup
-and optional development tools are documented in `docs/codex.md`.
+## Git commits
+
+Branch, commit, and open PRs within the authorized task without routine approval gates.
+Preserve unrelated work and make small, atomic commits with an imperative description.
+Use `<type>: <description>` (`feat`, `fix`, `test`, `refactor`, `docs`, or `chore`).
+Keep policy/formatting-only commits separate from behavioral changes (manual §1 and §9).
+Codex setup and optional development tools are documented in [codex.md](codex.md).

@@ -1,11 +1,10 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use std::sync::Arc;
-use telegram_connector::{
-    Cli, Config, RateLimiter, TelegramClientTrait, logging,
-    mcp::server::McpServer,
-    telegram::{auth::interactive_auth, client::TelegramClient},
-};
+use telegram_connector::mcp::server::McpServer;
+use telegram_connector::telegram::auth::interactive_auth;
+use telegram_connector::telegram::client::TelegramClient;
+use telegram_connector::{Cli, Config, RateLimiter, TelegramClientTrait, logging};
 use tokio::signal;
 use tokio::sync::oneshot;
 

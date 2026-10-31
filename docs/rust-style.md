@@ -1,10 +1,12 @@
 # Rust coding manual for Telegram MCP Connector
 
-Version: proposed 2026-10-31. This manual describes the target standard and adoption
-exceptions; it does not claim the existing code already complies. The accompanying
-[alignment plan](superpowers/plans/2026-10-31-rust-standards-alignment.md) schedules adoption.
-Until that migration updates the project instructions, existing AGENTS.md and conventions
-remain authoritative. This is a Cargo/Tokio application with an exported library surface.
+Version: adopted 2026-10-31. This manual is the authoritative Rust style policy for this
+Cargo/Tokio application and its exported library surface. [AGENTS.md](../AGENTS.md)
+defines repository workflow and operational invariants; [conventions.md](conventions.md)
+provides development commands and test locations. This policy includes the transitional
+exceptions below; adoption does not claim that all existing code already complies. The
+[alignment plan](superpowers/plans/2026-10-31-rust-standards-alignment.md) schedules the
+remaining migration.
 
 ## External guide and applicability
 
@@ -36,11 +38,26 @@ Generated dependency code is outside this manual. Project-owned generated schema
 subject to contract tests. A migration task must distinguish Rust API compatibility from
 MCP wire compatibility: one can change without the other.
 
+### Adoption exceptions
+
+These scoped exceptions preserve existing architecture and compatibility while migration
+work receives behavior tests and review. New code follows the rules below unless it shares
+one of these explicit constraints.
+
+| Scope | Exception and reason | Validation / retirement |
+| --- | --- | --- |
+| Extracted `#[cfg(test)]` / `#[path]` test modules | Test-local `super::*` imports remain permitted so fixtures can exercise their parent module without maintaining a duplicate prelude. | Preserve offline behavior tests; this is an intentional test-only exception. |
+| `src/mcp/server.rs` | Keep the complete single `#[tool_router]` impl visible to rmcp and entry points thin; its coordination role overrides cosmetic file-size rules. | Tool registration and self-contained schema tests protect the macro contract; operation bodies stay in `server/impl_*.rs`. |
+| Established public fallible `new` constructors | Retain existing names and signatures for Rust API compatibility. New fallible APIs prefer `try_new`; compatibility migrations must be explicit. | S3 reviews the supported public surface; S6 reviews constructor ergonomics without silent breaking renames. |
+| Existing consuming `with_*` builders | Retain their consuming names/signatures, including established fallible builders; the conversion naming rules do not require a rename. | S6 adds targeted `#[must_use]` checks for consuming returns and reviews fallible API documentation. |
+| Existing poison recovery, signal setup, and config environment tests | S2's target failure/safety policies are pending; this adoption makes no behavioral change or claim that `EnvGuard` proves process-wide safety. Do not add new poisoned-state recovery, fallible signal `expect`, or environment mutation outside the existing guard. | S2 must test refused admission, unavailable diagnostics with working transport, startup errors, and process-safe configuration tests before retiring the corresponding exceptions. |
+| Existing production glob imports and broad parent glue | S4's explicit-import migration is pending; preserve existing imports in this formatting-only adoption. New production imports use explicit dependencies. | S4 inventories affected leaves, checks wildcard imports, and reruns tool/schema tests and the full gate. |
+
 ## 1. Formatting and imports
 
 Required: format with the selected toolchain's `cargo fmt --all`; CI checks formatting.
 Four-space indentation and a 100-column target are formatter decisions, not manual
-alignment exercises. Proposed `rustfmt.toml`:
+alignment exercises. The checked-in `rustfmt.toml` is:
 
 ```toml
 edition = "2024"
@@ -51,7 +68,10 @@ hex_literal_case = "Lower"
 format_macro_matchers = true
 ```
 
-Some options require nightly rustfmt; verify support in the pinned toolchain. Escape
+The import granularity, hex casing and macro matcher options require nightly rustfmt.
+All settings were accepted without warnings by rustfmt 1.11.0-nightly
+(92b5b8c87c 2026-10-29), selected during adoption; `rust-toolchain.toml` remains the
+source of toolchain selection. Escape
 invisible characters in ordinary source literals. A format skip needs a local reason,
 such as a readable fixture table. Keep formatting-only commits separate from behavior.
 [Rust formatting baseline](https://doc.rust-lang.org/style-guide/).
