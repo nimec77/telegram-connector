@@ -7,8 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.9] - 2026-10-31
+
 ### Fixed
 
+- The `$bump-version` skill updates `CHANGELOG.md` alongside the manifest and
+  lockfile, moving Unreleased notes into a dated target-version section.
 - Config parse failures report only line and column, preventing literal or
   environment-expanded credentials from appearing in error messages, debug output,
   or nested error chains.
