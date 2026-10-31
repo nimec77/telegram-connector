@@ -69,9 +69,9 @@ the installed ast-index skill when available.
 - File-as-module layout throughout; no `mod.rs`. Large tests use sibling files
   via `#[path]`. MCP tests live in `src/mcp/tests/`; shared fixtures in
   `src/test_helpers.rs`.
-- Existing environment-mutating config tests use `EnvGuard`/`ENV_LOCK` from
-  `src/config/tests.rs`, including restoration on panic. The manual records the pending
-  S2 process-wide safety review; a cooperative lock alone is not a safety proof.
+- Config expansion tests use injected lookups; actual environment/path loader tests
+  run in subprocesses configured through `Command::env`/`env_remove`. Never mutate the
+  parent process environment. Global logging initialization is also subprocess-isolated.
 - Config resolution: `--config` → `TELEGRAM_MCP_CONFIG` → the platform config
   directory. See README for platform paths. Config supports `${VAR}` expansion.
 
@@ -85,7 +85,7 @@ the installed ast-index skill when available.
   checked-in formatter settings (§1). Never commit config/session files. The existing
   MCP tool boundary converts errors to strings as required by its API.
 - The manual’s adoption exceptions preserve extracted test globs, the macro router
-  layout, established fallible `new` and consuming `with_*` APIs, and existing S2/S4
+  layout, established fallible `new` and consuming `with_*` APIs, and the pending S4 import
   migration sites; they do not authorize new violations outside those scopes.
 - Keep changes focused and add no dependency for an operation existing code can
   perform simply.

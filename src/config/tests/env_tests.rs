@@ -208,4 +208,5 @@ fn non_unicode_env_secret_child() {
         "secret-bearing source must be discarded"
     );
     assert!(format!("{err:#}").contains("NON_UNICODE_CONFIG_SECRET"));
+    assert!(format!("{err:#}").contains("line 3"));
 }

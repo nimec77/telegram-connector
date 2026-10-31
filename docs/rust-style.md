@@ -50,7 +50,8 @@ one of these explicit constraints.
 | `src/mcp/server.rs` | Keep the complete single `#[tool_router]` impl visible to rmcp and entry points thin; its coordination role overrides cosmetic file-size rules. | Tool registration and self-contained schema tests protect the macro contract; operation bodies stay in `server/impl_*.rs`. |
 | Established public fallible `new` constructors | Retain existing names and signatures for Rust API compatibility. New fallible APIs prefer `try_new`; compatibility migrations must be explicit. | S3 reviews the supported public surface; S6 reviews constructor ergonomics without silent breaking renames. |
 | Existing consuming `with_*` builders | Retain their consuming names/signatures, including established fallible builders; the conversion naming rules do not require a rename. | S6 adds targeted `#[must_use]` checks for consuming returns and reviews fallible API documentation. |
-| Existing poison recovery, signal setup, and config environment tests | S2's target failure/safety policies are pending; this adoption makes no behavioral change or claim that `EnvGuard` proves process-wide safety. Do not add new poisoned-state recovery, fallible signal `expect`, or environment mutation outside the existing guard. | S2 must test refused admission, unavailable diagnostics with working transport, startup errors, and process-safe configuration tests before retiring the corresponding exceptions. |
+| Legacy diagnostic getters and best-effort recorders | Established getters retain conservative fallbacks without inspecting poisoned contents: zero tokens/count, empty replay/identities, absent timestamp/correlation. These lose failure information; `refund` refuses unavailable state. | New/internal consumers use fallible `try_*` snapshots or independent write observations. Status distinguishes absent from unavailable; replay failure is a typed error. Keep this narrow compatibility exception documented in the API inventory. |
+| Poison/isolation regression tests | Controlled unit-test threads and isolated child tests intentionally panic to exercise interrupted-state handling and process isolation. | Join poison threads and inspect child status. This test-only exception never authorizes catching production panics to resume protected state. |
 | Existing production glob imports and broad parent glue | S4's explicit-import migration is pending; preserve existing imports in this formatting-only adoption. New production imports use explicit dependencies. | S4 inventories affected leaves, checks wildcard imports, and reruns tool/schema tests and the full gate. |
 
 ## 1. Formatting and imports
@@ -173,20 +174,23 @@ by a blanket substitution to another mutex crate. Poison indicates an interrupte
 section; Rust permits inspecting its state, but doing so is not this project's default
 recovery policy. [Mutex semantics](https://doc.rust-lang.org/std/sync/struct.Mutex.html).
 
-Target failure policy: a poisoned admission-control bucket refuses new RPCs with a typed
+A poisoned admission-control bucket refuses new RPCs with a typed
 internal error; a poisoned metrics/replay store becomes unavailable while transport still
 works. Do not reset the limiter to a full bucket, inspect poisoned contents, or falsely
 report failed replay as a successfully empty history. Tests need an explicit policy too.
-This replaces current poison recovery only during the scheduled behavior-tested migration.
+Independent atomic counters and healthy locks remain usable. Existing diagnostic wrappers
+conservatively hide untrusted state for Rust API compatibility; internal diagnostics use
+fallible snapshots and must not interpret wrapper fallbacks as valid recovered data.
 
 ## 7. Unsafe code, toolchains and macros
 
 Required: keep product code safe. Any unavoidable unsafe block needs a local `SAFETY:`
 argument identifying all callers, lifetimes and synchronization obligations. Performance
-justifications need measurements. Current environment-mutating tests are a migration item:
-a mutex serializing cooperating tests does not prove every library/thread avoids environment
-reads. Prefer subprocess tests configured through `Command::env` or pure expansion helpers.
-Do not add more mutation outside the existing EnvGuard while it is still the project policy.
+justifications need measurements. Config tests use pure injected expansion lookups and
+subprocesses configured through `Command::env`/`env_remove` for real loader/path behavior.
+Neither parent nor child mutates its own environment; cooperative mutexes cannot prove
+process-wide environment safety. Process-global logging initialization also stays in child
+tests so parallel unrelated tests cannot acquire a global subscriber.
 
 Nightly selection is independent from using unstable language features. Preserve the
 required toolchain; do not introduce `#![feature]` simply because nightly is available.

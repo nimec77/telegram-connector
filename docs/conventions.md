@@ -3,8 +3,9 @@
 The [Rust coding manual](rust-style.md) is authoritative for Rust style, API design,
 errors, ownership, concurrency, documentation, and tests. Its adoption exceptions cover
 extracted test globs, the rmcp router layout, established constructors/builders, and
-pending S2 failure/safety and S4 import migrations. Follow [AGENTS.md](../AGENTS.md)
-for repository workflow, source navigation, dependency constraints, and review invariants.
+documented conservative diagnostic wrappers and pending S4 import migration. Follow
+[AGENTS.md](../AGENTS.md) for repository workflow, source navigation, dependency constraints,
+and review invariants.
 
 ## Development workflow
 
@@ -22,6 +23,11 @@ choose abstractions and dependencies for a concrete need.
 | Property-based | Within unit/integration tests | `proptest` |
 
 MCP tests live in `src/mcp/tests/`; shared fixtures live in `src/test_helpers.rs`.
+Environment expansion uses pure injected lookups in tests. Full environment/path loaders
+and global logging initialization run in re-executed test subprocesses configured by
+`Command::env`/`env_remove`; parent tests invoke each ignored child entrypoint. No test
+mutates its own process environment. Intentional poison-thread/child panics verify refused
+admission and process isolation; join/capture their outcomes deterministically.
 The coverage target is 80%+. Prioritize observable production decisions and invariants;
 a successful mock expectation alone is insufficient evidence.
 

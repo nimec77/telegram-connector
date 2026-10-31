@@ -4,7 +4,7 @@ use rmcp::model::{
     ProgressNotificationParam, ProgressToken, RequestId, ServerNotification, ServerResult,
 };
 use std::collections::VecDeque;
-use std::sync::{Mutex, PoisonError};
+use std::sync::Mutex;
 
 /// Channel-free fake: receive() pops from a queue, send() records JSON.
 struct FakeTransport {
@@ -41,7 +41,7 @@ impl Transport<RoleServer> for FakeTransport {
             }
             let json = serde_json::to_string(&item).map_err(std::io::Error::other)?;
             sent.lock()
-                .unwrap_or_else(PoisonError::into_inner)
+                .expect("healthy fake transport records")
                 .push(json);
             Ok(())
         }
@@ -132,7 +132,7 @@ async fn send_response_updates_metrics_and_buffer() {
     assert_eq!(buffered[0].size_bytes, buffered[0].payload.len());
 
     // Verify the buffered recovery copy is byte-identical to what the inner transport wrote.
-    let sent_entries = sent_handle.lock().unwrap_or_else(PoisonError::into_inner);
+    let sent_entries = sent_handle.lock().expect("healthy fake transport records");
     assert_eq!(sent_entries.len(), 1);
     assert_eq!(sent_entries[0], buffered[0].payload);
 }
@@ -180,7 +180,7 @@ async fn send_notification_passes_through_unaccounted() {
         .inner
         .sent
         .lock()
-        .unwrap_or_else(PoisonError::into_inner);
+        .expect("healthy fake transport records");
     assert_eq!(
         sent_entries.len(),
         1,

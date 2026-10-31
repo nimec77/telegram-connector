@@ -112,7 +112,9 @@ pub trait RateLimiterTrait: Send + Sync {
     ///
     /// Batch tools acquire pessimistically for every requested item, then
     /// refund the items that produced nothing, so admission control stays real
-    /// while the net charge matches the work actually performed.
+    /// while the net charge matches the work actually performed. Implementations may
+    /// refuse best-effort refunds when synchronized state is unavailable; a refund
+    /// must never reset an unavailable limiter to a usable bucket.
     fn refund(&self, tokens: u32);
 
     /// Get available tokens (legacy implementations may omit availability information).
