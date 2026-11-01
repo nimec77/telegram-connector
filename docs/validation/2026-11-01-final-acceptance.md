@@ -4,9 +4,11 @@ Date: 2026-11-01. Platform: native macOS 27.2, arm64. Scope: the original ten-ta
 roadmap, including the scoped production media-test work. This is engineering acceptance,
 not release publication, hosted CI qualification, or a claim of live-account testing.
 
-**Candidate status:** Task 9 criteria are verified; Task 10 evidence below is complete
-except the independent final combined review. Do not mark Task 10 closed until that
-verdict is recorded and any blocking findings are resolved.
+**Final status:** Task 9 and Task 10 are complete on `chore/final-modernization-acceptance`
+under the explicit native-macOS validation policy. The independent combined review is
+complete; its one Important finding was reproduced and fixed with a fresh full gate.
+All ten numbered roadmap tasks now have recorded implementation/acceptance evidence.
+This branch still awaits integration; release publication remains separately authorized.
 
 ## Task 9 — continuous maintenance
 
@@ -140,14 +142,53 @@ count, constructor-backed domain Deserialize docs, and aggregate media-deadline 
 Existing-format and stricter policy checks remain separate; no blanket pedantic/restriction
 or missing-docs claim is made. The retired domain Deserialize exception stays retired.
 
-## Review and integration boundary
+## Independent final review and resolved finding
 
-The Task 8 review and scoped media review are preserved in their reports, including
-regression fixes. The final combined independent review is pending at this candidate.
-Tasks 9/10 are not both closed until that review finishes. Any Important/Critical finding
-must receive its own failing regression and fresh green suite before closure.
+The fresh combined review covered `fc4938a..06ca9dd`, code/security paths, all Task 9
+criteria, inventory consistency and the Task 10 evidence. It found no Critical issue
+and one Important storage issue: a root-owned sticky directory was allowed as the
+immediate database parent. Sticky protection does not reserve absent SQLite sidecar
+names. Bundled SQLite may open an attacker-owned writable regular WAL/SHM/journal with
+O_CREAT|O_NOFOLLOW; its ownership-change attempt does not establish ownership without
+privilege. The reviewer did not execute a multi-user exploit.
 
-Release publication still requires a subsequent explicit request. Plans/specs stay in
-this unmerged branch until integration, and only completed corresponding files are
-archived then. Optional M2/M3 remain unimplemented product proposals. Linux execution is
-owner-managed and Windows ACL/runtime behavior is unverified; neither is falsely claimed.
+The negative regression using a unique absent database path directly under /private/tmp
+failed before the fix. The predicate now permits sticky roots only as ancestors above a
+trusted parent with no group/other writes. The database is rejected before creation;
+a positive private temporary subdirectory still opens. The complete eight-case storage
+suite passes. This was one targeted fix pass, not a waived finding.
+
+A static integration check also caught the new CI media client hardcoding /private/tmp.
+A macOS TMPDIR contract check failed before the change; tempfile.gettempdir now honors
+the selected directory and all four protocol/output combinations still pass. No Linux
+execution is inferred from this portability correction.
+
+After these fixes, fresh format, explicit strict/all-target Clippy, **942 library tests,
+3 doctests**, warning-free rustdoc, actual production release, examples, Python media/
+probe/native lifecycle and inert checks all pass (exit 0). Matching LLVM coverage also
+passes 942 tests and retains the measured 82.58%/51.62% figures. The six normal ignores
+are four parent-invoked subprocess entrypoints and two explicit measurements, both of
+which were separately executed. Cargo.toml/Cargo.lock are unchanged. The post-fix verdict
+is the executor's regression-backed assessment; no claim of an independent re-review
+is made. No blocking review finding remains.
+
+## Accepted verification boundaries
+
+- Live Telegram/account, DC migration and live session upgrade were not requested and
+  are not claimed. Offline deadline/policy and source review evidence is explicit.
+- Configured third-party host rendering is unverified; portable image bytes, associations,
+  two client implementations and local preview rendering were checked.
+- Linux execution is owner-managed and not an agent gate; Windows runtime/ACL behavior
+  remains unverified. Existing hosted CI configuration was statically checked, not dispatched.
+- The reviewer inspected logs/source rather than independently rerunning every command;
+  the parent ran and confirmed all listed commands and exit statuses.
+- Debug cached latency and RSS observations are not live latency or hard RSS guarantees.
+- Hostile same-UID filesystem mutation and authenticated separation of recovery callers
+  are outside the agreed boundary. The fixed finding concerned a different UID.
+- Custom client implementations and collected/cloned Rust media retain embedding memory/
+  network responsibilities. No aggregate constructor filesystem deadline is newly promised.
+- Metadata source/license/advisory policy is not an exhaustive dependency security or legal
+  distribution audit. Root licensing remains unassigned under the existing policy.
+- Optional media M2/M3 remain separate, unimplemented product proposals.
+- Publication requires a later explicit request. Completed plans/specs are retained in
+  this unmerged branch and archived only when their changes actually integrate.

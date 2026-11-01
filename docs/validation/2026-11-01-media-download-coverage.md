@@ -1,5 +1,9 @@
 # Scoped Task 10 media-download coverage — 2026-11-01
 
+**Subsequent closure:** Original Tasks 9/10 were still open at this scoped record's
+boundary. They are now accepted on the final branch with separate
+[final evidence](2026-11-01-final-acceptance.md); historical figures below are preserved.
+
 This is one work package under the original roadmap's Task 10. Task 9 acceptance and
 complete Task 10 closure remain open. The prior claim that the entire roadmap was complete
 was incorrect; the original roadmap/audit and accurate status have been restored.

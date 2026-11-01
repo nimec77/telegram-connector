@@ -1,8 +1,9 @@
 # Development audit and proposed direction
 
 **Status note (2026-11-01):** Restored as the active audit/acceptance reference.
-Tasks 1–8 are integrated in 0.24.0; Task 9 acceptance and Task 10 final closure remain
-open in the [roadmap](../plans/2026-10-31-development-roadmap.md). Findings below describe
+Tasks 1–8 are integrated in 0.24.0; Task 9/10 acceptance is now complete on the final
+acceptance branch, as recorded in the [roadmap](../plans/2026-10-31-development-roadmap.md)
+and [final report](../../validation/2026-11-01-final-acceptance.md). Findings below describe
 the original audited baseline; they are not a claim that fixed defects remain present.
 
 Date: 2026-10-31. Baseline: `40f7b114f7024822ee1c77445d46e0ee4ab733b2`, package 0.22.6.

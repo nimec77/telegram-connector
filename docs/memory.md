@@ -6,22 +6,24 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Current state
 
-- **Tasks 1–8 are integrated in 0.24.0. Task 9 automation exists but acceptance is open;
-  Task 10 is partially verified and remains open.** Task 8's offline macOS checks passed.
-  There are 16 tools, default `json_v1` plus explicit legacy mode.
-  Final checks passed 926 library tests and 3 doctests, warning-free docs, release build,
-  Rust/Python wire clients, native process checks and fresh security/source metadata policy.
-  Independent review found three Important issues (ACLs, writable ancestry, cursor metadata),
-  all reproduced and fixed. See [validation evidence](validation/2026-11-01-task8.md).
-  Required nightly stays 2026-10-31; rmcp 3.8; all grammers pins remain reviewed Codeberg
-  `1e31e73cd9797790905bbea82cd75adcbe6f1242` (0.11), still upstream HEAD at acceptance.
+- **Tasks 1–8 are integrated in 0.24.0; Tasks 9 and 10 are implemented and accepted on
+  `chore/final-modernization-acceptance`, pending integration.** All ten original numbered
+  tasks now have explicit acceptance evidence. Final post-review macOS gate passed
+  942 library tests + 3 doctests, strict all-target Clippy, warning-free docs, production
+  release, independent Rust/Python clients and native process checks. Fresh pinned
+  cargo-deny/source/advisory/license gates pass. The final combined review's shared-sticky-
+  parent sidecar finding was regression-fixed. See [final acceptance](validation/2026-11-01-final-acceptance.md),
+  [Task 9 evidence](validation/2026-11-01-task9-workflows.md), and
+  [Rust/S1–S6 assessment](validation/2026-11-01-rust-adoption-acceptance.md).
+  There are 16 tools, json_v1 plus explicit legacy mode; nightly stays 2026-10-31, rmcp3.8,
+  and direct grammers pins stay 1e31e73cd9797790905bbea82cd75adcbe6f1242 (0.11).
 - **Latest media-test coverage (2026-11-01):** the scoped Task 10 branch reports 82.58%
   library lines (9,301/11,263, unfiltered including inline unit code), with the original
   ops_media.rs at 51.62% (143/277), up from the integrated 0.24.0 baseline of 81.71% overall
   and 15.85% (39/246) operations coverage. Cached photo/video fixtures use the actual
   downloader without polling a sender. Thin live resolution/fetch, upstream Message
   extraction and some defensive branches remain unexercised. See the
-  [scoped report](validation/2026-11-01-media-download-coverage.md). Task 9/10 closure is open.
+  [scoped report](validation/2026-11-01-media-download-coverage.md). Task 9/10 closure is now recorded separately in final acceptance.
 - **Audit 2026-08-15 is fully shipped and its spec deleted** (delete-on-merge; the file lives
   in git history). Four staged work packages — correctness fixes + dead code; module splits +
   test extraction; duplication/KISS refactors; ops-layer coverage via `MessageWalk` — plus the
@@ -34,18 +36,13 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Open items
 
-- **Finish the original ten-task roadmap.** Task 9 needs its workflow/security-policy
-  acceptance checklist audited; Task 10 still needs explicit final closure, including
-  scoped RPC/conversion coverage and Rust manual/S1–S6 assessment. The
-  [active roadmap](superpowers/plans/2026-10-31-development-roadmap.md) and audit spec were
-  restored after premature archival. The completed media-test work package belongs here; broader acceptance is still open.
-
+- **Integrate accepted work.** Original Tasks 9/10 and the media-test work are complete
+  on the final acceptance branch; retain the completed plan/audit until merge, then archive.
+  Optional media M2/M3 are separate product decisions and remain unimplemented.
 - **Operational limits:** target-host-specific rendering and live Telegram/account behavior
   are unverified; offline Rust/Python preview payloads and local image rendering passed.
   Linux remains owner-managed, Windows ACLs unverified. Optional media M2/M3 remain separate
   product decisions. Release publication requires separate authorization.
-- `cargo-deny` was unavailable at acceptance; fresh RustSec scanning and the repository's
-  complete source/license metadata policy passed instead. See the validation record.
 - **Raw pagers exist only because grammers pins `Message.peers: PeerMap` `pub(crate)`**
   (verified at pinned rev = upstream HEAD). If a future grammers rev exposes public peer
   resolution, collapse `raw_pager`/`raw_fetch` back to the high-level iterators.
@@ -72,8 +69,10 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   measured 40 MiB completed raw peak and 488,390,656-byte process RSS.
 - **Session storage:** new directories 0700, owned regular DB/WAL/SHM/journal files 0600;
   linked/nonregular entries are refused. Verify current/root-owned canonical ancestry,
-  rejecting unprotected writable ancestors while allowing root-owned sticky temp roots.
-  Reject granting directory ACLs and clear file ACLs on macOS; preserve existing directory
+  rejecting unprotected writable ancestors while allowing root-owned sticky ancestors above a non-group/other-writable session parent.
+  The immediate session parent must always exclude group/other writes, including sticky
+  roots, to protect absent sidecar names. Reject granting directory ACLs and clear file
+  ACLs on macOS; preserve existing directory
   modes/ACLs. Trusted OS utilities are captured and deadline-bounded. Same-UID hostile
   mutation is outside the boundary. Tests use disposable fixtures only.
 

@@ -135,3 +135,16 @@ Source/license metadata checks do not constitute source-text license or
 distribution-compliance scanning. Root package licensing remains unassigned.
 Windows runtime/ACL support and live account behavior remain unverified.
 Optional media M2/M3 and release publication are outside this workstream.
+
+## Combined native execution and closure
+
+Parent integration completed all previously deferred command evidence, then refreshed it
+after the combined security review: format, explicit selected/all-target Clippy, 942 library
+tests + 3 doctests, warning-free rustdoc, production release, both protocol clients, native
+process checks and inert composition all exit 0. Exact pinned macOS cargo-deny sources/
+advisories, fresh cargo-audit, complete 340-external-identity license/source policy and
+25 policy fixtures pass. Native actionlint/config validation was also rerun by the parent.
+See [final acceptance](2026-11-01-final-acceptance.md) for commands and scope. Task 9's
+six-item checklist is complete. The media-client output path was additionally corrected
+and tested to honor TMPDIR on macOS, preserving existing cross-platform CI configuration
+without claiming a Linux execution. No workflow dispatch was performed.

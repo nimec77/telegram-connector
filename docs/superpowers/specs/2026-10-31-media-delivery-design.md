@@ -2,7 +2,7 @@
 
 Date: 2026-10-31. Updated 2026-11-01: M1 ships with 0.24.0; M2/M3 below remain
 separate, unimplemented product proposals. The completed M1 checklist is archived in Git history; the modernization
-[roadmap](../plans/2026-10-31-development-roadmap.md) remains active for Tasks 9–10.
+[roadmap](../plans/2026-10-31-development-roadmap.md) records completed Task 9–10 acceptance pending integration.
 Current inline behavior is documented in the
 [tool contract](../../tool-contract.md), with [macOS validation](../../validation/2026-11-01-task8.md).
 Scope: local stdio MCP 2026-07-28; inline image previews remain the default.

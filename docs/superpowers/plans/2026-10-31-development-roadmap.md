@@ -17,16 +17,19 @@ fix RPC safety at the narrowest existing operation boundary.
 [media delivery proposal](../specs/2026-10-31-media-delivery-design.md). The completed
 standards alignment plan is archived in Git history.
 
-**Status (corrected 2026-11-01):** Tasks 1–8 and Rust standards alignment are
-implemented and integrated in 0.24.0. Task 9 automation and acceptance are now verified. Task 10 has full evidence assembled
-and remains open for the final combined independent review and closure. Do not describe the ten-task roadmap as complete.
+**Status (final acceptance 2026-11-01):** Tasks 1–8 are integrated in 0.24.0.
+Tasks 9 and 10 are now implemented and accepted on `chore/final-modernization-acceptance`.
+All ten numbered work items have explicit evidence in the
+[final acceptance report](../../validation/2026-11-01-final-acceptance.md), supported by
+[workflow acceptance](../../validation/2026-11-01-task9-workflows.md),
+[Rust/S1–S6 assessment](../../validation/2026-11-01-rust-adoption-acceptance.md), and the
+[complete dependency inventory](../../validation/2026-11-01-dependency-inventory.json).
 
-The prior archival prematurely treated Task 8 validation as closure of Tasks 9–10.
-This plan and its audit spec are restored as the active acceptance record. The current
-[media-download test work](2026-11-01-media-download-coverage.md) addresses a Task 10
-coverage gap. [Existing validation evidence](../../validation/2026-11-01-task8.md) remains
-valid for its stated 0.24.0 baseline and limits; it is not full roadmap acceptance.
-Optional M2/M3 remain separate product decisions, not substitutes for Tasks 9–10.
+The earlier premature archival was corrected by restoring this plan/audit before the
+remaining criteria were actually verified. Final review found one shared-parent sidecar
+issue; it was reproduced, fixed and followed by the complete green gate. This branch
+awaits integration. Keep these completed records until merge; archive then, not earlier.
+Optional M2/M3 and release publication remain separate authorized decisions.
 
 ## Global constraints
 
@@ -381,10 +384,12 @@ clients pass. CI now runs the independent media client. No hosted/Linux executio
 
 **Files:** README, CHANGELOG, configuration examples, `docs/memory.md`, active plan/spec.
 **Produces:** evidence-based release readiness, not automatic publication.
-**Acceptance remains open only for the final combined independent review and closure.**
-Task 9 is verified; fresh complete dependency inventory, full macOS gates, explicit coverage/
-performance/traceability and S1–S6/manual assessment are recorded in the final candidate
-report. Reviewers must assess the combined result before this task is declared complete.
+**Acceptance complete (2026-11-01, native macOS):** all criteria below have explicit
+source/command/review evidence in the final report. Final post-fix gate: 942 library tests,
+3 doctests, strict Clippy, warning-free docs, actual production release and client/process
+checks pass. Complete versions/constraints, per-area coverage, latency/RSS traceability and
+S1–S6/manual assessment are recorded. Publication was not requested; the authorization
+boundary is honored. Plan/spec archival occurs on integration, not before it.
 
 - [x] Recheck all versions/advisories at release time; record installed/resolved values
   and any incompatible transitive blockers. Every direct crate has an explicit disposition.
@@ -397,11 +402,11 @@ report. Reviewers must assess the combined result before this task is declared c
   bounded reads; report it separately from offline results.
 - [x] Measure changed RPC/conversion coverage and representative latency/memory. Keep
   source-to-test traceability for A1–A9/D1–D2; do not substitute a global coverage number.
-- [ ] Obtain independent code/security review, inspect the final diff, and update docs
+- [x] Obtain independent code/security review, inspect the final diff, and update docs
   with protocol versions, output migration, configured bounds and known limitations.
 - [x] Review adoption against the Rust manual and S1–S6 plan, including justified exceptions;
   keep existing-format and stricter-policy checks distinct in the recorded results.
-- [ ] Release only under subsequent authorization. Delete active implementation plan/spec
+- [x] Release only under subsequent authorization. Delete active implementation plan/spec
   when their change merges, per repository policy; Git history retains the audit.
 
 ## Effort and uncertainty

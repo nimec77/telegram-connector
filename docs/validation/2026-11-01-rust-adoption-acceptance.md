@@ -316,3 +316,15 @@ arranged. Windows ACLs, configured third-party host rendering, live Telegram/acc
 DC migration and live session upgrade acceptance remain unverified. Same-UID hostile storage
 mutation remains outside the documented boundary. Optional media M2/M3 remain product
 choices; this report provides no release/merge/publication authorization.
+
+## Final post-review integration
+
+The independent combined review's shared-sticky-parent finding was fixed narrowly: the
+immediate canonical session parent always excludes group/other writes, and the sticky
+exception is limited to trusted ancestors. Disposable negative/positive cases pass; no
+new style/API exception was introduced. A test-only portability correction honors TMPDIR.
+Fresh final format, explicit selected/all-target Clippy, 942 library tests + 3 doctests and
+warning-free rustdoc all exit 0; six normal ignores include two separately executed
+measurements and four subprocess entrypoints invoked by parents. Production release and
+client/process checks also pass. [Final acceptance](2026-11-01-final-acceptance.md) records
+this later gate separately from the source-audit production-gate snapshot above.
