@@ -149,11 +149,13 @@ async fn task8_media_overhead_overflow_returns_no_images_and_refunds() {
     for mode in [OutputFormat::JsonV1, OutputFormat::Legacy] {
         let mut client = MockTelegramClientTrait::new();
         client
-            .expect_download_messages_media()
+            .expect_download_messages_media_pipeline()
             .return_once(|_, _, _| {
                 let mut image = photo();
                 image.caption = Some("\"".repeat(40_000));
                 Ok(types::MediaBatch {
+                    stream: None,
+                    deadline: None,
                     channel_id: ChannelId::new(LARGE_ID).expect("id"),
                     peer_namespace: PeerNamespace::Channel,
                     outcomes: vec![types::MediaFetchOutcome {
@@ -205,9 +207,11 @@ async fn task8_media_overhead_overflow_returns_no_images_and_refunds() {
 async fn task8_mixed_media_indices_point_to_actual_image_blocks() {
     let mut client = MockTelegramClientTrait::new();
     client
-        .expect_download_messages_media()
+        .expect_download_messages_media_pipeline()
         .return_once(|_, _, _| {
             Ok(types::MediaBatch {
+                stream: None,
+                deadline: None,
                 channel_id: ChannelId::new(LARGE_ID).expect("id"),
                 peer_namespace: PeerNamespace::Channel,
                 outcomes: vec![
@@ -272,7 +276,7 @@ async fn task8_mixed_media_indices_point_to_actual_image_blocks() {
 async fn task8_media_payload_uses_its_own_budget_above_forty_thousand_bytes() {
     let mut client = MockTelegramClientTrait::new();
     client
-        .expect_download_messages_media()
+        .expect_download_messages_media_pipeline()
         .return_once(|_, _, _| {
             let pixels = image::RgbImage::from_fn(256, 256, |x, y| {
                 let value = (x.wrapping_mul(747_796_405) ^ y.wrapping_mul(2_891_336_453))
@@ -288,6 +292,8 @@ async fn task8_media_payload_uses_its_own_budget_above_forty_thousand_bytes() {
             image.width = Some(256);
             image.height = Some(256);
             Ok(types::MediaBatch {
+                stream: None,
+                deadline: None,
                 channel_id: ChannelId::new(LARGE_ID).expect("id"),
                 peer_namespace: PeerNamespace::Channel,
                 outcomes: vec![types::MediaFetchOutcome {
@@ -312,4 +318,86 @@ async fn task8_media_payload_uses_its_own_budget_above_forty_thousand_bytes() {
     assert!(serde_json::to_vec(&reply).expect("wire JSON").len() > 40_000);
     assert_eq!(envelope(&reply)["data"]["summary"]["returned"], 1);
     wire.close().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn task8_pipeline_deadline_keeps_completed_images_and_refunds_remaining_items() {
+    use futures::StreamExt as _;
+    let mut client = MockTelegramClientTrait::new();
+    client
+        .expect_download_messages_media_pipeline()
+        .times(1)
+        .return_once(|_, _, _| {
+            let stream = futures::stream::iter(vec![types::MediaFetchOutcome {
+                message_id: 1,
+                result: Ok(photo()),
+            }])
+            .chain(futures::stream::pending())
+            .boxed();
+            Ok(types::MediaBatch {
+                channel_id: ChannelId::new(LARGE_ID).expect("id"),
+                peer_namespace: PeerNamespace::Channel,
+                outcomes: Vec::new(),
+                stream: Some(stream),
+                deadline: Some(
+                    crate::telegram::media_pipeline::MediaDeadline::try_new(1).expect("deadline"),
+                ),
+            })
+        });
+    let mut limiter = MockRateLimiterTrait::new();
+    limiter
+        .expect_acquire()
+        .with(mockall::predicate::eq(9))
+        .times(1)
+        .returning(|_| Ok(()));
+    limiter
+        .expect_refund()
+        .with(mockall::predicate::eq(6))
+        .times(1)
+        .return_const(());
+    let mut wire = Wire::with_handler(McpServer::new(Arc::new(client), Arc::new(limiter)));
+    let reply = call(
+        &mut wire,
+        1,
+        "get_messages_media_batch",
+        json!({"channel_id":"news","message_ids":[1,2,3]}),
+        true,
+    )
+    .await;
+    let body = envelope(&reply);
+    assert_eq!(reply["result"]["isError"], false);
+    assert_eq!(body["data"]["summary"]["returned"], 1);
+    assert_eq!(body["data"]["summary"]["failed"], 2);
+    for (item, id) in body["data"]["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .skip(1)
+        .zip([2, 3])
+    {
+        assert_eq!(item["message_id"], id);
+        assert_eq!(item["error"]["code"], "timeout");
+        assert!(item.get("content_index").is_none());
+    }
+    wire.close().await;
+}
+
+#[tokio::test]
+async fn task8_sdk_embedding_counts_the_actual_rpc_id_without_the_custom_runtime() {
+    let handler = budget_server(OutputFormat::JsonV1, false).with_response_byte_budget(25_000);
+    let mut request = modern(json!("x".repeat(10_000)), "tools/call");
+    request["params"]["name"] = json!("get_recent_messages");
+    request["params"]["arguments"] = json!({"channel_id":LARGE_ID,"max_text_length":20_000});
+    let reply = sdk_handler_round_trip(handler, request).await;
+    let bytes = serde_json::to_vec(&reply).expect("wire JSON").len();
+    assert!(
+        bytes <= 25_000,
+        "SDK-only embedding returned {bytes} bytes under a 25000-byte budget"
+    );
+    assert!(
+        !envelope(&reply)["data"]["messages"]
+            .as_array()
+            .expect("messages")
+            .is_empty()
+    );
 }

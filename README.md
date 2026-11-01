@@ -169,14 +169,16 @@ the quick reference.
 | `search_messages` | Search messages globally, in one channel, or fanned out over up to 20 channels, with time windows and media-type filtering. | `query` (required unless `media_filter` set), `channel_id`, `channel_ids`, `hours_back`, `limit`, `media_filter`, `from_date`, `to_date`, `collapse_albums`, `before_id`, `after_id`, `max_text_length`, `format` (`full`/`compact`) |
 | `get_recent_messages` | Fetch recent channel history by time window without a query (history iteration, not search); same response shape as `search_messages`. | `channel_id` (required unless `channel_ids` set), `channel_ids`, `hours_back`, `limit`, `media_filter`, `from_date`, `to_date`, `collapse_albums`, `before_id`, `after_id`, `max_text_length`, `format` |
 | `get_message_by_link` | Resolve a t.me message link straight to the full message object (costs 1 token). | `link`* (`https://t.me/username/12345`, `https://t.me/c/channel_id/12345`, `t.me/username/12345`) |
-| `get_last_responses` | Replay the last N buffered stdout responses to recover lost/truncated replies without re-querying Telegram; image payloads stubbed unless requested. | `n`, `include_binary` |
+| `get_last_responses` | Recover only explicit caller keys in json_v1; last-N remains a legacy diagnostic. Images are omitted unless requested. No Telegram RPCs. | `recovery_keys` (required in json_v1), `n` (legacy), `include_binary` |
 | `get_message_media` | Return a message's photo (or video thumbnail) as an MCP image content block (JPEG, downscaled) plus a JSON metadata text block. | `channel_id`*, `message_id`*, `max_dimension` (longest side px, clamped 64–2048) |
-| `get_messages_media_batch` | Fetch photos/thumbnails for up to 10 messages from one channel in one call; returns `[image, metadata, …, summary]` content blocks. | `channel_id`*, `message_ids`* (1–10, deduped), `max_dimension` |
+| `get_messages_media_batch` | Fetch photos/thumbnails for up to 10 messages from one channel in one call; returns a JSON envelope followed by indexed image blocks (legacy mode retains image/metadata pairs). | `channel_id`*, `message_ids`* (1–10, deduped), `max_dimension` |
 | `transcribe_voice_message` | Transcribe a voice message or video note via Telegram's server-side API (requires Telegram Premium; costs 5 tokens by default). | `channel_id`*, `message_id`*, `timeout_seconds` (clamped 1–120) |
 | `search_public_channels` | Search Telegram's public directory (`contacts.search`) for channels/groups beyond your subscriptions. | `query`*, `limit` |
 | `get_messages_batch` | Fetch up to 50 specific messages from one channel in one RPC — the designated path to re-fetch full untruncated text. | `channel_id`*, `message_ids`* (1–50, deduped), `max_text_length` |
 | `resolve_channels` | Batch-resolve up to 20 identifiers (numeric ID, `@username`, or exact subscribed-chat title) to full channel entities, with per-entry errors. | `identifiers`* (1–20) |
 | `get_channel_stats` | Posting-rate and engagement summary (posts/day, median views, media/album share) over a bounded recent-history sample. | `channel_id`*, `days_back` (max 30; sweep also capped at 500 messages) |
+
+Every tool except `get_last_responses` also accepts the optional wire-only `recovery_key`.
 
 ### Behavior notes
 
@@ -187,7 +189,7 @@ the quick reference.
   retain per-item errors. Set `[server] output_format = "legacy"` to retain historical
   text shapes. This setting is independent of MCP protocol negotiation. See the
   [contract and migration guide](docs/tool-contract.md) for schemas, media indices,
-  compatibility changes and remaining budget/recovery work.
+  compatibility changes, serialized budgets and keyed recovery.
 - **Channel identity:** bare numeric IDs that match distinct eligible Telegram peer
   namespaces fail with `ambiguous_channel`. Use an unambiguous public username where
   available. Numeric lookup scans the bounded dialog traversal before accepting a match.
@@ -216,11 +218,25 @@ the quick reference.
   `next_cursor: {"before_id": ...}` — pass it back as `before_id` for drift-free older
   pages; global search reports `has_more` without a cursor; cursors are rejected in
   `channel_ids` scope.
-- **Byte budgets:** message payload shaping uses `[limits] response_byte_budget`
-  (default 40 000 bytes; trailing messages dropped, `has_more: true`);
-  `get_messages_batch` lists budget-dropped-but-existing ids in `omitted_ids`
-  (distinct from `missing`). This is not yet a cap on the complete serialized MCP
-  response, which also carries the envelope and matching JSON fallback.
+- **Byte budgets:** search/history and message batches count the complete serialized
+  JSON-RPC response, including the structured envelope and matching JSON fallback, against
+  `[limits] response_byte_budget` (default 40 000). Oldest messages are dropped with honest
+  pagination; batches list existing budget-dropped IDs in `omitted_ids`. One oversized
+  message survives when metadata fits; metadata-only overflow returns `response_too_large`.
+  Media has independent base64 limits and a 65 536-byte non-binary overhead cap.
+- **Targeted recovery:** supply a unique `recovery_key` (1–128 printable ASCII characters)
+  before a recoverable call, then select it with `get_last_responses.recovery_keys`. Keys
+  expire ten minutes after completion, capacity eviction or restart. Pending/unavailable
+  results are explicit. Keys prevent accidental mixing and provide no authentication.
+- **Media memory and deadlines:** production MCP shares four raw-buffer slots and an
+  80 MiB raw reservation allowance across calls, plus two image workers. The configured
+  download timeout covers setup, queues, transfer and processing. Source images must fit
+  8192 pixels per side, 8 388 608 pixels total and a 64 MiB decoder allowance. Decode/resize
+  and allocator memory are separate from raw admission; see status and the validation report.
+- **Session files on macOS:** newly created session directories use 0700; the database,
+  WAL/SHM and journal use 0600. Session/sidecar symlinks, hardlinks, nonregular files and
+  an immediate parent writable by group/others are refused before SQLite opens them.
+  Existing parent-directory modes are preserved.
 - **Partial results:** `search_messages` sets `query_metadata.timed_out`/`partial` (never an
   error) when `[search] deadline_seconds` expires; a deadline-truncated result does not set
   `has_more`.

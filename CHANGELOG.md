@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Caller-selected recovery keys with pending/duplicate detection, ten-minute retention,
+  bounded reservations, cancellation cleanup and explicit unavailable responses.
+- Incremental production media processing with shared raw-memory admission, bounded image
+  workers, one operation deadline and visible source-decoding limits.
+
+### Changed
+
+- Canonical `get_last_responses` requires `recovery_keys`; last-N remains a legacy diagnostic.
+- Message budgets count complete JSON-RPC responses and both JSON representations. Media
+  uses a separate 65,536-byte non-binary cap, with no-image refunds on overflow.
+- Rust media DTOs add lease/stream/deadline fields and a defaulted pipeline trait method;
+  direct collected consumers retain responsibility for retained raw memory.
+
+### Fixed
+
+- Metadata-only overflow, omission-metadata growth and long SDK request-ID accounting.
+- Session directories/database/sidecars use private Unix modes; linked/nonregular entries
+  and group/other-writable immediate parents are refused before SQLite opens them.
+
 ## [0.23.0] - 2026-10-31
 
 ### Fixed

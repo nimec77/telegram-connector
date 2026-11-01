@@ -22,31 +22,21 @@ impl TelegramClient {
     /// After creation, call [`crate::TelegramClientTrait::refresh_account_status`]
     /// to determine if authentication is needed. Creates parent directories, opens
     /// or migrates the SQLite session, and spawns the sender-pool runner. Config
-    /// values are copied without validation; use the configuration validators.
+    /// values other than the raw-media cap are copied without validation; use the configuration validators.
     /// Construction itself has no aggregate timeout or account limiter charge.
     ///
     /// # Errors
     /// Returns [`Error::Auth`] for session directory/open/migration failures.
     /// Does not prompt or perform interactive login.
     pub async fn new(config: &TelegramConfig, search: &SearchConfig) -> Result<Self, Error> {
-        // Create parent directory if it doesn't exist
-        if let Some(parent) = config.session_file.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                Error::Auth(format!(
-                    "Failed to create session directory {}: {}",
-                    parent.display(),
-                    e
-                ))
-            })?;
-        }
-
-        // Open or create SQLite session
-        tracing::info!("Opening session from {:?}", config.session_file);
-        let session = Arc::new(
-            SqliteSession::open(&config.session_file)
-                .await
-                .map_err(|e| Error::Auth(format!("Failed to open session: {}", e)))?,
-        );
+        config.validate_media_limits().map_err(|_| {
+            Error::InvalidInput(
+                "telegram.max_download_bytes must fit the 80 MiB raw-memory allowance".into(),
+            )
+        })?;
+        tracing::debug!("Opening private session storage");
+        let session =
+            crate::telegram::session_storage::open_private_session(&config.session_file).await?;
 
         // Create sender pool
         tracing::info!("Creating sender pool...");
@@ -159,3 +149,7 @@ async fn refresh_account_status_with(
 #[cfg(test)]
 #[path = "tests/lifecycle_tests.rs"]
 mod tests;
+
+#[cfg(all(test, unix))]
+#[path = "tests/session_permissions.rs"]
+mod permission_tests;

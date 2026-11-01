@@ -16,6 +16,13 @@ fn status_response_serializes() {
             },
         },
         media: MediaLimits {
+            non_binary_max_bytes: 65_536,
+            raw_buffer_slots: 4,
+            raw_memory_budget_bytes: 83_886_080,
+            image_processing_slots: 2,
+            max_decoded_dimension: 8192,
+            max_decoded_pixels: 8_388_608,
+            max_decoded_allocation_bytes: 67_108_864,
             batch_max_ids: 10,
             max_total_bytes: 8 * 1024 * 1024,
             per_image_max_bytes: 1_572_864,

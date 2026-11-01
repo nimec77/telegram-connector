@@ -158,3 +158,71 @@ async fn task8_every_recoverable_wire_schema_advertises_the_shared_key() {
     }
     wire.close().await;
 }
+
+#[tokio::test(start_paused = true)]
+async fn task8_pending_duplicate_and_cancelled_recovery_share_the_real_request_lifecycle() {
+    let (client, _unpolled_runner, _directory) = crate::telegram::client::stalled_client().await;
+    let mut limiter = MockRateLimiterTrait::new();
+    limiter
+        .expect_acquire()
+        .with(mockall::predicate::eq(3))
+        .times(1)
+        .returning(|_| Ok(()));
+    let mut wire = Wire::with_handler(McpServer::new(Arc::new(client), Arc::new(limiter)));
+    let mut original = modern(json!(1), "tools/call");
+    original["params"]["name"] = json!("get_message_media");
+    original["params"]["arguments"] =
+        json!({"channel_id":"100","message_id":1,"recovery_key":"pending"});
+    original["params"]["_meta"]["progressToken"] = json!("ready");
+    wire.send(original).await;
+    assert_eq!(wire.recv().await["method"], "notifications/progress");
+    let duplicate = call(
+        &mut wire,
+        2,
+        "get_message_media",
+        json!({"channel_id":"100","message_id":1,"recovery_key":"pending"}),
+        true,
+    )
+    .await;
+    assert_eq!(
+        envelope(&duplicate)["error"]["code"],
+        "duplicate_recovery_key"
+    );
+    let pending = call(
+        &mut wire,
+        3,
+        "get_last_responses",
+        json!({"recovery_keys":["pending"]}),
+        true,
+    )
+    .await;
+    assert_eq!(
+        envelope(&pending)["data"]["responses"][0]["error"]["code"],
+        "response_pending"
+    );
+    wire.send(json!({"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1}}))
+        .await;
+    let mut unavailable = false;
+    for id in 4..14 {
+        let reply = call(
+            &mut wire,
+            id,
+            "get_last_responses",
+            json!({"recovery_keys":["pending"]}),
+            true,
+        )
+        .await;
+        let body = envelope(&reply);
+        if body["data"]["responses"][0]["error"]["code"] == "response_unavailable" {
+            unavailable = true;
+            break;
+        }
+        assert_eq!(
+            body["data"]["responses"][0]["error"]["code"],
+            "response_pending"
+        );
+        tokio::task::yield_now().await;
+    }
+    assert!(unavailable, "cancelled reservation stayed pending");
+    wire.close().await;
+}

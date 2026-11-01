@@ -1,6 +1,8 @@
 //! Blocking image jobs remain owned by their worker even if a request is cancelled.
 
-static IMAGE_JOBS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
+pub(crate) const IMAGE_PROCESSING_SLOTS: usize = 2;
+static IMAGE_JOBS: tokio::sync::Semaphore =
+    tokio::sync::Semaphore::const_new(IMAGE_PROCESSING_SLOTS);
 
 /// Execute image CPU work off the async executor. The caller's future can be
 /// dropped, but a started worker still runs to completion.

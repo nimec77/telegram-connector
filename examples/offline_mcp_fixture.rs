@@ -1,4 +1,7 @@
 //! Credential-free protocol fixture. No Telegram configuration, files, or RPCs.
+#[path = "support/offline_client.rs"]
+mod offline_client;
+
 use rmcp::model::{
     Implementation, InitializeResult, ProgressNotificationParam, ProtocolVersion,
     ServerCapabilities,
@@ -50,6 +53,27 @@ fn main() -> anyhow::Result<()> {
 }
 
 async fn application() -> anyhow::Result<()> {
+    let mode = match std::env::args().nth(1).as_deref() {
+        Some("--typed-tools") => Some(telegram_connector::config::OutputFormat::JsonV1),
+        Some("--legacy-typed-tools") => Some(telegram_connector::config::OutputFormat::Legacy),
+        _ => None,
+    };
+    if let Some(mode) = mode {
+        let mut config: telegram_connector::Config = toml::from_str("[telegram]\napi_id = 1")?;
+        config.server.output_format = mode;
+        let server = telegram_connector::mcp::McpServer::new(
+            Arc::new(offline_client::OfflineClient { media: true }),
+            Arc::new(telegram_connector::RateLimiter::new(&config.rate_limiting)),
+        );
+        return server
+            .run_io(
+                (tokio::io::stdin(), tokio::io::stdout()),
+                config.server,
+                telegram_connector::mcp::runtime::process::shutdown_signal(),
+            )
+            .await;
+    }
+
     let runtime = Runtime::try_new(
         ServerConfig {
             shutdown_timeout_seconds: 1,

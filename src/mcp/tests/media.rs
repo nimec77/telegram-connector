@@ -18,6 +18,7 @@ fn photo_download(width: u32, height: u32) -> MediaDownload {
     let bytes = create_test_jpeg(width, height);
     let source_size_bytes = bytes.len() as u64;
     MediaDownload {
+        lease: None,
         channel_id: crate::telegram::types::ChannelId::new(100).expect("fixture channel"),
         peer_namespace: crate::telegram::types::PeerNamespace::Channel,
         bytes,
@@ -98,6 +99,7 @@ async fn video_thumbnail_sets_is_thumbnail() {
             let bytes = create_test_jpeg(320, 180);
             let source_size_bytes = bytes.len() as u64;
             Ok(MediaDownload {
+                lease: None,
                 channel_id: crate::telegram::types::ChannelId::new(100).expect("fixture channel"),
                 peer_namespace: crate::telegram::types::PeerNamespace::Channel,
                 bytes,
@@ -144,6 +146,7 @@ async fn video_metadata_included_in_response() {
             let bytes = create_test_jpeg(320, 180);
             let source_size_bytes = bytes.len() as u64;
             Ok(MediaDownload {
+                lease: None,
                 channel_id: crate::telegram::types::ChannelId::new(100).expect("fixture channel"),
                 peer_namespace: crate::telegram::types::PeerNamespace::Channel,
                 bytes,
@@ -338,6 +341,7 @@ async fn corrupt_image_bytes_return_decode_error() {
         .expect_download_message_media()
         .return_once(|_, _, _| {
             Ok(MediaDownload {
+                lease: None,
                 channel_id: crate::telegram::types::ChannelId::new(100).expect("fixture channel"),
                 peer_namespace: crate::telegram::types::PeerNamespace::Channel,
                 bytes: vec![0x00; 32],
@@ -376,6 +380,7 @@ async fn media_metadata_uses_variant_naming_and_reports_largest() {
             let bytes = create_test_jpeg(320, 180);
             let source_size_bytes = bytes.len() as u64;
             Ok(MediaDownload {
+                lease: None,
                 channel_id: crate::telegram::types::ChannelId::new(100).expect("fixture channel"),
                 peer_namespace: crate::telegram::types::PeerNamespace::Channel,
                 bytes,

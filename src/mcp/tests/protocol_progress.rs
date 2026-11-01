@@ -91,6 +91,7 @@ async fn media_progress_keeps_binary_content_and_input_limit_independent() {
         .return_once(|_, _, _| {
             let bytes = crate::test_helpers::create_test_jpeg(200, 100);
             Ok(MediaDownload {
+                lease: None,
                 channel_id: crate::telegram::types::ChannelId::new(100).expect("fixture channel"),
                 peer_namespace: crate::telegram::types::PeerNamespace::Channel,
                 source_size_bytes: bytes.len() as u64,

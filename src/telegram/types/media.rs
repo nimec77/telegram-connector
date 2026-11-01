@@ -157,8 +157,10 @@ pub enum MediaFilter {
 /// Produced by `TelegramClientTrait::download_message_media`; consumed by the
 /// MCP-layer image pipeline. Carries no grammers types so it can flow through
 /// the mockable trait boundary.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct MediaDownload {
+    /// Production raw-buffer admission; move this with bytes into processing work.
+    pub lease: Option<crate::telegram::media_pipeline::RawMediaLease>,
     /// Numeric identity of the resolved source, without an additional lookup.
     pub channel_id: super::ids::ChannelId,
     /// Source peer namespace.
@@ -185,6 +187,24 @@ pub struct MediaDownload {
     pub largest_height: Option<u32>,
 }
 
+// Admission ownership is operational state, separate from downloaded value equality.
+impl PartialEq for MediaDownload {
+    fn eq(&self, other: &Self) -> bool {
+        self.channel_id == other.channel_id
+            && self.peer_namespace == other.peer_namespace
+            && self.bytes == other.bytes
+            && self.media_type == other.media_type
+            && self.is_thumbnail == other.is_thumbnail
+            && self.caption == other.caption
+            && self.width == other.width
+            && self.height == other.height
+            && self.source_size_bytes == other.source_size_bytes
+            && self.video_info == other.video_info
+            && self.largest_width == other.largest_width
+            && self.largest_height == other.largest_height
+    }
+}
+
 /// Why one id in a batch produced no image.
 ///
 /// A typed enum rather than a bare `Error` because the MCP layer must emit a
@@ -202,8 +222,11 @@ pub enum MediaFetchError {
 }
 
 /// Shared resolved identity for ordered outcomes, including an all-failed batch.
-#[derive(Debug)]
 pub struct MediaBatch {
+    /// A lazy ordered production pipeline. Legacy collected batches leave this absent.
+    pub stream: Option<futures::stream::BoxStream<'static, MediaFetchOutcome>>,
+    /// One deadline covering setup, queueing, transfer and image processing.
+    pub deadline: Option<crate::telegram::media_pipeline::MediaDeadline>,
     /// Resolved numeric source ID.
     pub channel_id: super::ids::ChannelId,
     /// Source namespace.
@@ -235,6 +258,30 @@ pub struct SizeCandidate {
     /// Telegram thumbnail type tag (e.g. "m", "x", "y") used to map the
     /// selection back to the grammers PhotoSize to download.
     pub photo_type: String,
+}
+
+impl std::fmt::Debug for MediaBatch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MediaBatch")
+            .field("channel_id", &self.channel_id)
+            .field("peer_namespace", &self.peer_namespace)
+            .field("outcomes", &self.outcomes)
+            .field("streaming", &self.stream.is_some())
+            .field("deadline", &self.deadline)
+            .finish()
+    }
+}
+impl MediaBatch {
+    /// Consume collected or lazily produced outcomes in request order.
+    pub fn into_stream(self) -> futures::stream::BoxStream<'static, MediaFetchOutcome> {
+        use futures::StreamExt as _;
+        futures::stream::iter(self.outcomes)
+            .chain(
+                self.stream
+                    .unwrap_or_else(|| futures::stream::empty().boxed()),
+            )
+            .boxed()
+    }
 }
 
 #[cfg(test)]
@@ -335,6 +382,7 @@ mod tests {
     #[test]
     fn media_download_construction() {
         let download = MediaDownload {
+            lease: None,
             channel_id: crate::telegram::types::ChannelId::new(100).expect("fixture channel"),
             peer_namespace: crate::telegram::types::PeerNamespace::Channel,
             bytes: vec![0xff, 0xd8],

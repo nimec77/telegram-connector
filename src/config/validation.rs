@@ -176,3 +176,18 @@ impl Config {
         Ok(())
     }
 }
+
+impl super::TelegramConfig {
+    /// Require one permitted download to fit the process-wide raw-input allowance.
+    ///
+    /// # Errors
+    /// Rejects zero bytes or a cap above 80 MiB; input reservations share that allowance.
+    pub fn validate_media_limits(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            (1..=crate::telegram::media_pipeline::RAW_MEDIA_MEMORY_BYTES as u64)
+                .contains(&self.max_download_bytes),
+            "telegram.max_download_bytes must be 1..=83886080 to fit global raw-memory admission"
+        );
+        Ok(())
+    }
+}

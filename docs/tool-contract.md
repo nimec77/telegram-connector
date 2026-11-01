@@ -150,8 +150,31 @@ stored payload uses `max_buffered_payload_bytes` plus fixed omission-stub overhe
 Shared `recovery_key` fields are advertised at the wire schema boundary, preserving direct
 Rust request literals. `GetLastResponsesRequest` adds optional `recovery_keys`.
 
-Task 8's raw-media pipeline, decoded image limits and session-path permission investigations
-remain in progress. These changes alone do not establish final modernization acceptance.
+Production MCP media uses a lazy ordered pipeline with four process-wide raw slots sharing
+80 MiB. Its configured download timeout is one deadline through resolution, fetch, capacity
+waits, transfers and CPU work. Started workers retain raw and processing permits until exit,
+even when their request is cancelled. Deadline partial batches keep completed images and
+refund unsuccessful IDs. Source images are limited to 8192 pixels per side, 8,388,608 pixels
+and a 64 MiB decoder allowance. The decoder allowance is not a process RSS bound: resize,
+encoded output, allocator and codec overhead remain separate. Status exposes each limit.
+
+Rust consumers may use `download_messages_media_pipeline` and `MediaBatch::into_stream`.
+The existing collected batch method retains its signature and behavior; its caller owns
+retained raw memory. MediaDownload adds optional `lease`; MediaBatch adds optional `stream`
+and `deadline`. External struct-literal fixtures supply None for these fields. Production
+consumers move leases with bytes into blocking work, rather than cloning retained inputs.
+`MediaDownload` value equality ignores operational lease identity. The new trait method has
+a compatibility default for third-party clients, which retain responsibility for I/O/memory
+bounds. No dependency or lockfile update is required.
+
+On macOS, storage opens create new directories at 0700 and establish database/sidecar mode
+0600 before SQLite can write credentials. Symlinks, hardlinks, nonregular entries and an
+immediate parent writable by group/others are refused. Existing parent modes are not changed.
+Disposable tests cover database/WAL/SHM creation and sidecar rejection; real sessions were
+not inspected or changed. Windows ACL behavior is not verified.
+
+See [macOS validation](validation/2026-11-01-task8.md) for measured results and limitations.
+Optional resource/file media delivery remains outside this change.
 
 ## Validator dependency
 

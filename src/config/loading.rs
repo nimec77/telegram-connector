@@ -61,6 +61,10 @@ impl Config {
         // does not require api_hash/phone_number at startup.
         config
             .telegram
+            .validate_media_limits()
+            .context("invalid telegram media configuration")?;
+        config
+            .telegram
             .timeouts
             .validate()
             .context("invalid telegram.timeouts configuration")?;

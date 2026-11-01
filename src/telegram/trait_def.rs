@@ -191,8 +191,9 @@ pub trait TelegramClientTrait: Send + Sync {
     /// oversize — are reported in the returned `MediaFetchOutcome`s, one per
     /// requested id, in request order.
     ///
-    /// Each download has its own configured transfer budget and hard byte cap;
-    /// there is no single end-to-end batch deadline. The caller validates IDs.
+    /// Collected compatibility API: the caller owns retained raw batch memory.
+    /// Production uses one download deadline; use `download_messages_media_pipeline`
+    /// for incremental processing with global raw-buffer admission. The caller validates IDs.
     ///
     /// # Errors
     /// Whole resolution/fetch failure returns `Err`. Individual download,
@@ -203,6 +204,22 @@ pub trait TelegramClientTrait: Send + Sync {
         message_ids: &[i32],
         max_dimension: u32,
     ) -> Result<crate::telegram::types::MediaBatch, Error>;
+
+    /// Stream a batch with production-wide raw-buffer backpressure and one media deadline.
+    /// The default adapter retains compatibility with custom collected implementations;
+    /// those implementations retain responsibility for their network and memory policy.
+    ///
+    /// # Errors
+    /// Shared setup failures fail the call; subsequent item failures remain in the stream.
+    async fn download_messages_media_pipeline(
+        &self,
+        channel_ref: &str,
+        message_ids: &[i32],
+        max_dimension: u32,
+    ) -> Result<crate::telegram::types::MediaBatch, Error> {
+        self.download_messages_media(channel_ref, message_ids, max_dimension)
+            .await
+    }
 
     /// Transcribe a voice / video-note message's audio via `messages.transcribeAudio`.
     ///

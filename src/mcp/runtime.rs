@@ -276,6 +276,29 @@ struct OperationContext {
 }
 tokio::task_local! { static OPERATION: OperationContext; }
 
+struct ResponseContext {
+    id: rmcp::model::RequestId,
+    modern: bool,
+}
+tokio::task_local! { static RESPONSE: ResponseContext; }
+
+/// Preserve real framing data for SDK embeddings that do not use our stdio runtime.
+pub(crate) async fn scope_response<F: Future>(
+    id: rmcp::model::RequestId,
+    version: Option<ProtocolVersion>,
+    future: F,
+) -> F::Output {
+    RESPONSE
+        .scope(
+            ResponseContext {
+                id,
+                modern: version == Some(ProtocolVersion::V_2026_07_28),
+            },
+            future,
+        )
+        .await
+}
+
 /// Report a completed phase for the current operation, if the caller supplied a
 /// token. Direct tool-method callers have no wire context and emit nothing.
 /// Messages must be static descriptions without user data. No detached tasks.
@@ -306,10 +329,11 @@ pub(crate) async fn report_progress(message: &'static str) {
     }
 }
 
-pub(crate) use processing::image_job;
+pub(crate) use processing::{IMAGE_PROCESSING_SLOTS, image_job};
 
 /// Exact JSON-RPC size for the active request, excluding its framing newline.
-/// SDK-only/direct callers have no runtime identity and use a numeric fixture ID.
+/// SDK embeddings use their actual ID/version without runtime identity; direct
+/// Rust convenience methods have no JSON-RPC frame and use a numeric fixture ID.
 pub(crate) fn response_size(
     result: &rmcp::model::CallToolResult,
 ) -> Result<usize, crate::error::Error> {
@@ -330,6 +354,14 @@ pub(crate) fn response_payload(
                 result.strip_result_type_for_legacy_peer();
             }
             Ok::<_, crate::error::Error>(context.response_id.clone())
+        })
+        .or_else(|_| {
+            RESPONSE.try_with(|context| {
+                if !context.modern {
+                    result.strip_result_type_for_legacy_peer();
+                }
+                Ok::<_, crate::error::Error>(context.id.clone())
+            })
         })
         .unwrap_or(Ok(rmcp::model::RequestId::Number(0)))?;
     let response = rmcp::model::JsonRpcResponse {

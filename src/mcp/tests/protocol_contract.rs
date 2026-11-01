@@ -56,6 +56,7 @@ fn message() -> types::Message {
 fn photo() -> types::MediaDownload {
     let bytes = create_test_jpeg(64, 64);
     types::MediaDownload {
+        lease: None,
         channel_id: ChannelId::new(LARGE_ID).expect("id"),
         peer_namespace: PeerNamespace::Channel,
         source_size_bytes: bytes.len() as u64,
@@ -127,9 +128,11 @@ fn complete_server(mode: OutputFormat) -> McpServer<MockTelegramClientTrait, Moc
         .expect_download_message_media()
         .returning(|_, _, _| Ok(photo()));
     client
-        .expect_download_messages_media()
+        .expect_download_messages_media_pipeline()
         .returning(|_, _, _| {
             Ok(types::MediaBatch {
+                stream: None,
+                deadline: None,
                 channel_id: ChannelId::new(LARGE_ID).expect("id"),
                 peer_namespace: PeerNamespace::Channel,
                 outcomes: vec![
@@ -801,9 +804,11 @@ async fn canonical_contract_all_missing_batches_keep_resolved_identity() {
         })
     });
     client
-        .expect_download_messages_media()
+        .expect_download_messages_media_pipeline()
         .returning(|_, _, _| {
             Ok(types::MediaBatch {
+                stream: None,
+                deadline: None,
                 channel_id: ChannelId::new(LARGE_ID).expect("id"),
                 peer_namespace: PeerNamespace::Chat,
                 outcomes: vec![

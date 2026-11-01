@@ -25,6 +25,10 @@ phone_number = "+1234567890"
 # Transfers larger than this are rejected before and during streaming.
 # Default: 20971520 (20 MiB). Pairs with [rate_limiting] media_download_cost.
 # max_download_bytes = 20971520
+# Inputs must fit the fixed 80 MiB process-wide raw allowance (maximum cap 83886080).
+# Four raw buffers and two image workers are shared by concurrent MCP calls.
+# Source decoding rejects sides >8192, >8388608 pixels or a >64 MiB decoded allowance.
+# These bounds are also reported by check_mcp_status; codec/RSS overhead is separate.
 
 # [telegram.timeouts]
 # Optional: per-call-type wall-clock budgets (seconds) for grammers network calls.

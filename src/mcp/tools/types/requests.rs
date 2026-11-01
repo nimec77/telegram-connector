@@ -346,7 +346,9 @@ pub struct GetLastResponsesRequest {
     )]
     #[serde(default)]
     pub recovery_keys: Option<Vec<String>>,
-    #[schemars(description = "How many recent responses to return (default: all buffered)")]
+    #[schemars(
+        description = "Legacy diagnostic count (default: all buffered); explicit recovery_keys selection ignores n"
+    )]
     #[serde(default, deserialize_with = "flexible_opt_int")]
     pub n: Option<u32>,
 

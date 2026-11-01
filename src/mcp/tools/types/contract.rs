@@ -90,6 +90,12 @@ pub struct ToolError {
 impl From<Error> for ToolError {
     fn from(error: Error) -> Self {
         let (code, message, retryable, retry_after_seconds) = match error {
+            Error::ImageLimitExceeded => (
+                ErrorCode::MediaTooLarge,
+                "Decoded image exceeds dimension, pixel or allocation limits",
+                false,
+                None,
+            ),
             Error::DuplicateRecoveryKey => (
                 ErrorCode::DuplicateRecoveryKey,
                 "Recovery key is already pending or retained",

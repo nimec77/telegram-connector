@@ -94,6 +94,20 @@ pub struct RateLimiterCosts {
 /// the limits by hitting them (work-order C).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MediaLimits {
+    /// Serialized non-binary media response cap, including both JSON representations.
+    pub non_binary_max_bytes: usize,
+    /// Process-wide retained raw-input slots.
+    pub raw_buffer_slots: usize,
+    /// Process-wide raw-input byte allowance, separate from decoded/output memory.
+    pub raw_memory_budget_bytes: usize,
+    /// Process-wide decode/encode worker limit.
+    pub image_processing_slots: usize,
+    /// Maximum accepted source side length.
+    pub max_decoded_dimension: u32,
+    /// Maximum accepted source pixel count.
+    pub max_decoded_pixels: u64,
+    /// Decoder allocation allowance; codec/allocator overhead is measured separately.
+    pub max_decoded_allocation_bytes: u64,
     #[schemars(description = "Maximum message_ids per get_messages_media_batch call")]
     pub batch_max_ids: usize,
 

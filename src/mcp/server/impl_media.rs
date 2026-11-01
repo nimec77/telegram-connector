@@ -5,7 +5,7 @@
 
 use super::McpServer;
 use crate::error::Error;
-use crate::mcp::tools::image::{ProcessedImage, process_image, process_image_with_cap};
+use crate::mcp::tools::image::{ProcessedImage, process_image_with_cap};
 use crate::mcp::tools::media_budget::Base64Budget;
 use crate::mcp::tools::types::media_contract::{MediaImage, MediaOutput};
 use crate::mcp::tools::validation::{
@@ -54,11 +54,14 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         crate::mcp::runtime::report_progress("Media downloaded").await;
         let channel_id = download.channel_id;
         let peer_namespace = download.peer_namespace;
-        let bytes = std::mem::take(&mut download.bytes);
-        let processed =
-            crate::mcp::runtime::image_job(move || process_image(&bytes, max_dimension))
-                .await
-                .map_err(|_| Error::Internal("image encode task failed"))??;
+        let deadline = download.lease.as_ref().map(|lease| lease.deadline());
+        let processed = process_download(
+            &mut download,
+            max_dimension,
+            crate::mcp::tools::image::MAX_BASE64_LEN,
+            deadline,
+        )
+        .await?;
         crate::mcp::runtime::report_progress("Image encoded").await;
         let metadata = media_metadata(
             request.channel_id.clone(),
@@ -131,7 +134,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
         let outcomes = match self
             .telegram_client
-            .download_messages_media(&request.channel_id, &wire_ids, max_dimension)
+            .download_messages_media_pipeline(&request.channel_id, &wire_ids, max_dimension)
             .await
         {
             Ok(outcomes) => outcomes,
@@ -153,18 +156,44 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         crate::mcp::runtime::report_progress("Media downloaded").await;
         let channel_id = outcomes.channel_id;
         let peer_namespace = outcomes.peer_namespace;
+        let deadline = outcomes.deadline;
+        let mut outcomes = outcomes.into_stream();
         let mut items = Vec::new();
         let mut failed = 0usize;
         let mut total_base64_bytes = 0usize;
         let mut returned = 0usize;
         let mut budget = Base64Budget::new(self.media_batch_max_total_bytes);
 
-        for outcome in outcomes.outcomes {
-            let id = i64::from(outcome.message_id);
+        use futures::StreamExt as _;
+        for (&wire_id, requested_id) in wire_ids.iter().zip(&unique) {
+            let next = match deadline {
+                Some(deadline) => deadline.run(outcomes.next()).await,
+                None => Ok(outcomes.next().await),
+            };
+            let outcome = match next {
+                Ok(Some(outcome)) if outcome.message_id == wire_id => outcome,
+                Ok(_) => MediaFetchOutcome {
+                    message_id: wire_id,
+                    result: Err(MediaFetchError::Failed(Error::Internal(
+                        "media outcome identity unavailable",
+                    ))),
+                },
+                Err(error) => MediaFetchOutcome {
+                    message_id: wire_id,
+                    result: Err(MediaFetchError::Failed(error)),
+                },
+            };
+            let id = *requested_id;
             // Encoding runs in request order, so budget allocation is
             // deterministic no matter which download finished first.
-            match process_media_outcome(&request.channel_id, max_dimension, &mut budget, outcome)
-                .await
+            match process_media_outcome(
+                &request.channel_id,
+                max_dimension,
+                &mut budget,
+                outcome,
+                deadline,
+            )
+            .await
             {
                 Ok((base64_jpeg, metadata)) => {
                     total_base64_bytes += base64_jpeg.len();
@@ -348,6 +377,7 @@ async fn process_media_outcome(
     max_dimension: u32,
     budget: &mut Base64Budget,
     outcome: MediaFetchOutcome,
+    deadline: Option<crate::telegram::media_pipeline::MediaDeadline>,
 ) -> Result<(String, GetMessageMediaResponse), Error> {
     let id = i64::from(outcome.message_id);
     let mut download = outcome.result.map_err(|e| match e {
@@ -368,12 +398,8 @@ async fn process_media_outcome(
     // Encode on a blocking thread: a Lanczos3 resize plus JPEG encode is
     // hundreds of milliseconds of pure CPU. A panicked/cancelled task reports
     // the id rather than failing the batch.
-    let bytes = std::mem::take(&mut download.bytes);
-    let processed = crate::mcp::runtime::image_job(move || {
-        process_image_with_cap(&bytes, max_dimension, allowance)
-    })
-    .await
-    .map_err(|_| Error::Internal("image encode task failed"))??;
+    let deadline = deadline.or_else(|| download.lease.as_ref().map(|lease| lease.deadline()));
+    let processed = process_download(&mut download, max_dimension, allowance, deadline).await?;
 
     // Serialize before consuming the budget, so a (today unreachable)
     // serialization failure lands this id in `failed` with the budget
@@ -382,6 +408,26 @@ async fn process_media_outcome(
 
     budget.consume(processed.base64_jpeg.len());
     Ok((processed.base64_jpeg, metadata))
+}
+
+/// Move both raw bytes and their admission lease into the non-cancellable worker.
+async fn process_download(
+    download: &mut MediaDownload,
+    max_dimension: u32,
+    allowance: usize,
+    deadline: Option<crate::telegram::media_pipeline::MediaDeadline>,
+) -> Result<ProcessedImage, Error> {
+    let bytes = std::mem::take(&mut download.bytes);
+    let lease = download.lease.take();
+    let job = crate::mcp::runtime::image_job(move || {
+        let _lease = lease;
+        process_image_with_cap(&bytes, max_dimension, allowance)
+    });
+    let result = match deadline {
+        Some(deadline) => deadline.run(job).await?,
+        None => job.await,
+    };
+    result.map_err(|_| Error::Internal("image encode task failed"))?
 }
 
 #[cfg(test)]

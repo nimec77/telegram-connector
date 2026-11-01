@@ -11,6 +11,8 @@ pub mod auth;
 pub mod client;
 pub mod converters;
 pub(crate) mod envelope;
+pub mod media_pipeline;
+pub(crate) mod session_storage;
 pub mod timeout;
 pub mod trait_def;
 pub mod transcription;

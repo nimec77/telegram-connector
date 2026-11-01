@@ -45,6 +45,8 @@ mod helpers_tests;
 #[cfg(test)]
 #[path = "client/tests/client_fixture.rs"]
 pub(crate) mod client_fixture;
+#[cfg(test)]
+pub(crate) use client_fixture::stalled_client;
 
 #[cfg(test)]
 #[path = "client/tests/session_upgrade_tests.rs"]
@@ -152,6 +154,16 @@ impl TelegramClientTrait for TelegramClient {
         max_dimension: u32,
     ) -> Result<crate::telegram::types::MediaBatch, Error> {
         self.download_messages_media_impl(channel_ref, message_ids, max_dimension)
+            .await
+    }
+
+    async fn download_messages_media_pipeline(
+        &self,
+        channel_ref: &str,
+        message_ids: &[i32],
+        max_dimension: u32,
+    ) -> Result<crate::telegram::types::MediaBatch, Error> {
+        self.download_messages_media_pipeline_impl(channel_ref, message_ids, max_dimension)
             .await
     }
 

@@ -321,6 +321,7 @@ mod impl_legacy;
 mod impl_links;
 mod impl_media;
 mod impl_message_batch;
+mod impl_recovery;
 mod impl_resolve;
 mod impl_search;
 mod impl_stats;
@@ -882,7 +883,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     #[tool(
-        description = "Debug/recovery: return the last N tool responses written to stdout, so a response lost in transit can be re-fetched without re-querying Telegram or spending rate-limit budget"
+        description = "Recover caller-selected recovery_keys in json_v1 without Telegram RPCs or token charges. Keys identify pending, retained or unavailable results; image bytes are omitted unless requested. Unfiltered last-N is a legacy diagnostic only."
     , name = "get_last_responses", input_schema = rmcp::handler::server::common::schema_for_input::<GetLastResponsesRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::LastResponsesResponse>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
     async fn get_last_responses_wire(
         &self,
@@ -1057,61 +1058,17 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> ServerHand
 {
     async fn call_tool(
         &self,
-        mut request: rmcp::model::CallToolRequestParams,
+        request: rmcp::model::CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<rmcp::model::CallToolResponse, rmcp::ErrorData> {
-        use crate::mcp::tools::types::contract;
-        let failure = |error| {
-            Ok(
-                contract::render::<crate::mcp::tools::LastResponsesResponse>(
-                    self.output_format,
-                    Err(error),
-                )
-                .into(),
-            )
-        };
-        if !self.tool_router.has_route(&request.name) {
-            let call = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
-            return self.tool_router.call(call).await;
-        }
-        let key = request
-            .arguments
-            .as_mut()
-            .and_then(|arguments| arguments.remove("recovery_key"));
-        if request.name == "get_last_responses" && key.is_some() {
-            return failure(crate::error::Error::InvalidInput(
-                "Recovery responses cannot be reserved".into(),
-            ));
-        }
-        let reservation = match key {
-            None | Some(serde_json::Value::Null) => None,
-            Some(serde_json::Value::String(key)) => match self.response_buffer.reserve_key(&key) {
-                Ok(reservation) => Some(reservation),
-                Err(error) => return failure(error),
-            },
-            Some(_) => {
-                return failure(crate::error::Error::InvalidInput(
-                    "recovery_key must be a string".into(),
-                ));
-            }
-        };
-        let request_id = context.id.to_string();
-        let tool_name = request.name.to_string();
-        let call = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
-        let result = self.tool_router.call(call).await?;
-        if let Some(reservation) = reservation
-            && let rmcp::model::CallToolResponse::Complete(response) = &result
-            && let Ok(payload) = crate::mcp::runtime::response_payload(response)
-        {
-            let _ = reservation.complete(crate::mcp::observability::BufferedResponse {
-                request_id,
-                tool_name,
-                written_at: std::time::SystemTime::now(),
-                size_bytes: payload.len(),
-                payload,
-            });
-        }
-        Ok(result)
+        let id = context.id.clone();
+        let version = context.protocol_version();
+        crate::mcp::runtime::scope_response(
+            id,
+            version,
+            self.call_tool_with_recovery(request, context),
+        )
+        .await
     }
 
     fn supported_protocol_versions(

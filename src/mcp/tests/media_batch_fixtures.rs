@@ -9,6 +9,7 @@ pub(super) fn photo_download(width: u32, height: u32) -> MediaDownload {
     let bytes = create_test_jpeg(width, height);
     let source_size_bytes = bytes.len() as u64;
     MediaDownload {
+        lease: None,
         channel_id: crate::telegram::types::ChannelId::new(100).expect("fixture channel"),
         peer_namespace: crate::telegram::types::PeerNamespace::Channel,
         bytes,
@@ -68,6 +69,8 @@ pub(super) fn summary_of(content: &[ContentBlock]) -> MediaBatchSummary {
 
 pub(super) fn media_batch(outcomes: Vec<MediaFetchOutcome>) -> crate::telegram::types::MediaBatch {
     crate::telegram::types::MediaBatch {
+        stream: None,
+        deadline: None,
         channel_id: crate::telegram::types::ChannelId::new(100).expect("fixture"),
         peer_namespace: crate::telegram::types::PeerNamespace::Channel,
         outcomes,

@@ -88,6 +88,7 @@ pub struct TelegramConfig {
     /// rejected before and during streaming. Default 20 MiB. Pairs with
     /// `[rate_limiting] media_download_cost`, which prices the download (AD-6).
     #[serde(default = "defaults::default_max_download_bytes")]
+    /// Accepted range is 1..=80 MiB; four process-wide raw slots share 80 MiB.
     pub max_download_bytes: u64,
 }
 

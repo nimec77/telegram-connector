@@ -10,6 +10,9 @@ use thiserror::Error;
 /// Domain/client operation failure. Existing exhaustive matches must handle new variants.
 #[derive(Error, Debug, Clone)]
 pub enum Error {
+    /// Source image dimensions, pixel count or decoded allocation exceed policy.
+    #[error("decoded image exceeds dimension, pixel or allocation limits")]
+    ImageLimitExceeded,
     /// A recovery key is already reserved or retained.
     #[error("recovery key is already pending or retained")]
     DuplicateRecoveryKey,

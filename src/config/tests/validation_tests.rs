@@ -301,3 +301,25 @@ fn costs_equal_to_capacity_are_accepted() {
     };
     assert!(config.validate().is_ok());
 }
+
+#[test]
+fn task8_download_cap_must_fit_one_global_raw_memory_reservation() {
+    let file = tempfile::NamedTempFile::new().expect("disposable config");
+    for bytes in [0u64, 83_886_081] {
+        std::fs::write(
+            file.path(),
+            format!("[telegram]\napi_id = 1\nmax_download_bytes = {bytes}\n"),
+        )
+        .expect("config fixture");
+        assert!(
+            Config::load_from(Some(file.path())).is_err(),
+            "accepted {bytes}-byte download cap"
+        );
+    }
+    std::fs::write(
+        file.path(),
+        "[telegram]\napi_id = 1\nmax_download_bytes = 83886080\n",
+    )
+    .expect("largest permitted input");
+    assert!(Config::load_from(Some(file.path())).is_ok());
+}

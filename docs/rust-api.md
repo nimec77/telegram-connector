@@ -230,3 +230,27 @@ username. The existing search dialog pass uses it to distinguish same-number eli
 bare numeric requests leave it None and fail closed. This is an intentional Rust struct-literal
 addition, not a new MCP request field or identifier syntax. The shared selector covers direct
 resolution, batch resolution and the search operation's own dialog loop under existing budgets.
+
+## Task 8 media and recovery migration
+
+`GetLastResponsesRequest` adds optional `recovery_keys`; canonical wire calls require explicit
+selection. Other recovery-key arguments are wire-only and leave Rust request fields intact.
+`LastResponsesResponse` adds internal keyed outcomes. New Error variants cover output,
+recovery and decoded-image limits, affecting exhaustive downstream matches.
+
+`MediaDownload` adds optional operational `lease`; `MediaBatch` adds optional `stream` and
+`deadline`. External fixtures populate these fields (None for collected inert data). Consume
+new lazy batches with `into_stream`, preserving the lease while bytes wait/process. Value
+equality compares payload/metadata and ignores lease identity. `MediaDeadline::try_new` and
+its `run` share one absolute budget; copies never renew it.
+
+`TelegramClientTrait::download_messages_media_pipeline` has a collected compatibility default.
+The production client overrides it with process-wide raw admission and an ordered window.
+The established collected method remains available; the embedding caller owns retained raw
+memory and must not infer the MCP pipeline guarantee for collected/cloned inputs. Custom
+client implementations retain their own network/memory responsibility.
+
+`TelegramConfig::validate_media_limits` rejects caps outside 1..=80 MiB. Production construction
+also checks this cap before opening storage. Image processing rejects source dimensions over
+8192, area over 8,388,608 pixels or decoded allocation over 64 MiB, with ImageLimitExceeded.
+Status reports raw, processing, decoding, base64 and non-binary overhead limits separately.

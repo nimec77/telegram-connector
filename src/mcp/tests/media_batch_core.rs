@@ -17,7 +17,7 @@ use std::sync::Arc;
 async fn mixed_batch_returns_images_and_reports_failures() {
     let mut client = MockTelegramClientTrait::new();
     client
-        .expect_download_messages_media()
+        .expect_download_messages_media_pipeline()
         .withf(|channel, ids, max_dim| {
             channel == "news" && ids == [10, 11, 12, 13] && *max_dim == 1280
         })
@@ -60,7 +60,7 @@ async fn mixed_batch_returns_images_and_reports_failures() {
 async fn metadata_blocks_are_adjacent_to_their_images_in_request_order() {
     let mut client = MockTelegramClientTrait::new();
     client
-        .expect_download_messages_media()
+        .expect_download_messages_media_pipeline()
         .return_once(|_, _, _| {
             Ok(media_batch(vec![
                 ok_outcome(10, 200, 100),
@@ -96,7 +96,7 @@ async fn metadata_blocks_are_adjacent_to_their_images_in_request_order() {
 async fn channel_level_failure_fails_the_call() {
     let mut client = MockTelegramClientTrait::new();
     client
-        .expect_download_messages_media()
+        .expect_download_messages_media_pipeline()
         .return_once(|_, _, _| Err(Error::InvalidInput("Channel not found: nope".to_string())));
 
     let server = McpServer::new(Arc::new(client), Arc::new(permissive_limiter()));
@@ -114,7 +114,7 @@ async fn channel_level_failure_fails_the_call() {
 #[tokio::test]
 async fn empty_message_ids_is_rejected_without_a_network_call() {
     let mut client = MockTelegramClientTrait::new();
-    client.expect_download_messages_media().never();
+    client.expect_download_messages_media_pipeline().never();
 
     let server = McpServer::new(Arc::new(client), Arc::new(permissive_limiter()));
     let result = server
@@ -130,7 +130,7 @@ async fn empty_message_ids_is_rejected_without_a_network_call() {
 #[tokio::test]
 async fn more_than_ten_ids_is_rejected() {
     let mut client = MockTelegramClientTrait::new();
-    client.expect_download_messages_media().never();
+    client.expect_download_messages_media_pipeline().never();
 
     let server = McpServer::new(Arc::new(client), Arc::new(permissive_limiter()));
     let result = server
@@ -151,7 +151,7 @@ async fn more_than_ten_ids_is_rejected() {
 async fn duplicate_ids_are_deduped_preserving_first_seen_order() {
     let mut client = MockTelegramClientTrait::new();
     client
-        .expect_download_messages_media()
+        .expect_download_messages_media_pipeline()
         .withf(|_, ids, _| ids == [12, 10])
         .return_once(|_, _, _| {
             Ok(media_batch(vec![
@@ -176,7 +176,7 @@ async fn duplicate_ids_are_deduped_preserving_first_seen_order() {
 async fn max_dimension_is_clamped_to_the_supported_range() {
     let mut client = MockTelegramClientTrait::new();
     client
-        .expect_download_messages_media()
+        .expect_download_messages_media_pipeline()
         .withf(|_, _, max_dim| *max_dim == 2048)
         .return_once(|_, _, _| Ok(media_batch(vec![ok_outcome(10, 80, 80)])));
 
@@ -196,7 +196,7 @@ async fn batch_of_one_matches_the_single_tool_metadata() {
 
     let mut batch_client = MockTelegramClientTrait::new();
     batch_client
-        .expect_download_messages_media()
+        .expect_download_messages_media_pipeline()
         .return_once(|_, _, _| Ok(media_batch(vec![ok_outcome(42, 200, 100)])));
     let batch_server = McpServer::new(Arc::new(batch_client), Arc::new(permissive_limiter()));
     let batch = batch_server

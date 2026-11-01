@@ -25,9 +25,15 @@ fn modern(id: Value, method: &str) -> Value {
 }
 
 async fn sdk_round_trip(request: Value) -> Value {
+    sdk_handler_round_trip(server(), request).await
+}
+
+async fn sdk_handler_round_trip(
+    server: McpServer<MockTelegramClientTrait, MockRateLimiterTrait>,
+    request: Value,
+) -> Value {
     let (client, io) = tokio::io::duplex(65536);
     let (read, write) = tokio::io::split(io);
-    let server = server();
     let transport = InstrumentedTransport::new(
         AsyncRwTransport::new_server(read, write),
         server.metrics(),

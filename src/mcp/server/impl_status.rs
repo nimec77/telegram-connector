@@ -35,6 +35,14 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                 },
             },
             media: MediaLimits {
+                non_binary_max_bytes:
+                    crate::mcp::tools::types::media_contract::MAX_MEDIA_OVERHEAD_BYTES,
+                raw_buffer_slots: crate::telegram::media_pipeline::RAW_MEDIA_SLOTS,
+                raw_memory_budget_bytes: crate::telegram::media_pipeline::RAW_MEDIA_MEMORY_BYTES,
+                image_processing_slots: crate::mcp::runtime::IMAGE_PROCESSING_SLOTS,
+                max_decoded_dimension: crate::mcp::tools::image::MAX_DECODED_DIMENSION,
+                max_decoded_pixels: crate::mcp::tools::image::MAX_DECODED_PIXELS,
+                max_decoded_allocation_bytes: crate::mcp::tools::image::MAX_DECODED_BYTES,
                 batch_max_ids: super::impl_media::MAX_MEDIA_BATCH_IDS,
                 max_total_bytes: self.media_batch_max_total_bytes as u64,
                 per_image_max_bytes: crate::mcp::tools::image::MAX_BASE64_LEN,

@@ -22,7 +22,7 @@ async fn channel_level_failure_refunds_all_but_one_token() {
     // shape), and everything else comes back.
     let mut client = MockTelegramClientTrait::new();
     client
-        .expect_download_messages_media()
+        .expect_download_messages_media_pipeline()
         .return_once(|_, _, _| Err(Error::InvalidInput("Channel not found: nope".to_string())));
 
     let mut limiter = MockRateLimiterTrait::new();
@@ -58,7 +58,7 @@ async fn payload_cap_downscales_then_reports_cap_reached() {
     // Three sizeable photos against a cap that fits roughly one of them.
     let mut client = MockTelegramClientTrait::new();
     client
-        .expect_download_messages_media()
+        .expect_download_messages_media_pipeline()
         .return_once(|_, _, _| {
             Ok(media_batch(vec![
                 ok_outcome(10, 1200, 1200),
@@ -107,7 +107,7 @@ async fn cap_reached_ids_are_reported_in_request_order() {
     // be satisfied by a 0- or 1-element list trivially matching itself).
     let mut client = MockTelegramClientTrait::new();
     client
-        .expect_download_messages_media()
+        .expect_download_messages_media_pipeline()
         .return_once(|_, _, _| {
             Ok(media_batch(vec![
                 ok_outcome(10, 1200, 1200),
@@ -151,7 +151,7 @@ async fn payload_cap_drops_refund_their_cost() {
     // ids 10 and 11 fit under a 400_000-byte cap, 12-15 are dropped by it.
     let mut client = MockTelegramClientTrait::new();
     client
-        .expect_download_messages_media()
+        .expect_download_messages_media_pipeline()
         .return_once(|_, _, _| {
             Ok(media_batch(vec![
                 ok_outcome(10, 1200, 1200),
@@ -194,7 +194,7 @@ async fn payload_cap_drops_refund_their_cost() {
 async fn a_generous_cap_returns_every_image() {
     let mut client = MockTelegramClientTrait::new();
     client
-        .expect_download_messages_media()
+        .expect_download_messages_media_pipeline()
         .return_once(|_, _, _| {
             Ok(media_batch(vec![
                 ok_outcome(10, 200, 100),
@@ -221,7 +221,7 @@ async fn a_generous_cap_returns_every_image() {
 async fn charges_for_every_requested_id_then_refunds_the_failures() {
     let mut client = MockTelegramClientTrait::new();
     client
-        .expect_download_messages_media()
+        .expect_download_messages_media_pipeline()
         .return_once(|_, _, _| {
             Ok(media_batch(vec![
                 ok_outcome(10, 80, 80),
@@ -262,7 +262,7 @@ async fn charges_for_every_requested_id_then_refunds_the_failures() {
 async fn a_fully_successful_batch_refunds_nothing() {
     let mut client = MockTelegramClientTrait::new();
     client
-        .expect_download_messages_media()
+        .expect_download_messages_media_pipeline()
         .return_once(|_, _, _| {
             Ok(media_batch(vec![
                 ok_outcome(10, 80, 80),
@@ -296,7 +296,7 @@ async fn a_fully_successful_batch_refunds_nothing() {
 #[tokio::test]
 async fn a_rejected_acquire_performs_no_download() {
     let mut client = MockTelegramClientTrait::new();
-    client.expect_download_messages_media().never();
+    client.expect_download_messages_media_pipeline().never();
 
     let mut limiter = MockRateLimiterTrait::new();
     limiter.expect_acquire().returning(|_| {
@@ -342,7 +342,7 @@ async fn an_enormous_media_cost_refunds_without_overflowing() {
     // size. With an unchecked `*` this panics in debug builds.
     let mut client = MockTelegramClientTrait::new();
     client
-        .expect_download_messages_media()
+        .expect_download_messages_media_pipeline()
         .return_once(|_, _, _| {
             Ok(media_batch(vec![
                 not_found(10),
