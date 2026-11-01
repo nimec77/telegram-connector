@@ -628,3 +628,118 @@ async fn processed_jpeg_cap_is_checked_before_eviction() {
         20 * 1024 * 1024
     );
 }
+
+#[tokio::test]
+async fn explicit_close_finishes_before_last_handle_drop_and_clones_stay_closed() {
+    let (temp, store) = store().await;
+    let clone = Arc::clone(&store);
+    let item = job(&store, |s| s.insert(b"jpeg", 1, 1))
+        .await
+        .expect("insert");
+    let uri = item.uri;
+    let foreign = temp.path().join("artifacts/foreign");
+    std::fs::write(&foreign, b"keep").expect("foreign file");
+    // Cleanup refusal must not prevent safe finalization of the known owned manifest.
+    assert_eq!(
+        job(&store, |s| s.cleanup())
+            .await
+            .expect_err("foreign entry"),
+        StoreError::Unavailable
+    );
+    job(&store, |s| s.close()).await.expect("explicit close");
+    assert!(
+        !item.path.exists(),
+        "close must finish owned-file cleanup before returning"
+    );
+    assert!(!temp.path().join("artifacts/.lock").exists());
+    assert_eq!(std::fs::read(&foreign).expect("foreign survives"), b"keep");
+    job(&clone, |s| s.close()).await.expect("idempotent close");
+    assert_eq!(
+        job(&clone, |s| s.insert(b"new", 1, 1))
+            .await
+            .expect_err("live clone cannot reopen"),
+        StoreError::Unavailable
+    );
+    assert_eq!(
+        job(&clone, move |s| s.read(&uri, 4))
+            .await
+            .expect_err("closed read"),
+        StoreError::Unavailable
+    );
+    assert_eq!(
+        job(&clone, |s| s.snapshot())
+            .await
+            .expect_err("closed usage"),
+        StoreError::Unavailable
+    );
+    drop(store);
+    assert!(!temp.path().join("artifacts/.lock").exists());
+    assert_eq!(
+        std::fs::read(&foreign).expect("foreign survives finalization"),
+        b"keep"
+    );
+}
+#[cfg(unix)]
+#[tokio::test]
+async fn explicit_close_refuses_replaced_owned_file_and_still_closes_all_clones() {
+    use std::os::unix::fs::symlink;
+    let (temp, store) = store().await;
+    let item = job(&store, |s| s.insert(b"jpeg", 1, 1))
+        .await
+        .expect("insert");
+    let foreign = temp.path().join("foreign.jpg");
+    std::fs::write(&foreign, b"keep").expect("foreign file");
+    std::fs::remove_file(&item.path).expect("remove owned");
+    symlink(&foreign, &item.path).expect("replace owned path");
+    assert_eq!(
+        job(&store, |s| s.close())
+            .await
+            .expect_err("unsafe cleanup"),
+        StoreError::Unavailable
+    );
+    assert_eq!(std::fs::read(&foreign).expect("foreign survives"), b"keep");
+    assert!(
+        std::fs::symlink_metadata(&item.path)
+            .expect("replacement survives")
+            .file_type()
+            .is_symlink()
+    );
+    std::fs::remove_file(&item.path).expect("remove injected replacement");
+    assert_eq!(
+        job(&store, |s| s.insert(b"new", 1, 1))
+            .await
+            .expect_err("failed close remains closed"),
+        StoreError::Unavailable
+    );
+}
+
+#[tokio::test]
+async fn successful_close_is_disarmed_before_another_store_reuses_empty_root() {
+    let (temp, store) = store().await;
+    job(&store, |s| s.insert(b"old", 1, 1))
+        .await
+        .expect("old insert");
+    job(&store, |s| s.close()).await.expect("close old store");
+    let replacement = ArtifactStore::try_new(config(temp.path().join("artifacts")))
+        .await
+        .expect("reuse empty private root");
+    let item = job(&replacement, |s| s.insert(b"new", 1, 1))
+        .await
+        .expect("new store insert");
+    job(&store, |s| s.close())
+        .await
+        .expect("old close remains a no-op");
+    drop(store);
+    let uri = item.uri;
+    assert_eq!(
+        job(&replacement, move |s| s.read(&uri, 3))
+            .await
+            .expect("new store remains owned")
+            .bytes,
+        b"new"
+    );
+    assert!(temp.path().join("artifacts/.lock").exists());
+    job(&replacement, |s| s.close())
+        .await
+        .expect("close replacement");
+}

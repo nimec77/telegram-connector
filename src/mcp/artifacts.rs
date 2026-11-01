@@ -4,7 +4,8 @@
 //! their slot through cancellation and may finish as bounded entries without a delivered handle.
 //! Expiry is monotonic and never refreshed; physical deletion may lag by up to the cleanup interval
 //! (at most 60 seconds, plus worker admission). Final drop schedules bounded, identity-checked
-//! cleanup; runtime shutdown/crashes may leave files and a lock, which require explicit operator
+//! cleanup. Shutdown should await `close` inside an image job before destroying its runtime;
+//! a deadline/error/abrupt teardown may leave files and a lock, which require explicit operator
 //! cleanup or a fresh empty private root. No recovery or foreign-file deletion is attempted.
 mod files;
 mod privacy;
@@ -67,6 +68,7 @@ struct State {
     pending: Option<OwnedFile>,
     lock: OwnedFile,
     failed: bool,
+    closed: bool,
 }
 pub(crate) struct ArtifactStore {
     config: StoreConfig,
@@ -113,6 +115,7 @@ impl ArtifactStore {
                     pending: None,
                     lock,
                     failed: false,
+                    closed: false,
                 })),
                 runtime,
             }))
@@ -142,7 +145,7 @@ impl ArtifactStore {
     }
     fn state(&self) -> Result<MutexGuard<'_, Option<State>>, StoreError> {
         let state = self.state.lock().map_err(|_| StoreError::Unavailable)?;
-        if state.as_ref().is_none_or(|s| s.failed) {
+        if state.as_ref().is_none_or(|s| s.failed || s.closed) {
             return Err(StoreError::Unavailable);
         }
         Ok(state)
@@ -304,6 +307,42 @@ impl ArtifactStore {
             state.failed = true;
         }
         result
+    }
+    /// Stop all access and finish identity-checked owned-file cleanup in the current image job.
+    /// A failed close leaves the store closed; another close may retry bounded cleanup. Poisoned
+    /// state is refused. Unknown files survive, and live Arc clones cannot recreate storage.
+    pub(crate) fn close(&self) -> Result<(), StoreError> {
+        let mut guard = self.state.lock().map_err(|_| StoreError::Unavailable)?;
+        let Some(state) = guard.as_mut() else {
+            return Ok(());
+        };
+        state.closed = true;
+        let mut failed = false;
+        let mut index = 0;
+        while index < state.entries.len() {
+            if remove_entry(state, index, self.uid).is_err() {
+                failed = true;
+                index += 1;
+            }
+        }
+        if let Some(pending) = state.pending.as_ref() {
+            if pending.remove(self.uid).is_ok() {
+                state.pending = None;
+            } else {
+                failed = true;
+            }
+        }
+        if state.lock.remove(self.uid).is_err() {
+            failed = true;
+        }
+        if failed {
+            state.failed = true;
+            return Err(StoreError::Unavailable);
+        }
+        // Successful finalization disarms Drop and makes repeated close a no-op, including
+        // after a different store acquires the now-empty root with its own fresh lock identity.
+        *guard = None;
+        Ok(())
     }
     pub(crate) fn snapshot(&self) -> Result<StoreSnapshot, StoreError> {
         let guard = self.state()?;
