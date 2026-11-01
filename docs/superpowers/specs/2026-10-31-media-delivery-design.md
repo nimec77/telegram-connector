@@ -1,7 +1,10 @@
 # Optional media resource links and file export
 
-Date: 2026-10-31. Updated 2026-11-01: M1 ships with 0.24.0; M2/M3 below remain
-separate, unimplemented product proposals. The completed M1 checklist and ten-task modernization roadmap are archived in Git history.
+Date: 2026-10-31. Updated 2026-11-01: M1 ships with 0.24.0; M2/M3 are now
+implemented on `feat/media-artifact-delivery`, pending final independent branch review.
+This proposal records the initial alternatives. Current behavior and setup live in the
+permanent [media guide](../../media-artifacts.md), with
+[implementation verification](../../validation/2026-11-01-media-artifacts.md). The completed M1 checklist and ten-task modernization roadmap are archived in Git history.
 [Final acceptance](../../validation/2026-11-01-final-acceptance.md) records verification
 and local integration of all ten numbered tasks.
 Current inline behavior is documented in the
@@ -83,5 +86,7 @@ ImageContent into raw binary.
 
 ## Next decision
 
-Select a target client and establish its resource/shared-filesystem capabilities before
-planning either optional mode. Neither mode is required for the shipped inline pipeline.
+DeepSeek Harness Desktop was selected and its installed adapters were verified. The
+implemented modes retain previews, use one private store and expose processed JPEGs only.
+The permanent [media guide](../../media-artifacts.md) supersedes proposed limits and
+activation instructions above. Actual selected-model/UI/account behavior remains unverified.

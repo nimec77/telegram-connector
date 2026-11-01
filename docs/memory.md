@@ -6,6 +6,13 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Current state
 
+- **Optional media artifacts:** M2/M3 are implemented on `feat/media-artifact-delivery`
+  with default inline previews, optional private cached resources/file export and bounded
+  cleanup. DeepSeek Harness 0.2.1-rc.5 installed adapters passed actual connector-fixture
+  byte/resource/image checks without model/UI/account execution. Use the permanent
+  [media guide](media-artifacts.md) and [verification report](validation/2026-11-01-media-artifacts.md);
+  integration/release review remains separate from the accepted original roadmap.
+
 - **All ten original roadmap tasks are implemented, accepted and integrated into
   master.** Version 0.24.1 is pushed; its changelog includes the media-download regression
   tests, animation classification fix and private session-parent hardening.
@@ -38,11 +45,9 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Open items
 
-- **Optional media M2/M3:** cached resource references and direct file export remain
-  separate, unimplemented product proposals. Select a target client's capabilities before
-  planning either mode.
-- **Operational limits:** target-host-specific rendering and live Telegram/account behavior
-  are unverified; offline Rust/Python preview payloads and local image rendering passed.
+- **Operational limits:** chosen live model/desktop UI and Telegram/account behavior
+  remain unverified; offline Rust/Python payloads and installed DeepSeek adapter
+  rendering/attachment checks passed.
   Linux remains owner-managed and Windows ACLs unverified. Release publication requires
   separate authorization.
 - **Raw pagers exist only because grammers pins `Message.peers: PeerMap` `pub(crate)`**
@@ -53,6 +58,14 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   `RawChannelSearchPager` first — not a redesign.
 
 ## Key decisions
+
+- **Media artifacts:** opt-in per-process private empty root, create-new lock, 0700/0600,
+  strict opaque URI lookup and no arbitrary-path tool arguments. Default TTL 600s,
+  100 entries/256 MiB; oldest quota eviction may precede TTL. Reads never re-download.
+  Logical expiry is immediate; physical deletion can lag 60s plus worker admission.
+  Shutdown shares the original drain deadline; crashes/failed cleanup require inspected
+  manual cleanup or a fresh root. Client attachment copies follow client retention.
+  Direct getrandom 0.4.3 reuses the locked CSPRNG identity, with no graph expansion.
 
 - **Task 8 output/recovery:** message budgets measure complete serialized JSON-RPC,
   including identity, real request IDs and duplicated JSON fallback. Metadata-only overflow

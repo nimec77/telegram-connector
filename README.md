@@ -184,8 +184,8 @@ summarizes the default `json_v1` output. Legacy mode retains historical text sha
 | `get_recent_messages` | Fetch recent channel history by time window without a query (history iteration, not search); same response shape as `search_messages`. | `channel_id` (required unless `channel_ids` set), `channel_ids`, `hours_back`, `limit`, `media_filter`, `from_date`, `to_date`, `collapse_albums`, `before_id`, `after_id`, `max_text_length`, `format` |
 | `get_message_by_link` | Resolve a t.me message link straight to the full message object (costs 1 token). | `link`* (`https://t.me/username/12345`, `https://t.me/c/channel_id/12345`, `t.me/username/12345`) |
 | `get_last_responses` | Recover only explicit caller keys in json_v1; last-N remains a legacy diagnostic. Images are omitted unless requested. No Telegram RPCs. | `recovery_keys` (required in json_v1), `n` (legacy), `include_binary` |
-| `get_message_media` | Return a message's photo (or video thumbnail) as an MCP image content block (JPEG, downscaled) plus a JSON metadata text block. | `channel_id`*, `message_id`*, `max_dimension` (longest side px, clamped 64–2048) |
-| `get_messages_media_batch` | Fetch photos/thumbnails for up to 10 messages from one channel in one call; returns a JSON envelope followed by indexed image blocks (legacy mode retains image/metadata pairs). | `channel_id`*, `message_ids`* (1–10, deduped), `max_dimension` |
+| `get_message_media` | Return a message's photo (or video thumbnail) as an MCP image content block (JPEG, downscaled) plus a JSON metadata text block. | `channel_id`*, `message_id`*, `max_dimension` (longest side px, clamped 64–2048), `delivery` (see [media artifacts](docs/media-artifacts.md)) |
+| `get_messages_media_batch` | Fetch photos/thumbnails for up to 10 messages from one channel in one call; returns a JSON envelope followed by indexed image blocks (legacy mode retains image/metadata pairs). | `channel_id`*, `message_ids`* (1–10, deduped), `max_dimension`, `delivery` |
 | `transcribe_voice_message` | Transcribe a voice message or video note via Telegram's server-side API (requires Telegram Premium; costs 5 tokens by default). | `channel_id`*, `message_id`*, `timeout_seconds` (default cap 120; configurable in `[transcription]`) |
 | `search_public_channels` | Search Telegram's public directory (`contacts.search`) for channels/groups beyond your subscriptions. | `query`*, `limit` |
 | `get_messages_batch` | Fetch up to 50 specific messages from one channel in one RPC — the designated path to re-fetch full untruncated text. | `channel_id`*, `message_ids`* (1–50, deduped), `max_text_length` |
@@ -324,5 +324,5 @@ skills in `.agents/skills/`.
 | [Rust manual](docs/rust-style.md) / [API inventory](docs/rust-api.md) | Coding rules, supported interfaces and Rust compatibility changes |
 | [Maintenance](docs/maintenance.md) / [dependency snapshot](docs/dependency-status.md) | Toolchain, configured CI/security checks and dependency policy |
 | [Final acceptance](docs/validation/2026-11-01-final-acceptance.md) | Evidence for all ten completed roadmap tasks and validation limits |
-| [Optional media proposals](docs/superpowers/specs/2026-10-31-media-delivery-design.md) | Deferred resource references/file export; target-client decision required |
+| [Media artifacts and DeepSeek Harness](docs/media-artifacts.md) | Optional cached resources/file export, setup, lifetime and client prerequisites |
 | [Project memory](docs/memory.md) | Current state and durable implementation decisions |

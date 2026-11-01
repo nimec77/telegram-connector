@@ -7,11 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Optional bounded private processed-JPEG artifacts, cache-only MCP resource reads and
+  explicit local file export; all delivery modes retain inline previews.
+- Independent offline artifact clients and installed DeepSeek adapter verification, with
+  permanent configuration, lifetime, cleanup and image-reader guidance.
+
 ### Changed
 
 - Reconcile onboarding and contributor guides with the accepted roadmap and current
   output/runtime contracts; correct platform paths and setup-only credential guidance.
 - Archive the completed Codex workflow migration plan and design in Git history.
+- Add defaulted media delivery/configuration/status DTO fields and the fallible async
+  consuming `McpServer::with_media_artifacts` builder; Rust struct-literal consumers
+  need the new fields. Declare already-locked getrandom 0.4.3 directly without changing
+  resolved package identities. No package version bump is included.
 
 ## [0.24.1] - 2026-11-01
 

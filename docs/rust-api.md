@@ -20,9 +20,9 @@ is not evidence that downstream users do not exist. Every existing public path i
 
 | Supported surface | Scope and preferred imports |
 | --- | --- |
-| Crate root | `Cli`, `Config`, `ObservabilityConfig`, `ServerConfig`, `Error`, `MessageLink`, `RateLimiter`, `RateLimiterTrait`, `TelegramClient`, `TelegramClientTrait` are canonical conveniences. |
-| `config` | `Config`, `TelegramConfig`, `TimeoutConfig`, `SearchConfig`, `RateLimitConfig`, `TranscriptionConfig`, `LimitsConfig`, `LoggingConfig`, `ObservabilityConfig`, `ServerConfig`; fields and validation/loading methods remain public. |
-| `mcp::McpServer` and `mcp::server::McpServer` | Inert construction, consuming `with_*` builders, metrics/replay handles, stdio/injected I/O and existing tool methods. Direct tools retain legacy adapters and string errors/content blocks; registered wire entrypoints select the configured typed contract. |
+| Crate root | `Cli`, `Config`, `ObservabilityConfig`, `ServerConfig`, `MediaArtifactsConfig`, `Error`, `MessageLink`, `RateLimiter`, `RateLimiterTrait`, `TelegramClient`, `TelegramClientTrait` are canonical conveniences. |
+| `config` | `Config`, `TelegramConfig`, `TimeoutConfig`, `SearchConfig`, `RateLimitConfig`, `TranscriptionConfig`, `LimitsConfig`, `LoggingConfig`, `ObservabilityConfig`, `ServerConfig`, `MediaArtifactsConfig`; fields and validation/loading methods remain public. |
+| `mcp::McpServer` and `mcp::server::McpServer` | Inert construction, consuming `with_*` builders (optional artifact initialization writes private disk state), metrics/replay handles, stdio/injected I/O and existing tool methods. Direct tools retain legacy adapters and string errors/content blocks; registered wire entrypoints select the configured typed contract. |
 | `telegram::{TelegramClient, TelegramClientTrait}` | Production client and intentionally substitutable, unsealed client seam. Concrete `new`, `client`, `session`, `session_path`, `request_login_code`, `check_password` stay available. |
 | `telegram::types` | All domain facade exports: IDs/names, account/channel/message/album/link-preview/reaction entities, media metadata and outcomes, query/history parameters/results, stats and transcription data. This includes `MediaDownload`, metadata types and `SizeCandidate` even when not reexported directly by `telegram`. |
 | `rate_limiter` | Production limiter and unsealed limiter trait, including the defaulted fallible snapshot extension for existing implementers. |
@@ -156,9 +156,13 @@ each login RPC has a resolve deadline. Keep setup separate from MCP stdout servi
 already-installed tracing is accepted. Retention deletes only owned dated regular log files
 by modification age, best effort, and leaves foreign files untouched.
 
-Server builders are inert and consume `self`; validate configuration before applying them.
-All consuming `with_*` builders carry a useful `must_use` message so discarding the
-configured server warns. Names, signatures and return types remain unchanged. Established
+The seven infallible server builders are inert and consume `self`; validate configuration
+before applying them. They carry useful `must_use` messages. The added
+`async with_media_artifacts(self, &MediaArtifactsConfig) -> Result<Self, Error>` consumes
+the server and, when enabled, creates/verifies its private artifact root and process lock
+and starts weakly owned cleanup. Initialization is asynchronous and fallible; disabled config
+performs no filesystem initialization. `Result` already warns when discarded. Existing
+builder names, signatures and return types remain unchanged. Established
 fallible `ChannelId`, `MessageId`, `UserId`, `Username`, `ChannelName` and `TelegramClient`
 `new` methods retain their names for compatibility; new fallible constructors prefer
 `try_new`. Constructor validation is unchanged; the five wrappers' legacy derived
@@ -174,14 +178,20 @@ write stall guard and runtime/process ownership are in [stdio-runtime.md](stdio-
 
 Crate rustdoc contains runnable domain and in-memory configuration examples and a compiled
 generic composition function. Run `cargo run --offline --locked --example inert_server`
-for an external-crate example that actually composes every builder with an example-local
+for an external-crate example that composes the inert builders with an example-local
 inert trait implementation and reads status without RPCs, session files or credentials.
 `offline_mcp_fixture` remains the separate protocol/process fixture. No fake client is added
 to the production API. The old ignored `parse_channel_id` doctest now runs.
 
 `missing_docs` is enabled on completed leaves: config, error, link, domain IDs/names and
 observability buffer/metrics. It is intentionally not a blanket crate-wide deny. Existing
-public field construction, constructor names and builder signatures stay compatible.
+constructor names and existing builder signatures stay compatible. The optional artifact
+feature adds `Config.media_artifacts`, defaulted request `delivery`, successful media
+item `artifact`, and status artifact metadata; downstream Rust struct literals must supply
+the new fields and exhaustive `Error` matches must cover `ArtifactTooLarge` and `ArtifactUnavailable`.
+`MediaDelivery` and `MediaArtifact` are public boundary DTOs; internal store
+representations remain crate-private. JSON defaults stay inline and omit absent handles.
+See [media artifacts](media-artifacts.md) for store side effects, cleanup and protocol errors.
 Cargo now enables `clippy::wildcard_imports`, `clippy::missing_errors_doc`, and
 `clippy::return_self_not_must_use` across project targets; no blanket pedantic/restriction
 group or per-function lint suppression is used. `must_use_candidate` remains advisory.

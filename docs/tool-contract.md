@@ -81,11 +81,22 @@ corrupt stored JSON is a tool failure, not an empty/nullable success.
 | resolve_channels | Ordered identifier/channel-or-error outcomes and counts |
 | get_channel_stats | String channel_id, numeric statistics and UTC sample bounds |
 
-Media’s first block is the JSON envelope; image blocks follow. `content_index` is a zero-based
-index into the actual MCP content array, so the first image is index 1. JSON contains metadata
+Media’s first block is the JSON envelope; image blocks and requested resource links follow.
+`content_index` is a zero-based index into the actual MCP content array, so the first image
+is index 1. JSON contains metadata
 only; base64 occurs once in standard image blocks. Request order and every-ID accounting
 remain intact. Existing no-image/shared-failure refund behavior and cancellation charging are
 preserved. The two shared image CPU permits and nonblocking token-bound progress are reused.
+Both media requests add defaulted `delivery`: `inline`, `resource`, `file`, or
+`resource_and_file`. Non-inline canonical successes add `items[].artifact` describing
+a processed JPEG, expiry and only requested resource/path handles. Each resource link
+follows its image, with `resource_content_index` pointing into the actual content array.
+All modes retain previews and per-item errors. Legacy output refuses non-inline delivery
+before charging or RPCs. Enabled stores expose empty resource discovery and bounded
+cache-only reads, with modern private cache hints and safe protocol error discriminators.
+See [media artifacts](media-artifacts.md) for configuration, resource/file contracts,
+cleanup and DeepSeek prerequisites. These are previews rather than original attachments.
+
 Desktop launch is bounded by ten seconds and tested with a fake launcher, not the real app.
 Its annotation declares side effects; transcription is not advertised as harmless/idempotent
 because it may consume Telegram quota. Other tools accurately advertise read-only behavior.
@@ -144,7 +155,8 @@ makes its slot unavailable and evictable. Recovery responses are never retained.
 Keys prevent accidental selection mistakes; they provide no authenticated isolation. Calls
 without keys have no targeted guarantee. Unfiltered last-N remains available in legacy
 wire mode and through the direct Rust diagnostic adapter. Binary is omitted from replay
-by default; `include_binary:true` requests retained bytes explicitly. The diagnostic ring
+by default, including `resources/read` blobs and embedded binary resources;
+`include_binary:true` requests retained bytes explicitly. The diagnostic ring
 and keyed reservations are each bounded by `[observability] response_buffer_size`, and each
 stored payload uses `max_buffered_payload_bytes` plus fixed omission-stub overhead.
 Shared `recovery_key` fields are advertised at the wire schema boundary, preserving direct
@@ -165,7 +177,9 @@ and `deadline`. External struct-literal fixtures supply None for these fields. P
 consumers move leases with bytes into blocking work, rather than cloning retained inputs.
 `MediaDownload` value equality ignores operational lease identity. The new trait method has
 a compatibility default for third-party clients, which retain responsibility for I/O/memory
-bounds. No dependency or lockfile update is required.
+bounds. That pipeline migration required no dependency or lockfile update. The optional
+artifact feature separately declares already-locked `getrandom` directly; see the
+[dependency disposition](dependency-status.md#media-artifact-dependency-addendum).
 
 On macOS, storage opens create new directories at 0700 and establish database/sidecar mode
 0600 before SQLite can write credentials. Symlinks, hardlinks and nonregular entries are

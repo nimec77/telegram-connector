@@ -7,8 +7,10 @@ Telegram and consumed from any compatible MCP client.
 All ten original roadmap tasks are implemented and accepted on `master`, including
 typed outputs, runtime/media hardening, maintenance automation and Rust standards
 alignment. See the [final acceptance evidence](validation/2026-11-01-final-acceptance.md)
-and [changelog](../CHANGELOG.md). Optional resource references/file export remain
-[separate proposals](superpowers/specs/2026-10-31-media-delivery-design.md).
+and [changelog](../CHANGELOG.md). Optional cached resources and file export are
+documented in the permanent
+[media artifacts and DeepSeek guide](media-artifacts.md), including client prerequisites
+and the limits of installed-adapter verification.
 
 ## Repository workflow
 

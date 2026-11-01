@@ -214,7 +214,10 @@ Use `# Errors`, `# Panics` and `# Safety` only when applicable; avoid comments t
 the identifier. [Documentation guidance](https://rust-lang.github.io/api-guidelines/documentation.html).
 
 Mark consuming builders whose return must be used, such as `McpServer::with_observability`,
-with a useful `#[must_use]` message; all seven current server builders are covered.
+with a useful `#[must_use]` message; the seven infallible server builders are covered.
+The additional async fallible consuming `with_media_artifacts` builder returns
+`Result<Self, Error>`, which already warns when discarded. It initializes private disk
+state only when enabled; see [the API inventory](rust-api.md).
 Examine other pure functions individually. `Result` already warns when discarded; duplicate annotations with no useful message add little. `len` APIs keep
 their `is_empty` companion. Public `const fn` and exhaustive shapes are compatibility
 commitments, not automatic performance improvements.

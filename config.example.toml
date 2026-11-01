@@ -58,6 +58,17 @@ max_request_bytes = 1048576
 # Active requests including responses waiting for stdout. Range: 1..=1024.
 max_in_flight_requests = 16
 
+# Optional processed-JPEG cache and explicit local export. Disabled by default.
+# See docs/media-artifacts.md for private-root ownership, stale locks and DeepSeek setup.
+[media_artifacts]
+enabled = false
+file_export_enabled = false
+# Dedicated empty absolute root; default is media-artifacts under the platform config dir.
+# root = "/absolute/private/path/media-artifacts"
+ttl_seconds = 600           # 1..=3600; maximum lifetime, quota eviction may be earlier
+max_entries = 100           # 1..=1000, per process
+max_total_bytes = 268435456 # 1..=1073741824, per process; 20 MiB per JPEG
+
 [search]
 # Wall-clock budget for a search's accumulation loop. On expiry the search
 # returns the results gathered so far with "timed_out": true and

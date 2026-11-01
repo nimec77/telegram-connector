@@ -435,3 +435,14 @@ Each row links to the primary registry source. All listed resolved versions are 
 On aarch64 macOS with rustc 1.101.0-nightly (92b5b8c87 2026-10-29), selected by nightly-2026-10-31: formatting, all-target Clippy with warnings denied, all 848 library tests (5 pre-existing ignored), binary tests, release build, and fresh advisory/source/yank checks passed. The modern/legacy wire regressions ran in the full suite; real offline process lifecycle and the separate probe client also passed. No real Telegram session or credentials were accessed.
 
 Linux/macOS CI matrix remains configured, but this local migration did not execute Linux or Windows tests; only the aarch64-apple-darwin target is installed and no Linux container runtime is available in this environment. Hosted Linux verification remains a platform acceptance limitation.
+
+## Media artifact dependency addendum
+
+The optional artifact store adds a direct normal `getrandom = "0.4.3"` declaration
+for OS-backed 192-bit opaque IDs. Standard Rust has no safe cross-platform CSPRNG;
+existing code cannot replace this operation simply. This reuses the already-locked
+getrandom 0.4.3 identity: no resolved package identity, version or source is added or
+changed. The graph remains 341 packages (340 external); distinct direct registry
+dependencies increase from 26 to 27. All three direct grammers pins stay unchanged.
+The dated Task 6/7 snapshots above remain historical evidence. Current full metadata
+policy and gate results are recorded in the [artifact report](validation/2026-11-01-media-artifacts.md).

@@ -1,4 +1,4 @@
-//! Credential-free protocol fixture. No Telegram configuration, files, or RPCs.
+//! Credential-free protocol fixture. Files require an explicit disposable artifact root.
 #[path = "support/offline_client.rs"]
 mod offline_client;
 
@@ -61,10 +61,31 @@ async fn application() -> anyhow::Result<()> {
     if let Some(mode) = mode {
         let mut config: telegram_connector::Config = toml::from_str("[telegram]\napi_id = 1")?;
         config.server.output_format = mode;
+        let mut args = std::env::args().skip(2);
+        while let Some(flag) = args.next() {
+            let value = args
+                .next()
+                .ok_or_else(|| anyhow::anyhow!("fixture option requires a value"))?;
+            match flag.as_str() {
+                "--artifact-root" => {
+                    config.media_artifacts.enabled = true;
+                    config.media_artifacts.file_export_enabled = true;
+                    config.media_artifacts.root = Some(value.into());
+                }
+                "--artifact-ttl-seconds" => config.media_artifacts.ttl_seconds = value.parse()?,
+                _ => anyhow::bail!("unknown fixture option"),
+            }
+        }
+        anyhow::ensure!(
+            config.media_artifacts.root.is_some() || !config.media_artifacts.enabled,
+            "fixture artifacts require an explicit root"
+        );
         let server = telegram_connector::mcp::McpServer::new(
             Arc::new(offline_client::OfflineClient { media: true }),
             Arc::new(telegram_connector::RateLimiter::new(&config.rate_limiting)),
-        );
+        )
+        .with_media_artifacts(&config.media_artifacts)
+        .await?;
         return server
             .run_io(
                 (tokio::io::stdin(), tokio::io::stdout()),

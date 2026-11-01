@@ -340,7 +340,6 @@ async fn artifact_resources_wire_capability_lists_reads_and_safe_errors() {
                 assert!(result["result"].get("ttlMs").is_none());
             }
         }
-        let mut errors = Vec::new();
         for (id, uri) in [
             (3, artifact.uri.clone()),
             (4, "file:///private/secret".into()),
@@ -375,13 +374,18 @@ async fn artifact_resources_wire_capability_lists_reads_and_safe_errors() {
             } else {
                 assert!(reply["error"].is_object());
                 assert!(!reply.to_string().contains("/private/secret"));
-                errors.push(reply["error"]["data"]["code"].clone());
+                let (discriminator, numeric) = if id == 4 {
+                    ("artifact_invalid_uri", -32602)
+                } else {
+                    (
+                        "artifact_missing",
+                        if modern_protocol { -32602 } else { -32002 },
+                    )
+                };
+                assert_eq!(reply["error"]["data"]["code"], discriminator);
+                assert_eq!(reply["error"]["code"], numeric);
             }
         }
-        assert_ne!(
-            errors[0], errors[1],
-            "malformed and missing remain distinct"
-        );
         wire.close().await;
     }
 }

@@ -1,0 +1,77 @@
+{"phase":"start","run_dir":"/private/tmp/deepseek-connector-media-lZlXuE","binary":"/Users/comrade77/RustroverProjects/telegram-connector/target/debug/examples/offline_mcp_fixture","binary_mtime":"2026-11-01T10:44:55.302Z","fixture_args":["--typed-tools","--artifact-root","/private/tmp/deepseek-connector-media-lZlXuE/artifacts"]}
+unknown format "uint32" ignored in schema at path "#/properties/height"
+unknown format "uint32" ignored in schema at path "#/properties/height"
+unknown format "uint" ignored in schema at path "#/properties/resource_content_index"
+unknown format "uint" ignored in schema at path "#/properties/resource_content_index"
+unknown format "uint" ignored in schema at path "#/properties/size_bytes"
+unknown format "uint" ignored in schema at path "#/properties/size_bytes"
+unknown format "uint32" ignored in schema at path "#/properties/width"
+unknown format "uint32" ignored in schema at path "#/properties/width"
+unknown format "uint" ignored in schema at path "#/anyOf/0/properties/content_index"
+unknown format "uint" ignored in schema at path "#/anyOf/0/properties/content_index"
+unknown format "uint32" ignored in schema at path "#/properties/largest_available_height"
+unknown format "uint32" ignored in schema at path "#/properties/largest_available_height"
+unknown format "uint32" ignored in schema at path "#/properties/largest_available_width"
+unknown format "uint32" ignored in schema at path "#/properties/largest_available_width"
+unknown format "uint32" ignored in schema at path "#/properties/returned_height"
+unknown format "uint32" ignored in schema at path "#/properties/returned_height"
+unknown format "uint" ignored in schema at path "#/properties/returned_size_bytes"
+unknown format "uint" ignored in schema at path "#/properties/returned_size_bytes"
+unknown format "uint32" ignored in schema at path "#/properties/returned_width"
+unknown format "uint32" ignored in schema at path "#/properties/returned_width"
+unknown format "uint32" ignored in schema at path "#/properties/source_variant_height"
+unknown format "uint32" ignored in schema at path "#/properties/source_variant_height"
+unknown format "uint64" ignored in schema at path "#/properties/source_variant_size_bytes"
+unknown format "uint64" ignored in schema at path "#/properties/source_variant_size_bytes"
+unknown format "uint32" ignored in schema at path "#/properties/source_variant_width"
+unknown format "uint32" ignored in schema at path "#/properties/source_variant_width"
+unknown format "uint32" ignored in schema at path "#/properties/duration_seconds"
+unknown format "uint32" ignored in schema at path "#/properties/duration_seconds"
+unknown format "uint64" ignored in schema at path "#/properties/file_size_bytes"
+unknown format "uint64" ignored in schema at path "#/properties/file_size_bytes"
+unknown format "uint32" ignored in schema at path "#/properties/height"
+unknown format "uint32" ignored in schema at path "#/properties/height"
+unknown format "uint32" ignored in schema at path "#/properties/width"
+unknown format "uint32" ignored in schema at path "#/properties/width"
+unknown format "uint64" ignored in schema at path "#/properties/retry_after_seconds"
+unknown format "uint64" ignored in schema at path "#/properties/retry_after_seconds"
+unknown format "uint" ignored in schema at path "#/$defs/MediaSummary/properties/failed"
+unknown format "uint" ignored in schema at path "#/$defs/MediaSummary/properties/failed"
+unknown format "uint64" ignored in schema at path "#/$defs/MediaSummary/properties/max_total_bytes"
+unknown format "uint64" ignored in schema at path "#/$defs/MediaSummary/properties/max_total_bytes"
+unknown format "uint" ignored in schema at path "#/$defs/MediaSummary/properties/requested"
+unknown format "uint" ignored in schema at path "#/$defs/MediaSummary/properties/requested"
+unknown format "uint" ignored in schema at path "#/$defs/MediaSummary/properties/returned"
+unknown format "uint" ignored in schema at path "#/$defs/MediaSummary/properties/returned"
+unknown format "uint" ignored in schema at path "#/$defs/MediaSummary/properties/total_base64_bytes"
+unknown format "uint" ignored in schema at path "#/$defs/MediaSummary/properties/total_base64_bytes"
+{
+  "status": "PASS",
+  "run_dir": "/private/tmp/deepseek-connector-media-lZlXuE",
+  "artifact": {
+    "expires_at": "2026-11-01T10:58:26.837552Z",
+    "file_path": "/private/tmp/deepseek-connector-media-lZlXuE/artifacts/382811c1dc78714b796d8927076d91aeba331b6e28edc6f8.jpg",
+    "height": 64,
+    "kind": "processed_jpeg",
+    "mime_type": "image/jpeg",
+    "resource_content_index": 2,
+    "resource_uri": "telegram-media://artifact/382811c1dc78714b796d8927076d91aeba331b6e28edc6f8",
+    "size_bytes": 1256,
+    "width": 64
+  },
+  "jpeg_sha256": "5d6ba0a5b326e869fea51ab264e2f3408305eec7eec5ae78762baf663c910959",
+  "jpeg_bytes": 1256,
+  "model_calls": 0,
+  "resource_projection": [
+    "text"
+  ],
+  "image_projection": [
+    "text",
+    "image"
+  ],
+  "inline_preview_retained": true,
+  "text_route_refusal": true,
+  "outside_workspace": true,
+  "limits": "Installed adapter execution/render only; no desktop UI, model request, live Telegram or global/user config"
+}
+{"phase":"disposed","run_dir":"/private/tmp/deepseek-connector-media-lZlXuE","note":"Fresh inspection artifacts retained for review; no fixture child remains connected"}
