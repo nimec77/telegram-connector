@@ -36,6 +36,7 @@ async fn empty_buffer_returns_empty_list() {
     let result = server
         .get_last_responses(
             Parameters(GetLastResponsesRequest {
+                recovery_keys: None,
                 n: None,
                 include_binary: None,
             }),
@@ -61,6 +62,7 @@ async fn returns_buffered_responses_newest_first_with_parsed_payload() {
     let result = server
         .get_last_responses(
             Parameters(GetLastResponsesRequest {
+                recovery_keys: None,
                 n: None,
                 include_binary: None,
             }),
@@ -91,6 +93,7 @@ async fn n_caps_returned_entries_but_reports_total_buffered() {
     let result = server
         .get_last_responses(
             Parameters(GetLastResponsesRequest {
+                recovery_keys: None,
                 n: Some(2),
                 include_binary: None,
             }),
@@ -134,6 +137,7 @@ async fn oversized_payload_is_returned_as_stub_with_real_size() {
     let result = server
         .get_last_responses(
             Parameters(GetLastResponsesRequest {
+                recovery_keys: None,
                 n: None,
                 include_binary: None,
             }),
@@ -184,6 +188,7 @@ async fn replay_stubs_image_blocks_by_default() {
     let result = server
         .get_last_responses(
             Parameters(GetLastResponsesRequest {
+                recovery_keys: None,
                 n: None,
                 include_binary: None,
             }),
@@ -216,6 +221,7 @@ async fn replay_stubs_a_malformed_short_base64_payload_without_underflowing() {
     let result = server
         .get_last_responses(
             Parameters(GetLastResponsesRequest {
+                recovery_keys: None,
                 n: None,
                 include_binary: None,
             }),
@@ -240,6 +246,7 @@ async fn replay_includes_binary_when_opted_in() {
     let result = server
         .get_last_responses(
             Parameters(GetLastResponsesRequest {
+                recovery_keys: None,
                 n: None,
                 include_binary: Some(true),
             }),

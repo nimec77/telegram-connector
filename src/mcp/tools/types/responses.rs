@@ -257,6 +257,9 @@ pub struct BufferedResponseEntry {
 /// Response for get_last_responses tool
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct LastResponsesResponse {
+    /// Targeted outcomes, carried internally until canonical rendering.
+    #[serde(skip)]
+    pub keyed: Option<Vec<super::canonical::RecoveryEntry>>,
     #[schemars(description = "Recovered responses, newest first")]
     pub responses: Vec<BufferedResponseEntry>,
 

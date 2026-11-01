@@ -8,6 +8,9 @@ use rmcp::model::{CallToolResult, ContentBlock};
 use schemars::JsonSchema;
 use serde::Serialize;
 
+/// Independent of message response and base64 limits.
+pub(crate) const MAX_MEDIA_OVERHEAD_BYTES: usize = 65_536;
+
 pub(crate) struct MediaOutput {
     pub single: bool,
     pub channel_reference: String,
@@ -176,5 +179,81 @@ impl WireData for MediaOutput {
             ));
         }
         Ok(CallToolResult::success(content))
+    }
+}
+
+impl MediaOutput {
+    /// Measure the full response with image data omitted, retaining its exact summaries.
+    pub(crate) fn check_overhead(&self, format: crate::config::OutputFormat) -> Result<(), Error> {
+        let bytes = self
+            .items
+            .iter()
+            .filter_map(|(_, item)| item.as_ref().ok())
+            .map(|image| image.base64.len())
+            .sum::<usize>();
+        let shadow = Self {
+            single: self.single,
+            channel_reference: self.channel_reference.clone(),
+            channel_id: self.channel_id,
+            peer_namespace: self.peer_namespace,
+            requested: self.requested,
+            max_total_bytes: self.max_total_bytes,
+            items: self
+                .items
+                .iter()
+                .map(|(id, item)| {
+                    (
+                        *id,
+                        match item {
+                            Ok(image) => Ok(MediaImage {
+                                base64: String::new(),
+                                metadata: image.metadata.clone(),
+                            }),
+                            Err(error) => Err(error.clone()),
+                        },
+                    )
+                })
+                .collect(),
+        };
+        let result = if format == crate::config::OutputFormat::JsonV1 {
+            let (mut data, images) = shadow.canonical()?;
+            data.summary.total_base64_bytes = bytes;
+            let mut result =
+                super::contract::tool_result(super::contract::ToolResponse::success(data))?;
+            result.content.extend(images);
+            result
+        } else {
+            let mut result = shadow.legacy()?;
+            if !self.single {
+                let summary = MediaBatchSummary {
+                    channel_id: self.channel_reference.clone(),
+                    requested: self.requested,
+                    returned: self.items.iter().filter(|(_, item)| item.is_ok()).count(),
+                    failed: self
+                        .items
+                        .iter()
+                        .filter_map(|(id, item)| {
+                            item.as_ref().err().map(|error| MediaBatchFailure {
+                                id: *id,
+                                reason: legacy_failure(error),
+                            })
+                        })
+                        .collect(),
+                    total_base64_bytes: bytes,
+                    max_total_bytes: self.max_total_bytes,
+                };
+                if let Some(last) = result.content.last_mut() {
+                    *last = ContentBlock::text(
+                        serde_json::to_string(&summary)
+                            .map_err(|_| Error::Internal("media serialization failed"))?,
+                    );
+                }
+            }
+            result
+        };
+        if crate::mcp::runtime::response_size(&result)? > MAX_MEDIA_OVERHEAD_BYTES {
+            return Err(Error::ResponseTooLarge);
+        }
+        Ok(())
     }
 }

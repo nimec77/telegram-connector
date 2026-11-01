@@ -701,7 +701,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         );
         inv.finish(self.get_messages_media_batch_impl(request).await)
     }
-    #[tool(description = "Check MCP connection status, rate limiter state, and session counters", name = "check_mcp_status", input_schema = rmcp::handler::server::common::schema_for_empty_input(), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::StatusResponse>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    #[tool(description = "Check MCP connection status, rate limiter state, and session counters", name = "check_mcp_status", input_schema = crate::mcp::tools::types::contract::recoverable_schema(rmcp::handler::server::common::schema_for_empty_input()), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::StatusResponse>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
     async fn check_mcp_status_wire(
         &self,
         arguments: rmcp::model::JsonObject,
@@ -716,7 +716,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         crate::mcp::tools::types::contract::render(self.output_format, invocation.finish(result))
     }
 
-    #[tool(description = "List user's subscribed Telegram channels with pagination support", name = "get_subscribed_channels", input_schema = rmcp::handler::server::common::schema_for_input::<GetChannelsRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::ChannelsResponse>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    #[tool(description = "List user's subscribed Telegram channels with pagination support", name = "get_subscribed_channels", input_schema = crate::mcp::tools::types::contract::recoverable_schema(rmcp::handler::server::common::schema_for_input::<GetChannelsRequest>().expect("request schema is an object")), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::ChannelsResponse>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
     async fn get_subscribed_channels_wire(
         &self,
         arguments: rmcp::model::JsonObject,
@@ -732,7 +732,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         crate::mcp::tools::types::contract::render(self.output_format, invocation.finish(result))
     }
 
-    #[tool(description = "Get detailed information about a Telegram channel by username or ID", name = "get_channel_info", input_schema = rmcp::handler::server::common::schema_for_input::<GetChannelInfoRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::telegram::types::Channel>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    #[tool(description = "Get detailed information about a Telegram channel by username or ID", name = "get_channel_info", input_schema = crate::mcp::tools::types::contract::recoverable_schema(rmcp::handler::server::common::schema_for_input::<GetChannelInfoRequest>().expect("request schema is an object")), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::telegram::types::Channel>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
     async fn get_channel_info_wire(
         &self,
         arguments: rmcp::model::JsonObject,
@@ -750,7 +750,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
     #[tool(
         description = "Generate shareable deep links for a Telegram message (accepts channel ID or username; public channels get https://t.me/<username> links)"
-    , name = "generate_message_link", input_schema = rmcp::handler::server::common::schema_for_input::<GenerateLinkRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::MessageLinkResponse>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    , name = "generate_message_link", input_schema = crate::mcp::tools::types::contract::recoverable_schema(rmcp::handler::server::common::schema_for_input::<GenerateLinkRequest>().expect("request schema is an object")), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::MessageLinkResponse>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
     async fn generate_message_link_wire(
         &self,
         arguments: rmcp::model::JsonObject,
@@ -768,7 +768,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
     #[tool(
         description = "Open a specific message in Telegram Desktop application (macOS only; accepts channel ID or username)"
-    , name = "open_message_in_telegram", input_schema = rmcp::handler::server::common::schema_for_input::<OpenMessageRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::OpenMessageResponse>(), annotations(read_only_hint = false, destructive_hint = false, idempotent_hint = false, open_world_hint = true))]
+    , name = "open_message_in_telegram", input_schema = crate::mcp::tools::types::contract::recoverable_schema(rmcp::handler::server::common::schema_for_input::<OpenMessageRequest>().expect("request schema is an object")), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::OpenMessageResponse>(), annotations(read_only_hint = false, destructive_hint = false, idempotent_hint = false, open_world_hint = true))]
     async fn open_message_in_telegram_wire(
         &self,
         arguments: rmcp::model::JsonObject,
@@ -792,12 +792,23 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                        is no per-channel offset to resume from. A search that exceeds its \
                        configured deadline returns the results gathered so far with \
                        query_metadata.timed_out and .partial set, never an error."
-    , name = "search_messages", input_schema = rmcp::handler::server::common::schema_for_input::<SearchRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::SearchResponse<crate::error::Error>>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    , name = "search_messages", input_schema = crate::mcp::tools::types::contract::recoverable_schema(rmcp::handler::server::common::schema_for_input::<SearchRequest>().expect("request schema is an object")), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::SearchResponse<crate::error::Error>>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
     async fn search_messages_wire(
         &self,
         arguments: rmcp::model::JsonObject,
         id: RequestId,
     ) -> CallToolResult {
+        let cursor = if arguments
+            .get("channel_id")
+            .is_some_and(|value| !value.is_null())
+            && arguments
+                .get("channel_ids")
+                .is_none_or(|value| value.is_null())
+        {
+            crate::mcp::tools::shaping::CursorPolicy::SingleChannel
+        } else {
+            crate::mcp::tools::shaping::CursorPolicy::Unavailable
+        };
         let invocation = ToolInvocation::start("search_messages", id);
         let result: Result<
             crate::mcp::tools::SearchResponse<crate::error::Error>,
@@ -807,17 +818,33 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             self.search_messages_data(request).await
         }
         .await;
-        crate::mcp::tools::types::contract::render(self.output_format, invocation.finish(result))
+        crate::mcp::tools::wire_budget::search(
+            self.output_format,
+            invocation.finish(result),
+            self.response_byte_budget,
+            cursor,
+        )
     }
 
     #[tool(
         description = "Get recent messages from one channel - or fan out over up to 20 channels via channel_ids - by time window (no search query needed)"
-    , name = "get_recent_messages", input_schema = rmcp::handler::server::common::schema_for_input::<GetRecentMessagesRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::SearchResponse<crate::error::Error>>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    , name = "get_recent_messages", input_schema = crate::mcp::tools::types::contract::recoverable_schema(rmcp::handler::server::common::schema_for_input::<GetRecentMessagesRequest>().expect("request schema is an object")), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::SearchResponse<crate::error::Error>>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
     async fn get_recent_messages_wire(
         &self,
         arguments: rmcp::model::JsonObject,
         id: RequestId,
     ) -> CallToolResult {
+        let cursor = if arguments
+            .get("channel_id")
+            .is_some_and(|value| !value.is_null())
+            && arguments
+                .get("channel_ids")
+                .is_none_or(|value| value.is_null())
+        {
+            crate::mcp::tools::shaping::CursorPolicy::SingleChannel
+        } else {
+            crate::mcp::tools::shaping::CursorPolicy::Unavailable
+        };
         let invocation = ToolInvocation::start("get_recent_messages", id);
         let result: Result<
             crate::mcp::tools::SearchResponse<crate::error::Error>,
@@ -828,12 +855,17 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             self.get_recent_messages_data(request).await
         }
         .await;
-        crate::mcp::tools::types::contract::render(self.output_format, invocation.finish(result))
+        crate::mcp::tools::wire_budget::search(
+            self.output_format,
+            invocation.finish(result),
+            self.response_byte_budget,
+            cursor,
+        )
     }
 
     #[tool(
         description = "Get a specific Telegram message by its t.me link (e.g. https://t.me/swodki/575403)"
-    , name = "get_message_by_link", input_schema = rmcp::handler::server::common::schema_for_input::<GetMessageByLinkRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::MessageResponse>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    , name = "get_message_by_link", input_schema = crate::mcp::tools::types::contract::recoverable_schema(rmcp::handler::server::common::schema_for_input::<GetMessageByLinkRequest>().expect("request schema is an object")), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::MessageResponse>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
     async fn get_message_by_link_wire(
         &self,
         arguments: rmcp::model::JsonObject,
@@ -861,6 +893,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         let result: Result<crate::mcp::tools::LastResponsesResponse, crate::error::Error> = async {
             let request: GetLastResponsesRequest =
                 crate::mcp::tools::types::contract::decode(arguments)?;
+            if self.output_format == crate::config::OutputFormat::JsonV1
+                && request.recovery_keys.is_none()
+            {
+                return Err(crate::error::Error::InvalidInput(
+                    "recovery_keys are required in json_v1".into(),
+                ));
+            }
             self.get_last_responses_data(request).await
         }
         .await;
@@ -869,7 +908,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
     #[tool(
         description = "Get a message's photo (or the thumbnail of its video/animation/video note) as an image the model can see, plus a JSON metadata block. Photos are downscaled (max_dimension, default 1280) and re-encoded as JPEG. Heavier than a search: charged media_download_cost rate-limit tokens. For more than one image, use get_messages_media_batch instead of looping this tool."
-    , name = "get_message_media", input_schema = rmcp::handler::server::common::schema_for_input::<GetMessageMediaRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::types::media_contract::MediaOutput>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    , name = "get_message_media", input_schema = crate::mcp::tools::types::contract::recoverable_schema(rmcp::handler::server::common::schema_for_input::<GetMessageMediaRequest>().expect("request schema is an object")), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::types::media_contract::MediaOutput>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
     async fn get_message_media_wire(
         &self,
         arguments: rmcp::model::JsonObject,
@@ -890,7 +929,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
     #[tool(
         description = "Transcribe a voice message or video note (round video) to text using Telegram's server-side transcription (no local ML). REQUIRES Telegram Premium on the connected account; check_mcp_status reports `premium`. Charged transcription_cost rate-limit tokens (more than a search). Returns partial text with partial=true if the wait times out."
-    , name = "transcribe_voice_message", input_schema = rmcp::handler::server::common::schema_for_input::<TranscribeVoiceMessageRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::TranscribeVoiceMessageResponse>(), annotations(read_only_hint = false, destructive_hint = false, idempotent_hint = false, open_world_hint = true))]
+    , name = "transcribe_voice_message", input_schema = crate::mcp::tools::types::contract::recoverable_schema(rmcp::handler::server::common::schema_for_input::<TranscribeVoiceMessageRequest>().expect("request schema is an object")), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::TranscribeVoiceMessageResponse>(), annotations(read_only_hint = false, destructive_hint = false, idempotent_hint = false, open_world_hint = true))]
     async fn transcribe_voice_message_wire(
         &self,
         arguments: rmcp::model::JsonObject,
@@ -909,7 +948,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
     #[tool(
         description = "Search Telegram's public directory for channels and groups by keyword (not limited to your subscriptions). is_subscribed: true is reliable; false is best-effort (the already-subscribed side of the result set is server-capped and prefix-matched). To go deeper on a result that has a real @username, call get_channel_info with that username."
-    , name = "search_public_channels", input_schema = rmcp::handler::server::common::schema_for_input::<SearchPublicChannelsRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::ChannelsResponse>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    , name = "search_public_channels", input_schema = crate::mcp::tools::types::contract::recoverable_schema(rmcp::handler::server::common::schema_for_input::<SearchPublicChannelsRequest>().expect("request schema is an object")), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::ChannelsResponse>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
     async fn search_public_channels_wire(
         &self,
         arguments: rmcp::model::JsonObject,
@@ -927,7 +966,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
     #[tool(
         description = "Fetch up to 50 specific messages from one channel by id in a single call. Deleted or missing ids are reported per-id in `missing` instead of failing the batch. The designated way to re-fetch full text after text_truncated, and to verify or deduplicate specific posts without N round trips."
-    , name = "get_messages_batch", input_schema = rmcp::handler::server::common::schema_for_input::<GetMessagesBatchRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::MessagesBatchResponse>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    , name = "get_messages_batch", input_schema = crate::mcp::tools::types::contract::recoverable_schema(rmcp::handler::server::common::schema_for_input::<GetMessagesBatchRequest>().expect("request schema is an object")), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::MessagesBatchResponse>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
     async fn get_messages_batch_wire(
         &self,
         arguments: rmcp::model::JsonObject,
@@ -940,12 +979,16 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             self.get_messages_batch_data(request).await
         }
         .await;
-        crate::mcp::tools::types::contract::render(self.output_format, invocation.finish(result))
+        crate::mcp::tools::wire_budget::batch(
+            self.output_format,
+            invocation.finish(result),
+            self.response_byte_budget,
+        )
     }
 
     #[tool(
         description = "Batch-resolve up to 20 channel identifiers (numeric ID, @username, or exact title of a subscribed chat) to full channel entities in one call. Use for full entities (subscriber counts, flags) and title-only private chats; forward sources already arrive named in forwarded_from. Failures are reported per-identifier."
-    , name = "resolve_channels", input_schema = rmcp::handler::server::common::schema_for_input::<ResolveChannelsRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::ResolveChannelsResponse<crate::error::Error>>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    , name = "resolve_channels", input_schema = crate::mcp::tools::types::contract::recoverable_schema(rmcp::handler::server::common::schema_for_input::<ResolveChannelsRequest>().expect("request schema is an object")), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::ResolveChannelsResponse<crate::error::Error>>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
     async fn resolve_channels_wire(
         &self,
         arguments: rmcp::model::JsonObject,
@@ -966,7 +1009,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
     #[tool(
         description = "Compute posting statistics for one channel from a bounded history sample (default 7 days, max 30, capped at 500 messages): album-collapsed post count, posts/day, median views, media and album share. sample.complete is false when the cap cut the window short. No content classification."
-    , name = "get_channel_stats", input_schema = rmcp::handler::server::common::schema_for_input::<GetChannelStatsRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::telegram::types::ChannelStats>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    , name = "get_channel_stats", input_schema = crate::mcp::tools::types::contract::recoverable_schema(rmcp::handler::server::common::schema_for_input::<GetChannelStatsRequest>().expect("request schema is an object")), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::telegram::types::ChannelStats>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
     async fn get_channel_stats_wire(
         &self,
         arguments: rmcp::model::JsonObject,
@@ -984,7 +1027,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
     #[tool(
         description = "Get photos (or video/animation/video-note thumbnails) of up to 10 messages from ONE channel. Default json_v1 output starts with one JSON envelope, followed by image blocks referenced by data.items[].content_index; failed items contain typed errors and no image index. Legacy output interleaves each image with its JSON metadata and ends with a batch summary whose failed array lists unsuccessful IDs. One channel resolution and one fetch round trip serve the whole batch. Deleted IDs, absent visual media, payload-cap exhaustion and download/processing failures are reported per item; shared resolution/fetch failures fail the call. Completed batches charge media_download_cost tokens per image returned."
-    , name = "get_messages_media_batch", input_schema = rmcp::handler::server::common::schema_for_input::<GetMessagesMediaBatchRequest>().expect("request schema is an object"), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::types::media_contract::MediaOutput>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
+    , name = "get_messages_media_batch", input_schema = crate::mcp::tools::types::contract::recoverable_schema(rmcp::handler::server::common::schema_for_input::<GetMessagesMediaBatchRequest>().expect("request schema is an object")), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::types::media_contract::MediaOutput>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
     async fn get_messages_media_batch_wire(
         &self,
         arguments: rmcp::model::JsonObject,
@@ -1012,6 +1055,65 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> ServerHandler
     for McpServer<T, R>
 {
+    async fn call_tool(
+        &self,
+        mut request: rmcp::model::CallToolRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<rmcp::model::CallToolResponse, rmcp::ErrorData> {
+        use crate::mcp::tools::types::contract;
+        let failure = |error| {
+            Ok(
+                contract::render::<crate::mcp::tools::LastResponsesResponse>(
+                    self.output_format,
+                    Err(error),
+                )
+                .into(),
+            )
+        };
+        if !self.tool_router.has_route(&request.name) {
+            let call = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
+            return self.tool_router.call(call).await;
+        }
+        let key = request
+            .arguments
+            .as_mut()
+            .and_then(|arguments| arguments.remove("recovery_key"));
+        if request.name == "get_last_responses" && key.is_some() {
+            return failure(crate::error::Error::InvalidInput(
+                "Recovery responses cannot be reserved".into(),
+            ));
+        }
+        let reservation = match key {
+            None | Some(serde_json::Value::Null) => None,
+            Some(serde_json::Value::String(key)) => match self.response_buffer.reserve_key(&key) {
+                Ok(reservation) => Some(reservation),
+                Err(error) => return failure(error),
+            },
+            Some(_) => {
+                return failure(crate::error::Error::InvalidInput(
+                    "recovery_key must be a string".into(),
+                ));
+            }
+        };
+        let request_id = context.id.to_string();
+        let tool_name = request.name.to_string();
+        let call = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
+        let result = self.tool_router.call(call).await?;
+        if let Some(reservation) = reservation
+            && let rmcp::model::CallToolResponse::Complete(response) = &result
+            && let Ok(payload) = crate::mcp::runtime::response_payload(response)
+        {
+            let _ = reservation.complete(crate::mcp::observability::BufferedResponse {
+                request_id,
+                tool_name,
+                written_at: std::time::SystemTime::now(),
+                size_bytes: payload.len(),
+                payload,
+            });
+        }
+        Ok(result)
+    }
+
     fn supported_protocol_versions(
         &self,
     ) -> std::borrow::Cow<'static, [rmcp::model::ProtocolVersion]> {

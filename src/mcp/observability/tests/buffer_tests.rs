@@ -136,6 +136,7 @@ async fn poisoned_replay_is_a_tool_error() {
     let result = server
         .get_last_responses(
             Parameters(GetLastResponsesRequest {
+                recovery_keys: None,
                 n: None,
                 include_binary: None,
             }),

@@ -341,6 +341,11 @@ pub struct TranscribeVoiceMessageRequest {
 /// Request for get_last_responses tool
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct GetLastResponsesRequest {
+    #[schemars(
+        description = "Explicit caller keys to recover in request order; required in json_v1. Unknown, expired and pending responses are reported per key."
+    )]
+    #[serde(default)]
+    pub recovery_keys: Option<Vec<String>>,
     #[schemars(description = "How many recent responses to return (default: all buffered)")]
     #[serde(default, deserialize_with = "flexible_opt_int")]
     pub n: Option<u32>,

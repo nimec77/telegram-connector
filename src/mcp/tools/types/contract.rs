@@ -49,6 +49,11 @@ impl<T> ToolResponse<T> {
 #[derive(Debug, Clone, Copy, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCode {
+    DuplicateRecoveryKey,
+    RecoveryCapacityReached,
+    ResponsePending,
+    ResponseUnavailable,
+    ResponseTooLarge,
     InvalidInput,
     RateLimited,
     Timeout,
@@ -85,6 +90,36 @@ pub struct ToolError {
 impl From<Error> for ToolError {
     fn from(error: Error) -> Self {
         let (code, message, retryable, retry_after_seconds) = match error {
+            Error::DuplicateRecoveryKey => (
+                ErrorCode::DuplicateRecoveryKey,
+                "Recovery key is already pending or retained",
+                false,
+                None,
+            ),
+            Error::RecoveryCapacityReached => (
+                ErrorCode::RecoveryCapacityReached,
+                "Recovery capacity is unavailable",
+                true,
+                None,
+            ),
+            Error::ResponsePending => (
+                ErrorCode::ResponsePending,
+                "Response is still pending",
+                true,
+                None,
+            ),
+            Error::ResponseUnavailable => (
+                ErrorCode::ResponseUnavailable,
+                "Response is unavailable",
+                false,
+                None,
+            ),
+            Error::ResponseTooLarge => (
+                ErrorCode::ResponseTooLarge,
+                "Response metadata exceeds the output budget",
+                false,
+                None,
+            ),
             Error::InvalidInput(_) => (
                 ErrorCode::InvalidInput,
                 "Invalid arguments; check the tool input schema and documented bounds",
@@ -309,5 +344,20 @@ pub(crate) fn output_schema<T: WireData>() -> Arc<JsonObject> {
     let mut schema =
         (*rmcp::handler::server::common::schema_for_output::<ToolResponse<T::Canonical>>()).clone();
     schema.insert("type".into(), serde_json::json!("object"));
+    Arc::new(schema)
+}
+
+/// Add the shared wire-only recovery argument without changing Rust request APIs.
+pub(crate) fn recoverable_schema(schema: Arc<JsonObject>) -> Arc<JsonObject> {
+    let mut schema = (*schema).clone();
+    let properties = schema
+        .entry("properties")
+        .or_insert_with(|| serde_json::json!({}));
+    if let Some(properties) = properties.as_object_mut() {
+        properties.insert("recovery_key".into(), serde_json::json!({
+            "description": "Optional unique caller key for targeted recovery; retained for 10 minutes after completion. Prevents accidental mixing, not authenticated isolation.",
+            "anyOf": [{"type":"string", "minLength":1, "maxLength":128, "pattern":"^[ -~]+$"}, {"type":"null"}]
+        }));
+    }
     Arc::new(schema)
 }

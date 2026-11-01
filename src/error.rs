@@ -10,6 +10,21 @@ use thiserror::Error;
 /// Domain/client operation failure. Existing exhaustive matches must handle new variants.
 #[derive(Error, Debug, Clone)]
 pub enum Error {
+    /// A recovery key is already reserved or retained.
+    #[error("recovery key is already pending or retained")]
+    DuplicateRecoveryKey,
+    /// All recovery slots are occupied by pending work, or recovery is disabled.
+    #[error("recovery capacity is unavailable")]
+    RecoveryCapacityReached,
+    /// A selected operation has not completed.
+    #[error("response is still pending")]
+    ResponsePending,
+    /// A selected response is unknown, expired, cancelled or evicted.
+    #[error("response is unavailable")]
+    ResponseUnavailable,
+    /// Response metadata exceeds the applicable serialized output budget.
+    #[error("response metadata exceeds the serialized output budget")]
+    ResponseTooLarge,
     /// Failure in local response assembly or a worker task; no provider payload.
     #[error("internal error: {0}")]
     Internal(&'static str),

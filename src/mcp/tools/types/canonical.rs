@@ -325,14 +325,24 @@ pub struct ResolveData {
     pub returned: usize,
     pub resolved: usize,
 }
-#[derive(Debug, Serialize, JsonSchema)]
-pub struct RecoveryEntry {
-    pub request_id: String,
-    pub tool_name: String,
-    pub written_at: DateTime<Utc>,
-    pub size_bytes: usize,
-    pub response: serde_json::Value,
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(untagged)]
+pub enum RecoveryEntry {
+    Response {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        recovery_key: Option<String>,
+        request_id: String,
+        tool_name: String,
+        written_at: DateTime<Utc>,
+        size_bytes: usize,
+        response: serde_json::Value,
+    },
+    Failure {
+        recovery_key: String,
+        error: ToolError,
+    },
 }
+
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct RecoveryData {
     pub responses: Vec<RecoveryEntry>,
@@ -609,11 +619,21 @@ impl WireData for responses::ResolveChannelsResponse<Error> {
 impl WireData for responses::LastResponsesResponse {
     type Canonical = RecoveryData;
     fn canonical(self) -> Result<(RecoveryData, Vec<ContentBlock>), Error> {
+        if let Some(responses) = self.keyed {
+            return Ok((
+                RecoveryData {
+                    responses,
+                    buffered: self.buffered,
+                },
+                Vec::new(),
+            ));
+        }
         let responses = self
             .responses
             .into_iter()
             .map(|e: BufferedResponseEntry| {
-                Ok(RecoveryEntry {
+                Ok(RecoveryEntry::Response {
+                    recovery_key: None,
                     request_id: e.request_id,
                     tool_name: e.tool_name,
                     written_at: e
@@ -634,6 +654,12 @@ impl WireData for responses::LastResponsesResponse {
         ))
     }
     fn legacy(self) -> Result<CallToolResult, Error> {
+        if let Some(responses) = self.keyed {
+            return legacy_json(&RecoveryData {
+                responses,
+                buffered: self.buffered,
+            });
+        }
         legacy_json(&self)
     }
 }

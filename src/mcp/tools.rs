@@ -14,6 +14,7 @@ pub mod image;
 pub(crate) mod media_budget;
 pub(crate) mod shaping;
 pub mod types;
+pub(crate) mod wire_budget;
 
 // Re-export types for convenience
 pub use types::*;

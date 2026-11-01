@@ -201,6 +201,9 @@ impl<S: Service<RoleServer>> Service<RoleServer> for RuntimeService<S> {
             && !matches!(request, ClientRequest::InitializeRequest(_));
         let ct = context.ct.clone();
         let progress = OperationContext {
+            response_id: context.id.clone(),
+            modern,
+            identity: self.service.get_info().server_info,
             operation: Arc::clone(&operation),
             peer: context.peer.clone(),
             next: AtomicU64::new(0),
@@ -264,6 +267,9 @@ fn add_identity(result: &mut ServerResult, identity: Implementation) -> Result<(
 }
 
 struct OperationContext {
+    response_id: rmcp::model::RequestId,
+    modern: bool,
+    identity: Implementation,
     operation: Arc<Operation>,
     peer: Peer<RoleServer>,
     next: AtomicU64,
@@ -301,3 +307,36 @@ pub(crate) async fn report_progress(message: &'static str) {
 }
 
 pub(crate) use processing::image_job;
+
+/// Exact JSON-RPC size for the active request, excluding its framing newline.
+/// SDK-only/direct callers have no runtime identity and use a numeric fixture ID.
+pub(crate) fn response_size(
+    result: &rmcp::model::CallToolResult,
+) -> Result<usize, crate::error::Error> {
+    response_payload(result).map(|payload| payload.len())
+}
+
+pub(crate) fn response_payload(
+    result: &rmcp::model::CallToolResult,
+) -> Result<String, crate::error::Error> {
+    let mut result = ServerResult::CallToolResult(result.clone());
+    let id = OPERATION
+        .try_with(|context| {
+            if context.modern {
+                add_identity(&mut result, context.identity.clone()).map_err(|_| {
+                    crate::error::Error::Internal("response identity serialization failed")
+                })?;
+            } else {
+                result.strip_result_type_for_legacy_peer();
+            }
+            Ok::<_, crate::error::Error>(context.response_id.clone())
+        })
+        .unwrap_or(Ok(rmcp::model::RequestId::Number(0)))?;
+    let response = rmcp::model::JsonRpcResponse {
+        jsonrpc: rmcp::model::JsonRpcVersion2_0,
+        id,
+        result,
+    };
+    serde_json::to_string(&response)
+        .map_err(|_| crate::error::Error::Internal("response serialization failed"))
+}

@@ -59,6 +59,47 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         request: GetLastResponsesRequest,
     ) -> Result<LastResponsesResponse, Error> {
         let include_binary = request.include_binary.unwrap_or(false);
+        if let Some(keys) = &request.recovery_keys {
+            let selected = self.response_buffer.select_keys(keys)?;
+            let buffered = selected.retained;
+            let keyed = selected
+                .responses
+                .into_iter()
+                .map(|(key, outcome)| {
+                    let entry = match outcome {
+                        Ok(entry) => entry,
+                        Err(error) => {
+                            return Ok(
+                                crate::mcp::tools::types::canonical::RecoveryEntry::Failure {
+                                    recovery_key: key,
+                                    error: error.into(),
+                                },
+                            );
+                        }
+                    };
+                    let mut response = serde_json::from_str(&entry.payload)
+                        .map_err(|_| Error::Internal("invalid replay JSON"))?;
+                    if !include_binary {
+                        omit_binary_blocks(&mut response);
+                    }
+                    Ok(
+                        crate::mcp::tools::types::canonical::RecoveryEntry::Response {
+                            recovery_key: Some(key),
+                            request_id: entry.request_id,
+                            tool_name: entry.tool_name,
+                            written_at: chrono::DateTime::<chrono::Utc>::from(entry.written_at),
+                            size_bytes: entry.size_bytes,
+                            response,
+                        },
+                    )
+                })
+                .collect::<Result<Vec<_>, Error>>()?;
+            return Ok(LastResponsesResponse {
+                buffered,
+                responses: Vec::new(),
+                keyed: Some(keyed),
+            });
+        }
         let snapshot = self
             .response_buffer
             .try_snapshot(request.n.map(|n| n as usize))?;
@@ -83,6 +124,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             .collect::<Result<_, Error>>()?;
 
         let response = LastResponsesResponse {
+            keyed: None,
             buffered: snapshot.buffered,
             responses,
         };

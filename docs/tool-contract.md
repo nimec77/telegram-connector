@@ -22,7 +22,8 @@ Error codes are stable snake_case: invalid_input, rate_limited, timeout, unauthe
 unavailable, message_not_found, channel_not_found, ambiguous_channel, unsupported_peer,
 unsupported_platform, desktop_open_failed, internal_error, all_channels_failed,
 telegram_error, download_failed, no_visual_media, media_too_large, payload_cap_reached,
-premium_required, transcription_failed, voice_too_long and not_transcribable. A rate-limit
+premium_required, transcription_failed, voice_too_long, not_transcribable, response_too_large, duplicate_recovery_key,
+recovery_capacity_reached, response_pending and response_unavailable. A rate-limit
 error includes integer retry_after_seconds and is retryable; timeouts are retryable. Other
 categories conservatively report false, without claiming arbitrary provider failures are
 transient. No automatic retry occurs. Canonical messages omit raw provider/auth/download
@@ -116,22 +117,41 @@ invented for canonical output. New Error variants affect exhaustive matches. Dom
 Deserialize now delegates to the original constructors, preserving valid JSON types while
 rejecting invalid values and normalizing channel-name whitespace. See [Rust API](rust-api.md).
 
-## Stage boundary: work deliberately not completed here
+## Serialized budgets and targeted recovery
 
-This is Task 7. Existing message shaping still measures the legacy payload, not the full
-serialized canonical JSON-RPC response and duplicate fallback. The one-message floor and
-existing image/base64 caps remain. Full-wire 40,000-byte message sizing, a separate 65,536-byte
-non-binary media overhead cap, keyed recovery/TTL/reservations and bounded raw-media pipeline
-belong to Task 8 and are not advertised as implemented. get_last_responses currently remains
-a process-wide diagnostic ring, including in json_v1; it does not offer conversation isolation
-or targeted recovery. These limitations must be resolved/reviewed before a release claiming
-the complete audit design. No additional media/recovery implementation was included after
-the user narrowed the remaining scope to Task 7.
+Search/history (including fan-out) and message batches count the full serialized JSON-RPC
+response, including identity metadata and the duplicated structured JSON/text fallback,
+against `[limits] response_byte_budget` (default 40,000). Trimming preserves request order,
+oldest-first removal, continuation metadata and the one-message floor. The floor permits
+one oversized message only when metadata itself fits; metadata overflow returns
+`response_too_large`. This accounting can return fewer messages than earlier releases.
 
-The shared renderer retains typed mutable data until conversion/assembly: WireData::canonical
-returns concrete data plus separate image blocks, and tool_result serializes one envelope.
-A future sizing pass can trim and rebuild there before the actual runtime wire encoder.
-Future recovery keys can use wire-only request wrappers, preserving direct Request literals.
+Media uses independent per-image/batch base64 limits and a separate 65,536-byte cap on
+serialized non-binary overhead. Exceeding it returns a small error, no images, and refunds
+all no-image charges. Image data appears once in image blocks, outside JSON metadata.
+
+Every tool except `get_last_responses` accepts an optional wire-only `recovery_key` of
+1–128 printable ASCII characters. Use unique random keys. A key is reserved before
+dispatch; duplicate pending/retained keys fail without account charges or Telegram RPCs.
+Canonical recovery requires `recovery_keys: ["your-key"]` and returns only those selections,
+in selection order. Pending keys return per-key `response_pending`; missing, expired,
+evicted, cancelled or restarted results return `response_unavailable`. Key errors are data
+inside a successful recovery call. Results remain for ten minutes after completion, capacity
+eviction or restart. Oversized payloads remain explicit stubs with the original wire size.
+All pending slots reject new reservations rather than evicting active work. Cancellation
+makes its slot unavailable and evictable. Recovery responses are never retained.
+
+Keys prevent accidental selection mistakes; they provide no authenticated isolation. Calls
+without keys have no targeted guarantee. Unfiltered last-N remains available in legacy
+wire mode and through the direct Rust diagnostic adapter. Binary is omitted from replay
+by default; `include_binary:true` requests retained bytes explicitly. The diagnostic ring
+and keyed reservations are each bounded by `[observability] response_buffer_size`, and each
+stored payload uses `max_buffered_payload_bytes` plus fixed omission-stub overhead.
+Shared `recovery_key` fields are advertised at the wire schema boundary, preserving direct
+Rust request literals. `GetLastResponsesRequest` adds optional `recovery_keys`.
+
+Task 8's raw-media pipeline, decoded image limits and session-path permission investigations
+remain in progress. These changes alone do not establish final modernization acceptance.
 
 ## Validator dependency
 

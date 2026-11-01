@@ -221,7 +221,10 @@ fn cases() -> Vec<(&'static str, Value)> {
             json!({"channel_id":"news","format":"compact"}),
         ),
         ("get_message_by_link", json!({"link":"https://t.me/news/1"})),
-        ("get_last_responses", json!({})),
+        (
+            "get_last_responses",
+            json!({"recovery_keys":["missing-fixture"]}),
+        ),
         (
             "get_message_media",
             json!({"channel_id":"news","message_id":1}),
@@ -642,7 +645,8 @@ async fn canonical_contract_envelope_faults_and_argument_faults_are_distinct() {
             modern_mode,
         )
         .await;
-        assert_eq!(no_required["result"]["isError"], false);
+        assert_eq!(no_required["result"]["isError"], true);
+        assert_eq!(envelope(&no_required)["error"]["code"], "invalid_input");
         wire.close().await;
     }
 }
@@ -717,7 +721,9 @@ async fn canonical_contract_corrupt_replay_is_an_error() {
     let handler = complete_server(OutputFormat::JsonV1);
     handler
         .response_buffer()
-        .try_push(crate::mcp::observability::BufferedResponse {
+        .reserve_key("corrupt")
+        .expect("reserve")
+        .complete(crate::mcp::observability::BufferedResponse {
             request_id: "old".into(),
             tool_name: "get_message_by_link".into(),
             written_at: std::time::SystemTime::now(),
@@ -726,7 +732,14 @@ async fn canonical_contract_corrupt_replay_is_an_error() {
         })
         .expect("store");
     let mut wire = Wire::with_handler(handler);
-    let reply = call(&mut wire, 1, "get_last_responses", json!({}), true).await;
+    let reply = call(
+        &mut wire,
+        1,
+        "get_last_responses",
+        json!({"recovery_keys":["corrupt"]}),
+        true,
+    )
+    .await;
     assert_eq!(reply["result"]["isError"], true);
     assert_eq!(envelope(&reply)["error"]["code"], "internal_error");
     wire.close().await;
@@ -1001,3 +1014,9 @@ fn canonical_contract_boundary_refuses_null_success_data() {
         "a generic serializer must not emit both data and error null"
     );
 }
+
+#[path = "protocol_budgets.rs"]
+mod budgets;
+
+#[path = "protocol_recovery.rs"]
+mod recovery;

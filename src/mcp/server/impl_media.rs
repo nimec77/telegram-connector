@@ -76,7 +76,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "Message media results"
         );
 
-        Ok(MediaOutput {
+        let output = MediaOutput {
             single: true,
             channel_reference: request.channel_id,
             channel_id,
@@ -90,7 +90,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                 }),
             )],
             max_total_bytes: crate::mcp::tools::image::MAX_BASE64_LEN as u64,
-        })
+        };
+        if let Err(error) = output.check_overhead(self.output_format) {
+            self.rate_limiter.refund(self.media_download_cost);
+            return Err(error);
+        }
+        Ok(output)
     }
 
     pub(super) async fn get_messages_media_batch_data(
@@ -180,6 +185,20 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             crate::mcp::runtime::report_progress("Media item processed").await;
         }
 
+        let output = MediaOutput {
+            single: false,
+            channel_reference: request.channel_id,
+            channel_id,
+            peer_namespace,
+            requested: unique.len(),
+            items,
+            max_total_bytes: self.media_batch_max_total_bytes as u64,
+        };
+        if let Err(error) = output.check_overhead(self.output_format) {
+            self.rate_limiter.refund(charged);
+            return Err(error);
+        }
+
         // Ids that produced no image cost nothing — hand their tokens back.
         // The bucket clamps at capacity, so this can never inflate it.
         // unique.len() >= returned always holds (`returned` counts a subset
@@ -190,7 +209,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         self.rate_limiter.refund(refunded);
 
         tracing::info!(
-            channel = %request.channel_id,
+            channel = %output.channel_reference,
             requested = unique.len(),
             returned,
             failed,
@@ -198,15 +217,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             "Messages media batch results"
         );
 
-        Ok(MediaOutput {
-            single: false,
-            channel_reference: request.channel_id,
-            channel_id,
-            peer_namespace,
-            requested: unique.len(),
-            items,
-            max_total_bytes: self.media_batch_max_total_bytes as u64,
-        })
+        Ok(output)
     }
 
     pub(super) async fn transcribe_voice_message_data(

@@ -48,6 +48,7 @@ pub struct ResponseBuffer {
     capacity: usize,
     max_payload_bytes: usize,
     entries: Mutex<VecDeque<BufferedResponse>>,
+    keyed: Mutex<VecDeque<recovery::KeyedResponse>>,
 }
 
 impl ResponseBuffer {
@@ -58,6 +59,7 @@ impl ResponseBuffer {
             capacity,
             max_payload_bytes,
             entries: Mutex::new(VecDeque::new()),
+            keyed: Mutex::new(VecDeque::new()),
         }
     }
 
@@ -159,3 +161,6 @@ pub const GET_LAST_RESPONSES_TOOL: &str = "get_last_responses";
 #[cfg(test)]
 #[path = "tests/buffer_tests.rs"]
 pub(crate) mod tests;
+
+#[path = "recovery.rs"]
+mod recovery;
