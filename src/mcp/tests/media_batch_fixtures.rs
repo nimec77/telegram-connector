@@ -54,6 +54,7 @@ pub(super) fn not_found(message_id: i32) -> MediaFetchOutcome {
 
 pub(super) fn request(channel: &str, ids: Vec<i64>) -> GetMessagesMediaBatchRequest {
     GetMessagesMediaBatchRequest {
+        delivery: Default::default(),
         channel_id: channel.to_string(),
         message_ids: ids,
         max_dimension: None,

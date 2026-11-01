@@ -88,6 +88,10 @@ impl Config {
             .server
             .validate()
             .context("invalid server configuration")?;
+        config
+            .media_artifacts
+            .validate()
+            .context("invalid media_artifacts configuration")?;
         Ok(config)
     }
 

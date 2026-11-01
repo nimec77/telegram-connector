@@ -21,6 +21,30 @@ pub enum ResponseFormat {
     Compact,
 }
 
+/// Optional processed-preview delivery. Every mode retains an inline JPEG.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+#[schemars(inline)]
+pub enum MediaDelivery {
+    /// Inline preview only; no artifact is created.
+    #[default]
+    Inline,
+    /// Inline preview and private resource reference.
+    Resource,
+    /// Inline preview and explicit local path.
+    File,
+    /// Inline preview, private resource reference and explicit local path.
+    ResourceAndFile,
+}
+impl MediaDelivery {
+    pub(crate) fn resource(self) -> bool {
+        matches!(self, Self::Resource | Self::ResourceAndFile)
+    }
+    pub(crate) fn file(self) -> bool {
+        matches!(self, Self::File | Self::ResourceAndFile)
+    }
+}
+
 /// Request for get_subscribed_channels tool
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct GetChannelsRequest {
@@ -277,6 +301,9 @@ pub struct GetMessagesBatchRequest {
 /// Request for get_messages_media_batch tool (work-order C)
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct GetMessagesMediaBatchRequest {
+    /// Optional processed-preview cache delivery; defaults to inline.
+    #[serde(default)]
+    pub delivery: MediaDelivery,
     #[schemars(description = "Channel ID or username (required). All ids must belong to it.")]
     #[serde(deserialize_with = "flexible_string")]
     pub channel_id: String,
@@ -305,6 +332,9 @@ pub struct ResolveChannelsRequest {
 /// Request for get_message_media tool
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct GetMessageMediaRequest {
+    /// Optional processed-preview cache delivery; defaults to inline.
+    #[serde(default)]
+    pub delivery: MediaDelivery,
     #[schemars(description = "Channel ID or username (required)")]
     #[serde(deserialize_with = "flexible_string")]
     pub channel_id: String,

@@ -12,8 +12,9 @@ mod types;
 mod validation;
 
 pub use types::{
-    Config, LimitsConfig, LoggingConfig, ObservabilityConfig, OutputFormat, RateLimitConfig,
-    SearchConfig, ServerConfig, TelegramConfig, TimeoutConfig, TranscriptionConfig,
+    Config, LimitsConfig, LoggingConfig, MediaArtifactsConfig, ObservabilityConfig, OutputFormat,
+    RateLimitConfig, SearchConfig, ServerConfig, TelegramConfig, TimeoutConfig,
+    TranscriptionConfig,
 };
 pub(crate) use validation::MIN_IMAGE_BASE64_BYTES;
 

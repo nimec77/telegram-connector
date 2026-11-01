@@ -260,3 +260,35 @@ async fn replay_includes_binary_when_opted_in() {
     assert!(blocks[0].get("data").is_some(), "opt-in keeps the base64");
     assert!(blocks[0].get("omitted").is_none());
 }
+
+#[tokio::test]
+async fn replay_stubs_read_and_embedded_resource_blobs_unless_explicit() {
+    let server = make_server();
+    for payload in [
+        r#"{"result":{"contents":[{"uri":"telegram-media://artifact/id","mimeType":"image/jpeg","blob":"aGVsbG8="}]}}"#,
+        r#"{"result":{"content":[{"type":"resource","resource":{"uri":"telegram-media://artifact/id","mimeType":"image/jpeg","blob":"aGVsbG8="}}]}}"#,
+    ] {
+        server.response_buffer().push(buffered("resource", payload));
+        for include_binary in [false, true] {
+            let replay = server
+                .get_last_responses_data(GetLastResponsesRequest {
+                    recovery_keys: None,
+                    n: Some(1),
+                    include_binary: Some(include_binary),
+                })
+                .await
+                .expect("replay");
+            let response = &replay.responses[0].response;
+            if include_binary {
+                assert!(response.to_string().contains("aGVsbG8="));
+            } else {
+                assert!(
+                    !response.to_string().contains("aGVsbG8="),
+                    "resource blob retained"
+                );
+                assert!(response.to_string().contains("\"size_bytes\":5"));
+                assert!(response.to_string().contains("image/jpeg"));
+            }
+        }
+    }
+}

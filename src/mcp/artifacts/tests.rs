@@ -743,3 +743,57 @@ async fn successful_close_is_disarmed_before_another_store_reuses_empty_root() {
         .await
         .expect("close replacement");
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn terminal_root_separators_and_dots_do_not_hide_symlinks() {
+    use std::os::unix::fs::{PermissionsExt as _, symlink};
+    let mut accepted = Vec::new();
+    for suffix in ["", "/", "/.", "/./"] {
+        let temp = tempfile::tempdir().expect("fixture");
+        let real = temp.path().join("real");
+        std::fs::create_dir(&real).expect("root");
+        std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o700)).expect("private");
+        let alias = temp.path().join("alias");
+        symlink(&real, &alias).expect("alias");
+        let spelling = PathBuf::from(format!("{}{suffix}", alias.display()));
+        if !matches!(
+            ArtifactStore::try_new(config(spelling)).await,
+            Err(StoreError::Unavailable)
+        ) {
+            accepted.push(suffix);
+        }
+    }
+    assert!(
+        accepted.is_empty(),
+        "accepted symlink spellings {accepted:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn root_normalization_preserves_physical_parent_traversal() {
+    use std::os::unix::fs::{PermissionsExt as _, symlink};
+    let temp = tempfile::tempdir().expect("fixture");
+    let parent = temp.path().join("physical");
+    std::fs::create_dir(&parent).expect("parent");
+    std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o700)).expect("private");
+    let child = parent.join("child");
+    std::fs::create_dir(&child).expect("child");
+    let alias = temp.path().join("alias");
+    symlink(&child, &alias).expect("ancestor alias");
+    let store = ArtifactStore::try_new(config(alias.join("../store/.")))
+        .await
+        .expect("physical parent");
+    let item = job(&store, |store| store.insert(b"jpeg", 1, 1))
+        .await
+        .expect("insert");
+    assert_eq!(
+        item.path.parent().expect("root"),
+        parent.canonicalize().expect("canonical").join("store")
+    );
+    assert!(
+        !temp.path().join("store").exists(),
+        "parent components must not be collapsed lexically"
+    );
+}

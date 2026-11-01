@@ -288,3 +288,195 @@ mod progress;
 
 #[path = "protocol_contract.rs"]
 mod contract;
+
+#[tokio::test]
+async fn artifact_resources_wire_capability_lists_reads_and_safe_errors() {
+    use base64::Engine as _;
+    use rmcp::ServerHandler as _;
+    assert!(server().get_info().capabilities.resources.is_none());
+    for modern_protocol in [true, false] {
+        let temp = tempfile::tempdir().expect("fixture");
+        let server = server()
+            .with_media_artifacts(&crate::config::MediaArtifactsConfig {
+                enabled: true,
+                root: Some(temp.path().join("artifacts")),
+                ..Default::default()
+            })
+            .await
+            .expect("private store");
+        assert!(
+            server.get_info().capabilities.resources.is_some(),
+            "resource capability missing"
+        );
+        let store = Arc::clone(server.media_artifacts.as_ref().expect("store"));
+        let jpeg = crate::test_helpers::create_test_jpeg(16, 16);
+        let expected = jpeg.clone();
+        let artifact = crate::mcp::runtime::image_job(move || store.insert(&jpeg, 16, 16))
+            .await
+            .expect("worker")
+            .expect("insert");
+        let mut wire = Wire::with_handler(server);
+        if !modern_protocol {
+            wire.send(json!({"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}})).await;
+            assert_eq!(wire.recv().await["result"]["protocolVersion"], "2025-11-25");
+            wire.send(json!({"jsonrpc":"2.0","method":"notifications/initialized"}))
+                .await;
+        }
+        for (id, method, key) in [
+            (1, "resources/list", "resources"),
+            (2, "resources/templates/list", "resourceTemplates"),
+        ] {
+            let req = if modern_protocol {
+                modern(json!(id), method)
+            } else {
+                json!({"jsonrpc":"2.0","id":id,"method":method})
+            };
+            wire.send(req).await;
+            let result = wire.recv().await;
+            assert_eq!(result["result"][key], json!([]));
+            if modern_protocol {
+                assert_eq!(result["result"]["cacheScope"], "private");
+            } else {
+                assert!(result["result"].get("ttlMs").is_none());
+            }
+        }
+        let mut errors = Vec::new();
+        for (id, uri) in [
+            (3, artifact.uri.clone()),
+            (4, "file:///private/secret".into()),
+            (5, format!("telegram-media://artifact/{}", "0".repeat(48))),
+        ] {
+            let mut request = if modern_protocol {
+                modern(json!(id), "resources/read")
+            } else {
+                json!({"jsonrpc":"2.0","id":id,"method":"resources/read","params":{}})
+            };
+            request["params"]["uri"] = json!(uri);
+            wire.send(request).await;
+            let reply = wire.recv().await;
+            if id == 3 {
+                assert_eq!(
+                    base64::engine::general_purpose::STANDARD
+                        .decode(
+                            reply["result"]["contents"][0]["blob"]
+                                .as_str()
+                                .expect("blob")
+                        )
+                        .expect("base64"),
+                    expected
+                );
+                assert_eq!(reply["result"]["contents"][0]["mimeType"], "image/jpeg");
+                if modern_protocol {
+                    assert_eq!(reply["result"]["cacheScope"], "private");
+                    assert!(reply["result"]["ttlMs"].as_u64().expect("TTL") <= 600_000);
+                } else {
+                    assert!(reply["result"].get("ttlMs").is_none());
+                }
+            } else {
+                assert!(reply["error"].is_object());
+                assert!(!reply.to_string().contains("/private/secret"));
+                errors.push(reply["error"]["data"]["code"].clone());
+            }
+        }
+        assert_ne!(
+            errors[0], errors[1],
+            "malformed and missing remain distinct"
+        );
+        wire.close().await;
+    }
+}
+
+#[tokio::test]
+async fn artifact_media_wire_matches_advertised_schema_and_text_across_protocols() {
+    for modern_protocol in [true, false] {
+        let temp = tempfile::tempdir().expect("fixture");
+        let mut client = MockTelegramClientTrait::new();
+        client
+            .expect_download_message_media()
+            .returning(|_, _, _| Ok(super::media_batch_fixtures::photo_download(24, 16)));
+        let server = McpServer::new(
+            Arc::new(client),
+            Arc::new(crate::test_helpers::permissive_limiter()),
+        )
+        .with_media_artifacts(&crate::config::MediaArtifactsConfig {
+            enabled: true,
+            file_export_enabled: true,
+            root: Some(temp.path().join("store")),
+            ..Default::default()
+        })
+        .await
+        .expect("store");
+        let tools = server.tools_list_result().tools;
+        let schema = Value::Object(
+            (**tools
+                .iter()
+                .find(|tool| tool.name == "get_message_media")
+                .expect("media tool")
+                .output_schema
+                .as_ref()
+                .expect("output schema"))
+            .clone(),
+        );
+        let validator = jsonschema::validator_for(&schema).expect("advertised schema");
+        let mut wire = Wire::with_handler(server);
+        if !modern_protocol {
+            wire.send(json!({"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}})).await;
+            wire.recv().await;
+            wire.send(json!({"jsonrpc":"2.0","method":"notifications/initialized"}))
+                .await;
+        }
+        for (id, delivery) in ["inline", "resource", "file", "resource_and_file"]
+            .into_iter()
+            .enumerate()
+        {
+            let mut request = if modern_protocol {
+                modern(json!(id + 1), "tools/call")
+            } else {
+                json!({"jsonrpc":"2.0","id":id+1,"method":"tools/call","params":{}})
+            };
+            request["params"]["name"] = json!("get_message_media");
+            request["params"]["arguments"] =
+                json!({"channel_id":"news","message_id":42,"delivery":delivery});
+            wire.send(request).await;
+            let reply = wire.recv().await;
+            let result = &reply["result"];
+            let structured = &result["structuredContent"];
+            assert!(
+                validator.is_valid(structured),
+                "output schema rejects {delivery}: {structured}"
+            );
+            assert_eq!(
+                serde_json::from_str::<Value>(
+                    result["content"][0]["text"]
+                        .as_str()
+                        .expect("JSON fallback")
+                )
+                .expect("JSON"),
+                *structured
+            );
+            assert_eq!(structured["data"]["summary"]["returned"], 1);
+            assert_eq!(result["content"][1]["type"], "image");
+            let artifact = &structured["data"]["items"][0]["artifact"];
+            assert_eq!(
+                artifact.get("file_path").is_some(),
+                delivery.contains("file")
+            );
+            if delivery.contains("resource") {
+                assert_eq!(artifact["resource_content_index"], 2);
+                assert_eq!(result["content"][2]["type"], "resource_link");
+                let mut read = if modern_protocol {
+                    modern(json!(id + 10), "resources/read")
+                } else {
+                    json!({"jsonrpc":"2.0","id":id+10,"method":"resources/read","params":{}})
+                };
+                read["params"]["uri"] = artifact["resource_uri"].clone();
+                wire.send(read).await;
+                assert_eq!(
+                    wire.recv().await["result"]["contents"][0]["blob"],
+                    result["content"][1]["data"]
+                );
+            }
+        }
+        wire.close().await;
+    }
+}

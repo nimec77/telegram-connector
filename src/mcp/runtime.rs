@@ -19,8 +19,8 @@ use rmcp::{Peer, ServiceExt};
 use state::{Operation, State};
 use std::borrow::Cow;
 use std::io;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
@@ -47,6 +47,15 @@ pub enum RuntimeError {
     Join(#[from] tokio::task::JoinError),
 }
 
+/// Retains the first absolute drain budget even after the runtime stops.
+#[derive(Clone)]
+pub(crate) struct DrainDeadline(Arc<OnceLock<tokio::time::Instant>>);
+impl DrainDeadline {
+    pub(crate) fn get(&self) -> Option<tokio::time::Instant> {
+        self.0.get().copied()
+    }
+}
+
 /// One transport session's configuration and shared observability handles.
 pub struct Runtime {
     state: Arc<State>,
@@ -71,6 +80,10 @@ impl Runtime {
             buffer,
             slow_write_threshold,
         })
+    }
+
+    pub(crate) fn drain_deadline(&self) -> DrainDeadline {
+        DrainDeadline(Arc::clone(&self.state.first_drain_deadline))
     }
 
     /// Serve one NDJSON connection, draining accepted work on EOF or shutdown.
@@ -371,4 +384,37 @@ pub(crate) fn response_payload(
     };
     serde_json::to_string(&response)
         .map_err(|_| crate::error::Error::Internal("response serialization failed"))
+}
+
+#[cfg(test)]
+mod artifact_shutdown_tests {
+    use super::*;
+    #[tokio::test(start_paused = true)]
+    async fn first_drain_deadline_survives_repeated_shutdown_and_stopped_phase() {
+        let runtime = Runtime::try_new(
+            ServerConfig {
+                shutdown_timeout_seconds: 5,
+                ..Default::default()
+            },
+            Arc::new(SessionMetrics::new()),
+            Arc::new(ResponseBuffer::new(0, 0)),
+            Duration::ZERO,
+        )
+        .expect("runtime");
+        let retained = runtime.drain_deadline();
+        assert!(retained.get().is_none());
+        let initial = tokio::time::Instant::now();
+        runtime.state.input_eof();
+        assert_eq!(retained.get(), Some(initial + Duration::from_secs(5)));
+        tokio::time::advance(Duration::from_secs(4)).await;
+        runtime.state.drain();
+        runtime.state.stop().await;
+        assert_eq!(
+            retained.get(),
+            Some(initial + Duration::from_secs(5)),
+            "stop must preserve the original remaining budget"
+        );
+        tokio::time::advance(Duration::from_secs(1)).await;
+        assert_eq!(retained.get(), Some(tokio::time::Instant::now()));
+    }
 }

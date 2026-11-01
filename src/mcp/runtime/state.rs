@@ -3,8 +3,8 @@ use crate::config::ServerConfig;
 use crate::mcp::observability::SessionMetrics;
 use rmcp::model::{ErrorCode, ErrorData, ProgressToken, RequestId};
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use tokio::sync::{Mutex, Notify, watch};
 use tokio::time::Instant;
@@ -34,6 +34,7 @@ pub(super) struct State {
     pub metrics: Arc<SessionMetrics>,
     pub operations: Mutex<HashMap<RequestId, Arc<Operation>>>,
     pub phase: watch::Sender<Phase>,
+    pub first_drain_deadline: Arc<OnceLock<Instant>>,
     admission_closed: AtomicBool,
     pub changed: Notify,
     pub write_gate: Mutex<()>,
@@ -46,6 +47,7 @@ impl State {
             metrics,
             operations: Mutex::new(HashMap::new()),
             phase: watch::channel(Phase::Running).0,
+            first_drain_deadline: Arc::new(OnceLock::new()),
             admission_closed: AtomicBool::new(false),
             changed: Notify::new(),
             write_gate: Mutex::new(()),
@@ -62,9 +64,10 @@ impl State {
     pub fn input_eof(&self) {
         self.phase.send_if_modified(|phase| {
             if matches!(phase, Phase::Running) {
-                *phase = Phase::Draining(
-                    Instant::now() + Duration::from_secs(self.config.shutdown_timeout_seconds),
-                );
+                let deadline =
+                    Instant::now() + Duration::from_secs(self.config.shutdown_timeout_seconds);
+                let deadline = *self.first_drain_deadline.get_or_init(|| deadline);
+                *phase = Phase::Draining(deadline);
                 true
             } else {
                 false

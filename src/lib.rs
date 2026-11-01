@@ -82,7 +82,7 @@ pub mod telegram;
 pub mod test_helpers;
 
 pub use cli::Cli;
-pub use config::{Config, ObservabilityConfig, ServerConfig};
+pub use config::{Config, MediaArtifactsConfig, ObservabilityConfig, ServerConfig};
 pub use error::Error;
 pub use link::MessageLink;
 pub use rate_limiter::{RateLimiter, RateLimiterTrait};

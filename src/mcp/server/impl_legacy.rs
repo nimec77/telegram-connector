@@ -5,10 +5,11 @@ use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {
     pub(super) async fn check_mcp_status_impl(&self) -> Result<String, String> {
-        let value = self
+        let mut value = self
             .check_mcp_status_data()
             .await
             .map_err(|error| error.to_string())?;
+        value.media_artifacts = None;
         tools::json_response(&value)
     }
     pub(super) async fn get_last_responses_impl(
@@ -143,6 +144,9 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         request: tools::GetMessageMediaRequest,
     ) -> Result<rmcp::model::CallToolResult, String> {
+        if request.delivery != crate::mcp::tools::types::requests::MediaDelivery::Inline {
+            return Err("Non-inline media delivery is unavailable in legacy adapters".into());
+        }
         use crate::mcp::tools::types::contract::WireData as _;
         self.get_message_media_data(request)
             .await
@@ -153,6 +157,9 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         request: tools::GetMessagesMediaBatchRequest,
     ) -> Result<rmcp::model::CallToolResult, String> {
+        if request.delivery != crate::mcp::tools::types::requests::MediaDelivery::Inline {
+            return Err("Non-inline media delivery is unavailable in legacy adapters".into());
+        }
         use crate::mcp::tools::types::contract::WireData as _;
         self.get_messages_media_batch_data(request)
             .await

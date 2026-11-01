@@ -101,3 +101,30 @@ fn media_filter_enum_is_inline_with_no_refs() {
         }
     }
 }
+
+#[test]
+fn media_delivery_modes_are_inline_in_both_advertised_request_schemas() {
+    let tools = test_server().tools_list_result().tools;
+    for name in ["get_message_media", "get_messages_media_batch"] {
+        let schema = Value::Object(
+            (*tools
+                .iter()
+                .find(|tool| tool.name == name)
+                .expect("media tool")
+                .input_schema)
+                .clone(),
+        );
+        let mut refs = Vec::new();
+        collect_refs(&schema, &mut refs);
+        assert!(refs.is_empty(), "{name} has dangling references: {refs:?}");
+        let validator = jsonschema::validator_for(&schema["properties"]["delivery"])
+            .expect("inline delivery schema");
+        for value in ["inline", "resource", "file", "resource_and_file"] {
+            assert!(
+                validator.is_valid(&serde_json::json!(value)),
+                "{name} rejects {value}"
+            );
+        }
+        assert!(!validator.is_valid(&serde_json::json!("original")));
+    }
+}

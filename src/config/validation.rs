@@ -191,3 +191,39 @@ impl super::TelegramConfig {
         Ok(())
     }
 }
+
+impl super::MediaArtifactsConfig {
+    /// Validate cache bounds and platform support without filesystem work.
+    ///
+    /// # Errors
+    /// Returns an error for unavailable exports, unsafe roots, unsupported platforms or bounds.
+    pub fn validate(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            !self.file_export_enabled || self.enabled,
+            "media_artifacts file export requires enabled"
+        );
+        anyhow::ensure!(
+            (1..=3600).contains(&self.ttl_seconds),
+            "media_artifacts.ttl_seconds must be 1..=3600"
+        );
+        anyhow::ensure!(
+            (1..=1000).contains(&self.max_entries),
+            "media_artifacts.max_entries must be 1..=1000"
+        );
+        anyhow::ensure!(
+            (1..=1_073_741_824).contains(&self.max_total_bytes),
+            "media_artifacts.max_total_bytes must be 1..=1073741824"
+        );
+        if let Some(root) = &self.root {
+            anyhow::ensure!(
+                root.is_absolute(),
+                "media_artifacts.root must be a nonempty absolute path"
+            );
+        }
+        anyhow::ensure!(
+            !self.enabled || cfg!(unix),
+            "media_artifacts requires Unix ownership checks"
+        );
+        Ok(())
+    }
+}

@@ -5,9 +5,13 @@
 
 use super::McpServer;
 use crate::error::Error;
+use crate::mcp::artifacts::{ArtifactStore, StoreError};
 use crate::mcp::tools::image::{ProcessedImage, process_image_with_cap};
 use crate::mcp::tools::media_budget::Base64Budget;
-use crate::mcp::tools::types::media_contract::{MediaImage, MediaOutput};
+use crate::mcp::tools::types::media_contract::{
+    ArtifactKind, MediaArtifact, MediaImage, MediaOutput,
+};
+use crate::mcp::tools::types::requests::MediaDelivery;
 use crate::mcp::tools::validation::{
     dedupe_and_validate_ids, parse_message_id, validate_channel_reference, wire_message_id,
 };
@@ -19,6 +23,7 @@ use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
 use crate::telegram::transcription::TranscriptionDeadline;
 use crate::telegram::types::{MediaDownload, MediaFetchError, MediaFetchOutcome};
+use std::sync::Arc;
 
 /// Longest-side pixel limit applied when a request omits `max_dimension`.
 pub(super) const DEFAULT_MAX_DIMENSION: u32 = 1280;
@@ -29,10 +34,78 @@ pub(super) const MAX_DIMENSION: u32 = 2048;
 pub(super) const MAX_MEDIA_BATCH_IDS: usize = 10;
 
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {
+    fn artifact_delivery(
+        &self,
+        delivery: MediaDelivery,
+    ) -> Option<(Arc<ArtifactStore>, MediaDelivery)> {
+        if delivery == MediaDelivery::Inline {
+            None
+        } else {
+            self.media_artifacts
+                .as_ref()
+                .map(|store| (Arc::clone(store), delivery))
+        }
+    }
+
+    async fn rollback_artifacts(
+        &self,
+        output: &MediaOutput,
+        deadline: Option<crate::telegram::media_pipeline::MediaDeadline>,
+    ) {
+        let Some(store) = &self.media_artifacts else {
+            return;
+        };
+        let uris = output
+            .items
+            .iter()
+            .filter_map(|(_, item)| item.as_ref().ok()?.artifact_uri.clone())
+            .collect::<Vec<_>>();
+        if uris.is_empty() {
+            return;
+        }
+        let store = Arc::clone(store);
+        let job = crate::mcp::runtime::image_job(move || {
+            for uri in uris {
+                store.remove(&uri)?;
+            }
+            Ok::<_, StoreError>(())
+        });
+        let result = match deadline {
+            Some(deadline) => deadline
+                .run(job)
+                .await
+                .map_err(|_| ())
+                .and_then(|result| result.map_err(|_| ())),
+            None => tokio::time::timeout(std::time::Duration::from_secs(5), job)
+                .await
+                .map_err(|_| ())
+                .and_then(|result| result.map_err(|_| ())),
+        };
+        if !matches!(result, Ok(Ok(()))) {
+            tracing::warn!(
+                "Media artifact rollback incomplete; bounded entries remain until cleanup"
+            );
+        }
+    }
+
+    fn validate_media_delivery(&self, delivery: MediaDelivery) -> Result<(), Error> {
+        if delivery != MediaDelivery::Inline
+            && (self.output_format == crate::config::OutputFormat::Legacy
+                || self.media_artifacts.is_none()
+                || (delivery.file() && !self.media_artifacts_config.file_export_enabled))
+        {
+            return Err(Error::InvalidInput(
+                "Requested media delivery is unavailable".into(),
+            ));
+        }
+        Ok(())
+    }
+
     pub(super) async fn get_message_media_data(
         &self,
         request: GetMessageMediaRequest,
     ) -> Result<MediaOutput, Error> {
+        self.validate_media_delivery(request.delivery)?;
         let message_id = parse_message_id(request.message_id)?;
         let wire_id = wire_message_id(message_id)?;
         let max_dimension = request
@@ -55,11 +128,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         let channel_id = download.channel_id;
         let peer_namespace = download.peer_namespace;
         let deadline = download.lease.as_ref().map(|lease| lease.deadline());
-        let processed = process_download(
+        let (processed, artifact, artifact_uri) = process_download(
             &mut download,
             max_dimension,
             crate::mcp::tools::image::MAX_BASE64_LEN,
             deadline,
+            self.artifact_delivery(request.delivery),
         )
         .await?;
         crate::mcp::runtime::report_progress("Image encoded").await;
@@ -90,11 +164,14 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                 Ok(MediaImage {
                     base64: processed.base64_jpeg,
                     metadata,
+                    artifact,
+                    artifact_uri,
                 }),
             )],
             max_total_bytes: crate::mcp::tools::image::MAX_BASE64_LEN as u64,
         };
         if let Err(error) = output.check_overhead(self.output_format) {
+            self.rollback_artifacts(&output, deadline).await;
             self.rate_limiter.refund(self.media_download_cost);
             return Err(error);
         }
@@ -105,6 +182,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         request: GetMessagesMediaBatchRequest,
     ) -> Result<MediaOutput, Error> {
+        self.validate_media_delivery(request.delivery)?;
         if request.channel_id.trim().is_empty() {
             return Err(Error::InvalidInput("channel_id is required".to_string()));
         }
@@ -192,18 +270,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                 &mut budget,
                 outcome,
                 deadline,
+                self.artifact_delivery(request.delivery),
             )
             .await
             {
-                Ok((base64_jpeg, metadata)) => {
-                    total_base64_bytes += base64_jpeg.len();
-                    items.push((
-                        id,
-                        Ok(MediaImage {
-                            base64: base64_jpeg,
-                            metadata,
-                        }),
-                    ));
+                Ok(image) => {
+                    total_base64_bytes += image.base64.len();
+                    items.push((id, Ok(image)));
                     returned += 1;
                 }
                 Err(error) => {
@@ -224,6 +297,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             max_total_bytes: self.media_batch_max_total_bytes as u64,
         };
         if let Err(error) = output.check_overhead(self.output_format) {
+            self.rollback_artifacts(&output, deadline).await;
             self.rate_limiter.refund(charged);
             return Err(error);
         }
@@ -368,7 +442,7 @@ fn media_metadata(
 
 /// Process one batch outcome end to end: download-failure mapping, budget
 /// allowance, decode/shrink/encode on a blocking thread, metadata
-/// serialization. Returns the content pair for a success, or the
+/// serialization and optional artifact storage. Returns the preview for a success, or the
 /// machine-readable failure reason. The budget is consumed only after every
 /// fallible step has succeeded, so a failed id never charges the cap and
 /// later ids keep their full allowance.
@@ -378,7 +452,8 @@ async fn process_media_outcome(
     budget: &mut Base64Budget,
     outcome: MediaFetchOutcome,
     deadline: Option<crate::telegram::media_pipeline::MediaDeadline>,
-) -> Result<(String, GetMessageMediaResponse), Error> {
+    artifacts: Option<(Arc<ArtifactStore>, MediaDelivery)>,
+) -> Result<MediaImage, Error> {
     let id = i64::from(outcome.message_id);
     let mut download = outcome.result.map_err(|e| match e {
         MediaFetchError::NotFound => Error::MessageNotFound {
@@ -399,7 +474,8 @@ async fn process_media_outcome(
     // hundreds of milliseconds of pure CPU. A panicked/cancelled task reports
     // the id rather than failing the batch.
     let deadline = deadline.or_else(|| download.lease.as_ref().map(|lease| lease.deadline()));
-    let processed = process_download(&mut download, max_dimension, allowance, deadline).await?;
+    let (processed, artifact, artifact_uri) =
+        process_download(&mut download, max_dimension, allowance, deadline, artifacts).await?;
 
     // Serialize before consuming the budget, so a (today unreachable)
     // serialization failure lands this id in `failed` with the budget
@@ -407,7 +483,12 @@ async fn process_media_outcome(
     let metadata = media_metadata(channel_id.to_string(), id, download, &processed);
 
     budget.consume(processed.base64_jpeg.len());
-    Ok((processed.base64_jpeg, metadata))
+    Ok(MediaImage {
+        base64: processed.base64_jpeg,
+        metadata,
+        artifact,
+        artifact_uri,
+    })
 }
 
 /// Move both raw bytes and their admission lease into the non-cancellable worker.
@@ -416,12 +497,56 @@ async fn process_download(
     max_dimension: u32,
     allowance: usize,
     deadline: Option<crate::telegram::media_pipeline::MediaDeadline>,
-) -> Result<ProcessedImage, Error> {
+    artifacts: Option<(Arc<ArtifactStore>, MediaDelivery)>,
+) -> Result<(ProcessedImage, Option<MediaArtifact>, Option<String>), Error> {
     let bytes = std::mem::take(&mut download.bytes);
     let lease = download.lease.take();
     let job = crate::mcp::runtime::image_job(move || {
         let _lease = lease;
-        process_image_with_cap(&bytes, max_dimension, allowance)
+        let processed = process_image_with_cap(&bytes, max_dimension, allowance)?;
+        let (artifact, uri) = match artifacts {
+            None => (None, None),
+            Some((store, delivery)) => {
+                use base64::Engine as _;
+                let jpeg = base64::engine::general_purpose::STANDARD
+                    .decode(&processed.base64_jpeg)
+                    .map_err(|_| Error::Internal("processed preview encoding unavailable"))?;
+                let stored = store
+                    .insert(&jpeg, processed.width, processed.height)
+                    .map_err(|error| match error {
+                        StoreError::TooLarge => Error::ArtifactTooLarge,
+                        _ => Error::ArtifactUnavailable,
+                    })?;
+                let file_path = if delivery.file() {
+                    match stored.path.to_str() {
+                        Some(path) => Some(path.to_owned()),
+                        None => {
+                            store
+                                .remove(&stored.uri)
+                                .map_err(|_| Error::ArtifactUnavailable)?;
+                            return Err(Error::ArtifactUnavailable);
+                        }
+                    }
+                } else {
+                    None
+                };
+                (
+                    Some(MediaArtifact {
+                        kind: ArtifactKind::ProcessedJpeg,
+                        mime_type: "image/jpeg".into(),
+                        size_bytes: stored.size_bytes,
+                        width: stored.width,
+                        height: stored.height,
+                        expires_at: stored.expires_at,
+                        resource_uri: delivery.resource().then(|| stored.uri.clone()),
+                        resource_content_index: None,
+                        file_path,
+                    }),
+                    Some(stored.uri),
+                )
+            }
+        };
+        Ok((processed, artifact, uri))
     });
     let result = match deadline {
         Some(deadline) => deadline.run(job).await?,

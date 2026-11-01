@@ -90,6 +90,18 @@ pub struct ToolError {
 impl From<Error> for ToolError {
     fn from(error: Error) -> Self {
         let (code, message, retryable, retry_after_seconds) = match error {
+            Error::ArtifactUnavailable => (
+                ErrorCode::Unavailable,
+                "Media artifact storage is unavailable",
+                false,
+                None,
+            ),
+            Error::ArtifactTooLarge => (
+                ErrorCode::MediaTooLarge,
+                "Media artifact exceeds storage capacity",
+                false,
+                None,
+            ),
             Error::ImageLimitExceeded => (
                 ErrorCode::MediaTooLarge,
                 "Decoded image exceeds dimension, pixel or allocation limits",

@@ -12,6 +12,9 @@ use serde::{Deserialize, Serialize};
 /// Response for check_mcp_status tool
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct StatusResponse {
+    /// Optional private cache diagnostics, omitted when disabled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub media_artifacts: Option<MediaArtifactsStatus>,
     #[schemars(description = "Whether Telegram client is connected")]
     pub telegram_connected: bool,
 
@@ -53,6 +56,27 @@ pub struct StatusResponse {
         description = "Whether the connected account has Telegram Premium (null if unknown)"
     )]
     pub premium: Option<bool>,
+}
+
+/// Private cache settings and reserved usage; paths and handles are never enumerated.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MediaArtifactsStatus {
+    pub enabled: bool,
+    pub file_export_enabled: bool,
+    pub ttl_seconds: u64,
+    pub max_entries: usize,
+    pub max_total_bytes: u64,
+    pub max_resource_read_bytes: usize,
+    pub resource_read_timeout_seconds: u64,
+    pub usage: Option<MediaArtifactsUsage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unavailable: Option<String>,
+}
+/// Reserved entries and bytes, including failed-cleanup reservations.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MediaArtifactsUsage {
+    pub entries: usize,
+    pub bytes: u64,
 }
 
 /// Rate-limiter budget breakdown (work-order D5).

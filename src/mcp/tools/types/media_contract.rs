@@ -23,6 +23,30 @@ pub(crate) struct MediaOutput {
 pub(crate) struct MediaImage {
     pub base64: String,
     pub metadata: GetMessageMediaResponse,
+    pub artifact: Option<MediaArtifact>,
+    pub artifact_uri: Option<String>,
+}
+
+/// Metadata for a cached processed JPEG preview, never an original attachment.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct MediaArtifact {
+    pub kind: ArtifactKind,
+    pub mime_type: String,
+    pub size_bytes: usize,
+    pub width: u32,
+    pub height: u32,
+    pub expires_at: chrono::DateTime<chrono::Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource_uri: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource_content_index: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_path: Option<String>,
+}
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactKind {
+    ProcessedJpeg,
 }
 
 #[derive(Debug, Serialize, JsonSchema)]
@@ -39,6 +63,8 @@ pub enum MediaItem {
         message_id: i64,
         content_index: usize,
         metadata: ImageMetadata,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        artifact: Option<Box<MediaArtifact>>,
     },
     Failure {
         channel_id: ChannelId,
@@ -106,18 +132,31 @@ impl WireData for MediaOutput {
         let mut images = Vec::new();
         let mut items = Vec::new();
         let mut bytes = 0;
+        let mut returned = 0;
         for (message_id, outcome) in self.items {
             match outcome {
-                Ok(image) => {
+                Ok(mut image) => {
+                    returned += 1;
                     bytes += image.base64.len();
                     let content_index = images.len() + 1;
                     images.push(ContentBlock::image(image.base64, "image/jpeg"));
+                    if let Some(artifact) = &mut image.artifact
+                        && let Some(uri) = &artifact.resource_uri
+                    {
+                        artifact.resource_content_index = Some(images.len() + 1);
+                        images.push(ContentBlock::resource_link(
+                            rmcp::model::Resource::new(uri, "Processed JPEG preview")
+                                .with_mime_type("image/jpeg")
+                                .with_size(artifact.size_bytes as u64),
+                        ));
+                    }
                     items.push(MediaItem::Image {
                         channel_id: self.channel_id.into(),
                         peer_namespace: self.peer_namespace,
                         message_id,
                         content_index,
                         metadata: image.metadata.into(),
+                        artifact: image.artifact.map(Box::new),
                     });
                 }
                 Err(error) => items.push(MediaItem::Failure {
@@ -128,7 +167,6 @@ impl WireData for MediaOutput {
                 }),
             }
         }
-        let returned = images.len();
         Ok((
             MediaData {
                 items,
@@ -208,6 +246,8 @@ impl MediaOutput {
                             Ok(image) => Ok(MediaImage {
                                 base64: String::new(),
                                 metadata: image.metadata.clone(),
+                                artifact: image.artifact.clone(),
+                                artifact_uri: image.artifact_uri.clone(),
                             }),
                             Err(error) => Err(error.clone()),
                         },

@@ -19,16 +19,16 @@ pub mod serde_helpers;
 pub use requests::{
     GenerateLinkRequest, GetChannelInfoRequest, GetChannelStatsRequest, GetChannelsRequest,
     GetLastResponsesRequest, GetMessageByLinkRequest, GetMessageMediaRequest,
-    GetMessagesBatchRequest, GetMessagesMediaBatchRequest, GetRecentMessagesRequest,
+    GetMessagesBatchRequest, GetMessagesMediaBatchRequest, GetRecentMessagesRequest, MediaDelivery,
     OpenMessageRequest, ResolveChannelsRequest, ResponseFormat, SearchPublicChannelsRequest,
     SearchRequest, TranscribeVoiceMessageRequest,
 };
 pub use responses::{
     BufferedResponseEntry, ChannelHeader, ChannelsResponse, GetMessageMediaResponse,
-    LastResponsesResponse, MediaBatchFailure, MediaBatchSummary, MediaLimits, MessageLinkResponse,
-    MessageResponse, MessagesBatchResponse, MissingMessageEntry, NextCursor, OpenMessageResponse,
-    RateLimiterCosts, RateLimiterStatus, ResolveChannelsResponse, SearchResponse, StatusResponse,
-    TranscribeVoiceMessageResponse,
+    LastResponsesResponse, MediaArtifactsStatus, MediaArtifactsUsage, MediaBatchFailure,
+    MediaBatchSummary, MediaLimits, MessageLinkResponse, MessageResponse, MessagesBatchResponse,
+    MissingMessageEntry, NextCursor, OpenMessageResponse, RateLimiterCosts, RateLimiterStatus,
+    ResolveChannelsResponse, SearchResponse, StatusResponse, TranscribeVoiceMessageResponse,
 };
 
 pub(crate) mod canonical;

@@ -8,6 +8,9 @@ use std::path::PathBuf;
 /// Complete connector configuration; secrets remain wrapped in `SecretString`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
+    /// Optional private processed-preview storage.
+    #[serde(default)]
+    pub media_artifacts: MediaArtifactsConfig,
     /// MTProto session, credentials, download bounds and RPC budgets.
     pub telegram: TelegramConfig,
     /// Search accumulation budget and partial-result policy.
@@ -259,6 +262,36 @@ impl Default for ObservabilityConfig {
             slow_write_threshold_ms: defaults::default_slow_write_threshold_ms(),
             response_buffer_size: defaults::default_response_buffer_size(),
             max_buffered_payload_bytes: defaults::default_max_buffered_payload_bytes(),
+        }
+    }
+}
+
+/// Private processed-JPEG cache and optional local export settings.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct MediaArtifactsConfig {
+    /// Initialize the private cache (disabled by default).
+    pub enabled: bool,
+    /// Permit explicit delivery of raw absolute local paths.
+    pub file_export_enabled: bool,
+    /// Dedicated empty private absolute directory; platform config child when absent.
+    pub root: Option<PathBuf>,
+    /// Logical lifetime in seconds, 1..=3600.
+    pub ttl_seconds: u64,
+    /// Reserved entries, 1..=1000.
+    pub max_entries: usize,
+    /// Reserved bytes, 1..=1073741824.
+    pub max_total_bytes: u64,
+}
+impl Default for MediaArtifactsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            file_export_enabled: false,
+            root: None,
+            ttl_seconds: 600,
+            max_entries: 100,
+            max_total_bytes: 268_435_456,
         }
     }
 }

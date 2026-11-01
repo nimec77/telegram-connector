@@ -215,6 +215,7 @@ async fn batch_of_one_matches_the_single_tool_metadata() {
     let single = single_server
         .get_message_media(
             Parameters(GetMessageMediaRequest {
+                delivery: Default::default(),
                 channel_id: "news".to_string(),
                 message_id: 42,
                 max_dimension: None,

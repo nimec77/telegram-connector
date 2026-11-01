@@ -53,3 +53,6 @@ mod stats;
 mod status;
 #[path = "tests/transcription.rs"]
 mod transcription;
+
+#[path = "tests/media_artifacts.rs"]
+mod media_artifacts;

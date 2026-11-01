@@ -313,3 +313,17 @@ fn get_recent_messages_request_preserves_blank_dates() {
     assert_eq!(request.from_date, Some("".to_string()));
     assert_eq!(request.to_date, Some(" ".to_string()));
 }
+
+#[test]
+fn media_delivery_schema_is_inline_and_defaulted() {
+    let schema =
+        serde_json::to_value(schemars::schema_for!(GetMessageMediaRequest)).expect("schema");
+    let delivery = &schema["properties"]["delivery"];
+    assert_eq!(delivery["default"], "inline");
+    let validator = jsonschema::validator_for(delivery).expect("inline delivery schema");
+    for value in ["inline", "resource", "file", "resource_and_file"] {
+        assert!(validator.is_valid(&serde_json::json!(value)));
+    }
+    assert!(!validator.is_valid(&serde_json::json!("original")));
+    assert!(delivery.get("$ref").is_none());
+}

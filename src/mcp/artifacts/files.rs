@@ -102,6 +102,9 @@ pub(super) fn prepare(root: &Path, uid: u32) -> Result<(PathBuf, Vec<PathBuf>), 
     #[cfg(unix)]
     {
         use std::os::unix::fs::{DirBuilderExt as _, MetadataExt as _};
+        // Components remove trailing separators/dots without collapsing physical `..`.
+        let normalized: PathBuf = root.components().collect();
+        let root = normalized.as_path();
         std::fs::DirBuilder::new()
             .recursive(true)
             .mode(0o700)

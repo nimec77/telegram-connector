@@ -10,6 +10,12 @@ use thiserror::Error;
 /// Domain/client operation failure. Existing exhaustive matches must handle new variants.
 #[derive(Error, Debug, Clone)]
 pub enum Error {
+    /// Private preview storage could not safely complete the operation.
+    #[error("Media artifact storage is unavailable")]
+    ArtifactUnavailable,
+    /// Processed preview exceeds configured artifact capacity.
+    #[error("Media artifact exceeds storage capacity")]
+    ArtifactTooLarge,
     /// Source image dimensions, pixel count or decoded allocation exceed policy.
     #[error("decoded image exceeds dimension, pixel or allocation limits")]
     ImageLimitExceeded,

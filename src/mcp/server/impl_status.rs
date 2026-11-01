@@ -20,7 +20,46 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         let last_write = self.metrics.try_last_write_age_secs();
         let last_response_write_unavailable = last_write.as_ref().err().map(ToString::to_string);
 
+        let media_artifacts = if self.output_format == crate::config::OutputFormat::JsonV1 {
+            if let Some(store) = &self.media_artifacts {
+                use crate::mcp::tools::types::responses::{
+                    MediaArtifactsStatus, MediaArtifactsUsage,
+                };
+                let store = std::sync::Arc::clone(store);
+                let snapshot = tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    crate::mcp::runtime::image_job(move || store.snapshot()),
+                )
+                .await;
+                let (usage, unavailable) = match snapshot {
+                    Ok(Ok(Ok(snapshot))) => (
+                        Some(MediaArtifactsUsage {
+                            entries: snapshot.entries,
+                            bytes: snapshot.bytes,
+                        }),
+                        None,
+                    ),
+                    _ => (None, Some("Media artifact storage is unavailable".into())),
+                };
+                Some(MediaArtifactsStatus {
+                    enabled: true,
+                    file_export_enabled: self.media_artifacts_config.file_export_enabled,
+                    ttl_seconds: self.media_artifacts_config.ttl_seconds,
+                    max_entries: self.media_artifacts_config.max_entries,
+                    max_total_bytes: self.media_artifacts_config.max_total_bytes,
+                    max_resource_read_bytes: super::impl_resources::MAX_RESOURCE_BYTES,
+                    resource_read_timeout_seconds: super::impl_resources::RESOURCE_READ_SECONDS,
+                    usage,
+                    unavailable,
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         let response = StatusResponse {
+            media_artifacts,
             telegram_connected: account.authorized,
             rate_limiter: RateLimiterStatus {
                 tokens: tokens.ok(),
@@ -141,37 +180,64 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 }
 
-/// Replace base64 image content blocks with size-annotated stubs (work-order
+/// Replace image and resource binary payloads with size-annotated stubs (work-order
 /// D6): the replay tool exists for when context is already damaged, so binary
 /// payloads only replay on explicit request.
 fn omit_binary_blocks(response: &mut serde_json::Value) {
-    let Some(blocks) = response
-        .get_mut("result")
-        .and_then(|r| r.get_mut("content"))
-        .and_then(|c| c.as_array_mut())
-    else {
+    let Some(result) = response.get_mut("result") else {
         return;
     };
-    for block in blocks {
-        if block.get("type").and_then(|t| t.as_str()) != Some("image") {
-            continue;
+    if let Some(contents) = result
+        .get_mut("contents")
+        .and_then(|contents| contents.as_array_mut())
+    {
+        for resource in contents {
+            omit_resource_blob(resource);
         }
-        let Some(data) = block.get("data").and_then(|d| d.as_str()) else {
-            continue;
-        };
-        let padding = data.bytes().rev().take_while(|&b| b == b'=').count();
-        // Saturating: a malformed payload shorter than one base64 quantum
-        // (e.g. "==") makes the quotient 0 while padding is 2.
-        let size_bytes = (data.len() / 4 * 3).saturating_sub(padding);
-        let mime_type = block
-            .get("mimeType")
-            .cloned()
-            .unwrap_or(serde_json::Value::Null);
-        *block = serde_json::json!({
-            "type": "image",
-            "omitted": true,
-            "mime_type": mime_type,
-            "size_bytes": size_bytes,
-        });
     }
+    if let Some(blocks) = result
+        .get_mut("content")
+        .and_then(|content| content.as_array_mut())
+    {
+        for block in blocks {
+            match block.get("type").and_then(|kind| kind.as_str()) {
+                Some("image") => {
+                    let Some(data) = block.get("data").and_then(|data| data.as_str()) else {
+                        continue;
+                    };
+                    let size_bytes = binary_size(data);
+                    let mime_type = block
+                        .get("mimeType")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null);
+                    *block = serde_json::json!({"type":"image", "omitted":true, "mime_type":mime_type, "size_bytes":size_bytes});
+                }
+                Some("resource") => {
+                    if let Some(resource) = block.get_mut("resource") {
+                        omit_resource_blob(resource);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+fn binary_size(data: &str) -> usize {
+    let padding = data.bytes().rev().take_while(|&byte| byte == b'=').count();
+    (data.len() / 4 * 3).saturating_sub(padding)
+}
+fn omit_resource_blob(resource: &mut serde_json::Value) {
+    let Some(blob) = resource.get("blob").and_then(|blob| blob.as_str()) else {
+        return;
+    };
+    let size_bytes = binary_size(blob);
+    let mime_type = resource
+        .get("mimeType")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let uri = resource
+        .get("uri")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    *resource = serde_json::json!({"uri":uri, "omitted":true, "mime_type":mime_type, "size_bytes":size_bytes});
 }

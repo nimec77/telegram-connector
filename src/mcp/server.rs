@@ -35,9 +35,10 @@ use std::time::{Duration, Instant};
 /// One MCP service sharing a client, limiter and session diagnostics through `Arc`.
 ///
 /// Construction/builders perform no RPCs or account charges. Builders consume
-/// `self` and do not validate complete configuration: use the public configuration
+/// `self`; the artifact builder validates its settings and initializes private storage.
+/// Other builders do not validate complete configuration: use the public configuration
 /// validators before applying hand-built or directly deserialized settings.
-/// Clones share client/limiter/metrics/replay handles. Replacing observability on
+/// Clones share client/limiter/metrics/replay/artifact handles. Replacing observability on
 /// one clone creates a fresh replay buffer for that clone, retaining its metrics.
 ///
 /// Tool calls validate locally before acquisition and RPC. Fan-out charges each
@@ -53,7 +54,6 @@ use std::time::{Duration, Instant};
 /// methods return serialized JSON/string errors; media methods return content
 /// blocks. String errors preserve established wire behavior rather than exposing
 /// the complete typed error domain to MCP callers.
-#[derive(Clone)]
 pub struct McpServer<T: TelegramClientTrait, R: RateLimiterTrait> {
     telegram_client: Arc<T>,
     rate_limiter: Arc<R>,
@@ -68,7 +68,32 @@ pub struct McpServer<T: TelegramClientTrait, R: RateLimiterTrait> {
     media_batch_max_total_bytes: usize,
     output_format: crate::config::OutputFormat,
     desktop_launcher: Arc<dyn desktop::DesktopLauncher>,
+    media_artifacts: Option<Arc<crate::mcp::artifacts::ArtifactStore>>,
+    media_artifacts_config: crate::config::MediaArtifactsConfig,
     tool_router: ToolRouter<Self>,
+}
+
+impl<T: TelegramClientTrait, R: RateLimiterTrait> Clone for McpServer<T, R> {
+    fn clone(&self) -> Self {
+        Self {
+            telegram_client: Arc::clone(&self.telegram_client),
+            rate_limiter: Arc::clone(&self.rate_limiter),
+            metrics: Arc::clone(&self.metrics),
+            response_buffer: Arc::clone(&self.response_buffer),
+            slow_write_threshold: self.slow_write_threshold,
+            media_download_cost: self.media_download_cost,
+            transcription_cost: self.transcription_cost,
+            transcription_default_timeout_secs: self.transcription_default_timeout_secs,
+            transcription_max_timeout_secs: self.transcription_max_timeout_secs,
+            response_byte_budget: self.response_byte_budget,
+            media_batch_max_total_bytes: self.media_batch_max_total_bytes,
+            output_format: self.output_format,
+            desktop_launcher: Arc::clone(&self.desktop_launcher),
+            media_artifacts: self.media_artifacts.as_ref().map(Arc::clone),
+            media_artifacts_config: self.media_artifacts_config.clone(),
+            tool_router: self.tool_router.clone(),
+        }
+    }
 }
 
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {
@@ -93,8 +118,47 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             media_batch_max_total_bytes: default_media_batch_max_total_bytes() as usize,
             output_format: crate::config::OutputFormat::JsonV1,
             desktop_launcher: Arc::new(desktop::SystemLauncher),
+            media_artifacts: None,
+            media_artifacts_config: Default::default(),
             tool_router: Self::tool_router(),
         }
+    }
+
+    /// Initialize optional private preview storage without Telegram RPCs.
+    ///
+    /// # Errors
+    /// Rejects invalid settings and unavailable or non-private storage with safe errors.
+    pub async fn with_media_artifacts(
+        mut self,
+        config: &crate::config::MediaArtifactsConfig,
+    ) -> Result<Self, crate::error::Error> {
+        config.validate().map_err(|_| {
+            crate::error::Error::InvalidInput("Invalid media artifact configuration".into())
+        })?;
+        self.media_artifacts = if config.enabled {
+            let root = config
+                .root
+                .clone()
+                .or_else(|| {
+                    directories::ProjectDirs::from("", "", "telegram-connector")
+                        .map(|dirs| dirs.config_dir().join("media-artifacts"))
+                })
+                .ok_or(crate::error::Error::ArtifactUnavailable)?;
+            Some(
+                crate::mcp::artifacts::ArtifactStore::try_new(crate::mcp::artifacts::StoreConfig {
+                    root,
+                    ttl: Duration::from_secs(config.ttl_seconds),
+                    max_entries: config.max_entries,
+                    max_bytes: config.max_total_bytes,
+                })
+                .await
+                .map_err(|_| crate::error::Error::ArtifactUnavailable)?,
+            )
+        } else {
+            None
+        };
+        self.media_artifacts_config = config.clone();
+        Ok(self)
     }
 
     /// Select the application output mode, independently of protocol negotiation.
@@ -261,7 +325,11 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     /// Serve an injectable byte stream using the production protocol runtime.
     ///
     /// EOF/shutdown starts one absolute drain budget shared by operations and
-    /// pending output. Cancellation drops async work, but cannot abort already
+    /// pending output and explicit artifact-store closure. Normal EOF/signal closes
+    /// the shared store, including retained clones, using only the first drain
+    /// deadline's remaining time. Zero/expired grace skips closure; I/O failures
+    /// leave best-effort Drop cleanup and bounded stale-root fallback.
+    /// Cancellation drops async work, but cannot abort already
     /// running blocking image processing. Embedders own runtime/process teardown.
     /// Production bootstrap handlers are local and nonblocking; the generic
     /// runtime does not promise to interrupt arbitrary blocking custom handlers.
@@ -288,10 +356,27 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             server.response_buffer(),
             server.slow_write_threshold,
         )?;
-        runtime
-            .serve(server, io, shutdown)
-            .await
-            .map_err(Into::into)
+        let artifacts = server.media_artifacts.as_ref().map(Arc::clone);
+        let drain_deadline = runtime.drain_deadline();
+        let result = runtime.serve(server, io, shutdown).await;
+        if result.is_ok()
+            && let Some(store) = artifacts
+            && let Some(deadline) = drain_deadline.get()
+            && tokio::time::Instant::now() < deadline
+        {
+            // This is the original EOF/signal budget, never a new shutdown grace.
+            let close = crate::mcp::runtime::image_job(move || store.close());
+            match tokio::time::timeout_at(deadline, close).await {
+                Ok(Ok(Ok(()))) => {}
+                Ok(Ok(Err(_))) | Ok(Err(_)) => {
+                    return Err(crate::error::Error::ArtifactUnavailable.into());
+                }
+                Err(_) => {
+                    tracing::warn!("Media artifact closure exceeded the remaining shutdown budget")
+                }
+            }
+        }
+        result.map_err(Into::into)
     }
 
     /// Serve stdio until EOF with default bounded runtime settings.
@@ -323,6 +408,7 @@ mod impl_media;
 mod impl_message_batch;
 mod impl_recovery;
 mod impl_resolve;
+mod impl_resources;
 mod impl_search;
 mod impl_stats;
 mod impl_status;
@@ -1079,12 +1165,43 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> ServerHand
 
     fn get_info(&self) -> InitializeResult {
         let server_info = Implementation::new("telegram-mcp", env!("CARGO_PKG_VERSION"));
-        let capabilities = ServerCapabilities::builder().enable_tools().build();
+        let capabilities = if self.media_artifacts.is_some() {
+            ServerCapabilities::builder()
+                .enable_tools()
+                .enable_resources()
+                .build()
+        } else {
+            ServerCapabilities::builder().enable_tools().build()
+        };
 
         InitializeResult::new(capabilities)
             .with_protocol_version(rmcp::model::ProtocolVersion::V_2025_11_25)
             .with_server_info(server_info)
             .with_instructions("Telegram MCP Connector - Search Russian Telegram channels")
+    }
+
+    async fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<rmcp::model::ListResourcesResult, rmcp::ErrorData> {
+        self.resources_list_for(context.protocol_version())
+    }
+    async fn list_resource_templates(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<rmcp::model::ListResourceTemplatesResult, rmcp::ErrorData> {
+        self.resource_templates_for(context.protocol_version())
+    }
+    async fn read_resource(
+        &self,
+        request: rmcp::model::ReadResourceRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<rmcp::model::ReadResourceResponse, rmcp::ErrorData> {
+        self.read_artifact_resource(request.uri, context.protocol_version())
+            .await
+            .map(Into::into)
     }
 
     // Defining list_tools here (instead of relying on #[tool_handler]'s default)

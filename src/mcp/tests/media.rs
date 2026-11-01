@@ -36,6 +36,7 @@ fn photo_download(width: u32, height: u32) -> MediaDownload {
 
 fn request(channel: &str, message_id: i64, max_dimension: Option<u32>) -> GetMessageMediaRequest {
     GetMessageMediaRequest {
+        delivery: Default::default(),
         channel_id: channel.to_string(),
         message_id,
         max_dimension,
