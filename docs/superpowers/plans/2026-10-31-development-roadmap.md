@@ -18,7 +18,7 @@ fix RPC safety at the narrowest existing operation boundary.
 standards alignment plan is archived in Git history.
 
 **Status:** Tasks 1–8 and Rust standards alignment are implemented; Task 9 automation
-was implemented earlier. Remaining offline macOS Task 10 acceptance is recorded in
+was implemented earlier. Offline macOS Task 10 acceptance passed and is recorded in
 [the validation report](../../validation/2026-11-01-task8.md): full gate, production release,
 security/version inventory, coverage, two protocol clients, RSS and independent review/fixes.
 Target-host-specific UI/live account behavior is unverified; it is not claimed by this
@@ -303,7 +303,7 @@ scoped validator policy in `d6a9bc8` were independently approved. macOS passed
 wire/schema/process checks and fresh dependency/security checks. See
 [the migration guide](../../tool-contract.md) for the new default, legacy mode,
 Rust API compatibility and the work deferred to Task 8. The user subsequently authorized
-a version bump and integration into the primary branch; Task 8 remains pending.
+a version bump and integration into the primary branch. Task 8 was pending at that boundary and is now implemented below.
 
 ## Task 8: Preserve budgets and isolate recovery across the new contract
 
