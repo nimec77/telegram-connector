@@ -15,7 +15,7 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   parent sidecar finding was regression-fixed. See [final acceptance](validation/2026-11-01-final-acceptance.md),
   [Task 9 evidence](validation/2026-11-01-task9-workflows.md), and
   [Rust/S1–S6 assessment](validation/2026-11-01-rust-adoption-acceptance.md).
-  There are 16 tools, json_v1 plus explicit legacy mode; nightly stays 2026-10-31, rmcp3.8,
+  There are 16 tools, json_v1 plus explicit legacy mode; nightly stays 2026-10-31, rmcp 3.8,
   and direct grammers pins stay 1e31e73cd9797790905bbea82cd75adcbe6f1242 (0.11).
 - **Latest media-test coverage (2026-11-01):** the scoped Task 10 branch reports 82.58%
   library lines (9,301/11,263, unfiltered including inline unit code), with the original

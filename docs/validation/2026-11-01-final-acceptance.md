@@ -71,7 +71,7 @@ Existing-format verification is separate from stricter policy verification:
 | --- | --- | --- |
 | Existing format | cargo fmt --all --check | exit 0 |
 | Stricter lints | cargo clippy --offline --locked --all-targets -- -D warnings -D clippy::wildcard_imports -D clippy::missing_errors_doc -D clippy::return_self_not_must_use | exit 0 |
-| Library/binary tests and doctests | cargo test --offline --locked | 940 library tests  + 3 doctests pass; 6 normal-suite ignores: four subprocess entrypoints plus two explicit benchmarks |
+| Library/binary tests and doctests | cargo test --offline --locked | 942 library tests + 3 doctests pass; 6 normal-suite ignores: four subprocess entrypoints plus two explicit benchmarks |
 | Public documentation | RUSTDOCFLAGS=-D warnings cargo doc --offline --locked --no-deps | exit 0 |
 | Actual production features | cargo build --offline --locked --release, separately from examples | exit 0; binary reports0.24.0 |
 | Native examples | offline_mcp_fixture and inert_server | exit 0 |
