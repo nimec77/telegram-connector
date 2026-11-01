@@ -205,3 +205,45 @@ async fn review_session_rejects_access_granting_ancestor_acls() {
     assert!(!path.exists());
     assert!(has_allow_acl(&parent), "existing parent ACL was modified");
 }
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn final_review_shared_sticky_directory_cannot_be_the_immediate_session_parent() {
+    let placeholder =
+        tempfile::NamedTempFile::new_in("/private/tmp").expect("unique disposable name");
+    let path = placeholder.path().to_path_buf();
+    placeholder.close().expect("leave absent database");
+    let result = crate::telegram::session_storage::open_private_session(&path).await;
+    let accepted = result.is_ok();
+    drop(result);
+    let created = path.exists();
+    for suffix in ["", "-wal", "-shm", "-journal"] {
+        let mut entry = path.as_os_str().to_os_string();
+        entry.push(suffix);
+        let _ = std::fs::remove_file(std::path::PathBuf::from(entry));
+    }
+    assert!(!accepted, "accepted an immediate shared sticky parent");
+    assert!(
+        !created,
+        "created the database before rejecting the shared leaf"
+    );
+}
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn final_review_private_leaf_below_a_shared_sticky_ancestor_still_opens() {
+    let directory = tempfile::tempdir_in("/private/tmp").expect("private disposable leaf");
+    let path = directory.path().join("session.db");
+    let session = crate::telegram::session_storage::open_private_session(&path)
+        .await
+        .expect("protected private leaf");
+    assert_eq!(
+        std::fs::metadata(&path)
+            .expect("database")
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600
+    );
+    drop(session);
+}

@@ -16,11 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Animated MP4s retain animation classification and video metadata regardless of the
   order of their Animated and Video document attributes.
+- Reject a shared sticky directory as the immediate session parent so other users cannot
+  create absent SQLite sidecar names; private subdirectories beneath sticky ancestors remain valid.
+- The offline media client uses the selected temporary directory for its preview artifact.
 
 ### Changed
 
-- Restore the active ten-task roadmap: Tasks 9 and 10 remain open for acceptance;
-  Task 8 validation is no longer presented as completion of the entire roadmap.
+- Complete the six-item maintenance acceptance and final ten-task roadmap review with
+  explicit native macOS evidence, full dependency disposition and Rust-standard assessment.
 
 ## [0.24.0] - 2026-11-01
 

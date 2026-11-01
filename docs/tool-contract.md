@@ -170,7 +170,7 @@ bounds. No dependency or lockfile update is required.
 On macOS, storage opens create new directories at 0700 and establish database/sidecar mode
 0600 before SQLite can write credentials. Symlinks, hardlinks and nonregular entries are
 refused. Canonical ancestry must be owned by the current user or root and exclude unprotected
-group/other writes; root-owned sticky temporary roots are allowed. Access-granting directory
+group/other writes; root-owned sticky temporary ancestors are allowed above a session parent with no group/other writes. Access-granting directory
 ACLs are rejected and file ACLs are cleared. Existing directory modes/ACLs are preserved.
 Ownership/ACL utilities use captured output and bounded execution. Disposable tests cover
 these cases and valid DB/WAL/SHM files; no real session was inspected or changed. Windows

@@ -107,7 +107,10 @@ async fn prepare(path: &Path) -> Result<PathBuf, Error> {
         let metadata = std::fs::symlink_metadata(directory).map_err(|_| failure())?;
         let mode = metadata.permissions().mode();
         let trusted_owner = metadata.uid() == uid || metadata.uid() == 0;
-        let protected_sticky = metadata.uid() == 0 && mode & 0o1000 != 0;
+        // Absent sidecar names require a parent other users cannot modify.
+        // Sticky roots are safe only above that protected final directory.
+        let protected_sticky =
+            directory != parent.as_path() && metadata.uid() == 0 && mode & 0o1000 != 0;
         if !metadata.is_dir() || !trusted_owner || (mode & 0o022 != 0 && !protected_sticky) {
             return Err(Error::Auth("Session ancestry must have trusted ownership and exclude unprotected group/other writes".into()));
         }

@@ -6,6 +6,7 @@ from pathlib import Path
 import selectors
 import subprocess
 import sys
+import tempfile
 
 META = {"io.modelcontextprotocol/protocolVersion": "2026-07-28",
         "io.modelcontextprotocol/clientCapabilities": {}}
@@ -62,7 +63,7 @@ def check(binary, canonical, modern):
         if canonical:
             metadata = body(original, True)["items"][0]["metadata"]
             assert metadata["returned_width"] == metadata["returned_height"] == 64
-        Path("/private/tmp/telegram-task8-preview.jpg").write_bytes(jpeg)
+        (Path(tempfile.gettempdir()) / "telegram-task8-preview.jpg").write_bytes(jpeg)
         for rid, include_binary in [(3, False), (4, True)]:
             recovered = send(proc, rid, "tools/call", {"name": "get_last_responses", "arguments": {
                 "recovery_keys": ["python-image"], "include_binary": include_binary}}, modern)
