@@ -6,8 +6,9 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Current state
 
-- **Modernization through Task 8 ships in 0.24.0; Task 9 automation is retained and offline
-  macOS acceptance passed.** There are 16 tools, default `json_v1` plus explicit legacy mode.
+- **Tasks 1–8 are integrated in 0.24.0. Task 9 automation exists but acceptance is open;
+  Task 10 is partially verified and remains open.** Task 8's offline macOS checks passed.
+  There are 16 tools, default `json_v1` plus explicit legacy mode.
   Final checks passed 926 library tests and 3 doctests, warning-free docs, release build,
   Rust/Python wire clients, native process checks and fresh security/source metadata policy.
   Independent review found three Important issues (ACLs, writable ancestry, cursor metadata),
@@ -30,6 +31,12 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   `len_without_is_empty`).
 
 ## Open items
+
+- **Finish the original ten-task roadmap.** Task 9 needs its workflow/security-policy
+  acceptance checklist audited; Task 10 still needs explicit final closure, including
+  scoped RPC/conversion coverage and Rust manual/S1–S6 assessment. The
+  [active roadmap](superpowers/plans/2026-10-31-development-roadmap.md) and audit spec were
+  restored after premature archival. Current media-download coverage work belongs here.
 
 - **Operational limits:** target-host-specific rendering and live Telegram/account behavior
   are unverified; offline Rust/Python preview payloads and local image rendering passed.
