@@ -54,6 +54,12 @@ fn detect_document_type(doc: &Document) -> MediaType {
         _ => return MediaType::Document,
     };
 
+    // Animated MP4s also carry Video metadata. Their explicit animation marker
+    // determines the kind independently of the attribute vector's order.
+    if doc.is_animated() {
+        return MediaType::Animation;
+    }
+
     // Check attributes to determine document subtype
     for attr in &raw_doc.attributes {
         match attr {
@@ -73,9 +79,6 @@ fn detect_document_type(doc: &Document) -> MediaType {
                     MediaType::Audio
                 };
             }
-            tl::enums::DocumentAttribute::Animated => {
-                return MediaType::Animation;
-            }
             tl::enums::DocumentAttribute::Sticker(_) => {
                 // Should be caught by Media::Sticker, but just in case
                 return MediaType::Sticker;
@@ -86,7 +89,7 @@ fn detect_document_type(doc: &Document) -> MediaType {
 
     // Check MIME type for GIFs that might not have Animated attribute
     let mime = raw_doc.mime_type.as_str();
-    if mime == "image/gif" || (mime == "video/mp4" && doc.is_animated()) {
+    if mime == "image/gif" {
         return MediaType::Animation;
     }
 

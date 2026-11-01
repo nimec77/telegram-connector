@@ -1,6 +1,6 @@
 //! Converter tests: audio and video metadata extraction.
 use super::*;
-use crate::telegram::types::{AudioKind, VideoKind};
+use crate::telegram::types::{AudioKind, MediaType, VideoKind};
 use grammers_client::media::{Document, Media};
 use grammers_client::tl;
 
@@ -232,4 +232,30 @@ fn audio_info_omits_absent_title_from_json() {
 
     assert!(json.get("title").is_none());
     assert!(json.get("performer").is_none());
+}
+
+#[test]
+fn animated_mp4_classification_does_not_depend_on_attribute_order() {
+    for animated_first in [false, true] {
+        let mut media = video_doc(false, 7.5, 1920, 1080, 123_456, "video/mp4", true);
+        let Media::Document(document) = &mut media else {
+            panic!("document fixture")
+        };
+        let Some(tl::enums::Document::Document(raw)) = &mut document.raw.document else {
+            panic!("raw document fixture")
+        };
+        raw.attributes.push(tl::enums::DocumentAttribute::Animated);
+        if animated_first {
+            raw.attributes.reverse();
+        }
+        assert_eq!(
+            convert_media_to_type(&media),
+            MediaType::Animation,
+            "animated_first={animated_first}"
+        );
+        assert_eq!(
+            extract_video_info(&media).expect("animation metadata").kind,
+            VideoKind::Animation
+        );
+    }
 }

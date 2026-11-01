@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Offline production media-download tests for real cached photos/thumbnails, variant
+  metadata, reported/streamed caps, transfer failures, total deadlines and cancellation.
+
+### Fixed
+
+- Animated MP4s retain animation classification and video metadata regardless of the
+  order of their Animated and Video document attributes.
+
+### Changed
+
+- Restore the active ten-task roadmap: Tasks 9 and 10 remain open for acceptance;
+  Task 8 validation is no longer presented as completion of the entire roadmap.
+
 ## [0.24.0] - 2026-11-01
 
 ### Added

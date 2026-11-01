@@ -9,7 +9,7 @@ use crate::telegram::converters::{
 use crate::telegram::media_pipeline::{self, MediaDeadline};
 use crate::telegram::timeout::with_timeout;
 use crate::telegram::types::{MediaBatch, MediaDownload, MediaFetchError, MediaType};
-use futures::StreamExt as _;
+use futures::{Stream, StreamExt as _, TryStreamExt as _};
 use grammers_client::media::Media;
 
 impl TelegramClient {
@@ -174,16 +174,37 @@ impl TelegramClient {
     }
 }
 
+/// Only message values consumed by media policy; upstream PeerMap remains opaque.
+struct VisualMediaMessage {
+    media: Option<Media>,
+    caption: Option<String>,
+    peer_id: grammers_session::types::PeerId,
+}
+impl From<grammers_client::message::Message> for VisualMediaMessage {
+    fn from(message: grammers_client::message::Message) -> Self {
+        let caption = match message.text() {
+            "" => None,
+            text => Some(text.to_owned()),
+        };
+        Self {
+            media: message.media(),
+            caption,
+            peer_id: message.peer_id(),
+        }
+    }
+}
+
 async fn download_visual_media(
     client: &grammers_client::Client,
     download_secs: u64,
     max_download_bytes: u64,
-    msg: grammers_client::message::Message,
+    msg: impl Into<VisualMediaMessage> + Send,
     channel_ref: &str,
     message_id: i32,
     max_dimension: u32,
 ) -> Result<MediaDownload, Error> {
-    let media = msg.media().ok_or_else(|| Error::NoVisualMedia {
+    let msg = msg.into();
+    let media = msg.media.ok_or_else(|| Error::NoVisualMedia {
         media_type: "none".to_string(),
     })?;
     let media_type = convert_media_to_type(&media);
@@ -227,44 +248,28 @@ async fn download_visual_media(
         .find(|t| t.photo_type() == selected.photo_type)
         .ok_or_else(|| Error::DownloadFailed("selected size variant disappeared".to_string()))?;
 
-    let bytes = with_timeout("download_media", download_secs, async {
-        let mut data: Vec<u8> = Vec::new();
-        let mut download = client.iter_download(photo_size);
-        loop {
-            match download.next().await {
-                Ok(Some(chunk)) => {
-                    // Refuse the chunk before extending, including Vec capacity growth.
-                    let observed = data.len().saturating_add(chunk.len()) as u64;
-                    if observed > max_download_bytes {
-                        return Err(Error::MediaTooLarge {
-                            size_bytes: observed,
-                            max_bytes: max_download_bytes,
-                        });
-                    }
-                    data.try_reserve_exact(chunk.len())
-                        .map_err(|_| Error::DownloadFailed("raw image allocation failed".into()))?;
-                    data.extend_from_slice(&chunk);
-                }
-                Ok(None) => break,
-                Err(e) => {
-                    tracing::error!(
-                        channel_ref = %channel_ref,
-                        message_id,
-                        error = %e,
-                        "Media download failed"
-                    );
-                    return Err(Error::DownloadFailed(format!("download failed: {}", e)));
-                }
-            }
-        }
-        Ok(data)
-    })
+    // Construct the iterator on first poll so setup shares the transfer timeout.
+    let chunks = futures::stream::try_unfold(None, |download| async move {
+        let mut download = match download {
+            Some(download) => download,
+            None => client.iter_download(photo_size),
+        };
+        let next = download.next().await?;
+        Ok::<_, grammers_client::InvocationError>(next.map(|chunk| (chunk, Some(download))))
+    }).map_err(|error| {
+        tracing::error!(channel_ref = %channel_ref, message_id, error = %error, "Media download failed");
+        Error::DownloadFailed(format!("download failed: {error}"))
+    });
+    let bytes = collect_download(
+        chunks,
+        DownloadBounds {
+            max_bytes: max_download_bytes,
+            timeout_secs: download_secs,
+        },
+    )
     .await?;
 
-    let caption = match msg.text() {
-        "" => None,
-        text => Some(text.to_string()),
-    };
+    let caption = msg.caption;
 
     tracing::info!(
         channel_ref = %channel_ref,
@@ -279,9 +284,9 @@ async fn download_visual_media(
     Ok(MediaDownload {
         lease: None,
         channel_id: crate::telegram::types::ChannelId::new(
-            msg.peer_id().bare_id().ok_or(Error::UnsupportedPeer)?,
+            msg.peer_id.bare_id().ok_or(Error::UnsupportedPeer)?,
         )?,
-        peer_namespace: match msg.peer_id().kind() {
+        peer_namespace: match msg.peer_id.kind() {
             grammers_session::types::PeerKind::User => return Err(Error::UnsupportedPeer),
             grammers_session::types::PeerKind::Chat => crate::telegram::types::PeerNamespace::Chat,
             grammers_session::types::PeerKind::Channel => {
@@ -301,6 +306,42 @@ async fn download_visual_media(
     })
 }
 
+#[derive(Clone, Copy)]
+struct DownloadBounds {
+    max_bytes: u64,
+    timeout_secs: u64,
+}
+
+/// Transfer policy stays above the network iterator so real decisions are testable.
+async fn collect_download<S>(chunks: S, bounds: DownloadBounds) -> Result<Vec<u8>, Error>
+where
+    S: Stream<Item = Result<Vec<u8>, Error>>,
+{
+    with_timeout("download_media", bounds.timeout_secs, async {
+        futures::pin_mut!(chunks);
+        let mut data = Vec::new();
+        while let Some(chunk) = chunks.next().await {
+            let chunk = chunk?;
+            let observed = data.len().saturating_add(chunk.len()) as u64;
+            if observed > bounds.max_bytes {
+                return Err(Error::MediaTooLarge {
+                    size_bytes: observed,
+                    max_bytes: bounds.max_bytes,
+                });
+            }
+            data.try_reserve_exact(chunk.len())
+                .map_err(|_| Error::DownloadFailed("raw image allocation failed".into()))?;
+            data.extend_from_slice(&chunk);
+        }
+        Ok(data)
+    })
+    .await
+}
+
 #[cfg(test)]
 #[path = "tests/media_pipeline_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/media_download_fixtures.rs"]
+mod media_fixtures;
