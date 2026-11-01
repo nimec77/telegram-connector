@@ -307,7 +307,7 @@ scoped validator policy in `d6a9bc8` were independently approved. macOS passed
 wire/schema/process checks and fresh dependency/security checks. See
 [the migration guide](../../tool-contract.md) for the new default, legacy mode,
 Rust API compatibility and the work deferred to Task 8. The user subsequently authorized
-a version bump and integration into the primary branch; Task 8 remains pending.
+a version bump and integration into the primary branch; Task 8 remained pending at that point.
 
 ## Task 8: Preserve budgets and isolate recovery across the new contract
 

@@ -21,7 +21,7 @@ handling. A pure converter regression checks both orders.
 
 ## Verification
 
-- Baseline: 926 library tests + 3 doctests. Final pre-review gate: 940 library tests +
+- Baseline: 926 library tests + 3 doctests. Final gate: 940 library tests +
   3 doctests, formatting, all-target Clippy with warnings denied, warning-free rustdoc.
 - Fourteen new tests: six transfer cases, seven source/selection cases, one converter case.
 - Explicit mutations separately disabled the streamed cap, reported cap and animation
@@ -58,5 +58,17 @@ subsets and remains open. Optional M2/M3 are separate product decisions.
 One scoped deviation was necessary: fixing the demonstrated animation classification bug
 exposed by the new fixture. Callers previously seeing Video for those GIFs now receive
 Animation; payload shape and public interfaces are unchanged. No version bump, merge or
-push is included in this work package. Final independent review is recorded below when
-completed; this report does not close the overall roadmap.
+push is included in this work package. One independent whole-branch review found no Critical or Important findings. Planned
+memory finalization and a historical Task 7 wording correction resolved its documentation
+notes. This report does not close the overall roadmap.
+
+## Review boundaries
+
+Live resolution/fetch, DC migration and actual transport cancellation remain outside the
+offline fixtures. The thin upstream Message accessor mapping was inspected rather than
+constructed through private PeerMap state. Contradictory raw attributes with no established
+Telegram semantics, deliberate OOM injection and malformed upstream peer internals were
+not claimed tested. Existing defensive behavior is retained. Full Task 9/10 acceptance,
+fresh security/dependency re-audits, host rendering and Linux/Windows validation are not
+closed by this review. These limits do not weaken the specific cached-download, byte-cap,
+error, deadline and cancellation evidence above. No blocking or deferred code findings.

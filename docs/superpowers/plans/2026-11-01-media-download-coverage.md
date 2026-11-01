@@ -2,6 +2,8 @@
 
 > **For agentic workers:** Use superpowers:executing-plans inline, with one final review.
 
+**Status:** This scoped media-test work package is complete; original Tasks 9 and 10 remain open.
+
 **Goal:** Cover real production media-download decisions without network credentials.
 This is scoped work under Task 10 of the original development roadmap; Task 9 acceptance
 and complete Task 10 closure remain separate open checklist items.
@@ -53,5 +55,5 @@ new tests/media_download_fixtures.rs if fixture size warrants separation.
 - [x] Run cargo llvm-cov --offline --locked --lib --json and report before/after operations
   coverage (baseline 39/246 lines, 15.85%) with remaining live-RPC limitations.
 - [x] Run formatting, all-target Clippy, full tests and warning-free docs; inspect diff.
-- [ ] Obtain one independent read-only whole-branch review; fix important findings with
+- [x] Obtain one independent read-only whole-branch review; fix important findings with
   failing regressions, then rerun the relevant full gate and commit the finished work.

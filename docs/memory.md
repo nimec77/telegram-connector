@@ -15,11 +15,13 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   all reproduced and fixed. See [validation evidence](validation/2026-11-01-task8.md).
   Required nightly stays 2026-10-31; rmcp 3.8; all grammers pins remain reviewed Codeberg
   `1e31e73cd9797790905bbea82cd75adcbe6f1242` (0.11), still upstream HEAD at acceptance.
-- **Coverage measured 2026-11-01:** `cargo llvm-cov --lib` reports 81.71% lines
-  (9,176/11,230; unfiltered, including inline unit code). Wire budgeting 99.12%, keyed
-  recovery 96.49%, dispatch 100%, image pipeline 97.44%, raw pipeline 80.57%, storage 79.71%.
-  Real Telegram media I/O remains mostly below the mock seam (ops_media 15.85%); no live
-  download/migration was claimed. The August baseline is not a like-for-like comparison.
+- **Latest media-test coverage (2026-11-01):** the scoped Task 10 branch reports 82.58%
+  library lines (9,301/11,263, unfiltered including inline unit code), with the original
+  ops_media.rs at 51.62% (143/277), up from the integrated 0.24.0 baseline of 81.71% overall
+  and 15.85% (39/246) operations coverage. Cached photo/video fixtures use the actual
+  downloader without polling a sender. Thin live resolution/fetch, upstream Message
+  extraction and some defensive branches remain unexercised. See the
+  [scoped report](validation/2026-11-01-media-download-coverage.md). Task 9/10 closure is open.
 - **Audit 2026-08-15 is fully shipped and its spec deleted** (delete-on-merge; the file lives
   in git history). Four staged work packages — correctness fixes + dead code; module splits +
   test extraction; duplication/KISS refactors; ops-layer coverage via `MessageWalk` — plus the
@@ -36,7 +38,7 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   acceptance checklist audited; Task 10 still needs explicit final closure, including
   scoped RPC/conversion coverage and Rust manual/S1–S6 assessment. The
   [active roadmap](superpowers/plans/2026-10-31-development-roadmap.md) and audit spec were
-  restored after premature archival. Current media-download coverage work belongs here.
+  restored after premature archival. The completed media-test work package belongs here; broader acceptance is still open.
 
 - **Operational limits:** target-host-specific rendering and live Telegram/account behavior
   are unverified; offline Rust/Python preview payloads and local image rendering passed.
