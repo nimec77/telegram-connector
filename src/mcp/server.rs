@@ -99,7 +99,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
     /// Select the application output mode, independently of protocol negotiation.
     /// Existing direct tool methods remain legacy convenience adapters.
-    #[must_use]
+    #[must_use = "this builder returns the configured server"]
     pub fn with_output_format(mut self, format: crate::config::OutputFormat) -> Self {
         self.output_format = format;
         self.tool_router = Self::tool_router();

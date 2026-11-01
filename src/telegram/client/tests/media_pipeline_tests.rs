@@ -368,3 +368,37 @@ async fn visual_download_rejects_nonvisual_documents_and_unsupported_user_peers(
     let result = download_visual_media(&client.client, 1, 20, fixture, "fixture", 42, 1280).await;
     assert!(matches!(result, Err(Error::UnsupportedPeer)));
 }
+
+#[tokio::test]
+#[ignore = "explicit local cached-transfer latency measurement"]
+async fn media_cached_transfer_latency_measurement() {
+    let (client, _unpolled_runner, _directory) =
+        super::super::client_fixture::stalled_client().await;
+    let payload = crate::test_helpers::create_test_jpeg(1280, 720);
+    let mut nanos = Vec::new();
+    for _ in 0..100 {
+        let fixture = source(Some(photo(vec![cached_size("m", 1280, 720, &payload)])));
+        let started = std::time::Instant::now();
+        let result = download_visual_media(
+            &client.client,
+            5,
+            payload.len() as u64,
+            fixture,
+            "fixture",
+            42,
+            1280,
+        )
+        .await
+        .expect("cached transfer");
+        nanos.push(started.elapsed().as_nanos());
+        assert_eq!(result.bytes.len(), payload.len());
+    }
+    nanos.sort_unstable();
+    eprintln!(
+        "cached_transfer_samples=100 payload_bytes={} p50_ns={} p95_ns={} max_ns={}",
+        payload.len(),
+        nanos[49],
+        nanos[94],
+        nanos[99]
+    );
+}

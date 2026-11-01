@@ -52,5 +52,6 @@ jobs:
           cargo build --offline --locked --example offline_mcp_fixture
           python3 scripts/test_stdio_process.py target/debug/examples/offline_mcp_fixture
           python3 scripts/test_mcp_probe.py target/debug/examples/offline_mcp_fixture
+          python3 scripts/test_media_clients.py target/debug/examples/offline_mcp_fixture
       - name: Dependency policy fixtures
         run: python3 -m unittest discover -s scripts -p test_dependency_policy.py

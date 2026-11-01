@@ -214,7 +214,7 @@ Use `# Errors`, `# Panics` and `# Safety` only when applicable; avoid comments t
 the identifier. [Documentation guidance](https://rust-lang.github.io/api-guidelines/documentation.html).
 
 Mark consuming builders whose return must be used, such as `McpServer::with_observability`,
-with a useful `#[must_use]` message; all six current server builders are covered.
+with a useful `#[must_use]` message; all seven current server builders are covered.
 Examine other pure functions individually. `Result` already warns when discarded; duplicate annotations with no useful message add little. `len` APIs keep
 their `is_empty` companion. Public `const fn` and exhaustive shapes are compatibility
 commitments, not automatic performance improvements.

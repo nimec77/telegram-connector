@@ -3,15 +3,16 @@
 //! [`TelegramClient`] owns the real Telegram session; [`TelegramClientTrait`] and
 //! [`RateLimiterTrait`] let embedders substitute their own implementations.
 //! [`mcp::McpServer`] validates tool inputs and applies charging, pagination and
-//! output budgets above that seam. Typed [`Error`] values become established
-//! tool error strings at the MCP boundary. Diagnostics use tracing/stderr;
+//! output budgets above that seam. Typed [`Error`] values become safe versioned
+//! tool errors on the wire; direct Rust convenience adapters retain string errors.
+//! Diagnostics use tracing/stderr;
 //! stdout belongs exclusively to MCP frames while serving.
 //!
 //! # Inert domain construction
 //!
 //! No account, filesystem or network access is needed for domain values and links.
-//! Constructors validate input; derived serde deserialization is not a replacement
-//! for those constructor checks at an untrusted Rust boundary.
+//! Constructors validate input, and domain ID/name deserialization delegates to those
+//! constructors. Directly deserialized configuration still needs operational validation.
 //!
 //! ```
 //! use telegram_connector::{Error, MessageLink};

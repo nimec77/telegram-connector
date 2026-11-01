@@ -1,0 +1,4706 @@
+{
+  "observed_date": "2026-11-01",
+  "application": {
+    "name": "telegram-connector",
+    "version": "0.24.0"
+  },
+  "registry_package_names": 316,
+  "registry_identities": 332,
+  "external_identities": 340,
+  "lookup_errors": 0,
+  "same_compatibility_line_older_versions": 0,
+  "incompatible_line_identities": 53,
+  "grammers_upstream_head": "1e31e73cd9797790905bbea82cd75adcbe6f1242",
+  "direct_declarations": [
+    {
+      "name": "anyhow",
+      "kind": "normal",
+      "requirement": "^1.0.104",
+      "locked": [
+        "1.0.104"
+      ],
+      "source": "https://crates.io/api/v1/crates/anyhow",
+      "latest_stable": "1.0.104",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "async-trait",
+      "kind": "normal",
+      "requirement": "^0.1",
+      "locked": [
+        "0.1.92"
+      ],
+      "source": "https://crates.io/api/v1/crates/async-trait",
+      "latest_stable": "0.1.92",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "base64",
+      "kind": "normal",
+      "requirement": "^0.23.1",
+      "locked": [
+        "0.23.1"
+      ],
+      "source": "https://crates.io/api/v1/crates/base64",
+      "latest_stable": "0.23.1",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "chrono",
+      "kind": "normal",
+      "requirement": "^0.4.45",
+      "locked": [
+        "0.4.45"
+      ],
+      "source": "https://crates.io/api/v1/crates/chrono",
+      "latest_stable": "0.4.45",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "clap",
+      "kind": "normal",
+      "requirement": "^4.6.7",
+      "locked": [
+        "4.6.7"
+      ],
+      "source": "https://crates.io/api/v1/crates/clap",
+      "latest_stable": "4.6.7",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "dialoguer",
+      "kind": "normal",
+      "requirement": "^0.12.0",
+      "locked": [
+        "0.12.0"
+      ],
+      "source": "https://crates.io/api/v1/crates/dialoguer",
+      "latest_stable": "0.12.0",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "directories",
+      "kind": "normal",
+      "requirement": "^6.0.0",
+      "locked": [
+        "6.0.0"
+      ],
+      "source": "https://crates.io/api/v1/crates/directories",
+      "latest_stable": "6.0.0",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "futures",
+      "kind": "normal",
+      "requirement": "^0.3.34",
+      "locked": [
+        "0.3.34"
+      ],
+      "source": "https://crates.io/api/v1/crates/futures",
+      "latest_stable": "0.3.34",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "grammers-client",
+      "kind": "normal",
+      "requirement": "*",
+      "locked": [
+        "0.11.0"
+      ],
+      "source": "git+https://codeberg.org/Lonami/grammers?rev=1e31e73cd9797790905bbea82cd75adcbe6f1242",
+      "rev": "1e31e73cd9797790905bbea82cd75adcbe6f1242",
+      "disposition": "reviewed joint Codeberg revision retained"
+    },
+    {
+      "name": "grammers-mtsender",
+      "kind": "normal",
+      "requirement": "*",
+      "locked": [
+        "0.11.0"
+      ],
+      "source": "git+https://codeberg.org/Lonami/grammers?rev=1e31e73cd9797790905bbea82cd75adcbe6f1242",
+      "rev": "1e31e73cd9797790905bbea82cd75adcbe6f1242",
+      "disposition": "reviewed joint Codeberg revision retained"
+    },
+    {
+      "name": "grammers-session",
+      "kind": "normal",
+      "requirement": "*",
+      "locked": [
+        "0.11.0"
+      ],
+      "source": "git+https://codeberg.org/Lonami/grammers?rev=1e31e73cd9797790905bbea82cd75adcbe6f1242",
+      "rev": "1e31e73cd9797790905bbea82cd75adcbe6f1242",
+      "disposition": "reviewed joint Codeberg revision retained"
+    },
+    {
+      "name": "image",
+      "kind": "normal",
+      "requirement": "^0.25",
+      "locked": [
+        "0.25.10"
+      ],
+      "source": "https://crates.io/api/v1/crates/image",
+      "latest_stable": "0.25.10",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "rmcp",
+      "kind": "normal",
+      "requirement": "^3.8",
+      "locked": [
+        "3.8.0"
+      ],
+      "source": "https://crates.io/api/v1/crates/rmcp",
+      "latest_stable": "3.8.0",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "schemars",
+      "kind": "normal",
+      "requirement": "^1.2.3",
+      "locked": [
+        "1.2.3"
+      ],
+      "source": "https://crates.io/api/v1/crates/schemars",
+      "latest_stable": "1.2.3",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "secrecy",
+      "kind": "normal",
+      "requirement": "^0.10",
+      "locked": [
+        "0.10.3"
+      ],
+      "source": "https://crates.io/api/v1/crates/secrecy",
+      "latest_stable": "0.10.3",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "serde",
+      "kind": "normal",
+      "requirement": "^1.0",
+      "locked": [
+        "1.0.229"
+      ],
+      "source": "https://crates.io/api/v1/crates/serde",
+      "latest_stable": "1.0.229",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "serde_json",
+      "kind": "normal",
+      "requirement": "^1.0.154",
+      "locked": [
+        "1.0.154"
+      ],
+      "source": "https://crates.io/api/v1/crates/serde_json",
+      "latest_stable": "1.0.154",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "thiserror",
+      "kind": "normal",
+      "requirement": "^2.0.21",
+      "locked": [
+        "2.0.21"
+      ],
+      "source": "https://crates.io/api/v1/crates/thiserror",
+      "latest_stable": "2.0.21",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "tokio",
+      "kind": "normal",
+      "requirement": "^1.54.1",
+      "locked": [
+        "1.54.1"
+      ],
+      "source": "https://crates.io/api/v1/crates/tokio",
+      "latest_stable": "1.54.1",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "toml",
+      "kind": "normal",
+      "requirement": "^1.1.8",
+      "locked": [
+        "1.1.8+spec-1.1.0"
+      ],
+      "source": "https://crates.io/api/v1/crates/toml",
+      "latest_stable": "1.1.8+spec-1.1.0",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "tracing",
+      "kind": "normal",
+      "requirement": "^0.1.44",
+      "locked": [
+        "0.1.44"
+      ],
+      "source": "https://crates.io/api/v1/crates/tracing",
+      "latest_stable": "0.1.44",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "tracing-appender",
+      "kind": "normal",
+      "requirement": "^0.2.5",
+      "locked": [
+        "0.2.5"
+      ],
+      "source": "https://crates.io/api/v1/crates/tracing-appender",
+      "latest_stable": "0.2.5",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "tracing-subscriber",
+      "kind": "normal",
+      "requirement": "^0.3",
+      "locked": [
+        "0.3.23"
+      ],
+      "source": "https://crates.io/api/v1/crates/tracing-subscriber",
+      "latest_stable": "0.3.23",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "filetime",
+      "kind": "dev",
+      "requirement": "^0.2.29",
+      "locked": [
+        "0.2.29"
+      ],
+      "source": "https://crates.io/api/v1/crates/filetime",
+      "latest_stable": "0.2.29",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "image",
+      "kind": "dev",
+      "requirement": "^0.25",
+      "locked": [
+        "0.25.10"
+      ],
+      "source": "https://crates.io/api/v1/crates/image",
+      "latest_stable": "0.25.10",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "jsonschema",
+      "kind": "dev",
+      "requirement": "^0.60.2",
+      "locked": [
+        "0.60.2"
+      ],
+      "source": "https://crates.io/api/v1/crates/jsonschema",
+      "latest_stable": "0.60.2",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "libsql",
+      "kind": "dev",
+      "requirement": "^0.10.0",
+      "locked": [
+        "0.10.0"
+      ],
+      "source": "https://crates.io/api/v1/crates/libsql",
+      "latest_stable": "0.10.0",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "mockall",
+      "kind": "dev",
+      "requirement": "^0.15.0",
+      "locked": [
+        "0.15.0"
+      ],
+      "source": "https://crates.io/api/v1/crates/mockall",
+      "latest_stable": "0.15.0",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "proptest",
+      "kind": "dev",
+      "requirement": "^1.12.0",
+      "locked": [
+        "1.12.0"
+      ],
+      "source": "https://crates.io/api/v1/crates/proptest",
+      "latest_stable": "1.12.0",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "tempfile",
+      "kind": "dev",
+      "requirement": "^3.27.0",
+      "locked": [
+        "3.27.0"
+      ],
+      "source": "https://crates.io/api/v1/crates/tempfile",
+      "latest_stable": "3.27.0",
+      "disposition": "matches latest stable"
+    },
+    {
+      "name": "tokio",
+      "kind": "dev",
+      "requirement": "^1.54.1",
+      "locked": [
+        "1.54.1"
+      ],
+      "source": "https://crates.io/api/v1/crates/tokio",
+      "latest_stable": "1.54.1",
+      "disposition": "matches latest stable"
+    }
+  ],
+  "resolved_packages": [
+    {
+      "name": "adler2",
+      "version": "2.0.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "0BSD OR MIT OR Apache-2.0",
+      "latest_stable": "2.0.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/adler2"
+    },
+    {
+      "name": "aes",
+      "version": "0.9.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.9.3",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/aes"
+    },
+    {
+      "name": "ahash",
+      "version": "0.8.12",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.8.12",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/ahash"
+    },
+    {
+      "name": "aho-corasick",
+      "version": "1.1.5",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Unlicense OR MIT",
+      "latest_stable": "1.1.5",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/aho-corasick"
+    },
+    {
+      "name": "allocator-api2",
+      "version": "0.2.21",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.4.0",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "hashbrown",
+          "version": "0.17.1",
+          "requirements": [
+            "^0.2.9"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/allocator-api2",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "android_system_properties",
+      "version": "0.1.6",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.1.6",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/android_system_properties"
+    },
+    {
+      "name": "anstream",
+      "version": "1.0.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.0.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/anstream"
+    },
+    {
+      "name": "anstyle",
+      "version": "1.0.14",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.0.14",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/anstyle"
+    },
+    {
+      "name": "anstyle-parse",
+      "version": "1.0.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.0.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/anstyle-parse"
+    },
+    {
+      "name": "anstyle-query",
+      "version": "1.1.5",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.1.5",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/anstyle-query"
+    },
+    {
+      "name": "anstyle-wincon",
+      "version": "3.0.11",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "3.0.11",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/anstyle-wincon"
+    },
+    {
+      "name": "anyhow",
+      "version": "1.0.104",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.0.104",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/anyhow"
+    },
+    {
+      "name": "async-trait",
+      "version": "0.1.92",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.1.92",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/async-trait"
+    },
+    {
+      "name": "autocfg",
+      "version": "1.5.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 OR MIT",
+      "latest_stable": "1.5.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/autocfg"
+    },
+    {
+      "name": "base16ct",
+      "version": "1.0.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 OR MIT",
+      "latest_stable": "1.0.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/base16ct"
+    },
+    {
+      "name": "base64",
+      "version": "0.23.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.23.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/base64"
+    },
+    {
+      "name": "bindgen",
+      "version": "0.66.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "BSD-3-Clause",
+      "latest_stable": "0.73.2",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "libsql-ffi",
+          "version": "0.10.0",
+          "requirements": [
+            "^0.66.1"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/bindgen",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "bit-set",
+      "version": "0.11.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 OR MIT",
+      "latest_stable": "0.11.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/bit-set"
+    },
+    {
+      "name": "bit-set",
+      "version": "0.8.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 OR MIT",
+      "latest_stable": "0.11.1",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "fancy-regex",
+          "version": "0.19.2",
+          "requirements": [
+            "^0.8"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/bit-set",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "bit-vec",
+      "version": "0.10.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 OR MIT",
+      "latest_stable": "0.10.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/bit-vec"
+    },
+    {
+      "name": "bit-vec",
+      "version": "0.8.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 OR MIT",
+      "latest_stable": "0.10.1",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "bit-set",
+          "version": "0.8.0",
+          "requirements": [
+            "^0.8.0"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/bit-vec",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "bitflags",
+      "version": "1.3.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT/Apache-2.0",
+      "latest_stable": "2.13.2",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "defmt",
+          "version": "1.2.0",
+          "requirements": [
+            "^1"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/bitflags",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "bitflags",
+      "version": "2.13.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "2.13.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/bitflags"
+    },
+    {
+      "name": "block-buffer",
+      "version": "0.12.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.12.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/block-buffer"
+    },
+    {
+      "name": "block2",
+      "version": "0.6.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.6.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/block2"
+    },
+    {
+      "name": "borrow-or-share",
+      "version": "0.2.4",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT-0",
+      "latest_stable": "0.2.4",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/borrow-or-share"
+    },
+    {
+      "name": "borsh",
+      "version": "1.8.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.8.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/borsh"
+    },
+    {
+      "name": "borsh-derive",
+      "version": "1.8.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0",
+      "latest_stable": "1.8.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/borsh-derive"
+    },
+    {
+      "name": "bumpalo",
+      "version": "3.20.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "3.20.3",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/bumpalo"
+    },
+    {
+      "name": "bytecount",
+      "version": "0.6.9",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0/MIT",
+      "latest_stable": "0.6.9",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/bytecount"
+    },
+    {
+      "name": "bytemuck",
+      "version": "1.25.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Zlib OR Apache-2.0 OR MIT",
+      "latest_stable": "1.25.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/bytemuck"
+    },
+    {
+      "name": "byteorder",
+      "version": "1.5.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Unlicense OR MIT",
+      "latest_stable": "1.5.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/byteorder"
+    },
+    {
+      "name": "byteorder-lite",
+      "version": "0.1.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Unlicense OR MIT",
+      "latest_stable": "0.1.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/byteorder-lite"
+    },
+    {
+      "name": "bytes",
+      "version": "1.12.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "1.12.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/bytes"
+    },
+    {
+      "name": "cc",
+      "version": "1.10.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.10.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/cc"
+    },
+    {
+      "name": "cexpr",
+      "version": "0.6.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0/MIT",
+      "latest_stable": "0.6.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/cexpr"
+    },
+    {
+      "name": "cfg-if",
+      "version": "1.0.5",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.0.5",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/cfg-if"
+    },
+    {
+      "name": "cfg_aliases",
+      "version": "0.2.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.2.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/cfg_aliases"
+    },
+    {
+      "name": "chacha20",
+      "version": "0.10.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.10.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/chacha20"
+    },
+    {
+      "name": "chrono",
+      "version": "0.4.45",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.4.45",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/chrono"
+    },
+    {
+      "name": "cipher",
+      "version": "0.5.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.5.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/cipher"
+    },
+    {
+      "name": "clang-sys",
+      "version": "1.9.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0",
+      "latest_stable": "1.9.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/clang-sys"
+    },
+    {
+      "name": "clap",
+      "version": "4.6.7",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "4.6.7",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/clap"
+    },
+    {
+      "name": "clap_builder",
+      "version": "4.6.7",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "4.6.7",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/clap_builder"
+    },
+    {
+      "name": "clap_derive",
+      "version": "4.6.7",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "4.6.7",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/clap_derive"
+    },
+    {
+      "name": "clap_lex",
+      "version": "1.1.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.1.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/clap_lex"
+    },
+    {
+      "name": "cmake",
+      "version": "0.1.58",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.1.58",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/cmake"
+    },
+    {
+      "name": "cmov",
+      "version": "0.5.4",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 OR MIT",
+      "latest_stable": "0.5.4",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/cmov"
+    },
+    {
+      "name": "colorchoice",
+      "version": "1.0.5",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.0.5",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/colorchoice"
+    },
+    {
+      "name": "console",
+      "version": "0.16.6",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.16.6",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/console"
+    },
+    {
+      "name": "const-oid",
+      "version": "0.10.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 OR MIT",
+      "latest_stable": "0.10.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/const-oid"
+    },
+    {
+      "name": "core-foundation-sys",
+      "version": "0.8.7",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.8.7",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/core-foundation-sys"
+    },
+    {
+      "name": "core_detect",
+      "version": "1.0.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT/Apache-2.0",
+      "latest_stable": "1.0.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/core_detect"
+    },
+    {
+      "name": "cpubits",
+      "version": "0.1.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.1.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/cpubits"
+    },
+    {
+      "name": "cpufeatures",
+      "version": "0.3.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.3.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/cpufeatures"
+    },
+    {
+      "name": "crc32fast",
+      "version": "1.5.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.5.3",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/crc32fast"
+    },
+    {
+      "name": "crossbeam-channel",
+      "version": "0.5.17",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.5.17",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/crossbeam-channel"
+    },
+    {
+      "name": "crossbeam-utils",
+      "version": "0.8.23",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.8.23",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/crossbeam-utils"
+    },
+    {
+      "name": "crypto-bigint",
+      "version": "0.7.10",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 OR MIT",
+      "latest_stable": "0.7.10",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/crypto-bigint"
+    },
+    {
+      "name": "crypto-common",
+      "version": "0.2.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.2.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/crypto-common"
+    },
+    {
+      "name": "crypto-primes",
+      "version": "0.7.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 OR MIT",
+      "latest_stable": "0.7.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/crypto-primes"
+    },
+    {
+      "name": "ctr",
+      "version": "0.10.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.10.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/ctr"
+    },
+    {
+      "name": "ctutils",
+      "version": "0.4.7",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 OR MIT",
+      "latest_stable": "0.4.7",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/ctutils"
+    },
+    {
+      "name": "darling",
+      "version": "0.24.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.24.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/darling"
+    },
+    {
+      "name": "darling_core",
+      "version": "0.24.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.24.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/darling_core"
+    },
+    {
+      "name": "darling_macro",
+      "version": "0.24.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.24.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/darling_macro"
+    },
+    {
+      "name": "data-encoding",
+      "version": "2.11.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "2.11.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/data-encoding"
+    },
+    {
+      "name": "defmt",
+      "version": "1.2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.2.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/defmt"
+    },
+    {
+      "name": "defmt-macros",
+      "version": "1.2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.2.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/defmt-macros"
+    },
+    {
+      "name": "defmt-parser",
+      "version": "1.1.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.1.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/defmt-parser"
+    },
+    {
+      "name": "deranged",
+      "version": "0.5.9",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.5.9",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/deranged"
+    },
+    {
+      "name": "dialoguer",
+      "version": "0.12.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.12.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/dialoguer"
+    },
+    {
+      "name": "digest",
+      "version": "0.11.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.11.3",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/digest"
+    },
+    {
+      "name": "directories",
+      "version": "6.0.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "6.0.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/directories"
+    },
+    {
+      "name": "dirs-sys",
+      "version": "0.5.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.5.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/dirs-sys"
+    },
+    {
+      "name": "dispatch2",
+      "version": "0.3.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Zlib OR Apache-2.0 OR MIT",
+      "latest_stable": "0.3.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/dispatch2"
+    },
+    {
+      "name": "downcast",
+      "version": "0.11.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.11.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/downcast"
+    },
+    {
+      "name": "dyn-clone",
+      "version": "1.0.20",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.0.20",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/dyn-clone"
+    },
+    {
+      "name": "either",
+      "version": "1.19.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.19.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/either"
+    },
+    {
+      "name": "email_address",
+      "version": "0.2.9",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.2.9",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/email_address"
+    },
+    {
+      "name": "encode_unicode",
+      "version": "1.0.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 OR MIT",
+      "latest_stable": "1.0.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/encode_unicode"
+    },
+    {
+      "name": "equivalent",
+      "version": "1.0.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 OR MIT",
+      "latest_stable": "1.0.3",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/equivalent"
+    },
+    {
+      "name": "errno",
+      "version": "0.3.14",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.3.14",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/errno"
+    },
+    {
+      "name": "fancy-regex",
+      "version": "0.19.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.20.0",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "jsonschema",
+          "version": "0.60.2",
+          "requirements": [
+            "^0.19"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/fancy-regex",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "fastrand",
+      "version": "2.5.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 OR MIT",
+      "latest_stable": "2.5.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/fastrand"
+    },
+    {
+      "name": "fdeflate",
+      "version": "0.3.7",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.3.7",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/fdeflate"
+    },
+    {
+      "name": "filetime",
+      "version": "0.2.29",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT/Apache-2.0",
+      "latest_stable": "0.2.29",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/filetime"
+    },
+    {
+      "name": "find-msvc-tools",
+      "version": "0.1.15",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.1.15",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/find-msvc-tools"
+    },
+    {
+      "name": "flate2",
+      "version": "1.1.10",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.1.10",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/flate2"
+    },
+    {
+      "name": "fluent-uri",
+      "version": "0.4.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.4.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/fluent-uri"
+    },
+    {
+      "name": "fnv",
+      "version": "1.0.7",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 / MIT",
+      "latest_stable": "1.0.7",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/fnv"
+    },
+    {
+      "name": "foldhash",
+      "version": "0.2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Zlib",
+      "latest_stable": "0.2.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/foldhash"
+    },
+    {
+      "name": "fraction",
+      "version": "0.17.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.17.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/fraction"
+    },
+    {
+      "name": "fragile",
+      "version": "2.1.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0",
+      "latest_stable": "3.0.0",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "mockall",
+          "version": "0.15.0",
+          "requirements": [
+            "^2.0"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/fragile",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "futures",
+      "version": "0.3.34",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.3.34",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/futures"
+    },
+    {
+      "name": "futures-channel",
+      "version": "0.3.34",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.3.34",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/futures-channel"
+    },
+    {
+      "name": "futures-core",
+      "version": "0.3.34",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.3.34",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/futures-core"
+    },
+    {
+      "name": "futures-executor",
+      "version": "0.3.34",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.3.34",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/futures-executor"
+    },
+    {
+      "name": "futures-io",
+      "version": "0.3.34",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.3.34",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/futures-io"
+    },
+    {
+      "name": "futures-macro",
+      "version": "0.3.34",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.3.34",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/futures-macro"
+    },
+    {
+      "name": "futures-sink",
+      "version": "0.3.34",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.3.34",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/futures-sink"
+    },
+    {
+      "name": "futures-task",
+      "version": "0.3.34",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.3.34",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/futures-task"
+    },
+    {
+      "name": "futures-util",
+      "version": "0.3.34",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.3.34",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/futures-util"
+    },
+    {
+      "name": "getrandom",
+      "version": "0.3.4",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.4.3",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "ahash",
+          "version": "0.8.12",
+          "requirements": [
+            "^0.3.1"
+          ]
+        },
+        {
+          "name": "jsonschema",
+          "version": "0.60.2",
+          "requirements": [
+            "^0.3.4"
+          ]
+        },
+        {
+          "name": "jsonschema-value",
+          "version": "0.60.2",
+          "requirements": [
+            "^0.3.4"
+          ]
+        },
+        {
+          "name": "referencing",
+          "version": "0.60.2",
+          "requirements": [
+            "^0.3.4",
+            "^0.4"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/getrandom",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "getrandom",
+      "version": "0.4.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.4.3",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/getrandom"
+    },
+    {
+      "name": "glass_pumpkin",
+      "version": "2.0.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "2.0.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/glass_pumpkin"
+    },
+    {
+      "name": "glob",
+      "version": "0.3.4",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.3.4",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/glob"
+    },
+    {
+      "name": "grammers-client",
+      "version": "0.11.0",
+      "source": "git+https://codeberg.org/Lonami/grammers?rev=1e31e73cd9797790905bbea82cd75adcbe6f1242#1e31e73cd9797790905bbea82cd75adcbe6f1242",
+      "license_declaration": "MIT OR Apache-2.0",
+      "disposition": "Reviewed immutable Codeberg revision retained; all grammers packages share the same source revision."
+    },
+    {
+      "name": "grammers-crypto",
+      "version": "0.11.0",
+      "source": "git+https://codeberg.org/Lonami/grammers?rev=1e31e73cd9797790905bbea82cd75adcbe6f1242#1e31e73cd9797790905bbea82cd75adcbe6f1242",
+      "license_declaration": "MIT OR Apache-2.0",
+      "disposition": "Reviewed immutable Codeberg revision retained; all grammers packages share the same source revision."
+    },
+    {
+      "name": "grammers-mtproto",
+      "version": "0.11.0",
+      "source": "git+https://codeberg.org/Lonami/grammers?rev=1e31e73cd9797790905bbea82cd75adcbe6f1242#1e31e73cd9797790905bbea82cd75adcbe6f1242",
+      "license_declaration": "MIT OR Apache-2.0",
+      "disposition": "Reviewed immutable Codeberg revision retained; all grammers packages share the same source revision."
+    },
+    {
+      "name": "grammers-mtsender",
+      "version": "0.11.0",
+      "source": "git+https://codeberg.org/Lonami/grammers?rev=1e31e73cd9797790905bbea82cd75adcbe6f1242#1e31e73cd9797790905bbea82cd75adcbe6f1242",
+      "license_declaration": "MIT OR Apache-2.0",
+      "disposition": "Reviewed immutable Codeberg revision retained; all grammers packages share the same source revision."
+    },
+    {
+      "name": "grammers-session",
+      "version": "0.11.0",
+      "source": "git+https://codeberg.org/Lonami/grammers?rev=1e31e73cd9797790905bbea82cd75adcbe6f1242#1e31e73cd9797790905bbea82cd75adcbe6f1242",
+      "license_declaration": "MIT OR Apache-2.0",
+      "disposition": "Reviewed immutable Codeberg revision retained; all grammers packages share the same source revision."
+    },
+    {
+      "name": "grammers-tl-gen",
+      "version": "0.11.0",
+      "source": "git+https://codeberg.org/Lonami/grammers?rev=1e31e73cd9797790905bbea82cd75adcbe6f1242#1e31e73cd9797790905bbea82cd75adcbe6f1242",
+      "license_declaration": "MIT OR Apache-2.0",
+      "disposition": "Reviewed immutable Codeberg revision retained; all grammers packages share the same source revision."
+    },
+    {
+      "name": "grammers-tl-parser",
+      "version": "1.2.2",
+      "source": "git+https://codeberg.org/Lonami/grammers?rev=1e31e73cd9797790905bbea82cd75adcbe6f1242#1e31e73cd9797790905bbea82cd75adcbe6f1242",
+      "license_declaration": "MIT OR Apache-2.0",
+      "disposition": "Reviewed immutable Codeberg revision retained; all grammers packages share the same source revision."
+    },
+    {
+      "name": "grammers-tl-types",
+      "version": "0.11.0",
+      "source": "git+https://codeberg.org/Lonami/grammers?rev=1e31e73cd9797790905bbea82cd75adcbe6f1242#1e31e73cd9797790905bbea82cd75adcbe6f1242",
+      "license_declaration": "MIT OR Apache-2.0",
+      "disposition": "Reviewed immutable Codeberg revision retained; all grammers packages share the same source revision."
+    },
+    {
+      "name": "hashbrown",
+      "version": "0.17.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.17.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/hashbrown"
+    },
+    {
+      "name": "heck",
+      "version": "0.5.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.5.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/heck"
+    },
+    {
+      "name": "hmac",
+      "version": "0.13.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.13.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/hmac"
+    },
+    {
+      "name": "home",
+      "version": "0.5.12",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.5.12",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/home"
+    },
+    {
+      "name": "hybrid-array",
+      "version": "0.4.15",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.4.15",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/hybrid-array"
+    },
+    {
+      "name": "iana-time-zone",
+      "version": "0.1.65",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.1.65",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/iana-time-zone"
+    },
+    {
+      "name": "iana-time-zone-haiku",
+      "version": "0.1.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.1.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/iana-time-zone-haiku"
+    },
+    {
+      "name": "ident_case",
+      "version": "1.0.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT/Apache-2.0",
+      "latest_stable": "1.0.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/ident_case"
+    },
+    {
+      "name": "image",
+      "version": "0.25.10",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.25.10",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/image"
+    },
+    {
+      "name": "indexmap",
+      "version": "2.14.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 OR MIT",
+      "latest_stable": "2.14.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/indexmap"
+    },
+    {
+      "name": "inout",
+      "version": "0.2.5",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.2.5",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/inout"
+    },
+    {
+      "name": "is_terminal_polyfill",
+      "version": "1.70.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.70.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/is_terminal_polyfill"
+    },
+    {
+      "name": "itoa",
+      "version": "1.0.18",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.0.18",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/itoa"
+    },
+    {
+      "name": "jiff",
+      "version": "0.2.38",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Unlicense OR MIT",
+      "latest_stable": "0.2.38",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/jiff"
+    },
+    {
+      "name": "jiff-core",
+      "version": "0.1.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Unlicense OR MIT",
+      "latest_stable": "0.1.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/jiff-core"
+    },
+    {
+      "name": "jiff-static",
+      "version": "0.2.38",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Unlicense OR MIT",
+      "latest_stable": "0.2.38",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/jiff-static"
+    },
+    {
+      "name": "jiff-tzdb",
+      "version": "0.1.9",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Unlicense OR MIT",
+      "latest_stable": "0.1.9",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/jiff-tzdb"
+    },
+    {
+      "name": "jiff-tzdb-platform",
+      "version": "0.1.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Unlicense OR MIT",
+      "latest_stable": "0.1.3",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/jiff-tzdb-platform"
+    },
+    {
+      "name": "js-sys",
+      "version": "0.3.107",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.3.107",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/js-sys"
+    },
+    {
+      "name": "jsonschema",
+      "version": "0.60.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.60.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/jsonschema"
+    },
+    {
+      "name": "jsonschema-regex",
+      "version": "0.60.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.60.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/jsonschema-regex"
+    },
+    {
+      "name": "jsonschema-value",
+      "version": "0.60.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.60.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/jsonschema-value"
+    },
+    {
+      "name": "lazy_static",
+      "version": "1.5.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.5.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/lazy_static"
+    },
+    {
+      "name": "lazycell",
+      "version": "1.3.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT/Apache-2.0",
+      "latest_stable": "1.3.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/lazycell"
+    },
+    {
+      "name": "libc",
+      "version": "0.2.191",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.2.191",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/libc"
+    },
+    {
+      "name": "libloading",
+      "version": "0.8.9",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "ISC",
+      "latest_stable": "0.9.0",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "clang-sys",
+          "version": "1.9.1",
+          "requirements": [
+            "^0.8"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/libloading",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "libredox",
+      "version": "0.1.25",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.2.0",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "redox_users",
+          "version": "0.5.3",
+          "requirements": [
+            "^0.1.3"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/libredox",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "libsql",
+      "version": "0.10.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.10.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/libsql"
+    },
+    {
+      "name": "libsql-ffi",
+      "version": "0.10.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.10.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/libsql-ffi"
+    },
+    {
+      "name": "libsql-sys",
+      "version": "0.10.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.10.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/libsql-sys"
+    },
+    {
+      "name": "linux-raw-sys",
+      "version": "0.12.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "latest_stable": "0.12.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/linux-raw-sys"
+    },
+    {
+      "name": "linux-raw-sys",
+      "version": "0.4.15",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "latest_stable": "0.12.1",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "rustix",
+          "version": "0.38.44",
+          "requirements": [
+            "^0.4.14"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/linux-raw-sys",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "locate-locale",
+      "version": "0.2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.2.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/locate-locale"
+    },
+    {
+      "name": "lock_api",
+      "version": "0.4.14",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.5.0",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "parking_lot",
+          "version": "0.12.5",
+          "requirements": [
+            "^0.4.14"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/lock_api",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "log",
+      "version": "0.4.35",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.4.35",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/log"
+    },
+    {
+      "name": "matchers",
+      "version": "0.2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.2.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/matchers"
+    },
+    {
+      "name": "md5",
+      "version": "0.8.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 OR MIT",
+      "latest_stable": "0.8.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/md5"
+    },
+    {
+      "name": "memchr",
+      "version": "2.8.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Unlicense OR MIT",
+      "latest_stable": "2.8.3",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/memchr"
+    },
+    {
+      "name": "micromap",
+      "version": "0.3.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.3.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/micromap"
+    },
+    {
+      "name": "mime",
+      "version": "0.3.17",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.3.17",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/mime"
+    },
+    {
+      "name": "mime_guess",
+      "version": "2.0.5",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "2.0.5",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/mime_guess"
+    },
+    {
+      "name": "minimal-lexical",
+      "version": "0.2.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT/Apache-2.0",
+      "latest_stable": "0.2.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/minimal-lexical"
+    },
+    {
+      "name": "miniz_oxide",
+      "version": "0.8.9",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Zlib OR Apache-2.0",
+      "latest_stable": "0.9.1",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "png",
+          "version": "0.18.1",
+          "requirements": [
+            "^0.8"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/miniz_oxide",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "miniz_oxide",
+      "version": "0.9.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Zlib OR Apache-2.0",
+      "latest_stable": "0.9.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/miniz_oxide"
+    },
+    {
+      "name": "mio",
+      "version": "1.2.4",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "1.2.4",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/mio"
+    },
+    {
+      "name": "mockall",
+      "version": "0.15.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.15.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/mockall"
+    },
+    {
+      "name": "mockall_derive",
+      "version": "0.15.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.15.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/mockall_derive"
+    },
+    {
+      "name": "moxcms",
+      "version": "0.8.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "BSD-3-Clause OR Apache-2.0",
+      "latest_stable": "0.9.1",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "image",
+          "version": "0.25.10",
+          "requirements": [
+            "^0.8.0"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/moxcms",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "nix",
+      "version": "0.31.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.31.3",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/nix"
+    },
+    {
+      "name": "nom",
+      "version": "7.1.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "8.0.0",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "cexpr",
+          "version": "0.6.0",
+          "requirements": [
+            "^7"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/nom",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "nu-ansi-term",
+      "version": "0.50.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.50.3",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/nu-ansi-term"
+    },
+    {
+      "name": "num",
+      "version": "0.4.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.4.3",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/num"
+    },
+    {
+      "name": "num-bigint",
+      "version": "0.4.8",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.5.1",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "fraction",
+          "version": "0.17.0",
+          "requirements": [
+            "^0.4.8"
+          ]
+        },
+        {
+          "name": "num",
+          "version": "0.4.3",
+          "requirements": [
+            "^0.4.5"
+          ]
+        },
+        {
+          "name": "num-rational",
+          "version": "0.4.2",
+          "requirements": [
+            "^0.4.0"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/num-bigint",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "num-bigint",
+      "version": "0.5.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.5.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/num-bigint"
+    },
+    {
+      "name": "num-cmp",
+      "version": "0.1.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT/Apache-2.0",
+      "latest_stable": "0.1.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/num-cmp"
+    },
+    {
+      "name": "num-complex",
+      "version": "0.4.6",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.4.6",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/num-complex"
+    },
+    {
+      "name": "num-conv",
+      "version": "0.2.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.2.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/num-conv"
+    },
+    {
+      "name": "num-integer",
+      "version": "0.1.47",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.1.47",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/num-integer"
+    },
+    {
+      "name": "num-iter",
+      "version": "0.1.46",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.1.46",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/num-iter"
+    },
+    {
+      "name": "num-rational",
+      "version": "0.4.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.4.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/num-rational"
+    },
+    {
+      "name": "num-traits",
+      "version": "0.2.19",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.2.19",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/num-traits"
+    },
+    {
+      "name": "objc2",
+      "version": "0.6.5",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.6.5",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/objc2"
+    },
+    {
+      "name": "objc2-cloud-kit",
+      "version": "0.3.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Zlib OR Apache-2.0 OR MIT",
+      "latest_stable": "0.3.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/objc2-cloud-kit"
+    },
+    {
+      "name": "objc2-core-data",
+      "version": "0.3.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Zlib OR Apache-2.0 OR MIT",
+      "latest_stable": "0.3.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/objc2-core-data"
+    },
+    {
+      "name": "objc2-core-foundation",
+      "version": "0.3.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Zlib OR Apache-2.0 OR MIT",
+      "latest_stable": "0.3.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/objc2-core-foundation"
+    },
+    {
+      "name": "objc2-core-graphics",
+      "version": "0.3.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Zlib OR Apache-2.0 OR MIT",
+      "latest_stable": "0.3.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/objc2-core-graphics"
+    },
+    {
+      "name": "objc2-core-image",
+      "version": "0.3.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Zlib OR Apache-2.0 OR MIT",
+      "latest_stable": "0.3.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/objc2-core-image"
+    },
+    {
+      "name": "objc2-core-location",
+      "version": "0.3.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Zlib OR Apache-2.0 OR MIT",
+      "latest_stable": "0.3.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/objc2-core-location"
+    },
+    {
+      "name": "objc2-core-text",
+      "version": "0.3.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Zlib OR Apache-2.0 OR MIT",
+      "latest_stable": "0.3.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/objc2-core-text"
+    },
+    {
+      "name": "objc2-encode",
+      "version": "4.1.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "4.1.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/objc2-encode"
+    },
+    {
+      "name": "objc2-foundation",
+      "version": "0.3.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.3.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/objc2-foundation"
+    },
+    {
+      "name": "objc2-io-surface",
+      "version": "0.3.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Zlib OR Apache-2.0 OR MIT",
+      "latest_stable": "0.3.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/objc2-io-surface"
+    },
+    {
+      "name": "objc2-quartz-core",
+      "version": "0.3.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Zlib OR Apache-2.0 OR MIT",
+      "latest_stable": "0.3.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/objc2-quartz-core"
+    },
+    {
+      "name": "objc2-ui-kit",
+      "version": "0.3.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Zlib OR Apache-2.0 OR MIT",
+      "latest_stable": "0.3.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/objc2-ui-kit"
+    },
+    {
+      "name": "objc2-user-notifications",
+      "version": "0.3.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Zlib OR Apache-2.0 OR MIT",
+      "latest_stable": "0.3.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/objc2-user-notifications"
+    },
+    {
+      "name": "once_cell",
+      "version": "1.21.4",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.21.4",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/once_cell"
+    },
+    {
+      "name": "once_cell_polyfill",
+      "version": "1.70.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.70.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/once_cell_polyfill"
+    },
+    {
+      "name": "option-ext",
+      "version": "0.2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MPL-2.0",
+      "latest_stable": "0.2.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/option-ext"
+    },
+    {
+      "name": "os_info",
+      "version": "3.15.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "3.15.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/os_info"
+    },
+    {
+      "name": "outref",
+      "version": "0.5.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.5.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/outref"
+    },
+    {
+      "name": "parking_lot",
+      "version": "0.12.5",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.13.0",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "libsql",
+          "version": "0.10.0",
+          "requirements": [
+            "^0.12.1"
+          ]
+        },
+        {
+          "name": "referencing",
+          "version": "0.60.2",
+          "requirements": [
+            "^0.12.3"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/parking_lot",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "parking_lot_core",
+      "version": "0.9.12",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.10.0",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "parking_lot",
+          "version": "0.12.5",
+          "requirements": [
+            "^0.9.12"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/parking_lot_core",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "pastey",
+      "version": "0.2.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.2.3",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/pastey"
+    },
+    {
+      "name": "pbkdf2",
+      "version": "0.13.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.13.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/pbkdf2"
+    },
+    {
+      "name": "peeking_take_while",
+      "version": "0.1.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0/MIT",
+      "latest_stable": "1.0.0",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "bindgen",
+          "version": "0.66.1",
+          "requirements": [
+            "^0.1.2"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/peeking_take_while",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "percent-encoding",
+      "version": "2.3.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "2.3.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/percent-encoding"
+    },
+    {
+      "name": "pin-project-lite",
+      "version": "0.2.17",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 OR MIT",
+      "latest_stable": "0.2.17",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/pin-project-lite"
+    },
+    {
+      "name": "png",
+      "version": "0.18.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.18.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/png"
+    },
+    {
+      "name": "portable-atomic",
+      "version": "1.15.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 OR MIT",
+      "latest_stable": "1.15.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/portable-atomic"
+    },
+    {
+      "name": "portable-atomic-util",
+      "version": "0.2.8",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 OR MIT",
+      "latest_stable": "0.2.8",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/portable-atomic-util"
+    },
+    {
+      "name": "powerfmt",
+      "version": "0.2.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.2.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/powerfmt"
+    },
+    {
+      "name": "predicates",
+      "version": "3.1.4",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "3.1.4",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/predicates"
+    },
+    {
+      "name": "predicates-core",
+      "version": "1.0.10",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.0.10",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/predicates-core"
+    },
+    {
+      "name": "predicates-tree",
+      "version": "1.0.13",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.0.13",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/predicates-tree"
+    },
+    {
+      "name": "prettyplease",
+      "version": "0.2.37",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.3.0",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "bindgen",
+          "version": "0.66.1",
+          "requirements": [
+            "^0.2.0"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/prettyplease",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "proc-macro-crate",
+      "version": "3.5.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "3.5.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/proc-macro-crate"
+    },
+    {
+      "name": "proc-macro2",
+      "version": "1.0.107",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.0.107",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/proc-macro2"
+    },
+    {
+      "name": "proptest",
+      "version": "1.12.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.12.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/proptest"
+    },
+    {
+      "name": "pxfm",
+      "version": "0.1.30",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "BSD-3-Clause OR Apache-2.0",
+      "latest_stable": "0.1.30",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/pxfm"
+    },
+    {
+      "name": "quick-error",
+      "version": "1.2.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT/Apache-2.0",
+      "latest_stable": "2.0.1",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "rusty-fork",
+          "version": "0.3.1",
+          "requirements": [
+            "^1.2"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/quick-error",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "quote",
+      "version": "1.0.47",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.0.47",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/quote"
+    },
+    {
+      "name": "r-efi",
+      "version": "5.3.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0 OR LGPL-2.1-or-later",
+      "latest_stable": "7.1.0",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "getrandom",
+          "version": "0.3.4",
+          "requirements": [
+            "^5.1"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/r-efi",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "r-efi",
+      "version": "6.0.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0 OR LGPL-2.1-or-later",
+      "latest_stable": "7.1.0",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "getrandom",
+          "version": "0.4.3",
+          "requirements": [
+            "^6"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/r-efi",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "rand",
+      "version": "0.10.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.10.3",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/rand"
+    },
+    {
+      "name": "rand_core",
+      "version": "0.10.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.10.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/rand_core"
+    },
+    {
+      "name": "rand_xorshift",
+      "version": "0.5.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.5.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/rand_xorshift"
+    },
+    {
+      "name": "redox_syscall",
+      "version": "0.5.18",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.9.5",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "parking_lot_core",
+          "version": "0.9.12",
+          "requirements": [
+            "^0.5"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/redox_syscall",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "redox_users",
+      "version": "0.5.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.5.3",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/redox_users"
+    },
+    {
+      "name": "ref-cast",
+      "version": "1.0.27",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.0.27",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/ref-cast"
+    },
+    {
+      "name": "ref-cast-impl",
+      "version": "1.0.27",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.0.27",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/ref-cast-impl"
+    },
+    {
+      "name": "referencing",
+      "version": "0.60.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.60.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/referencing"
+    },
+    {
+      "name": "regex",
+      "version": "1.13.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.13.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/regex"
+    },
+    {
+      "name": "regex-automata",
+      "version": "0.4.18",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.4.18",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/regex-automata"
+    },
+    {
+      "name": "regex-syntax",
+      "version": "0.8.11",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.8.11",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/regex-syntax"
+    },
+    {
+      "name": "rmcp",
+      "version": "3.8.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0",
+      "latest_stable": "3.8.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/rmcp"
+    },
+    {
+      "name": "rmcp-macros",
+      "version": "3.8.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0",
+      "latest_stable": "3.8.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/rmcp-macros"
+    },
+    {
+      "name": "rustc-hash",
+      "version": "1.1.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0/MIT",
+      "latest_stable": "2.1.3",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "bindgen",
+          "version": "0.66.1",
+          "requirements": [
+            "^1.0.1"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/rustc-hash",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "rustix",
+      "version": "0.38.44",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "latest_stable": "1.1.6",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "which",
+          "version": "4.4.2",
+          "requirements": [
+            "^0.38.10"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/rustix",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "rustix",
+      "version": "1.1.6",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "latest_stable": "1.1.6",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/rustix"
+    },
+    {
+      "name": "rustversion",
+      "version": "1.0.23",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.0.23",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/rustversion"
+    },
+    {
+      "name": "rusty-fork",
+      "version": "0.3.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT/Apache-2.0",
+      "latest_stable": "0.3.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/rusty-fork"
+    },
+    {
+      "name": "schemars",
+      "version": "1.2.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "1.2.3",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/schemars"
+    },
+    {
+      "name": "schemars_derive",
+      "version": "1.2.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "1.2.3",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/schemars_derive"
+    },
+    {
+      "name": "scopeguard",
+      "version": "1.2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.2.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/scopeguard"
+    },
+    {
+      "name": "secrecy",
+      "version": "0.10.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 OR MIT",
+      "latest_stable": "0.10.3",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/secrecy"
+    },
+    {
+      "name": "serde",
+      "version": "1.0.229",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.0.229",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/serde"
+    },
+    {
+      "name": "serde_core",
+      "version": "1.0.229",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.0.229",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/serde_core"
+    },
+    {
+      "name": "serde_derive",
+      "version": "1.0.229",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.0.229",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/serde_derive"
+    },
+    {
+      "name": "serde_derive_internals",
+      "version": "0.30.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.30.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/serde_derive_internals"
+    },
+    {
+      "name": "serde_json",
+      "version": "1.0.154",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.0.154",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/serde_json"
+    },
+    {
+      "name": "serde_spanned",
+      "version": "1.1.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.1.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/serde_spanned"
+    },
+    {
+      "name": "serdect",
+      "version": "0.4.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 OR MIT",
+      "latest_stable": "0.4.3",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/serdect"
+    },
+    {
+      "name": "sha1",
+      "version": "0.11.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.11.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/sha1"
+    },
+    {
+      "name": "sha2",
+      "version": "0.11.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.11.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/sha2"
+    },
+    {
+      "name": "sharded-slab",
+      "version": "0.1.7",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.1.7",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/sharded-slab"
+    },
+    {
+      "name": "shell-words",
+      "version": "1.1.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT/Apache-2.0",
+      "latest_stable": "1.1.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/shell-words"
+    },
+    {
+      "name": "shlex",
+      "version": "1.3.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "2.0.1",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "bindgen",
+          "version": "0.66.1",
+          "requirements": [
+            "^1"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/shlex",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "shlex",
+      "version": "2.0.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "2.0.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/shlex"
+    },
+    {
+      "name": "signal-hook-registry",
+      "version": "1.4.8",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.4.8",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/signal-hook-registry"
+    },
+    {
+      "name": "simd-adler32",
+      "version": "0.3.10",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.3.10",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/simd-adler32"
+    },
+    {
+      "name": "slab",
+      "version": "0.4.12",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.4.12",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/slab"
+    },
+    {
+      "name": "smallvec",
+      "version": "1.16.4",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.16.4",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/smallvec"
+    },
+    {
+      "name": "socket2",
+      "version": "0.6.5",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.6.5",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/socket2"
+    },
+    {
+      "name": "strsim",
+      "version": "0.11.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.11.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/strsim"
+    },
+    {
+      "name": "strum",
+      "version": "0.28.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.28.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/strum"
+    },
+    {
+      "name": "strum_macros",
+      "version": "0.28.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.28.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/strum_macros"
+    },
+    {
+      "name": "symlink",
+      "version": "0.1.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT/Apache-2.0",
+      "latest_stable": "0.1.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/symlink"
+    },
+    {
+      "name": "syn",
+      "version": "2.0.119",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "3.0.9",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "bindgen",
+          "version": "0.66.1",
+          "requirements": [
+            "^2.0"
+          ]
+        },
+        {
+          "name": "jiff-static",
+          "version": "0.2.38",
+          "requirements": [
+            "^2.0.98"
+          ]
+        },
+        {
+          "name": "mockall_derive",
+          "version": "0.15.0",
+          "requirements": [
+            "^2.0.52"
+          ]
+        },
+        {
+          "name": "prettyplease",
+          "version": "0.2.37",
+          "requirements": [
+            "^2.0.105"
+          ]
+        },
+        {
+          "name": "strum_macros",
+          "version": "0.28.0",
+          "requirements": [
+            "^2.0"
+          ]
+        },
+        {
+          "name": "thiserror-impl",
+          "version": "1.0.69",
+          "requirements": [
+            "^2.0.87"
+          ]
+        },
+        {
+          "name": "tracing-attributes",
+          "version": "0.1.31",
+          "requirements": [
+            "^2.0"
+          ]
+        },
+        {
+          "name": "windows-implement",
+          "version": "0.60.2",
+          "requirements": [
+            "^2.0"
+          ]
+        },
+        {
+          "name": "windows-interface",
+          "version": "0.59.3",
+          "requirements": [
+            "^2.0"
+          ]
+        },
+        {
+          "name": "zerocopy-derive",
+          "version": "0.7.35",
+          "requirements": [
+            "^2.0.31"
+          ]
+        },
+        {
+          "name": "zerocopy-derive",
+          "version": "0.8.63",
+          "requirements": [
+            "^2.0.46"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/syn",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "syn",
+      "version": "3.0.9",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "3.0.9",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/syn"
+    },
+    {
+      "name": "tempfile",
+      "version": "3.27.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "3.27.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/tempfile"
+    },
+    {
+      "name": "termtree",
+      "version": "0.5.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "1.0.0",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "predicates-tree",
+          "version": "1.0.13",
+          "requirements": [
+            "^0.5.0"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/termtree",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "thiserror",
+      "version": "1.0.69",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "2.0.21",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "libsql",
+          "version": "0.10.0",
+          "requirements": [
+            "^1.0.40"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/thiserror",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "thiserror",
+      "version": "2.0.21",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "2.0.21",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/thiserror"
+    },
+    {
+      "name": "thiserror-impl",
+      "version": "1.0.69",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "2.0.21",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "thiserror",
+          "version": "1.0.69",
+          "requirements": [
+            "=1.0.69"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/thiserror-impl",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "thiserror-impl",
+      "version": "2.0.21",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "2.0.21",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/thiserror-impl"
+    },
+    {
+      "name": "thread_local",
+      "version": "1.1.10",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.1.10",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/thread_local"
+    },
+    {
+      "name": "time",
+      "version": "0.3.55",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.3.55",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/time"
+    },
+    {
+      "name": "time-core",
+      "version": "0.1.9",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.1.9",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/time-core"
+    },
+    {
+      "name": "time-macros",
+      "version": "0.2.32",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.2.32",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/time-macros"
+    },
+    {
+      "name": "tokio",
+      "version": "1.54.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "1.54.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/tokio"
+    },
+    {
+      "name": "tokio-macros",
+      "version": "2.7.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "2.7.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/tokio-macros"
+    },
+    {
+      "name": "tokio-util",
+      "version": "0.7.20",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.7.20",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/tokio-util"
+    },
+    {
+      "name": "toml",
+      "version": "1.1.8+spec-1.1.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.1.8+spec-1.1.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/toml"
+    },
+    {
+      "name": "toml_datetime",
+      "version": "1.1.2+spec-1.1.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.1.2+spec-1.1.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/toml_datetime"
+    },
+    {
+      "name": "toml_edit",
+      "version": "0.25.17+spec-1.1.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.25.17+spec-1.1.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/toml_edit"
+    },
+    {
+      "name": "toml_parser",
+      "version": "1.1.5+spec-1.1.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.1.5+spec-1.1.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/toml_parser"
+    },
+    {
+      "name": "toml_writer",
+      "version": "1.1.3+spec-1.1.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.1.3+spec-1.1.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/toml_writer"
+    },
+    {
+      "name": "tracing",
+      "version": "0.1.44",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.1.44",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/tracing"
+    },
+    {
+      "name": "tracing-appender",
+      "version": "0.2.5",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.2.5",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/tracing-appender"
+    },
+    {
+      "name": "tracing-attributes",
+      "version": "0.1.31",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.1.31",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/tracing-attributes"
+    },
+    {
+      "name": "tracing-core",
+      "version": "0.1.36",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.1.36",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/tracing-core"
+    },
+    {
+      "name": "tracing-log",
+      "version": "0.2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.2.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/tracing-log"
+    },
+    {
+      "name": "tracing-serde",
+      "version": "0.2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.2.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/tracing-serde"
+    },
+    {
+      "name": "tracing-subscriber",
+      "version": "0.3.23",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.3.23",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/tracing-subscriber"
+    },
+    {
+      "name": "typenum",
+      "version": "1.20.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "1.20.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/typenum"
+    },
+    {
+      "name": "unarray",
+      "version": "0.1.4",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.1.4",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/unarray"
+    },
+    {
+      "name": "unicase",
+      "version": "2.10.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "2.10.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/unicase"
+    },
+    {
+      "name": "unicode-general-category",
+      "version": "1.1.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0",
+      "latest_stable": "1.1.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/unicode-general-category"
+    },
+    {
+      "name": "unicode-ident",
+      "version": "1.0.27",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "(MIT OR Apache-2.0) AND Unicode-3.0",
+      "latest_stable": "1.0.27",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/unicode-ident"
+    },
+    {
+      "name": "unicode-width",
+      "version": "0.2.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.2.3",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/unicode-width"
+    },
+    {
+      "name": "utf8parse",
+      "version": "0.2.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 OR MIT",
+      "latest_stable": "0.2.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/utf8parse"
+    },
+    {
+      "name": "uuid",
+      "version": "1.29.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 OR MIT",
+      "latest_stable": "1.29.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/uuid"
+    },
+    {
+      "name": "uuid-simd",
+      "version": "0.8.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.8.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/uuid-simd"
+    },
+    {
+      "name": "valuable",
+      "version": "0.1.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.1.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/valuable"
+    },
+    {
+      "name": "version_check",
+      "version": "0.9.5",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT/Apache-2.0",
+      "latest_stable": "0.9.5",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/version_check"
+    },
+    {
+      "name": "vsimd",
+      "version": "0.8.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "0.8.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/vsimd"
+    },
+    {
+      "name": "wait-timeout",
+      "version": "0.2.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT/Apache-2.0",
+      "latest_stable": "0.2.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/wait-timeout"
+    },
+    {
+      "name": "wasi",
+      "version": "0.11.1+wasi-snapshot-preview1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "latest_stable": "0.14.7+wasi-0.2.4",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "mio",
+          "version": "1.2.4",
+          "requirements": [
+            "^0.11.0"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/wasi",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "wasip2",
+      "version": "1.0.4+wasi-0.2.12",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "latest_stable": "2.0.1+wasi-0.2.12",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "getrandom",
+          "version": "0.3.4",
+          "requirements": [
+            "^1"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/wasip2",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "wasm-bindgen",
+      "version": "0.2.130",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.2.130",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/wasm-bindgen"
+    },
+    {
+      "name": "wasm-bindgen-macro",
+      "version": "0.2.130",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.2.130",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/wasm-bindgen-macro"
+    },
+    {
+      "name": "wasm-bindgen-macro-support",
+      "version": "0.2.130",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.2.130",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/wasm-bindgen-macro-support"
+    },
+    {
+      "name": "wasm-bindgen-shared",
+      "version": "0.2.130",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.2.130",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/wasm-bindgen-shared"
+    },
+    {
+      "name": "which",
+      "version": "4.4.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "8.0.6",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "bindgen",
+          "version": "0.66.1",
+          "requirements": [
+            "^4.2.1"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/which",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "winapi",
+      "version": "0.3.9",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT/Apache-2.0",
+      "latest_stable": "0.3.9",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/winapi"
+    },
+    {
+      "name": "winapi-i686-pc-windows-gnu",
+      "version": "0.4.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT/Apache-2.0",
+      "latest_stable": "0.4.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/winapi-i686-pc-windows-gnu"
+    },
+    {
+      "name": "winapi-x86_64-pc-windows-gnu",
+      "version": "0.4.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT/Apache-2.0",
+      "latest_stable": "0.4.0",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/winapi-x86_64-pc-windows-gnu"
+    },
+    {
+      "name": "windows-core",
+      "version": "0.62.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.100.0",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "iana-time-zone",
+          "version": "0.1.65",
+          "requirements": [
+            ">=0.56, <=0.62"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/windows-core",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "windows-implement",
+      "version": "0.60.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.100.0",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "windows-core",
+          "version": "0.62.2",
+          "requirements": [
+            "^0.60.2"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/windows-implement",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "windows-interface",
+      "version": "0.59.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.100.0",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "windows-core",
+          "version": "0.62.2",
+          "requirements": [
+            "^0.59.3"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/windows-interface",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "windows-link",
+      "version": "0.2.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.100.0",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "chrono",
+          "version": "0.4.45",
+          "requirements": [
+            "^0.2"
+          ]
+        },
+        {
+          "name": "jiff",
+          "version": "0.2.38",
+          "requirements": [
+            "^0.2.1"
+          ]
+        },
+        {
+          "name": "libloading",
+          "version": "0.8.9",
+          "requirements": [
+            "^0.2"
+          ]
+        },
+        {
+          "name": "parking_lot_core",
+          "version": "0.9.12",
+          "requirements": [
+            "^0.2.0"
+          ]
+        },
+        {
+          "name": "windows-core",
+          "version": "0.62.2",
+          "requirements": [
+            "^0.2.1"
+          ]
+        },
+        {
+          "name": "windows-result",
+          "version": "0.4.1",
+          "requirements": [
+            "^0.2.1"
+          ]
+        },
+        {
+          "name": "windows-strings",
+          "version": "0.5.1",
+          "requirements": [
+            "^0.2.1"
+          ]
+        },
+        {
+          "name": "windows-sys",
+          "version": "0.61.2",
+          "requirements": [
+            "^0.2.1"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/windows-link",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "windows-result",
+      "version": "0.4.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.100.0",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "windows-core",
+          "version": "0.62.2",
+          "requirements": [
+            "^0.4.1"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/windows-result",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "windows-strings",
+      "version": "0.5.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.100.0",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "windows-core",
+          "version": "0.62.2",
+          "requirements": [
+            "^0.5.1"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/windows-strings",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "windows-sys",
+      "version": "0.59.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.61.2",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "rustix",
+          "version": "0.38.44",
+          "requirements": [
+            ">=0.52, <=0.59"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/windows-sys",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "windows-sys",
+      "version": "0.61.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.61.2",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/windows-sys"
+    },
+    {
+      "name": "windows-targets",
+      "version": "0.52.6",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.53.5",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "windows-sys",
+          "version": "0.59.0",
+          "requirements": [
+            "^0.52.6"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/windows-targets",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "windows_aarch64_gnullvm",
+      "version": "0.52.6",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.53.1",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "windows-targets",
+          "version": "0.52.6",
+          "requirements": [
+            "^0.52.6"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/windows_aarch64_gnullvm",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "windows_aarch64_msvc",
+      "version": "0.52.6",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.53.1",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "windows-targets",
+          "version": "0.52.6",
+          "requirements": [
+            "^0.52.6"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/windows_aarch64_msvc",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "windows_i686_gnu",
+      "version": "0.52.6",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.53.1",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "windows-targets",
+          "version": "0.52.6",
+          "requirements": [
+            "^0.52.6"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/windows_i686_gnu",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "windows_i686_gnullvm",
+      "version": "0.52.6",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.53.1",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "windows-targets",
+          "version": "0.52.6",
+          "requirements": [
+            "^0.52.6"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/windows_i686_gnullvm",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "windows_i686_msvc",
+      "version": "0.52.6",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.53.1",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "windows-targets",
+          "version": "0.52.6",
+          "requirements": [
+            "^0.52.6"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/windows_i686_msvc",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "windows_x86_64_gnu",
+      "version": "0.52.6",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.53.1",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "windows-targets",
+          "version": "0.52.6",
+          "requirements": [
+            "^0.52.6"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/windows_x86_64_gnu",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "windows_x86_64_gnullvm",
+      "version": "0.52.6",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.53.1",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "windows-targets",
+          "version": "0.52.6",
+          "requirements": [
+            "^0.52.6"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/windows_x86_64_gnullvm",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "windows_x86_64_msvc",
+      "version": "0.52.6",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0",
+      "latest_stable": "0.53.1",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "windows-targets",
+          "version": "0.52.6",
+          "requirements": [
+            "^0.52.6"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/windows_x86_64_msvc",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "winnow",
+      "version": "1.0.4",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "1.0.4",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/winnow"
+    },
+    {
+      "name": "wit-bindgen",
+      "version": "0.57.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "latest_stable": "0.63.0",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "wasip2",
+          "version": "1.0.4+wasi-0.2.12",
+          "requirements": [
+            "^0.57.1"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/wit-bindgen",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "zerocopy",
+      "version": "0.7.35",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "BSD-2-Clause OR Apache-2.0 OR MIT",
+      "latest_stable": "0.8.63",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "libsql-sys",
+          "version": "0.10.0",
+          "requirements": [
+            "^0.7.28"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/zerocopy",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "zerocopy",
+      "version": "0.8.63",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "BSD-2-Clause OR Apache-2.0 OR MIT",
+      "latest_stable": "0.8.63",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/zerocopy"
+    },
+    {
+      "name": "zerocopy-derive",
+      "version": "0.7.35",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "BSD-2-Clause OR Apache-2.0 OR MIT",
+      "latest_stable": "0.8.63",
+      "lookup_error": null,
+      "parents": [
+        {
+          "name": "zerocopy",
+          "version": "0.7.35",
+          "requirements": [
+            "=0.7.35"
+          ]
+        }
+      ],
+      "disposition": "different compatibility line; parent constraints recorded",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/zerocopy-derive",
+      "removal_path": "Upgrade the constraining parent(s) to a release accepting the newer compatibility line; no forced Cargo override."
+    },
+    {
+      "name": "zerocopy-derive",
+      "version": "0.8.63",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "BSD-2-Clause OR Apache-2.0 OR MIT",
+      "latest_stable": "0.8.63",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/zerocopy-derive"
+    },
+    {
+      "name": "zeroize",
+      "version": "1.9.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Apache-2.0 OR MIT",
+      "latest_stable": "1.9.1",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/zeroize"
+    },
+    {
+      "name": "zlib-rs",
+      "version": "0.6.8",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "Zlib",
+      "latest_stable": "0.6.8",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/zlib-rs"
+    },
+    {
+      "name": "zmij",
+      "version": "1.0.23",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT",
+      "latest_stable": "1.0.23",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/zmij"
+    },
+    {
+      "name": "zune-core",
+      "version": "0.5.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0 OR Zlib",
+      "latest_stable": "0.5.3",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/zune-core"
+    },
+    {
+      "name": "zune-jpeg",
+      "version": "0.5.15",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license_declaration": "MIT OR Apache-2.0 OR Zlib",
+      "latest_stable": "0.5.15",
+      "lookup_error": null,
+      "parents": [],
+      "disposition": "current stable",
+      "registry_metadata_url": "https://crates.io/api/v1/crates/zune-jpeg"
+    }
+  ]
+}

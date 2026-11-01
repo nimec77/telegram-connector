@@ -57,6 +57,8 @@ in CI. Primary references: [checkout v7.0.1](https://github.com/actions/checkout
 [cargo-deny](https://github.com/EmbarkStudios/cargo-deny/releases/tag/0.20.2),
 [actionlint](https://github.com/rhysd/actionlint/releases/tag/v1.7.12).
 
-Local tool/config validation is separate from hosted execution. Record the actual
-Linux/macOS CI run and installed versions at final acceptance; configuration alone
-does not prove a workflow ran or a live Telegram session migrated.
+Local tool/config validation is separate from hosted execution. Agent acceptance uses
+native macOS checks; Linux setup/execution is owner-managed and does not block it.
+The existing CI matrix remains configured for both platforms. If a hosted run is
+performed later, record its actual platform and installed versions separately;
+configuration alone does not prove a workflow ran or a live session migrated.

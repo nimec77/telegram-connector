@@ -18,9 +18,8 @@ fix RPC safety at the narrowest existing operation boundary.
 standards alignment plan is archived in Git history.
 
 **Status (corrected 2026-11-01):** Tasks 1–8 and Rust standards alignment are
-implemented and integrated in 0.24.0. Task 9 automation was implemented earlier, but its
-acceptance checklist remains open. Task 10 has substantial offline macOS evidence but
-has not been formally closed. Do not describe the ten-task roadmap as complete.
+implemented and integrated in 0.24.0. Task 9 automation and acceptance are now verified. Task 10 has full evidence assembled
+and remains open for the final combined independent review and closure. Do not describe the ten-task roadmap as complete.
 
 The prior archival prematurely treated Task 8 validation as closure of Tasks 9–10.
 This plan and its audit spec are restored as the active acceptance record. The current
@@ -356,29 +355,36 @@ media/search/recovery tests.
 dependency-update configuration; `rust-toolchain.toml`, `justfile`, README/docs.
 **Produces:** repeatable maintenance rather than a one-time update.
 
-- [ ] Pin reviewed action SHAs (checkout snapshot v7.0.1); set minimal read permissions
+- [x] Pin reviewed action SHAs (checkout snapshot v7.0.1); set minimal read permissions
   and disable credential persistence in checks. Verify updated runner/runtime requirements.
-- [ ] Pin one tested current dated nightly in local and CI configuration; retain a
+- [x] Pin one tested current dated nightly in local and CI configuration; retain a
   separate scheduled floating-nightly check. Do not switch project toolchain policy.
-- [ ] Add fresh advisory scans on PRs and a schedule, with vulnerability and unsoundness
+- [x] Add fresh advisory scans on PRs and a schedule, with vulnerability and unsoundness
   handling explicit. Any exception names advisory, rationale, owner and expiry.
-- [ ] Add reviewed dependency update automation, with rmcp, grammers, and incompatible
+- [x] Add reviewed dependency update automation, with rmcp, grammers, and incompatible
   updates separated. Grammers revisions require review; do not automate tracking master.
-- [ ] Introduce source/license/yank checks only with an explicit policy covering the
+- [x] Introduce source/license/yank checks only with an explicit policy covering the
   existing Codeberg source; no blanket unknown-license approvals. Keep the normal gate fast.
-- [ ] Validate workflow/config syntax and run offline quality checks on macOS.
+- [x] Validate workflow/config syntax and run offline quality checks on macOS.
   Linux execution is owner-managed and is not required for acceptance. Document only
   verified platform support; optional Windows support remains unverified unless tested.
   Commit automation.
+
+**Verification (2026-11-01, native macOS):** All six criteria have concrete evidence in
+[workflow acceptance](../../validation/2026-11-01-task9-workflows.md) and the
+[final candidate report](../../validation/2026-11-01-final-acceptance.md). Pinned official
+macOS actionlint/cargo-deny binaries were checksum-verified; workflow/config semantics,
+full source/license policy, fresh advisories/yanks, all-target quality, release and both
+clients pass. CI now runs the independent media client. No hosted/Linux execution is claimed.
 
 ## Task 10: Final acceptance and independent review
 
 **Files:** README, CHANGELOG, configuration examples, `docs/memory.md`, active plan/spec.
 **Produces:** evidence-based release readiness, not automatic publication.
-**Acceptance remains open:** complete the scoped RPC/conversion coverage and traceability
-review, explicitly record the Rust manual/S1–S6 adoption assessment, verify the Task 9
-workflow/security policy checklist, and assess the final combined result. Checked items
-refer to the documented 0.24.0 baseline; refresh them after any acceptance-related changes.
+**Acceptance remains open only for the final combined independent review and closure.**
+Task 9 is verified; fresh complete dependency inventory, full macOS gates, explicit coverage/
+performance/traceability and S1–S6/manual assessment are recorded in the final candidate
+report. Reviewers must assess the combined result before this task is declared complete.
 
 - [x] Recheck all versions/advisories at release time; record installed/resolved values
   and any incompatible transitive blockers. Every direct crate has an explicit disposition.
@@ -389,11 +395,11 @@ refer to the documented 0.24.0 baseline; refresh them after any acceptance-relat
 - [x] Exercise the wire harness with at least two client implementations. If a live
   Telegram smoke check is later requested, use an already authorized test account and
   bounded reads; report it separately from offline results.
-- [ ] Measure changed RPC/conversion coverage and representative latency/memory. Keep
+- [x] Measure changed RPC/conversion coverage and representative latency/memory. Keep
   source-to-test traceability for A1–A9/D1–D2; do not substitute a global coverage number.
-- [x] Obtain independent code/security review, inspect the final diff, and update docs
+- [ ] Obtain independent code/security review, inspect the final diff, and update docs
   with protocol versions, output migration, configured bounds and known limitations.
-- [ ] Review adoption against the Rust manual and S1–S6 plan, including justified exceptions;
+- [x] Review adoption against the Rust manual and S1–S6 plan, including justified exceptions;
   keep existing-format and stricter-policy checks distinct in the recorded results.
 - [ ] Release only under subsequent authorization. Delete active implementation plan/spec
   when their change merges, per repository policy; Git history retains the audit.
