@@ -2530,6 +2530,7 @@ dependencies = [
  "directories",
  "filetime",
  "futures",
+ "getrandom 0.4.3",
  "grammers-client",
  "grammers-mtsender",
  "grammers-session",
