@@ -6,9 +6,10 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Current state
 
-- **Tasks 1–8 are integrated in 0.24.0; Tasks 9 and 10 are implemented and accepted on
-  `chore/final-modernization-acceptance`, pending integration.** All ten original numbered
-  tasks now have explicit acceptance evidence. Final post-review macOS gate passed
+- **All ten original roadmap tasks are implemented, accepted and integrated into local
+  master.** The package version remains 0.24.0; subsequent fixes are recorded in Unreleased.
+  Completed plans/specs are archived in Git history at accepted revision adaaac8.
+  All ten numbered tasks have explicit acceptance evidence. Final post-review macOS gate passed
   942 library tests + 3 doctests, strict all-target Clippy, warning-free docs, production
   release, independent Rust/Python clients and native process checks. Fresh pinned
   cargo-deny/source/advisory/license gates pass. The final combined review's shared-sticky-
@@ -17,7 +18,7 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   [Rust/S1–S6 assessment](validation/2026-11-01-rust-adoption-acceptance.md).
   There are 16 tools, json_v1 plus explicit legacy mode; nightly stays 2026-10-31, rmcp 3.8,
   and direct grammers pins stay 1e31e73cd9797790905bbea82cd75adcbe6f1242 (0.11).
-- **Latest media-test coverage (2026-11-01):** the scoped Task 10 branch reports 82.58%
+- **Latest media-test coverage (2026-11-01):** final acceptance reports 82.58%
   library lines (9,301/11,263, unfiltered including inline unit code), with the original
   ops_media.rs at 51.62% (143/277), up from the integrated 0.24.0 baseline of 81.71% overall
   and 15.85% (39/246) operations coverage. Cached photo/video fixtures use the actual
@@ -36,13 +37,13 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Open items
 
-- **Integrate accepted work.** Original Tasks 9/10 and the media-test work are complete
-  on the final acceptance branch; retain the completed plan/audit until merge, then archive.
-  Optional media M2/M3 are separate product decisions and remain unimplemented.
+- **Optional media M2/M3:** cached resource references and direct file export remain
+  separate, unimplemented product proposals. Select a target client's capabilities before
+  planning either mode.
 - **Operational limits:** target-host-specific rendering and live Telegram/account behavior
   are unverified; offline Rust/Python preview payloads and local image rendering passed.
-  Linux remains owner-managed, Windows ACLs unverified. Optional media M2/M3 remain separate
-  product decisions. Release publication requires separate authorization.
+  Linux remains owner-managed and Windows ACLs unverified. Release publication requires
+  separate authorization.
 - **Raw pagers exist only because grammers pins `Message.peers: PeerMap` `pub(crate)`**
   (verified at pinned rev = upstream HEAD). If a future grammers rev exposes public peer
   resolution, collapse `raw_pager`/`raw_fetch` back to the high-level iterators.

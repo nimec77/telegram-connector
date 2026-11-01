@@ -4,11 +4,13 @@ Date: 2026-11-01. Platform: native macOS 27.2, arm64. Scope: the original ten-ta
 roadmap, including the scoped production media-test work. This is engineering acceptance,
 not release publication, hosted CI qualification, or a claim of live-account testing.
 
-**Final status:** Task 9 and Task 10 are complete on `chore/final-modernization-acceptance`
+**Final status:** Task 9 and Task 10 are complete and integrated into local master
 under the explicit native-macOS validation policy. The independent combined review is
 complete; its one Important finding was reproduced and fixed with a fresh full gate.
 All ten numbered roadmap tasks now have recorded implementation/acceptance evidence.
-This branch still awaits integration; release publication remains separately authorized.
+Accepted code revision adaaac8 was fast-forward integrated on 2026-11-01. The subsequent
+integration cleanup changes documentation only. Release publication remains separately
+authorized.
 
 ## Task 9 — continuous maintenance
 
@@ -190,5 +192,6 @@ is made. No blocking review finding remains.
 - Metadata source/license/advisory policy is not an exhaustive dependency security or legal
   distribution audit. Root licensing remains unassigned under the existing policy.
 - Optional media M2/M3 remain separate, unimplemented product proposals.
-- Publication requires a later explicit request. Completed plans/specs are retained in
-  this unmerged branch and archived only when their changes actually integrate.
+- Publication requires a later explicit request. The completed modernization roadmap/audit
+  and scoped media-test plan/spec were archived on local integration; their fully accepted
+  checklists remain in Git history at adaaac8. Optional M2/M3 proposals remain active.
