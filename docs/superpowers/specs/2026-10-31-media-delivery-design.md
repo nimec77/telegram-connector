@@ -1,6 +1,7 @@
 # Media delivery: binary processing, portable MCP previews, optional files
 
-Date: 2026-10-31. Status: analysis and proposal only; no media implementation changed.
+Date: 2026-10-31. Updated 2026-11-01: M1 implementation and offline macOS acceptance are
+complete; M2/M3 remain proposals. See [validation](../../validation/2026-11-01-task8.md).
 Scope: local stdio MCP 2026-07-28. This supplements the
 [development audit](2026-10-31-development-audit-design.md) and
 [roadmap](../plans/2026-10-31-development-roadmap.md).
@@ -81,41 +82,42 @@ This is the recommended next media work, folded into roadmap Task 8.
 `src/telegram/types/media.rs`, `src/mcp/server/impl_media.rs`,
 `src/mcp/tools/{image,media_budget}.rs`, media/transport tests.
 
-- [ ] Add regressions for base64 length at 0/1/2/3-byte boundaries and overflow, unchanged
+- [x] Add regressions for base64 length at 0/1/2/3-byte boundaries and overflow, unchanged
   JPEG passthrough, per-image limits and batch summaries. Calculate candidate size before
   encoding; retain the exact existing base64 format and cap definitions.
-- [ ] Introduce backpressure between downloading and processing. Resolve/fetch once per
+- [x] Introduce backpressure between downloading and processing. Resolve/fetch once per
   batch as today; consume each completed outcome and release its raw bytes promptly.
   The Telegram layer produces binary outcomes; the MCP layer retains JPEG/base64 shaping.
   Do not make Telegram code import MCP types to implement the pipeline.
-- [ ] Proposed baseline: at most four raw-buffer slots per process, each capped at the
+- [x] Proposed baseline: at most four raw-buffer slots per process, each capped at the
   configured per-download maximum; a slot remains charged while a completed result waits
   or is being processed. At most two image decode/encode jobs per process. Avoid per-call
   limits that multiply without bound under concurrent tool calls. Reject configurations
   whose global memory allowance cannot admit one permitted input.
-- [ ] Hold raw-buffer and processing permits inside any started `spawn_blocking` closure
+- [x] Hold raw-buffer and processing permits inside any started `spawn_blocking` closure
   until it exits. Cancelling its awaiting request must not release capacity while that
   closure still owns bytes or computes. Test cancellation followed immediately by a
   replacement request and assert the same process-wide limits still hold.
-- [ ] Include raw-slot, processing-slot and pipeline-capacity waits in one absolute
+- [x] Include raw-slot, processing-slot and pipeline-capacity waits in one absolute
   operation deadline established before queuing, using the configured download timeout
   (default 120 seconds). Cancellation stops waiting immediately; deadline expiry returns
   the defined timeout/partial-item outcome and existing refunds. Never start a fresh
   timeout after waiting for capacity or leave an unbounded permit wait.
-- [ ] Preserve original request order and item identity. A bounded ordered window must
+- [x] Preserve original request order and item identity. A bounded ordered window must
   not accumulate an unbounded reorder queue. Release raw data before admitting more work;
   account for final encoded outputs separately, because stdio still returns one result.
-- [ ] Add explicit decoded pixel/allocation limits and cancellation checks before queued
+- [x] Add explicit decoded pixel/allocation limits and cancellation checks before queued
   work. Select exact limits from representative thumbnail/photo fixtures and measured
   peak memory; record the values in config/status/docs before merging. This is an
   implementation measurement decision, not permission to claim a hard RSS bound now.
-- [ ] Test saturated backpressure, slow first item, ten near-limit downloads, two concurrent
+- [x] Test saturated backpressure, slow first item, ten near-limit downloads, two concurrent
   calls, mixed failures and cancellation. Preserve media token refunds and no repeated
   channel resolution. Measure peak retained raw bytes and RSS separately.
-- [ ] Preserve per-image/batch base64 budgets and Task 8's separate non-binary overhead
+- [x] Preserve per-image/batch base64 budgets and Task 8's separate non-binary overhead
   budget. Never apply the 40,000-byte search/history budget to image payloads.
-- [ ] Verify preview rendering with actual target MCP clients after offline tests pass;
-  benchmark using local fixtures, not repeated account-throttling Telegram calls.
+- [x] Verify portable preview payloads with independent Rust/Python MCP clients and render
+  the returned JPEG locally; benchmark local fixtures. A configured target-host UI and
+  live account integration remain explicitly unverified, not claimed by offline acceptance.
 
 Started blocking computations cannot be forcibly aborted by dropping their Tokio handles;
 bounded concurrency and finite decoding work are necessary even with cancellation.

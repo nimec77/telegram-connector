@@ -17,11 +17,13 @@ fix RPC safety at the narrowest existing operation boundary.
 [media delivery proposal](../specs/2026-10-31-media-delivery-design.md). The completed
 standards alignment plan is archived in Git history.
 
-**Status:** Tasks 1–7 and Rust standards alignment are complete; execution stopped
-after Task 7 at the user's request. Task 8/media-M1 and final Task 10 acceptance remain
-pending. Task 9 automation was implemented earlier; its final acceptance follows the
-validation ownership below. Optional media M2/M3 remain separate product decisions.
-This plan update does not resume implementation.
+**Status:** Tasks 1–8 and Rust standards alignment are implemented; Task 9 automation
+was implemented earlier. Remaining offline macOS Task 10 acceptance is recorded in
+[the validation report](../../validation/2026-11-01-task8.md): full gate, production release,
+security/version inventory, coverage, two protocol clients, RSS and independent review/fixes.
+Target-host-specific UI/live account behavior is unverified; it is not claimed by this
+local offline acceptance. Optional M2/M3 remain separate decisions. No publication or
+primary-branch integration is implied; keep active plans/specs until merge.
 
 ## Global constraints
 
@@ -241,22 +243,22 @@ remaining-task acceptance policy above.
 `src/telegram/client/*.rs`, converters/tests touched by upstream types.
 **Produces:** current direct versions and reviewed compatible transitives.
 
-- [ ] Requery authoritative versions; record exact resolved targets and compare against
+- [x] Requery authoritative versions; record exact resolved targets and compare against
   the audit table. Patch compatible serialization/config dependencies first. Include
   declarations already satisfied by newer lockfile versions in the review.
-- [ ] Update base64 0.22→0.23, mockall 0.14→0.15, proptest 1.11→1.12 as separate
+- [x] Update base64 0.22→0.23, mockall 0.14→0.15, proptest 1.11→1.12 as separate
   reviewable changes. Preserve byte-identical JPEG passthrough and paused-time tests.
-- [ ] Move all three grammers pins together to one reviewed SHA (snapshot
+- [x] Move all three grammers pins together to one reviewed SHA (snapshot
   `1e31e73cd9797790905bbea82cd75adcbe6f1242`). Review all changed TL enum matches and error
   variants; retain raw pagers while `Message.peers` is private.
-- [ ] Add missing behavior fixtures before adaptations: missing/deleted messages,
+- [x] Add missing behavior fixtures before adaptations: missing/deleted messages,
   communities/megagroups, forward-envelope attribution, same-number peer kinds,
   date windows, album boundaries and per-channel cursors. Test production conversion and
   paging decisions, not mocks alone; investigate peer collisions before changing behavior.
-- [ ] Refresh remaining compatible transitives without deleting the lockfile. Inventory
+- [x] Refresh remaining compatible transitives without deleting the lockfile. Inventory
   duplicate majors, yanked versions, licenses and sources. For every blocked latest major,
   record its upstream constraint and removal path; do not force incompatible versions.
-- [ ] Run the macOS quality gate, release build and fresh audit per migration
+- [x] Run the macOS quality gate, release build and fresh audit per migration
   group. Linux checks follow the owner-managed policy above. No live migration is claimed
   from offline tests; use a disposable mocked session fixture for session format checks.
   Commit each dependency group independently.
@@ -311,37 +313,37 @@ a version bump and integration into the primary branch; Task 8 remains pending.
 media/search/recovery tests.
 **Produces:** correctly budgeted canonical responses and explicit recovery selection.
 
-- [ ] Add fixtures with mixed successful/missing/failed media. Each JSON item's
+- [x] Add fixtures with mixed successful/missing/failed media. Each JSON item's
   `content_index` identifies its actual MCP image block; failed items have none. Binary
   appears once, and the JSON summary accounts for every requested ID.
-- [ ] Apply the 40,000-byte default message response budget only to search/history
+- [x] Apply the 40,000-byte default message response budget only to search/history
   (including fan-out) and message batches, now counting the complete envelope and both
   JSON representations. Keep oldest-first trimming and the one-message floor; metadata
   alone exceeding the budget returns bounded `response_too_large`. Test that explicitly.
-- [ ] Keep media base64 limits independent; cap total serialized non-binary media
+- [x] Keep media base64 limits independent; cap total serialized non-binary media
   overhead at 65,536 bytes. If it exceeds the cap, return a small tool error, no images,
   and apply no-image refunds. Test media batches larger than 40,000 bytes still succeed
   within their own limits; record overhead separately in status/docs.
-- [ ] Add optional `recovery_key` to recoverable request schemas and `recovery_keys`
+- [x] Add optional `recovery_key` to recoverable request schemas and `recovery_keys`
   selection to get_last_responses. Validate 1–128 printable ASCII characters, reserve
   before dispatch, and reject duplicate pending/retained keys before RPC. Expire completed
   entries after 10 minutes, capacity eviction, or restart; return `response_pending` or
   `response_unavailable` appropriately. Keep key state bounded by configured buffer
   capacity and reject reservations when all slots are occupied by pending calls.
-- [ ] Test lost original results, reused JSON-RPC IDs, duplicate keys, expiry/eviction,
+- [x] Test lost original results, reused JSON-RPC IDs, duplicate keys, expiry/eviction,
   restart, and two interleaved callers selecting only their keys. This prevents accidental
   mixing, not authenticated isolation. Calls without keys have no targeted guarantee;
   unfiltered last-N stays legacy diagnostic only. Never buffer recovery responses.
-- [ ] Verify default recovery still omits image bytes and does not recursively buffer
+- [x] Verify default recovery still omits image bytes and does not recursively buffer
   recovery results. Add tests for new structured metadata and oversized replay entries.
-- [ ] Test input/concurrency bounds, cancellation accounting, decoded-image pixel/memory
+- [x] Test input/concurrency bounds, cancellation accounting, decoded-image pixel/memory
   limits, and session/database/WAL permissions with disposable fixtures. Fix demonstrated
   weaknesses in focused changes; record any investigation that does not reproduce a defect.
-- [ ] Execute media proposal M1: calculate base64 length before encoding; replace
+- [x] Execute media proposal M1: calculate base64 length before encoding; replace
   whole-batch raw-download retention with a bounded producer/consumer pipeline. Preserve
   image content blocks and single resolve/fetch per batch. Test global backpressure,
   deterministic order, concurrent calls and memory retention; measure RSS separately.
-- [ ] Run budget/recovery/transport/media tests and quality gate; commit with explicit
+- [x] Run budget/recovery/transport/media tests and quality gate; commit with explicit
   compatibility notes for changed byte accounting and recovery inputs.
 
 ## Task 9: Establish continuous security and dependency maintenance
@@ -350,17 +352,17 @@ media/search/recovery tests.
 dependency-update configuration; `rust-toolchain.toml`, `justfile`, README/docs.
 **Produces:** repeatable maintenance rather than a one-time update.
 
-- [ ] Pin reviewed action SHAs (checkout snapshot v7.0.1); set minimal read permissions
+- [x] Pin reviewed action SHAs (checkout snapshot v7.0.1); set minimal read permissions
   and disable credential persistence in checks. Verify updated runner/runtime requirements.
-- [ ] Pin one tested current dated nightly in local and CI configuration; retain a
+- [x] Pin one tested current dated nightly in local and CI configuration; retain a
   separate scheduled floating-nightly check. Do not switch project toolchain policy.
-- [ ] Add fresh advisory scans on PRs and a schedule, with vulnerability and unsoundness
+- [x] Add fresh advisory scans on PRs and a schedule, with vulnerability and unsoundness
   handling explicit. Any exception names advisory, rationale, owner and expiry.
-- [ ] Add reviewed dependency update automation, with rmcp, grammers, and incompatible
+- [x] Add reviewed dependency update automation, with rmcp, grammers, and incompatible
   updates separated. Grammers revisions require review; do not automate tracking master.
-- [ ] Introduce source/license/yank checks only with an explicit policy covering the
+- [x] Introduce source/license/yank checks only with an explicit policy covering the
   existing Codeberg source; no blanket unknown-license approvals. Keep the normal gate fast.
-- [ ] Validate workflow/config syntax and run offline quality checks on macOS.
+- [x] Validate workflow/config syntax and run offline quality checks on macOS.
   Linux execution is owner-managed and is not required for acceptance. Document only
   verified platform support; optional Windows support remains unverified unless tested.
   Commit automation.
@@ -370,22 +372,22 @@ dependency-update configuration; `rust-toolchain.toml`, `justfile`, README/docs.
 **Files:** README, CHANGELOG, configuration examples, `docs/memory.md`, active plan/spec.
 **Produces:** evidence-based release readiness, not automatic publication.
 
-- [ ] Recheck all versions/advisories at release time; record installed/resolved values
+- [x] Recheck all versions/advisories at release time; record installed/resolved values
   and any incompatible transitive blockers. Every direct crate has an explicit disposition.
-- [ ] On macOS, run `cargo fmt --all --check`, `cargo clippy --locked --all-targets -- -D warnings`,
+- [x] On macOS, run `cargo fmt --all --check`, `cargo clippy --locked --all-targets -- -D warnings`,
   `cargo test --locked`, `cargo build --locked --release`, fresh `cargo audit`, and the
   modern/legacy conformance suite. Use `--offline` for cached compile/test work only;
   advisory freshness still needs an updated database.
-- [ ] Exercise the wire harness with at least two client implementations. If a live
+- [x] Exercise the wire harness with at least two client implementations. If a live
   Telegram smoke check is later requested, use an already authorized test account and
   bounded reads; report it separately from offline results.
-- [ ] Measure changed RPC/conversion coverage and representative latency/memory. Keep
+- [x] Measure changed RPC/conversion coverage and representative latency/memory. Keep
   source-to-test traceability for A1–A9/D1–D2; do not substitute a global coverage number.
-- [ ] Obtain independent code/security review, inspect the final diff, and update docs
+- [x] Obtain independent code/security review, inspect the final diff, and update docs
   with protocol versions, output migration, configured bounds and known limitations.
-- [ ] Review adoption against the Rust manual and S1–S6 plan, including justified exceptions;
+- [x] Review adoption against the Rust manual and S1–S6 plan, including justified exceptions;
   keep existing-format and stricter-policy checks distinct in the recorded results.
-- [ ] Release only under subsequent authorization. Delete active implementation plan/spec
+- [x] Release only under subsequent authorization. Delete active implementation plan/spec
   when their change merges, per repository policy; Git history retains the audit.
 
 ## Effort and uncertainty

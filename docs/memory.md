@@ -6,14 +6,19 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Current state
 
-- **Modernization through Task 7 is complete.** There are 16 tools. Task 7 adds default
-  `json_v1` typed structured output with matching text and explicit legacy mode; see [tool-contract.md](tool-contract.md). macOS Task 7 validation
-  passed 892 library tests and 3 doctests. The remaining roadmap is still pending.
-  Required nightly is 2026-10-31; rmcp is 3.8; all three grammers crates use reviewed
-  Codeberg revision `1e31e73cd9797790905bbea82cd75adcbe6f1242` (0.11).
-- **Coverage baseline remains the 2026-08-22 measurement:** 78.33% lines for the library
-  (76.19% for the full run). It has not been remeasured for this branch. Domain/converter/
-  shaping coverage was near 100%; most production ops were below the mocked client seam.
+- **Modernization through Task 8 is implemented; Task 9 automation is retained and offline
+  macOS acceptance passed.** There are 16 tools, default `json_v1` plus explicit legacy mode.
+  Final checks passed 926 library tests and 3 doctests, warning-free docs, release build,
+  Rust/Python wire clients, native process checks and fresh security/source metadata policy.
+  Independent review found three Important issues (ACLs, writable ancestry, cursor metadata),
+  all reproduced and fixed. See [validation evidence](validation/2026-11-01-task8.md).
+  Required nightly stays 2026-10-31; rmcp 3.8; all grammers pins remain reviewed Codeberg
+  `1e31e73cd9797790905bbea82cd75adcbe6f1242` (0.11), still upstream HEAD at acceptance.
+- **Coverage measured 2026-11-01:** `cargo llvm-cov --lib` reports 81.71% lines
+  (9,176/11,230; unfiltered, including inline unit code). Wire budgeting 99.12%, keyed
+  recovery 96.49%, dispatch 100%, image pipeline 97.44%, raw pipeline 80.57%, storage 79.71%.
+  Real Telegram media I/O remains mostly below the mock seam (ops_media 15.85%); no live
+  download/migration was claimed. The August baseline is not a like-for-like comparison.
 - **Audit 2026-08-15 is fully shipped and its spec deleted** (delete-on-merge; the file lives
   in git history). Four staged work packages — correctness fixes + dead code; module splits +
   test extraction; duplication/KISS refactors; ops-layer coverage via `MessageWalk` — plus the
@@ -26,11 +31,12 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Open items
 
-- **Task 8 and final acceptance remain pending.** Existing payload/image caps are not
-  complete serialized JSON-RPC/fallback accounting. Keyed conversation-isolated recovery,
-  bounded raw-media memory and session-path/sidecar permission hardening remain future
-  work. Task 7's diagnostic replay still uses the process-wide ring. Do not describe the
-  entire modernization design as complete or release it on that premise.
+- **Operational limits:** target-host-specific rendering and live Telegram/account behavior
+  are unverified; offline Rust/Python preview payloads and local image rendering passed.
+  Linux remains owner-managed, Windows ACLs unverified. Optional media M2/M3 remain separate
+  product decisions. Release publication/integration require their own authorization.
+- `cargo-deny` was unavailable at acceptance; fresh RustSec scanning and the repository's
+  complete source/license metadata policy passed instead. See the validation record.
 - **Raw pagers exist only because grammers pins `Message.peers: PeerMap` `pub(crate)`**
   (verified at pinned rev = upstream HEAD). If a future grammers rev exposes public peer
   resolution, collapse `raw_pager`/`raw_fetch` back to the high-level iterators.
@@ -39,6 +45,28 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   `RawChannelSearchPager` first — not a redesign.
 
 ## Key decisions
+
+- **Task 8 output/recovery:** message budgets measure complete serialized JSON-RPC,
+  including identity, real request IDs and duplicated JSON fallback. Metadata-only overflow
+  fails small; one oversized message remains only when all real metadata fits. Media has
+  a separate 65,536-byte non-binary cap, preserving independent base64 limits and refunds.
+  Wire-only recovery keys reserve before dispatch, expire ten minutes after completion,
+  reject duplicates and survive reused request IDs. Canonical recovery selects explicit
+  keys; last-N is legacy diagnostic. Keys are not authentication. Diagnostic/keyed stores
+  are each bounded by configured capacity; total retention can double the previous ring.
+- **Media memory/deadline:** production MCP uses lazy ordered binary outcomes, four global
+  raw slots sharing 80 MiB, and two CPU workers. Leases follow bytes into started blocking
+  work. One configured download deadline includes setup, capacity waits and processing.
+  Source decoding: 8192 side, 8,388,608 pixels, 64 MiB decoder allowance; calculate base64
+  size before encoding. Collected/cloned Rust batches remain caller-owned memory. Raw and
+  decoder caps are not a hard RSS ceiling; a debug two-call/20-image near-cap fixture
+  measured 40 MiB completed raw peak and 488,390,656-byte process RSS.
+- **Session storage:** new directories 0700, owned regular DB/WAL/SHM/journal files 0600;
+  linked/nonregular entries are refused. Verify current/root-owned canonical ancestry,
+  rejecting unprotected writable ancestors while allowing root-owned sticky temp roots.
+  Reject granting directory ACLs and clear file ACLs on macOS; preserve existing directory
+  modes/ACLs. Trusted OS utilities are captured and deadline-bounded. Same-UID hostile
+  mutation is outside the boundary. Tests use disposable fixtures only.
 
 - **Validation ownership:** remaining agent work uses macOS checks. The user handles
   Linux setup/validation if needed. Do not install Linux tooling, provision VMs/containers

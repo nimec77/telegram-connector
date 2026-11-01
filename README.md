@@ -235,8 +235,9 @@ Every tool except `get_last_responses` also accepts the optional wire-only `reco
   and allocator memory are separate from raw admission; see status and the validation report.
 - **Session files on macOS:** newly created session directories use 0700; the database,
   WAL/SHM and journal use 0600. Session/sidecar symlinks, hardlinks, nonregular files and
-  an immediate parent writable by group/others are refused before SQLite opens them.
-  Existing parent-directory modes are preserved.
+  unprotected writable or untrusted canonical ancestors are refused before SQLite opens
+  them. Root-owned sticky temporary roots are allowed. Access-granting directory ACLs are
+  rejected; session-file ACLs are cleared. Existing directory modes/ACLs are preserved.
 - **Partial results:** `search_messages` sets `query_metadata.timed_out`/`partial` (never an
   error) when `[search] deadline_seconds` expires; a deadline-truncated result does not set
   `has_more`.

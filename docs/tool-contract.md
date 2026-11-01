@@ -168,10 +168,14 @@ a compatibility default for third-party clients, which retain responsibility for
 bounds. No dependency or lockfile update is required.
 
 On macOS, storage opens create new directories at 0700 and establish database/sidecar mode
-0600 before SQLite can write credentials. Symlinks, hardlinks, nonregular entries and an
-immediate parent writable by group/others are refused. Existing parent modes are not changed.
-Disposable tests cover database/WAL/SHM creation and sidecar rejection; real sessions were
-not inspected or changed. Windows ACL behavior is not verified.
+0600 before SQLite can write credentials. Symlinks, hardlinks and nonregular entries are
+refused. Canonical ancestry must be owned by the current user or root and exclude unprotected
+group/other writes; root-owned sticky temporary roots are allowed. Access-granting directory
+ACLs are rejected and file ACLs are cleared. Existing directory modes/ACLs are preserved.
+Ownership/ACL utilities use captured output and bounded execution. Disposable tests cover
+these cases and valid DB/WAL/SHM files; no real session was inspected or changed. Windows
+ACL behavior remains unverified. Keyed recovery's historical written_at field records result
+completion before delivery, while legacy diagnostic entries record observed stdout writes.
 
 See [macOS validation](validation/2026-11-01-task8.md) for measured results and limitations.
 Optional resource/file media delivery remains outside this change.

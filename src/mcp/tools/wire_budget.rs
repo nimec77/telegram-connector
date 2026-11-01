@@ -21,7 +21,6 @@ pub(crate) fn search(
             let mut metadata = data.clone();
             metadata.messages.clear();
             metadata.returned = 0;
-            metadata.next_cursor = None;
             if runtime::response_size(&contract::render(format, Ok(metadata)))? > budget {
                 return Err(Error::ResponseTooLarge);
             }
@@ -116,6 +115,42 @@ mod tests {
             assert!(
                 bytes <= budget,
                 "metadata with omitted IDs used {bytes} bytes under {budget}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod review_tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn review_one_message_floor_counts_real_cursor_metadata_in_both_modes() {
+        for format in [OutputFormat::JsonV1, OutputFormat::Legacy] {
+            let mut response = SearchResponse::<Error>::from_result(
+                crate::test_helpers::create_test_search_result(
+                    vec![crate::test_helpers::create_test_message(1, "", 100)],
+                    "q",
+                    1,
+                ),
+            );
+            response.has_more = true;
+            response.next_cursor = Some(NextCursor {
+                before_id: crate::telegram::types::MessageId::new(1).expect("cursor"),
+            });
+            let mut metadata = response.clone();
+            metadata.messages.clear();
+            metadata.returned = 0;
+            let rendered = contract::render(format, Ok(metadata));
+            let budget = serde_json::to_vec(&json!({"jsonrpc":"2.0","id":0,"result":rendered}))
+                .expect("wire metadata")
+                .len()
+                - 1;
+            let result = search(format, Ok(response), budget, CursorPolicy::SingleChannel);
+            assert_eq!(
+                result.is_error,
+                Some(true),
+                "cursor-bearing metadata escaped the cap in {format:?}"
             );
         }
     }

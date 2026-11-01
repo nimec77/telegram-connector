@@ -26,7 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Metadata-only overflow, omission-metadata growth and long SDK request-ID accounting.
 - Session directories/database/sidecars use private Unix modes; linked/nonregular entries
-  and group/other-writable immediate parents are refused before SQLite opens them.
+  and unsafe canonical ancestors are refused before SQLite opens them. macOS directory
+  access-granting ACLs are rejected; database/sidecar ACLs are cleared.
 
 ## [0.23.0] - 2026-10-31
 
