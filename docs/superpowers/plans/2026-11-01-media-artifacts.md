@@ -48,26 +48,28 @@
 
 **Interfaces:** Consume Task 1's crate-private store API. Produce MediaArtifactsConfig, schema-inline MediaDelivery, omitted-by-default artifact metadata, async fallible server builder, resource handlers, production startup wiring and optional status metadata. Use the spec's exact modes, defaults, validation ranges and resource read limits.
 
-- [ ] Reproduce the Task 1 review's root-symlink spellings (`alias/` and `alias/.`) bypassing leaf refusal, then normalize terminal separators/dot components before the leaf check and prove both are rejected. Preserve physical parent traversal semantics; do not blindly collapse `..`.
-- [ ] Add failing configuration/default and request-schema tests, including all unsupported delivery cases rejecting before mock acquisition/RPC, then implement configuration/builder/production startup and safe artifact errors.
-- [ ] Remove Task 1's temporary private-module dead-code allowance as production consumers are wired; keep the final gate warning-free without blanket suppressions.
-- [ ] Add failing single/mixed batch tests proving unchanged default output, opt-in resource/file/both fields, raw path only for file delivery, processed-JPEG byte equality, actual resource/image content indices, per-item failures, quota eviction and refunds. Implement decoration inside existing deadline-bounded blocking workers.
-- [ ] Add failing wire tests across modern/legacy protocol: resource capability only when enabled, empty listing/templates, safe malformed/missing/expired/too-large/storage errors, <=6 MiB read allocations/8 MiB base64, five-second resource-read deadline including worker admission, private remaining-TTL cache hints only in modern responses. Implement handlers outside the tool_router methods while keeping all tool entry points in its single impl.
-- [ ] Verify metadata-overflow refunds and schema self-containment with artifact metadata; preserve direct Rust legacy adapters and reject non-inline direct adapter requests before acquisition. Update only request literals that require the new default field; do not weaken old assertions.
-- [ ] Reproduce default diagnostic replay retaining a resource blob; extend binary omission to resource-read/embedded resource blobs with MIME/size stubs, while explicit include_binary preserves bytes under existing replay bounds.
-- [ ] Add paused deadline/cancellation cases for artifact work and state the started-worker retention boundary accurately. Confirm default constructor performs no filesystem/RPC work and normal clones share the store.
-- [ ] Add EOF/signal closure regressions: retain a handle to the runtime's first absolute drain deadline, await store.close through bounded workers only within the remaining budget, remove files/lock on healthy ordinary shutdown, and preserve immediate zero-grace/expired-deadline return. Never restart shutdown grace after serve returns.
-- [ ] Run targeted tests, then full offline fmt/Clippy/tests/rustdoc; inspect diff and commit the integrated feature.
+- [x] Reproduce the Task 1 review's root-symlink spellings (`alias/` and `alias/.`) bypassing leaf refusal, then normalize terminal separators/dot components before the leaf check and prove both are rejected. Preserve physical parent traversal semantics; do not blindly collapse `..`.
+- [x] Add failing configuration/default and request-schema tests, including all unsupported delivery cases rejecting before mock acquisition/RPC, then implement configuration/builder/production startup and safe artifact errors.
+- [x] Remove Task 1's temporary private-module dead-code allowance as production consumers are wired; keep the final gate warning-free without blanket suppressions.
+- [x] Add failing single/mixed batch tests proving unchanged default output, opt-in resource/file/both fields, raw path only for file delivery, processed-JPEG byte equality, actual resource/image content indices, per-item failures, quota eviction and refunds. Implement decoration inside existing deadline-bounded blocking workers.
+- [x] Add failing wire tests across modern/legacy protocol: resource capability only when enabled, empty listing/templates, safe malformed/missing/expired/too-large/storage errors, <=6 MiB read allocations/8 MiB base64, five-second resource-read deadline including worker admission, private remaining-TTL cache hints only in modern responses. Implement handlers outside the tool_router methods while keeping all tool entry points in its single impl.
+- [x] Verify metadata-overflow refunds and schema self-containment with artifact metadata; preserve direct Rust legacy adapters and reject non-inline direct adapter requests before acquisition. Update only request literals that require the new default field; do not weaken old assertions.
+- [x] Reproduce default diagnostic replay retaining a resource blob; extend binary omission to resource-read/embedded resource blobs with MIME/size stubs, while explicit include_binary preserves bytes under existing replay bounds.
+- [x] Add paused deadline/cancellation cases for artifact work and state the started-worker retention boundary accurately. Confirm default constructor performs no filesystem/RPC work and normal clones share the store.
+- [x] Add EOF/signal closure regressions: retain a handle to the runtime's first absolute drain deadline, await store.close through bounded workers only within the remaining budget, remove files/lock on healthy ordinary shutdown, and preserve immediate zero-grace/expired-deadline return. Never restart shutdown grace after serve returns.
+- [x] Run targeted tests, then full offline fmt/Clippy/tests/rustdoc; inspect diff and commit the integrated feature.
 
 ### Task 3: Independent clients, DeepSeek proof and current documentation
 
-**Files:** examples/offline_mcp_fixture.rs; scripts/test_media_clients.py and a focused new artifact-client script if appropriate; README.md, CHANGELOG.md, config.example.toml, docs/tool-contract.md, docs/codex.md or new docs/deepseek.md, docs/rust-api.md, docs/dependency-status.md, docs/memory.md, active media proposal; create docs/validation/2026-11-01-media-artifacts.md.
+**Files:** src/mcp/tests/protocol_stdio.rs for exact existing error-code assertions; examples/offline_mcp_fixture.rs; scripts/test_media_clients.py and a focused new artifact-client script if appropriate; README.md, CHANGELOG.md, config.example.toml, docs/tool-contract.md, docs/codex.md, new docs/media-artifacts.md with DeepSeek setup, docs/rust-api.md, docs/rust-style.md, docs/dependency-status.md, docs/memory.md, active media proposal; create docs/validation/2026-11-01-media-artifacts.md.
 
 **Interfaces:** Consume actual feature configuration and wire contracts. Extend existing mock-backed process fixture to opt into a disposable artifact root without credentials. Installed adapter probe remains in /private/tmp/deepseek-inspect; do not commit third-party bundled code or machine-specific paths as portable test dependencies.
 
+- [ ] Strengthen the existing malformed/missing wire assertions to exact data.code strings and expected numeric codes (-32602 malformed; missing legacy -32002, modern -32602). Cover expired/storage errors in the independent client matrix where naturally reachable; accurately distinguish direct-only oversize/timeout boundary tests from wire coverage.
 - [ ] Add failing independent Python fixture checks for every delivery mode, resource byte equality, exported file bytes, mixed item indices/errors, expiry and modern/legacy cache metadata. Implement fixture opt-in and client checks while keeping default fixture behavior unchanged.
 - [ ] Run actual connector fixture outputs through the installed DeepSeek adapter. Verify M2 canonical bytes plus placeholder projection and M3 read_image({file_path}) durable native attachment; assert text-only-route refusal. Record installed build/revision and distinguish adapter proof from real model/UI execution.
 - [ ] Document setup, modes, private-root/stale-lock ownership, TTL/quota/cleanup, no silent redownloads, processed-preview scope, per-process limits, client attachment persistence and read_image prerequisites. Update Rust API compatibility and the new direct dependency disposition; retain historical acceptance records.
+- [ ] Point README/Codex/memory user-facing links to permanent docs/media-artifacts.md rather than active specs that will be deleted on merge. Update the Rust manual's builder count wording for the new fallible consuming builder (Result is already must-use), preserving historical S6 evidence.
 - [ ] Run full offline macOS quality gate, production release and --version, independent existing/new wire/process clients, dependency policy fixtures and complete policy check; verify metadata/grammers pins and local docs/TOML links.
 - [ ] Obtain independent task review and final whole-branch security/code review, address real findings with regression evidence, commit and report exact results/limits. Keep feature branch local; no version bump/push/publication is included.
 
@@ -79,8 +81,23 @@
 - Task 1 -> Task 2: store API/types are pinned in the spec; no shared file ownership.
 - Task 2 -> Task 3: fixture/tests consume actual serialized schemas/config, not guessed output.
 - Task 1 may add only the direct already-locked RNG dependency; later tasks must not alter the graph.
+- Canonical descriptor keys settled during integration: kind="processed_jpeg", mime_type,
+  size_bytes, width, height, expires_at; optional resource_uri, resource_content_index,
+  file_path. Temporary actual-connector DeepSeek probe is prepared at
+  /private/tmp/deepseek-inspect/dsh/connector-media-smoke.mjs, syntax checked only;
+  it takes fixture binary/argv and expands literal {run_dir} in cache-root args.
 
 - Task 1 implemented in 330530f and 5c2fff6: 23 new store tests, full gate 965 tests
   plus 3 doctests, and TTL/URI/quota mutations pass. Task review found no Critical or
   Important issues and one Minor leaf-symlink spelling gap; its regression/fix is
   explicitly carried into Task 2's configuration integration before feature completion.
+
+- Task 2 implemented/reviewed in e907670: full gate 988 tests + 3 doctests, no
+  Critical/Important review findings. Task 1 root spelling finding is regression-fixed.
+  One Minor coverage recommendation (exact wire error assertions) is carried into
+  Task 3; other error boundary checks are direct unless the final report says otherwise.
+- Root observed installed-client preflight RED using current actual fixture and future
+  --artifact-root flag: typed invalid_input because fixture artifact opt-in is not wired.
+  Log /private/tmp/media-artifacts-connector-smoke-red.log. The bundled client also
+  warns about ignored Rust numeric schema format annotations; record any continuing
+  client-side warnings separately from clean Rust gate output.
