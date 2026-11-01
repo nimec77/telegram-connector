@@ -76,6 +76,8 @@ Trusted OS ownership/ACL utilities have captured output and two-second timeouts.
 Generate 192-bit opaque IDs using OS randomness. A direct `getrandom 0.4.3` declaration
 is justified because std has no safe cross-platform CSPRNG; this identity is already in
 Cargo.lock. No new resolved packages or unrelated dependency updates are needed.
+Canonical URIs are exactly `telegram-media://artifact/<48 lowercase hex characters>`;
+reject alternate casing, extra paths, percent escapes, query strings and fragments.
 
 Serialize store mutation under a poison-refusing synchronous mutex inside bounded
 blocking work. Insert only complete JPEGs (max 20 MiB), reserve byte/entry capacity,
@@ -87,7 +89,9 @@ validate current regular single-link ownership/size and bound allocations before
 
 TTL is monotonic and never refreshed by reads. Reject expired entries immediately.
 Run periodic cleanup at most every 60 seconds while the store exists, plus cleanup on
-operations; explain that physical expiry deletion can lag by that interval. Keep the
+operations; explain that physical expiry deletion can lag by that interval and worker
+admission. Filesystem paths are not revocable handles; logical URI expiry does not
+guarantee immediate physical deletion or deletion of client attachment copies. Keep the
 cleanup task weakly owned so it cannot keep the store alive. Quotas include pending and
 failed-cleanup reservations. Cache links are sensitive handles, not multi-user authentication.
 
@@ -109,6 +113,7 @@ ArtifactStore::read(&self, uri: &str, max_bytes: usize) -> Result<ArtifactRead, 
 ArtifactStore::remove(&self, uri: &str) -> Result<(), StoreError>
 ArtifactStore::cleanup(&self) -> Result<(), StoreError>
 ArtifactStore::snapshot(&self) -> Result<StoreSnapshot, StoreError>
+ArtifactStore::close(&self) -> Result<(), StoreError>
 ```
 
 Types and fields are `pub(crate)` for integration, not public Rust API. Except async
@@ -116,6 +121,8 @@ initialization/periodic scheduling, methods are synchronous and must be called w
 the existing bounded `runtime::image_job` mechanism. Shared clones bind entries to the
 same server/client instance; newly initialized servers cannot reuse prior URIs. The
 store module knows no Telegram credentials and exposes no arbitrary filesystem API.
+`close` is idempotent, removes only owned files/lock, and makes all live clones refuse
+further insertion/reads. It runs in bounded blocking work, not directly on the executor.
 
 ## Server and resource integration
 
@@ -137,9 +144,23 @@ Advertise Resources only when the store is enabled. Resources/list and templates
 return empty lists; no subscriptions or listChanged. `resources/read` uses strict lookup
 and no Telegram RPC/account charge, retaining runtime admission/cancellation. Limit JPEG
 reads to 6 MiB so base64 is at most 8 MiB; reject larger stored files before allocation.
+Use a five-second cache-only read deadline starting before blocking-worker admission;
+a started worker retains its slot until completion even after timeout/cancellation.
 Safe malformed-URI, missing/expired, oversized and storage errors remain distinct protocol
 errors. Modern read/list cache hints are private and no longer than remaining TTL;
 omit version-specific fields for legacy clients. Resource bytes remain base64.
+Check both the read deadline and artifact expiry after worker completion, so a ready
+result observed at or beyond expiry cannot override either boundary.
+Diagnostic replay with `include_binary = false` must also stub `resources/read`
+`contents[].blob` and embedded binary resource payloads, preserving safe MIME/size
+metadata; explicit `include_binary = true` may retain them under existing replay limits.
+
+Production and fixture `run_io` must explicitly await store closure on ordinary EOF or
+signal completion. Retain a crate-private handle to the protocol runtime's first absolute
+drain deadline across `serve`; closure gets only that remaining time, never a fresh grace
+period. Preserve zero-grace immediate exit. If the original deadline is exhausted, an I/O
+failure prevents coordination, or the process crashes, bounded stale-root fallback is
+documented; Drop's asynchronous finalizer is best effort during immediate Tokio teardown.
 
 ## Verification and delivery
 
