@@ -6,7 +6,7 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Current state
 
-- **Modernization through Task 8 is implemented; Task 9 automation is retained and offline
+- **Modernization through Task 8 ships in 0.24.0; Task 9 automation is retained and offline
   macOS acceptance passed.** There are 16 tools, default `json_v1` plus explicit legacy mode.
   Final checks passed 926 library tests and 3 doctests, warning-free docs, release build,
   Rust/Python wire clients, native process checks and fresh security/source metadata policy.
@@ -34,7 +34,7 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 - **Operational limits:** target-host-specific rendering and live Telegram/account behavior
   are unverified; offline Rust/Python preview payloads and local image rendering passed.
   Linux remains owner-managed, Windows ACLs unverified. Optional media M2/M3 remain separate
-  product decisions. Release publication/integration require their own authorization.
+  product decisions. Release publication requires separate authorization.
 - `cargo-deny` was unavailable at acceptance; fresh RustSec scanning and the repository's
   complete source/license metadata policy passed instead. See the validation record.
 - **Raw pagers exist only because grammers pins `Message.peers: PeerMap` `pub(crate)`**
@@ -71,7 +71,7 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 - **Validation ownership:** remaining agent work uses macOS checks. The user handles
   Linux setup/validation if needed. Do not install Linux tooling, provision VMs/containers
   or arrange Linux runs unless explicitly requested later; Linux results do not block
-  completion. Existing CI configuration remains. See the active roadmap's validation policy.
+  completion. Existing CI configuration remains. This ownership policy survives roadmap archival.
 
 - **Codex development:** `AGENTS.md` is the canonical repository guide.
   Shared Codex skills live in `.agents/skills/`; obsolete Claude files were removed.
