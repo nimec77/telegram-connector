@@ -34,20 +34,21 @@
 
 **Interfaces:** Implement the exact StoreConfig/StoredArtifact/ArtifactRead/StoreSnapshot/StoreError/ArtifactStore interface in the spec. Store module is crate-private. Byte insertion receives an internally verified processed JPEG; it need not decode it a second time. Keep all filesystem/cleanup work in bounded blocking jobs; async initialization alone runs trusted deadline-bounded OS utilities.
 
-- [ ] Add failing behavior tests for insert/read byte equality, dimensions/expiry, 192-bit generated IDs, strict URI rejection and cross-store isolation; observe failure before implementing storage.
-- [ ] Implement private empty-root verification, create-new ownership lock, atomic complete writes and safe manifest lookup using OS randomness. Promote only the already-locked getrandom identity into direct dependencies.
-- [ ] Add and observe failing tests for exact byte/entry caps, oldest eviction, an oversize insert preserving healthy entries, poisoned state, missing files and symlink/hardlink/foreign-entry refusal; implement safe accounting/failure behavior.
-- [ ] Add paused-time tests proving TTL never extends on reads, expired reads fail immediately and periodic cleanup removes owned files; test normal drop removes only known files and a stale/nonempty root refuses initialization without deleting data.
-- [ ] Add a failing explicit-close regression with live clones, then implement idempotent synchronous close that removes only known files/lock and refuses further insertion/read; production will await it through bounded workers before runtime teardown.
-- [ ] Check macOS 0700/0600 and granting ACL rejection, shared sticky root refusal/private child acceptance, and invalid StoreConfig bounds. Exercise TTL/strict-lookup/quota guard mutations individually, restore source after each, and record failing assertions.
-- [ ] Run cargo fmt, strict all-target Clippy, cargo test and warning-free rustdoc offline/locked; inspect lock diff for only root getrandom reference, then commit focused store implementation.
+- [x] Add failing behavior tests for insert/read byte equality, dimensions/expiry, 192-bit generated IDs, strict URI rejection and cross-store isolation; observe failure before implementing storage.
+- [x] Implement private empty-root verification, create-new ownership lock, atomic complete writes and safe manifest lookup using OS randomness. Promote only the already-locked getrandom identity into direct dependencies.
+- [x] Add and observe failing tests for exact byte/entry caps, oldest eviction, an oversize insert preserving healthy entries, poisoned state, missing files and symlink/hardlink/foreign-entry refusal; implement safe accounting/failure behavior.
+- [x] Add paused-time tests proving TTL never extends on reads, expired reads fail immediately and periodic cleanup removes owned files; test normal drop removes only known files and a stale/nonempty root refuses initialization without deleting data.
+- [x] Add a failing explicit-close regression with live clones, then implement idempotent synchronous close that removes only known files/lock and refuses further insertion/read; production will await it through bounded workers before runtime teardown.
+- [x] Check macOS 0700/0600 and granting ACL rejection, shared sticky root refusal/private child acceptance, and invalid StoreConfig bounds. Exercise TTL/strict-lookup/quota guard mutations individually, restore source after each, and record failing assertions.
+- [x] Run cargo fmt, strict all-target Clippy, cargo test and warning-free rustdoc offline/locked; inspect lock diff for only root getrandom reference, then commit focused store implementation.
 
 ### Task 2: Media delivery, configuration and MCP resources
 
-**Files:** src/config.rs and src/config/*; src/error.rs; src/main.rs; src/mcp/server.rs and server/impl_media.rs, impl_status.rs, impl_legacy.rs; create server/impl_resources.rs as needed; src/mcp/runtime.rs and runtime/state.rs; src/mcp/tools/types/{requests,responses,media_contract,contract}.rs, affected reexports; src/mcp/tests/*, src/config/tests/* and necessary literal fixture updates.
+**Files:** src/config.rs and src/config/*; src/error.rs; src/main.rs; src/mcp/server.rs and server/impl_media.rs, impl_status.rs, impl_legacy.rs; create server/impl_resources.rs as needed; src/mcp/runtime.rs and runtime/state.rs; the narrowly scoped artifacts/files.rs root-validation fix and its artifact tests; src/mcp/tools/types/{requests,responses,media_contract,contract}.rs, affected reexports; src/mcp/tests/*, src/config/tests/* and necessary literal fixture updates.
 
 **Interfaces:** Consume Task 1's crate-private store API. Produce MediaArtifactsConfig, schema-inline MediaDelivery, omitted-by-default artifact metadata, async fallible server builder, resource handlers, production startup wiring and optional status metadata. Use the spec's exact modes, defaults, validation ranges and resource read limits.
 
+- [ ] Reproduce the Task 1 review's root-symlink spellings (`alias/` and `alias/.`) bypassing leaf refusal, then normalize terminal separators/dot components before the leaf check and prove both are rejected. Preserve physical parent traversal semantics; do not blindly collapse `..`.
 - [ ] Add failing configuration/default and request-schema tests, including all unsupported delivery cases rejecting before mock acquisition/RPC, then implement configuration/builder/production startup and safe artifact errors.
 - [ ] Remove Task 1's temporary private-module dead-code allowance as production consumers are wired; keep the final gate warning-free without blanket suppressions.
 - [ ] Add failing single/mixed batch tests proving unchanged default output, opt-in resource/file/both fields, raw path only for file delivery, processed-JPEG byte equality, actual resource/image content indices, per-item failures, quota eviction and refunds. Implement decoration inside existing deadline-bounded blocking workers.
@@ -78,3 +79,8 @@
 - Task 1 -> Task 2: store API/types are pinned in the spec; no shared file ownership.
 - Task 2 -> Task 3: fixture/tests consume actual serialized schemas/config, not guessed output.
 - Task 1 may add only the direct already-locked RNG dependency; later tasks must not alter the graph.
+
+- Task 1 implemented in 330530f and 5c2fff6: 23 new store tests, full gate 965 tests
+  plus 3 doctests, and TTL/URI/quota mutations pass. Task review found no Critical or
+  Important issues and one Minor leaf-symlink spelling gap; its regression/fix is
+  explicitly carried into Task 2's configuration integration before feature completion.
