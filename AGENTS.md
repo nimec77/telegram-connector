@@ -22,6 +22,8 @@ the primary development agent; the stdio service supports any compatible MCP cli
 
 - Offline tests use mocks; Telegram credentials and a live session are not required.
   Use `--offline` as well as `--locked` when dependencies are already cached.
+- Run local agent validation on macOS. Linux setup and checks are owner-managed unless
+  explicitly requested; see the validation ownership policy in `docs/memory.md`.
 - Build the server with `cargo build --locked --release`. Authentication with
   `telegram-mcp --setup` is a separate, interactive operation.
 
@@ -86,7 +88,8 @@ the installed ast-index skill when available.
   Gate version-specific response fields on the negotiated client protocol.
 - Apply the manual’s error/secret rules (§5), behavior-test workflow (§9), and
   checked-in formatter settings (§1). Never commit config/session files. The existing
-  MCP tool boundary converts errors to strings as required by its API.
+  canonical MCP boundary maps typed errors to safe `ToolError` values; legacy adapters
+  preserve historical string output.
 - The manual’s adoption exceptions preserve extracted test globs, the macro router
   layout, established fallible `new` APIs, and conservative diagnostic wrappers; they do
   not authorize new violations outside those scopes. Consuming server builders have

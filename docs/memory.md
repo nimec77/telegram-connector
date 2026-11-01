@@ -6,8 +6,9 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Current state
 
-- **All ten original roadmap tasks are implemented, accepted and integrated into local
-  master.** The package version remains 0.24.0; subsequent fixes are recorded in Unreleased.
+- **All ten original roadmap tasks are implemented, accepted and integrated into
+  master.** Version 0.24.1 is pushed; its changelog includes the media-download regression
+  tests, animation classification fix and private session-parent hardening.
   Completed plans/specs are archived in Git history at accepted revision adaaac8.
   All ten numbered tasks have explicit acceptance evidence. Final post-review macOS gate passed
   942 library tests + 3 doctests, strict all-target Clippy, warning-free docs, production

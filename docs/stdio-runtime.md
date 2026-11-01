@@ -7,7 +7,7 @@ Every modern request supplies protocolVersion and clientCapabilities under the
 inherited from another modern request. Legacy clients explicitly initialize at
 2025-11-25 and send notifications/initialized.
 
-Modern complete tool/list results identify the server in result metadata. Tool
+Modern complete tools/list results identify the server in result metadata. Tool
 lists retain one-hour/private caching hints; discovery uses zero/private hints.
 Optional extensions, elicitation and changing tool lists remain unadvertised.
 Empty resource/prompt listings retain the SDK's harmless defaults; no product
@@ -33,7 +33,9 @@ and [MCP 2025-11-25 error contract](https://modelcontextprotocol.io/specificatio
 The SDK encoding is retained; generic non-MCP clients requiring explicit `id: null`
 are outside these supported dated contracts.
 Unknown methods return -32601; unknown tools return -32602. Typed tool argument
-failures retain the SDK's isError tool-result behavior.
+failures on valid argument objects become `isError:true` tool results with the configured
+canonical or legacy output. Non-object arguments remain protocol errors. The application
+output format is independent of protocol negotiation; see the [output contract](tool-contract.md).
 
 Admission is nonwaiting. An overload or draining rejection returns application
 code 1001 before tool dispatch or account token acquisition. Numeric and string
@@ -101,8 +103,9 @@ python3 scripts/test_mcp_probe.py target/debug/examples/offline_mcp_fixture
 ```
 
 The process check leaves stdin open during idle and pending SIGTERM shutdown, which
-reproduces Tokio's macOS blocking-stdin lifecycle issue. Linux and Windows behavior
-must also be validated on those platforms; this check uses POSIX signals.
+reproduces Tokio's macOS blocking-stdin lifecycle issue. This check uses POSIX signals.
+Local agent checks run on macOS; Linux validation is owner-managed if needed, and Windows
+runtime behavior remains unverified. See the [validation policy](memory.md#key-decisions).
 
 `mcp_probe.py --protocol modern BINARY CALLS_JSON` sends discovery and per-request
 metadata. Add `--skip-discovery` to exercise direct modern calls. `--protocol legacy`

@@ -1,41 +1,40 @@
 # Developing with Codex
 
-## What the migration changes
+Codex is the primary development workflow for this Rust repository. The connector
+itself is a client-independent MCP stdio server: it can be developed without launching
+Telegram and consumed from any compatible MCP client.
 
-The connector is already a client-independent MCP stdio server built with rmcp.
-It has no Anthropic API integration to replace. The migration changes development
-instructions, reusable workflows, onboarding, and validation. Tool names, schemas,
-Telegram authentication, and dependency pins stay compatible with existing clients.
+All ten original roadmap tasks are implemented and accepted on `master`, including
+typed outputs, runtime/media hardening, maintenance automation and Rust standards
+alignment. See the [final acceptance evidence](validation/2026-11-01-final-acceptance.md)
+and [changelog](../CHANGELOG.md). Optional resource references/file export remain
+[separate proposals](superpowers/specs/2026-10-31-media-delivery-design.md).
 
-The previous setup had a tracked `CLAUDE.md` and 21 ignored local skills under
-`.claude/skills/`. Those skills were unavailable to a fresh clone and many required
-Claude's `Task`, `Skill`, `AskUserQuestion`, `opus`/`sonnet`, or absent ticket files.
-The local settings contained permission allowlists, no hooks. Personal permissions
-are not portable project policy and have not been copied.
+## Repository workflow
 
-The old release skill described a Synapse workspace and read `[workspace.package]`.
-This crate uses `[package]`. The replacement is a focused version-bump skill that
-updates the package, lockfile, and changelog together without imposing publication.
+1. Read [AGENTS.md](../AGENTS.md) and [project memory](memory.md), including its Open
+   items, before choosing work. Follow the [Rust manual](rust-style.md) and
+   [development conventions](conventions.md).
+2. Use a feature branch; use or reuse a worktree when isolation is needed. Preserve
+   unrelated changes and keep Cargo.lock ownership explicit.
+3. Write a failing behavior test before production logic changes. Documentation/config
+   updates need relevant validation rather than tests that repeat their wording.
+4. Verify the change and inspect the diff before committing. Obtain independent review
+   before merging. Use conventional commit messages.
 
-`AGENTS.md` is now canonical. The former `CLAUDE.md` and `.claude/` directory have
-been removed. Codex discovers root project instructions from `AGENTS.md` and
-repository skills from
-`.agents/skills/`. See the official [instruction discovery guide](https://learn.chatgpt.com/docs/agent-configuration/agents-md)
-and [skill discovery guide](https://learn.chatgpt.com/docs/build-skills).
+`AGENTS.md` is the shared instruction source; repository skills are in `.agents/skills/`.
+Personal credentials, sessions and agent permissions stay outside version control. The
+completed Codex migration and standards-alignment plans are archived in Git history.
 
-## Develop the connector
+## Local checks
 
-1. Install Rust through rustup and optionally install `just`.
-2. Start a new Codex session in the checkout. Read `AGENTS.md` and the Current state
-   / Open items in `docs/memory.md` before changing code.
-3. Build and verify:
+`rust-toolchain.toml` selects `nightly-2026-10-31`, rustfmt and Clippy. Run:
 
-   ```bash
-   cargo build --locked
-   just check
-   ```
+```bash
+just check
+```
 
-Without just, use the same commands CI runs:
+Without `just`, use the equivalent gate:
 
 ```bash
 cargo fmt --all --check
@@ -44,33 +43,40 @@ cargo test --locked
 RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps
 ```
 
-`rust-toolchain.toml` selects nightly, rustfmt, and clippy, matching the existing
-CI channel. The required gate pins nightly-2026-10-31; a separate scheduled workflow checks
-floating nightly. Edition 2024 alone does not choose a toolchain. Tests use mocks and require no Telegram
-credentials. With cached dependencies, add `--offline` to Cargo build/clippy/test.
-Do not initialize a live Telegram session just to run development checks.
+Tests and doctests use offline fixtures/mocks and need no Telegram credentials. With
+cached dependencies, add `--offline` to the Cargo compile/test/doc commands. Edition 2024
+does not itself select nightly. The separate scheduled floating-nightly workflow does
+not replace the pinned gate.
 
-For source navigation, follow the ast-index workflow in `AGENTS.md`. Its cache may
-live outside the checkout; if the sandbox blocks it, use an authorized cache
-operation or fall back to rg and targeted reads. No graph build is needed for
-ordinary symbol searches.
+Agent checks run on macOS. Linux setup and validation are owner-managed if needed;
+do not provision a VM/container or arrange Linux runs unless explicitly requested. The configured
+CI matrix is retained. See [maintenance](maintenance.md) for security/dependency checks
+and the distinction between configured workflows and actual run evidence.
+
+## Source navigation and public APIs
+
+Follow the ast-index workflow in AGENTS.md: stats, update/rebuild, then the appropriate
+symbol/relationship query or outline. If its cache is unavailable, use `rg` and targeted
+reads and report the limitation. Build the separate symbol graph only when needed.
+
+The [Rust API inventory](rust-api.md) distinguishes supported, compatibility and internal
+surfaces. Public direct tool methods retain legacy output; registered MCP wire routes use
+the configured output mode. Library examples live in `examples/inert_server.rs`; it
+performs no authentication, Telegram RPC or desktop launch. Wire/process checks use the
+`offline_mcp_fixture` example described in the [runtime guide](stdio-runtime.md).
 
 ## Use the connector from Codex
 
-Development and consumption are separate: a Codex session can work on the Rust
-code without launching the Telegram MCP server.
-
-To consume Telegram tools, build with `cargo build --locked --release`, create a
-private Telegram configuration as described in README, and authenticate once:
+Build with `cargo build --locked --release`, create a private Telegram configuration as
+described in [README](../README.md#configuration), and authenticate once:
 
 ```bash
 ./target/release/telegram-mcp --config /absolute/path/to/telegram-connector-config.toml --setup
 ```
 
-Keep the config, session, and logs outside version control. Merge the table from
-[the Codex example](../.codex/config.toml.example) into `~/.codex/config.toml`,
-replacing both absolute paths. Do not replace an existing config wholesale or
-create duplicate `[mcp_servers.telegram]` tables. The example file itself is inert.
+Keep the config, session and logs outside version control. Merge the table from
+[the Codex example](../.codex/config.toml.example) into `~/.codex/config.toml`, replacing
+both absolute paths. Preserve existing tables; the example is not loaded automatically.
 
 Alternatively, register the binary using the CLI:
 
@@ -79,84 +85,40 @@ codex mcp add telegram -- /absolute/path/to/telegram-connector/target/release/te
 codex mcp list
 ```
 
-Then add `startup_timeout_sec = 90` and `tool_timeout_sec = 180` to the generated
-server table. Startup account RPCs can use two 30-second resolve budgets; 90 seconds
-leaves headroom. Codex defaults to a 60-second tool timeout, while transcription can
-take 120 seconds; the tool budget leaves headroom. Restart the Codex session and use
-`/mcp` to check its active connection. These CLI/TOML settings follow the
-[official MCP guide](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+Then add `startup_timeout_sec = 90` and `tool_timeout_sec = 180` to the generated server
+table. Startup authorization and best-effort Premium RPCs each have a default 30-second
+budget; transcription has one total budget of up to 120 seconds by default. The example client
+budgets leave headroom. Restart the Codex session and use `/mcp` to check the connection.
+See the [official MCP guide](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
 
-As a manual smoke check, ask Codex to call `check_mcp_status`, then list a small
-number of subscribed channels. Test searches/media only when needed; those tools
-spend account rate-limit tokens. For protocol diagnosis, use the
-[MCP Inspector](https://modelcontextprotocol.io/docs/tools/inspector). For measured
-live calls, the existing `python3 scripts/mcp_probe.py <binary> <calls.json>`
-provides round-trip timings. Both require an authenticated session for this server.
+Optional MCP servers have a separate initial-catalog wait, currently 1000 ms. If you
+need Codex to wait for their full startup budgets, set `mcp_optional_startup_grace_ms = 0`
+at the top level of your user config, before any table headers. This applies to all
+optional servers and can delay startup. The server's `startup_timeout_sec` still bounds
+its initialization; see the same official guide.
+
+Calls default to `json_v1`: read the envelope from `structuredContent` or its matching
+text fallback, and inspect `data` or `error`. Applications parsing historical text can
+select `[server] output_format = "legacy"` independently of protocol negotiation.
+See the [contract guide](tool-contract.md) for ID types, error codes and media indices.
+
+Live checks require an authenticated session and are separate from offline development.
+If requested, start with cached `check_mcp_status`, then bounded channel reads; Telegram
+operations spend the configured account tokens. `scripts/mcp_probe.py` supports modern
+and legacy modes; use the offline fixture for credential-free verification.
 
 ## Version-bump skill
 
-The checked-in `$bump-version` skill needs no global installation. Start
-a new Codex session to discover it, then request, for example:
+The checked-in `$bump-version` skill accepts patch, minor, major or an explicit target.
+For example:
 
 ```text
 Use $bump-version to bump the patch version.
 ```
 
-It accepts patch, minor, major, or an explicit target version; reads
-`[package].version`; updates `Cargo.toml`, `Cargo.lock`, and `CHANGELOG.md`; and runs
-the Rust gate. Each bump moves the Unreleased notes into a dated target-version
-section and leaves a fresh empty Unreleased section. An empty Unreleased section
-still produces a dated version heading, without invented notes. Historical entries
-and unrelated edits are preserved. Dry runs describe all three changes without
-editing files. Commit, tag, push, and publication follow the user's authorized scope.
-
-The skill is self-contained Markdown with Codex UI metadata. There are no helper
-scripts or extra CI dependencies. Superpowers is useful when installed but is not
-required to build, test, or use the repository skill.
-
-## Where the former skills went
-
-The former `.claude/` directory was removed after porting the useful workflows.
-Shared development instructions now live in the Codex files. This is a deliberate
-consolidation rather than a mechanical copy of overlapping orchestrators:
-
-| Former local skills | Codex replacement |
-| --- | --- |
-| `analysis`, `research`, `plan`, `tasklist` | AGENTS.md plus Superpowers brainstorming/writing-plans when installed; otherwise an inline plan sized to the work. |
-| `feature-development`, `dev-cycle`, `implement-orchestrated`, `phase-loop`, `quick-implement` | Superpowers executing-plans or subagent-driven-development; inline execution works without delegation. |
-| `run-reviewer`, `qa`, `validate` | Relevant tests, `just check`, independent review, and Superpowers review/verification skills when available. |
-| `docs-update`, `sync-phases` | Maintain the affected docs and one active plan checklist; no parallel ticket/phase state system. |
-| `project-conventions` and the ast-index rule | Root AGENTS.md, docs/conventions.md, and docs/memory.md. |
-| `changelog-from-commits`, `release` | Replaced by the focused `$bump-version` skill; broader release work follows the user's requested scope. |
-| `rust-async-patterns`, `rust-best-practices`, `rust-learner`, `rust-refactor-helper` | Keep optional Rust references only when useful. Use current upstream crate docs and actual IDE/LSP capabilities; no copied tutorials or assumed Codex LSP tool. |
-
-## Additional tools worth integrating
-
-Keep the mandatory gate small. Add tools in response to a concrete development need;
-the security tools below now run in dedicated CI jobs; other optional tools remain need-driven.
-
-| Integration | Why it fits this project | Suggested use |
-| --- | --- | --- |
-| ast-index skill/CLI | Fast structural navigation across the trait seam and split tests. | Primary source navigation; already required by AGENTS.md. |
-| Superpowers | Planning, debugging, TDD, and independent review without maintaining a separate ticket orchestrator. | Use installed skills as appropriate; preserve task authorization and the repository's autonomous workflow. |
-| `gh` skill + [GitHub CLI](https://cli.github.com/manual/) | PR review, issue context, and Actions diagnostics. | Native gh commands, then gh api; Git remains the local checkout tool. |
-| OpenAI Docs skill + [official Docs MCP](https://developers.openai.com/learn/docs-mcp) | Verified Codex/MCP setup instead of stale agent configuration assumptions. | Optional read-only server: `codex mcp add openaiDeveloperDocs --url https://developers.openai.com/mcp`. |
-| [rust-analyzer](https://rust-analyzer.github.io/) | Compiler-aware editor navigation/completion complements ast-index's structural view. | Use in a supported editor; an installed language server is not automatically a Codex tool. |
-| [cargo-llvm-cov](https://docs.rs/crate/cargo-llvm-cov/latest) | The durable backlog already distinguishes well-covered logic from the mocked production ops layer. | `cargo llvm-cov --locked --lib`; inspect the changed area instead of chasing a global percentage. |
-| [cargo-audit / cargo-deny](https://rustsec.org/) | Advisory checks and, for cargo-deny, license/source/dependency policy. | Start with `cargo audit` when investigating dependency risk. Add a deny policy only after deciding which sources/licenses are acceptable. |
-| [MCP Inspector](https://modelcontextprotocol.io/docs/tools/inspector) | Inspect actual schemas, content blocks, and protocol negotiation. | Live compatibility diagnosis after authentication; retain offline schema tests in the fast gate. |
-| [cargo-nextest](https://nexte.st/) | Test isolation, filtering, and CI reporting if the suite becomes slow. | Optional after measuring a need; retain `cargo test --doc` separately because nextest does not run doctests. |
-
-For delegated development, use only the tools and models exposed by the active
-Codex installation. Assign bounded independent work, file ownership, and explicit
-acceptance checks. Keep integration and final verification with the parent agent.
-An instruction file cannot enable an unavailable subagent or MCP tool, so avoid
-copying Claude's tool names or personal permission allowlists into Codex config.
-
-## Verification limits
-
-The migration can verify the offline Rust suite, formatting, all-target clippy,
-configuration parsing, helper behavior, and skill scenarios without credentials.
-It does not establish a live Codex-to-Telegram connection, run Premium transcription,
-or validate private account permissions. Complete the manual smoke check above
-after configuring and authenticating your own server.
+It reads `[package].version`, updates Cargo.toml and the root Cargo.lock entry, rolls
+Unreleased notes into a dated CHANGELOG section, leaves a fresh Unreleased section,
+and runs the Rust gate. An empty Unreleased section still gets a dated version heading.
+Dry runs describe changes without editing. Preserve dependency pins, historical notes
+and unrelated work. Commits, merging, tags, pushes and publication follow the user's
+explicit scope; a version bump does not publish a release.

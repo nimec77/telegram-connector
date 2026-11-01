@@ -1,25 +1,29 @@
 # Telegram MCP Connector Configuration
-# Location: ~/.config/telegram-connector/config.toml
+# Platform config path: see README.md (or use --config / TELEGRAM_MCP_CONFIG).
 #
 # SECURITY: Sensitive credentials (api_hash, phone_number) are protected
 # using the `secrecy` crate and will not be exposed in debug logs or error messages.
 
 [telegram]
-# Required: Telegram API credentials from https://my.telegram.org
+# Always required: Telegram API ID from https://my.telegram.org
 api_id = 12345678
 
-# Required: API hash (SENSITIVE - protected by secrecy crate)
+# Required for --setup: API hash (SENSITIVE - protected by secrecy crate)
+# Can be omitted when serving with an authenticated session.
 # Supports environment variable expansion with ${VAR_NAME} syntax
 api_hash = "${TELEGRAM_API_HASH}"
 
-# Required: Your Telegram phone number (SENSITIVE - protected by secrecy crate)
+# Required for --setup: Telegram phone number (SENSITIVE - protected by secrecy crate)
+# Can be omitted when serving with an authenticated session.
 # Can be plain text or environment variable
 phone_number = "+1234567890"
 
 # Optional: Session file location
-# Default: ~/.config/telegram-connector/session.bin
+# Default: session.bin in the platform config directory (not beside a custom --config).
+# Paths are used as written; replace this example with an absolute path.
+# Tilde (~) is not expanded; environment-variable expansion is supported.
 # Note: The session file path itself is not sensitive, but the file contents are.
-# session_file = "~/.config/telegram-connector/session.bin"
+# session_file = "/absolute/path/to/session.bin"
 
 # Optional: hard cap (bytes) on a single media download (get_message_media).
 # Transfers larger than this are rejected before and during streaming.
@@ -108,7 +112,7 @@ max_in_flight_requests = 16
 #
 # File logging (JSON format, daily rotation)
 # file_enabled = true                      # Default: true
-# file_path = "~/.config/telegram-connector/logs"  # Default: logs directory
+# file_path = "/absolute/path/to/logs"      # Default: logs in the platform config directory
 # max_log_days = 7                         # Default: 7 days (old logs cleaned on startup)
 
 # Transport observability. All fields optional.

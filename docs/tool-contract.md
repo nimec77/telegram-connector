@@ -1,11 +1,11 @@
 # Versioned tool output and migration
 
-MCP calls default to `[server] output_format = "json_v1"`. This application contract is
+Since version 0.23.0, MCP calls default to `[server] output_format = "json_v1"`. This contract is
 independent of MCP 2026-07-28 versus the retained 2025-11-25 handshake, and of a search
 request’s `format = "full" | "compact"`. The default changes the application wire format;
 existing clients that parse the historical text can explicitly select `output_format =
-"legacy"` while migrating. No release/version change or publication is implied by this
-implementation stage.
+"legacy"` while migrating. See the [0.23.0 changelog](../CHANGELOG.md#0230---2026-10-31)
+for the default-output and Rust API migration.
 
 ## Envelope and errors
 
@@ -27,7 +27,7 @@ recovery_capacity_reached, response_pending and response_unavailable. A rate-lim
 error includes integer retry_after_seconds and is retryable; timeouts are retryable. Other
 categories conservatively report false, without claiming arbitrary provider failures are
 transient. No automatic retry occurs. Canonical messages omit raw provider/auth/download
-payloads. Typed argument decoding uses the input schema rather than exposing parser values.
+payloads. Typed argument decoding reports safe validation errors without exposing parser values.
 
 Valid argument objects with missing required or invalid typed fields produce tool errors.
 Missing/null arguments behave as an empty object: optional-only requests may succeed,

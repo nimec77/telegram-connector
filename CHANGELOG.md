@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Reconcile onboarding and contributor guides with the accepted roadmap and current
+  output/runtime contracts; correct platform paths and setup-only credential guidance.
+- Archive the completed Codex workflow migration plan and design in Git history.
+
 ## [0.24.1] - 2026-11-01
 
 ### Added

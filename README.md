@@ -1,8 +1,13 @@
 # Telegram MCP Connector
 
-A Model Context Protocol (MCP) service that enables Codex and other MCP clients to search
-and interact with Telegram channels and messages in real-time. Built in Rust using
-the `rmcp` SDK and the `grammers` Telegram client.
+A local stdio Model Context Protocol (MCP) server for searching and reading Telegram
+channels and messages over MTProto. It supports Codex and other compatible MCP clients,
+using Rust, `rmcp` and `grammers`.
+
+Supported MCP revisions are **2026-07-28** and **2025-11-25**. Since version 0.23.0,
+tools default to versioned JSON outputs with advertised output schemas. Applications
+migrating from historical text responses can select `output_format = "legacy"`; see
+the [output contract](docs/tool-contract.md) and [changelog](CHANGELOG.md).
 
 ## Features
 
@@ -13,7 +18,7 @@ the `rmcp` SDK and the `grammers` Telegram client.
 - **Media retrieval** — photos and video thumbnails returned as MCP image content blocks,
   downscaled to fit configurable byte budgets
 - **Voice transcription** via Telegram's server-side API (requires Telegram Premium;
-  `check_mcp_status` reports a `premium` flag so you can tell in advance)
+  `check_mcp_status` reports `data.premium` when the cached observation is known)
 - **Channel tools** — subscribed-channel listing, public directory search, batch identifier
   resolution, per-channel posting/engagement stats
 - **Deep linking** — `https://t.me` / `tg://` links, plus opening messages directly in
@@ -41,7 +46,7 @@ parameters and canonical tool outputs.
 
 ## Prerequisites
 
-- **Rust** — 2024 edition; `rust-toolchain.toml` selects nightly with rustfmt and clippy
+- **Rust** — 2024 edition; `rust-toolchain.toml` pins nightly-2026-10-31 with rustfmt and clippy
 - **Telegram account** with phone number, and API credentials from https://my.telegram.org
 - **Telegram Desktop** — only for the `open_message_in_telegram` tool (macOS only)
 
@@ -58,20 +63,24 @@ application → note `api_id` and `api_hash`.
 
 ### Configuration
 
-Config file location by platform (or pass `--config <FILE>`, or set `TELEGRAM_MCP_CONFIG`):
+Configuration is resolved from `--config <FILE>`, then `TELEGRAM_MCP_CONFIG`, then the
+platform default below. Session and log defaults use the same platform directory;
+a custom config-file path does not move them. See [config.example.toml](config.example.toml)
+for all settings. Explicit TOML paths are used as written: use an absolute path or
+`${HOME}` expansion rather than `~`.
 
 | Platform | Config path |
 |----------|-------------|
 | Linux | `~/.config/telegram-connector/config.toml` |
 | macOS | `~/Library/Application Support/telegram-connector/config.toml` |
-| Windows | `%APPDATA%\telegram-connector\config.toml` |
+| Windows | `%APPDATA%\telegram-connector\config\config.toml` |
 
 ```toml
 [telegram]
 api_id = 12345678
 api_hash = "your_api_hash_here"
 phone_number = "+1234567890"
-# session_file = "~/.config/telegram-connector/session.bin"
+# session_file = "/absolute/path/to/session.bin"
 
 [search]
 # deadline_seconds = 20          # Wall-clock budget for a search accumulation loop (1–3600).
@@ -93,15 +102,19 @@ phone_number = "+1234567890"
 # level = "info"                 # trace, debug, info, warn, error
 # format = "compact"             # compact, pretty, json
 # file_enabled = true            # File logging: always JSON, daily rotation
-# file_path = "~/.config/telegram-connector/logs/"
+# file_path = "/absolute/path/to/logs/"
 # max_log_days = 7
 
 [server]
 # output_format = "json_v1"       # Default; use "legacy" for historical text responses.
 # shutdown_timeout_seconds = 5
+# max_request_bytes = 1048576     # Incoming frame cap, including its newline.
+# max_in_flight_requests = 16     # Nonwaiting admission, including pending stdout writes.
 ```
 
 Sensitive values support env-var expansion: `api_hash = "${TELEGRAM_API_HASH}"`.
+`api_id` is always required; `api_hash` and `phone_number` are required for `--setup`
+and can be omitted when serving with an authenticated session.
 
 ### Authenticate
 
@@ -145,7 +158,8 @@ tool_timeout_sec = 180
 Restart the Codex session and check `/mcp` for the active server. Startup allows
 one `resolve_secs` budget each for authorization and best-effort Premium lookup
 (up to 60 seconds with defaults); the 90-second client budget leaves headroom.
-The longer tool timeout accommodates voice transcription, which can take up to 120 seconds.
+The longer tool timeout accommodates voice transcription, which can take up to 120 seconds
+with default limits.
 See [the configuration example](.codex/config.toml.example) and
 [Codex development guide](docs/codex.md) for CLI registration, project setup,
 and recommended tools. These settings follow the
@@ -156,8 +170,8 @@ over stdio using their own MCP configuration format.
 
 ## MCP Tools
 
-Required parameters are marked `*`. Tool schemas are self-describing over MCP; this table is
-the quick reference.
+Required parameters are marked `*`. Tool schemas are self-describing over MCP; this table
+summarizes the default `json_v1` output. Legacy mode retains historical text shapes.
 
 | Tool | Purpose | Key parameters |
 |------|---------|----------------|
@@ -172,7 +186,7 @@ the quick reference.
 | `get_last_responses` | Recover only explicit caller keys in json_v1; last-N remains a legacy diagnostic. Images are omitted unless requested. No Telegram RPCs. | `recovery_keys` (required in json_v1), `n` (legacy), `include_binary` |
 | `get_message_media` | Return a message's photo (or video thumbnail) as an MCP image content block (JPEG, downscaled) plus a JSON metadata text block. | `channel_id`*, `message_id`*, `max_dimension` (longest side px, clamped 64–2048) |
 | `get_messages_media_batch` | Fetch photos/thumbnails for up to 10 messages from one channel in one call; returns a JSON envelope followed by indexed image blocks (legacy mode retains image/metadata pairs). | `channel_id`*, `message_ids`* (1–10, deduped), `max_dimension` |
-| `transcribe_voice_message` | Transcribe a voice message or video note via Telegram's server-side API (requires Telegram Premium; costs 5 tokens by default). | `channel_id`*, `message_id`*, `timeout_seconds` (clamped 1–120) |
+| `transcribe_voice_message` | Transcribe a voice message or video note via Telegram's server-side API (requires Telegram Premium; costs 5 tokens by default). | `channel_id`*, `message_id`*, `timeout_seconds` (default cap 120; configurable in `[transcription]`) |
 | `search_public_channels` | Search Telegram's public directory (`contacts.search`) for channels/groups beyond your subscriptions. | `query`*, `limit` |
 | `get_messages_batch` | Fetch up to 50 specific messages from one channel in one RPC — the designated path to re-fetch full untruncated text. | `channel_id`*, `message_ids`* (1–50, deduped), `max_text_length` |
 | `resolve_channels` | Batch-resolve up to 20 identifiers (numeric ID, `@username`, or exact subscribed-chat title) to full channel entities, with per-entry errors. | `identifiers`* (1–20) |
@@ -200,7 +214,8 @@ Every tool except `get_last_responses` also accepts the optional wire-only `reco
 - **Account observations:** status reads cached authorization/Premium values. Startup
   refreshes them using bounded RPCs; authorization transport failures are errors and
   preserve prior observations. Premium lookup failure is nonfatal and preserves its last
-  successful value (or `null` if unknown). Transcription refreshes an unknown Premium
+  successful value. Status omits `premium` if no observation is available.
+  Transcription refreshes an unknown Premium
   cache only after acquiring its operation charge; a cached non-Premium result rejects
   without charge. Attempted account RPCs are not refunded.
 - **Transcription deadline:** `timeout_seconds` is one total budget after token
@@ -218,6 +233,14 @@ Every tool except `get_last_responses` also accepts the optional wire-only `reco
   `next_cursor: {"before_id": ...}` — pass it back as `before_id` for drift-free older
   pages; global search reports `has_more` without a cursor; cursors are rejected in
   `channel_ids` scope.
+- **Media ordering:** in `json_v1`, the JSON envelope is content block 0; images follow.
+  Successful items reference their actual zero-based `content_index` (the first image
+  is 1); failed items have no image index. Legacy mode retains image/metadata pairs
+  followed by the batch summary.
+- **Runtime bounds:** incoming frames default to 1 MiB and at most 16 requests are
+  admitted without waiting. These limits are separate from account tokens and output
+  budgets. Cancellation, optional token-bound progress, and bounded EOF/signal shutdown
+  are described in the [stdio runtime guide](docs/stdio-runtime.md).
 - **Byte budgets:** search/history and message batches count the complete serialized
   JSON-RPC response, including the structured envelope and matching JSON fallback, against
   `[limits] response_byte_budget` (default 40 000). Oldest messages are dropped with honest
@@ -236,8 +259,9 @@ Every tool except `get_last_responses` also accepts the optional wire-only `reco
 - **Session files on macOS:** newly created session directories use 0700; the database,
   WAL/SHM and journal use 0600. Session/sidecar symlinks, hardlinks, nonregular files and
   unprotected writable or untrusted canonical ancestors are refused before SQLite opens
-  them. Root-owned sticky temporary ancestors are allowed above a session parent with no group/other writes. Access-granting directory ACLs are
-  rejected; session-file ACLs are cleared. Existing directory modes/ACLs are preserved.
+  them. Root-owned sticky temporary ancestors are allowed above a session parent with
+  no group/other writes. Access-granting directory ACLs are rejected; session-file ACLs
+  are cleared. Existing directory modes/ACLs are preserved.
 - **Partial results:** `search_messages` sets `query_metadata.timed_out`/`partial` (never an
   error) when `[search] deadline_seconds` expires; a deadline-truncated result does not set
   `has_more`.
@@ -259,8 +283,8 @@ Every tool except `get_last_responses` also accepts the optional wire-only `reco
 
 ## Troubleshooting
 
-- **"Session expired"** — delete `~/.config/telegram-connector/session.bin` and re-run
-  `--setup`.
+- **"Session expired"** — run `--setup` with the same `--config` and any
+  `--session-file` override used by the server so authentication targets the right session.
 - **"Invalid phone number format"** — use international format with country code
   (`+1234567890`).
 - **"2FA password required"** — enter the Telegram *cloud* password at the setup prompt, not
@@ -279,12 +303,26 @@ Every tool except `get_last_responses` also accepts the optional wire-only `reco
 ## Development
 
 ```bash
-just check          # format check, all-target clippy, and tests (matches CI)
-cargo test --locked # all tests; no Telegram credentials required
+just check          # formatting, all-target Clippy, tests/doctests and warning-free docs
+cargo test --locked # offline fixtures and mocks; no Telegram credentials required
 ```
 
-The same commands are available as `just` recipes (`just` to list, `just check` for the full
-gate). Start Codex in the repository to load [AGENTS.md](AGENTS.md) and discover the
-repository skills in `.agents/skills/`. See [docs/codex.md](docs/codex.md) for the
-migration analysis and optional integrations, and `docs/conventions.md` /
-`docs/memory.md` for conventions and durable project knowledge.
+Use `just` to list recipes. With cached dependencies, add `--offline` to Cargo commands.
+Local agent validation runs on macOS; Linux setup and validation are owner-managed if
+needed. Existing CI retains its configured Linux/macOS matrix.
+
+Start Codex in the repository to load [AGENTS.md](AGENTS.md) and discover the repository
+skills in `.agents/skills/`.
+
+## Documentation
+
+| Guide | Contents |
+| --- | --- |
+| [Output contract and migration](docs/tool-contract.md) | JSON envelopes, schemas, typed errors, IDs, media ordering and legacy mode |
+| [Stdio runtime](docs/stdio-runtime.md) | Protocol negotiation, admission, cancellation, progress, shutdown and offline probes |
+| [Codex development](docs/codex.md) | Repository workflow, client setup and the version-bump skill |
+| [Rust manual](docs/rust-style.md) / [API inventory](docs/rust-api.md) | Coding rules, supported interfaces and Rust compatibility changes |
+| [Maintenance](docs/maintenance.md) / [dependency snapshot](docs/dependency-status.md) | Toolchain, configured CI/security checks and dependency policy |
+| [Final acceptance](docs/validation/2026-11-01-final-acceptance.md) | Evidence for all ten completed roadmap tasks and validation limits |
+| [Optional media proposals](docs/superpowers/specs/2026-10-31-media-delivery-design.md) | Deferred resource references/file export; target-client decision required |
+| [Project memory](docs/memory.md) | Current state and durable implementation decisions |
