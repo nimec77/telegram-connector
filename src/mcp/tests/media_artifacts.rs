@@ -323,10 +323,26 @@ async fn unavailable_file_and_legacy_modes_reject_single_batch_and_direct_adapte
 }
 
 #[tokio::test]
+async fn batch_entry_quota_never_reports_evicted_artifacts() {
+    batch_artifact_quota(1, 1024 * 1024, 1).await;
+}
+
+#[tokio::test]
+async fn batch_byte_quota_never_reports_evicted_artifacts() {
+    batch_artifact_quota(10, 1024, 1).await;
+}
+
+#[tokio::test]
 async fn resource_batch_indices_count_links_and_quota_failures_refund_images_not_delivered() {
+    batch_artifact_quota(10, 1, 0).await;
+    batch_artifact_quota(10, 1024 * 1024, 2).await;
+}
+
+async fn batch_artifact_quota(entries: usize, quota: u64, expected_returned: usize) {
     use super::media_batch_fixtures::{media_batch, no_media, ok_outcome};
-    use crate::mcp::tools::types::contract::WireData as _;
-    for (quota, expected_returned, expected_tokens) in [(1, 0, 60.0), (1024 * 1024, 2, 54.0)] {
+    use crate::mcp::tools::types::contract;
+    use base64::Engine as _;
+    for delivery in ["resource", "file", "resource_and_file"] {
         let temp = tempfile::tempdir().expect("fixture");
         let mut client = MockTelegramClientTrait::new();
         client
@@ -345,52 +361,321 @@ async fn resource_batch_indices_count_links_and_quota_failures_refund_images_not
         let server = McpServer::new(Arc::new(client), Arc::clone(&limiter))
             .with_media_artifacts(&crate::config::MediaArtifactsConfig {
                 enabled: true,
+                file_export_enabled: true,
                 root: Some(temp.path().join("store")),
-                max_entries: 1,
+                max_entries: entries,
                 max_total_bytes: quota,
                 ..Default::default()
             })
             .await
             .expect("store");
         let request = serde_json::from_value(
-            serde_json::json!({"channel_id":"news","message_ids":[1,2,3],"delivery":"resource"}),
+            serde_json::json!({"channel_id":"news","message_ids":[1,2,3],"delivery":delivery}),
         )
         .expect("batch");
-        let (data, blocks) = server
-            .get_messages_media_batch_data(request)
-            .await
-            .expect("batch")
-            .canonical()
-            .expect("contract");
-        let data = serde_json::to_value(data).expect("JSON");
+        let result = contract::render(
+            crate::config::OutputFormat::JsonV1,
+            server.get_messages_media_batch_data(request).await,
+        );
+        let data = &result.structured_content.as_ref().expect("JSON")["data"];
+        let mut next_index = 1;
+        for item in data["items"].as_array().expect("items") {
+            let Some(artifact) = item.get("artifact") else {
+                continue;
+            };
+            assert_eq!(item["content_index"], next_index);
+            let rmcp::model::ContentBlock::Image(image) = &result.content[next_index] else {
+                panic!("image index");
+            };
+            let jpeg = base64::engine::general_purpose::STANDARD
+                .decode(&image.data)
+                .expect("JPEG");
+            next_index += 1;
+            if let Some(uri) = artifact["resource_uri"].as_str() {
+                assert_eq!(artifact["resource_content_index"], next_index);
+                assert!(matches!(
+                    result.content[next_index],
+                    rmcp::model::ContentBlock::ResourceLink(_)
+                ));
+                assert!(
+                    server
+                        .read_artifact_resource(uri.to_owned(), None)
+                        .await
+                        .is_ok(),
+                    "every successful artifact must be immediately retrievable"
+                );
+                next_index += 1;
+            }
+            if let Some(path) = artifact["file_path"].as_str() {
+                assert_eq!(
+                    std::fs::read(path).expect("successful file must exist"),
+                    jpeg
+                );
+            }
+        }
+        assert_eq!(result.content.len(), next_index);
         assert_eq!(data["summary"]["returned"], expected_returned);
+        assert_eq!(data["summary"]["failed"], 3 - expected_returned);
         assert_eq!(
             limiter.try_available_tokens().expect("tokens"),
-            expected_tokens
+            60.0 - 3.0 * expected_returned as f64
         );
         if quota == 1 {
-            assert!(blocks.is_empty());
             assert_eq!(data["items"][0]["error"]["code"], "media_too_large");
-        } else {
-            assert_eq!(data["items"][0]["content_index"], 1);
-            assert_eq!(data["items"][0]["artifact"]["resource_content_index"], 2);
-            assert_eq!(data["items"][2]["content_index"], 3);
-            assert_eq!(data["items"][2]["artifact"]["resource_content_index"], 4);
-            let old = data["items"][0]["artifact"]["resource_uri"]
-                .as_str()
-                .expect("old URI")
-                .to_owned();
-            let current = data["items"][2]["artifact"]["resource_uri"]
-                .as_str()
-                .expect("current URI")
-                .to_owned();
-            assert!(
-                server.read_artifact_resource(old, None).await.is_err(),
-                "oldest artifact evicted by entry quota"
-            );
-            assert!(server.read_artifact_resource(current, None).await.is_ok());
+        } else if expected_returned == 1 {
+            assert_eq!(data["items"][2]["error"]["code"], "unavailable");
         }
     }
+}
+
+#[tokio::test]
+async fn delayed_batch_rejects_expired_artifact_and_refunds_undelivered_image() {
+    batch_invalidated_before_publication(false).await;
+}
+
+#[tokio::test]
+async fn failed_store_rejects_earlier_batch_artifact_and_refunds_undelivered_images() {
+    batch_invalidated_before_publication(true).await;
+}
+
+async fn batch_invalidated_before_publication(fail_store: bool) {
+    use super::media_batch_fixtures::{media_batch, ok_outcome};
+    use crate::mcp::tools::types::contract;
+    use futures::StreamExt as _;
+    let temp = tempfile::tempdir().expect("fixture");
+    let root = temp.path().join("store");
+    let mutation_root = root.clone();
+    let mut client = MockTelegramClientTrait::new();
+    client
+        .expect_download_messages_media_pipeline()
+        .return_once(move |_, _, _| {
+            let mut batch = media_batch(vec![ok_outcome(1, 24, 16)]);
+            batch.stream = Some(
+                futures::stream::once(async move {
+                    // The ordered consumer only requests this outcome after inserting the first.
+                    if fail_store {
+                        std::fs::write(mutation_root.join("foreign"), b"preserve")
+                            .expect("foreign file");
+                    } else {
+                        tokio::time::advance(std::time::Duration::from_secs(2)).await;
+                    }
+                    ok_outcome(2, 24, 16)
+                })
+                .boxed(),
+            );
+            Ok(batch)
+        });
+    let config: crate::Config =
+        toml::from_str("[telegram]\napi_id=1\n[rate_limiting]\nrefill_rate=0.0").expect("config");
+    let limiter = Arc::new(crate::RateLimiter::new(&config.rate_limiting));
+    let server = McpServer::new(Arc::new(client), Arc::clone(&limiter))
+        .with_media_artifacts(&crate::config::MediaArtifactsConfig {
+            enabled: true,
+            file_export_enabled: true,
+            root: Some(root),
+            ttl_seconds: 1,
+            ..Default::default()
+        })
+        .await
+        .expect("store");
+    tokio::time::pause();
+    let clock_guard = tokio::spawn(async {
+        loop {
+            tokio::task::yield_now().await;
+        }
+    });
+    let request = serde_json::from_value(serde_json::json!({
+        "channel_id":"news", "message_ids":[1,2], "delivery":"resource_and_file"
+    }))
+    .expect("request");
+    let result = contract::render(
+        crate::config::OutputFormat::JsonV1,
+        server.get_messages_media_batch_data(request).await,
+    );
+    clock_guard.abort();
+    let data = &result.structured_content.as_ref().expect("JSON")["data"];
+    assert_eq!(data["items"][0]["error"]["code"], "unavailable");
+    if fail_store {
+        assert_eq!(data["summary"]["returned"], 0);
+        assert_eq!(result.content.len(), 1);
+        assert_eq!(limiter.try_available_tokens().expect("tokens"), 60.0);
+    } else {
+        assert_eq!(data["summary"]["returned"], 1);
+        assert_eq!(data["items"][1]["content_index"], 1);
+        assert_eq!(data["items"][1]["artifact"]["resource_content_index"], 2);
+        assert_eq!(result.content.len(), 3);
+        assert_eq!(limiter.try_available_tokens().expect("tokens"), 57.0);
+        let path = data["items"][1]["artifact"]["file_path"]
+            .as_str()
+            .expect("path");
+        assert!(std::fs::read(path).is_ok());
+    }
+}
+
+#[tokio::test]
+async fn artifact_pins_survive_shadow_and_canonical_assembly_then_release_capacity() {
+    use crate::mcp::tools::types::contract::{self, WireData as _};
+    let temp = tempfile::tempdir().expect("fixture");
+    let mut client = MockTelegramClientTrait::new();
+    client
+        .expect_download_message_media()
+        .returning(|_, _, _| Ok(photo()));
+    let server = McpServer::new(
+        Arc::new(client),
+        Arc::new(crate::test_helpers::permissive_limiter()),
+    )
+    .with_media_artifacts(&crate::config::MediaArtifactsConfig {
+        enabled: true,
+        root: Some(temp.path().join("store")),
+        max_entries: 1,
+        ..Default::default()
+    })
+    .await
+    .expect("store");
+    let request = || {
+        serde_json::from_value(serde_json::json!({
+            "channel_id":"news", "message_id":1, "delivery":"resource"
+        }))
+        .expect("request")
+    };
+    let output = server
+        .get_message_media_data(request())
+        .await
+        .expect("first output");
+    // The data method already measured a descriptor-bearing overhead shadow.
+    assert!(matches!(
+        server.get_message_media_data(request()).await,
+        Err(crate::error::Error::ArtifactUnavailable)
+    ));
+    let (data, blocks) = output.canonical().expect("canonical assembly");
+    assert!(
+        matches!(
+            server.get_message_media_data(request()).await,
+            Err(crate::error::Error::ArtifactUnavailable)
+        ),
+        "canonical data still owns protection"
+    );
+    let mut result = contract::tool_result(contract::ToolResponse::success(data)).expect("result");
+    result.content.extend(blocks);
+    let old = result.structured_content.as_ref().expect("JSON")["data"]["items"][0]["artifact"]["resource_uri"]
+        .as_str().expect("URI").to_owned();
+    assert!(
+        server
+            .read_artifact_resource(old.clone(), None)
+            .await
+            .is_ok()
+    );
+    let next = contract::render(
+        crate::config::OutputFormat::JsonV1,
+        server.get_message_media_data(request()).await,
+    );
+    assert_eq!(
+        next.structured_content.as_ref().expect("JSON")["data"]["summary"]["returned"],
+        1
+    );
+    assert!(
+        server.read_artifact_resource(old, None).await.is_err(),
+        "later requests may evict completed responses"
+    );
+}
+
+#[tokio::test]
+async fn cancelled_batch_releases_completed_artifact_pins() {
+    use super::media_batch_fixtures::{media_batch, ok_outcome};
+    use futures::StreamExt as _;
+    let temp = tempfile::tempdir().expect("fixture");
+    let (started, observed) = tokio::sync::oneshot::channel();
+    let mut client = MockTelegramClientTrait::new();
+    client
+        .expect_download_messages_media_pipeline()
+        .return_once(move |_, _, _| {
+            let mut batch = media_batch(vec![ok_outcome(1, 24, 16)]);
+            batch.stream = Some(
+                futures::stream::once(async move {
+                    started.send(()).expect("first artifact inserted");
+                    futures::future::pending().await
+                })
+                .boxed(),
+            );
+            Ok(batch)
+        });
+    client
+        .expect_download_message_media()
+        .return_once(|_, _, _| Ok(photo()));
+    let server = McpServer::new(
+        Arc::new(client),
+        Arc::new(crate::test_helpers::permissive_limiter()),
+    )
+    .with_media_artifacts(&crate::config::MediaArtifactsConfig {
+        enabled: true,
+        root: Some(temp.path().join("store")),
+        max_entries: 1,
+        ..Default::default()
+    })
+    .await
+    .expect("store");
+    let request = serde_json::from_value(serde_json::json!({
+        "channel_id":"news", "message_ids":[1,2], "delivery":"resource"
+    }))
+    .expect("request");
+    let mut operation = Box::pin(server.get_messages_media_batch_data(request));
+    tokio::select! {
+        _ = &mut operation => panic!("second outcome must remain pending"),
+        started = observed => started.expect("first artifact cached"),
+    }
+    drop(operation);
+    let request = serde_json::from_value(serde_json::json!({
+        "channel_id":"news", "message_id":3, "delivery":"resource"
+    }))
+    .expect("request");
+    assert!(
+        server.get_message_media_data(request).await.is_ok(),
+        "cancellation must release completed pins without waiting for TTL"
+    );
+}
+
+#[tokio::test]
+async fn publication_rechecks_expiry_after_data_preparation_without_shadow_refunds() {
+    use super::media_batch_fixtures::{media_batch, ok_outcome};
+    use crate::mcp::tools::types::contract;
+    let temp = tempfile::tempdir().expect("fixture");
+    let mut client = MockTelegramClientTrait::new();
+    client
+        .expect_download_messages_media_pipeline()
+        .return_once(|_, _, _| Ok(media_batch(vec![ok_outcome(1, 24, 16)])));
+    let config: crate::Config =
+        toml::from_str("[telegram]\napi_id=1\n[rate_limiting]\nrefill_rate=0.0").expect("config");
+    let limiter = Arc::new(crate::RateLimiter::new(&config.rate_limiting));
+    let server = McpServer::new(Arc::new(client), Arc::clone(&limiter))
+        .with_media_artifacts(&crate::config::MediaArtifactsConfig {
+            enabled: true,
+            root: Some(temp.path().join("store")),
+            ttl_seconds: 1,
+            ..Default::default()
+        })
+        .await
+        .expect("store");
+    let request = serde_json::from_value(serde_json::json!({
+        "channel_id":"news", "message_ids":[1], "delivery":"resource"
+    }))
+    .expect("request");
+    let output = server
+        .get_messages_media_batch_data(request)
+        .await
+        .expect("output");
+    tokio::time::pause();
+    tokio::time::advance(std::time::Duration::from_secs(2)).await;
+    output
+        .check_overhead(crate::config::OutputFormat::JsonV1)
+        .expect("shadow");
+    assert_eq!(limiter.try_available_tokens().expect("charged"), 57.0);
+    let result = contract::render(crate::config::OutputFormat::JsonV1, Ok(output));
+    let data = &result.structured_content.as_ref().expect("JSON")["data"];
+    assert_eq!(data["summary"]["returned"], 0);
+    assert_eq!(data["summary"]["total_base64_bytes"], 0);
+    assert_eq!(data["items"][0]["error"]["code"], "unavailable");
+    assert_eq!(limiter.try_available_tokens().expect("refund"), 60.0);
+    assert_eq!(result.content.len(), 1);
 }
 
 #[tokio::test]

@@ -5,7 +5,7 @@
 
 use super::McpServer;
 use crate::error::Error;
-use crate::mcp::artifacts::{ArtifactStore, StoreError};
+use crate::mcp::artifacts::{ArtifactPin, ArtifactStore, StoreError};
 use crate::mcp::tools::image::{ProcessedImage, process_image_with_cap};
 use crate::mcp::tools::media_budget::Base64Budget;
 use crate::mcp::tools::types::media_contract::{
@@ -128,7 +128,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         let channel_id = download.channel_id;
         let peer_namespace = download.peer_namespace;
         let deadline = download.lease.as_ref().map(|lease| lease.deadline());
-        let (processed, artifact, artifact_uri) = process_download(
+        let (processed, artifact, artifact_uri, artifact_pin) = process_download(
             &mut download,
             max_dimension,
             crate::mcp::tools::image::MAX_BASE64_LEN,
@@ -155,6 +155,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
         let output = MediaOutput {
             single: true,
+            artifact_refund: None,
             channel_reference: request.channel_id,
             channel_id,
             peer_namespace,
@@ -166,6 +167,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                     metadata,
                     artifact,
                     artifact_uri,
+                    artifact_pin,
                 }),
             )],
             max_total_bytes: crate::mcp::tools::image::MAX_BASE64_LEN as u64,
@@ -287,8 +289,10 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             crate::mcp::runtime::report_progress("Media item processed").await;
         }
 
+        let artifact_refund = Arc::clone(&self.rate_limiter);
         let output = MediaOutput {
             single: false,
+            artifact_refund: Some((artifact_refund, self.media_download_cost)),
             channel_reference: request.channel_id,
             channel_id,
             peer_namespace,
@@ -474,7 +478,7 @@ async fn process_media_outcome(
     // hundreds of milliseconds of pure CPU. A panicked/cancelled task reports
     // the id rather than failing the batch.
     let deadline = deadline.or_else(|| download.lease.as_ref().map(|lease| lease.deadline()));
-    let (processed, artifact, artifact_uri) =
+    let (processed, artifact, artifact_uri, artifact_pin) =
         process_download(&mut download, max_dimension, allowance, deadline, artifacts).await?;
 
     // Serialize before consuming the budget, so a (today unreachable)
@@ -488,6 +492,7 @@ async fn process_media_outcome(
         metadata,
         artifact,
         artifact_uri,
+        artifact_pin,
     })
 }
 
@@ -498,21 +503,29 @@ async fn process_download(
     allowance: usize,
     deadline: Option<crate::telegram::media_pipeline::MediaDeadline>,
     artifacts: Option<(Arc<ArtifactStore>, MediaDelivery)>,
-) -> Result<(ProcessedImage, Option<MediaArtifact>, Option<String>), Error> {
+) -> Result<
+    (
+        ProcessedImage,
+        Option<MediaArtifact>,
+        Option<String>,
+        Option<Arc<ArtifactPin>>,
+    ),
+    Error,
+> {
     let bytes = std::mem::take(&mut download.bytes);
     let lease = download.lease.take();
     let job = crate::mcp::runtime::image_job(move || {
         let _lease = lease;
         let processed = process_image_with_cap(&bytes, max_dimension, allowance)?;
-        let (artifact, uri) = match artifacts {
-            None => (None, None),
+        let (artifact, uri, pin) = match artifacts {
+            None => (None, None, None),
             Some((store, delivery)) => {
                 use base64::Engine as _;
                 let jpeg = base64::engine::general_purpose::STANDARD
                     .decode(&processed.base64_jpeg)
                     .map_err(|_| Error::Internal("processed preview encoding unavailable"))?;
-                let stored = store
-                    .insert(&jpeg, processed.width, processed.height)
+                let (stored, pin) = store
+                    .insert_protected(&jpeg, processed.width, processed.height)
                     .map_err(|error| match error {
                         StoreError::TooLarge => Error::ArtifactTooLarge,
                         _ => Error::ArtifactUnavailable,
@@ -543,10 +556,11 @@ async fn process_download(
                         file_path,
                     }),
                     Some(stored.uri),
+                    Some(pin),
                 )
             }
         };
-        Ok((processed, artifact, uri))
+        Ok((processed, artifact, uri, pin))
     });
     let result = match deadline {
         Some(deadline) => deadline.run(job).await?,

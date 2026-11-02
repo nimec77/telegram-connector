@@ -140,3 +140,68 @@ Temporary exact transcripts are retained under `/private/tmp/media-artifacts-`:
 `probe.log`, `policy-fixtures.log` and `policy.log`. The complete successful installed
 adapter output is additionally checked in at the link above. Temporary probe code and
 third-party bundled sources are not committed.
+
+
+## Final review fixes and fresh validation — 2026-11-02
+
+The final fix wave starts at `38e6fc60535b4ce1a66f01e42e6a017c4a7d907c`.
+The earlier sections and their 988-test count describe the prior dated validation.
+This section records new evidence after correcting final review I1, I2 and M1.
+
+**Current-response delivery:** response-owned pins protect artifacts from quota eviction
+until complete tool-result assembly. If protected entries leave insufficient entry/byte
+capacity, the new item receives the existing typed `unavailable` cache error, its batch
+image charge is refunded, and the store remains usable. Pin destruction takes no store
+mutex or filesystem action and cancellation releases completed pins. Pins do not extend
+logical TTL or keep the store alive. Canonical publication rejects expired artifacts and
+handles from a known failed/closed store, with late batch refunds. Later independent
+requests may still evict artifacts after assembly; no minimum retention is promised.
+
+A private transparent canonical wrapper retains pins through structured JSON, matching
+text and content-block assembly. Existing public `MediaData` fields and wire shape remain
+unchanged. Overhead shadows retain descriptors and link metadata but neither pins nor
+refund authority. Original media/read/shutdown deadlines and started-worker ownership
+are unchanged, and metadata-overflow rollback still removes owned pinned entries.
+
+The entry-quota and byte-quota regressions failed against the original implementation
+because the first reported successful artifact could not be immediately read. Both now
+pass for `resource`, `file`, and `resource_and_file`, checking all reported URI/path bytes,
+actual indices, typed partial failures and refunds. Delayed-batch expiry and later storage
+failure likewise failed with an earlier success descriptor and now become explicit item
+failures. Further tests cover transient capacity recovery, release after reply/cancellation,
+canonical guard lifetime, shadow independence and expiry after data preparation.
+
+The queued-periodic-cleanup Weak/held-worker scenario now runs in an ignored isolated
+child. Its ordinary parent checks successful execution and enforces a 15-second bound
+with child termination on timeout. The behavioral body and assertions are preserved;
+no deterministic reproduction of the former losing parallel schedule is claimed.
+No suite-wide serialization or production test hook was introduced. The three factual
+resource-handler, canonical ancestry and internal-DTO guide statements were corrected.
+
+The final macOS offline gate passed **995 library tests, 0 failures, 8 ignored**, plus
+**3 doctests**. Six ignored subprocess entrypoints are exercised by ordinary parents;
+the other two are the existing optional latency/RSS measurements. This adds seven behavior
+tests and one isolated child entrypoint. Formatting, strict all-target Clippy and
+warning-free rustdoc passed. Release and fixture builds passed; the release remains
+`telegram-mcp 0.24.1`. All four repository Python client/process/probe scripts above passed,
+as did 25 dependency-policy fixtures and the 340-package policy. Package, lockfile,
+dependency pins and toolchain are unchanged. Current guide relative links and
+`git diff --check` passed.
+
+Root regenerated the temporary extractor/probe from the same installed Harness
+0.2.1-rc.5 build `d4db512a969fccf0c5cc7ec8fe38e9c1d27af916` and independently ran it
+against the fixed fixture. The fresh [full installed-adapter transcript](2026-11-02-media-artifacts-deepseek.txt)
+records **PASS**, **0 model calls**, and **46 external numeric-format warnings** (counted
+from this new log; retained unsuppressed). Resource/file/preview/durable-attachment bytes
+match, native image projection remains available, the text-only route refuses reading,
+and the 1256-byte JPEG hash remains
+`5d6ba0a5b326e869fea51ab264e2f3408305eec7eec5ae78762baf663c910959`.
+The original November 1 transcript remains unchanged. This still establishes installed
+adapter execution, not chosen live model, desktop UI, account or Telegram behavior.
+
+New exact command logs and the detailed RED/GREEN report are retained in the local ignored
+`.superpowers/sdd/2026-11-01-media-artifacts/` workspace as `final-fix-*.log` and
+`final-fix-report.md`; the older `/private/tmp` logs named above are historical locations.
+The new installed-adapter transcript is committed separately at the link above. Final
+scoped re-review and integration remain root-owned; no push, merge, version bump, user/client
+configuration edit, live call or Linux setup is part of this fix wave.

@@ -302,7 +302,13 @@ pub(crate) fn legacy_json(value: &impl Serialize) -> Result<CallToolResult, Erro
 pub fn tool_result<T: Serialize + JsonSchema>(
     response: ToolResponse<T>,
 ) -> Result<CallToolResult, Error> {
-    let failed = matches!(&response, ToolResponse::Failure { .. });
+    tool_result_ref(&response)
+}
+
+fn tool_result_ref<T: Serialize + JsonSchema>(
+    response: &ToolResponse<T>,
+) -> Result<CallToolResult, Error> {
+    let failed = matches!(response, ToolResponse::Failure { .. });
     let value = serde_json::to_value(response)
         .map_err(|_| Error::Internal("response serialization failed"))?;
     if !failed && value["data"].is_null() {
@@ -344,7 +350,9 @@ pub(crate) fn render<T: WireData>(
             Vec::new(),
         ),
     };
-    match tool_result(response) {
+    // Borrow until all blocks have been appended, retaining any canonical data's
+    // private delivery guards through complete CallToolResult assembly.
+    match tool_result_ref(&response) {
         Ok(mut result) => {
             result.content.extend(images);
             result

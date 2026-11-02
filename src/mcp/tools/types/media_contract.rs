@@ -3,16 +3,21 @@ use super::canonical::ChannelId;
 use super::contract::{ToolError, WireData};
 use super::responses::{GetMessageMediaResponse, MediaBatchFailure, MediaBatchSummary};
 use crate::error::Error;
+use crate::mcp::artifacts::ArtifactPin;
+use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::types::{self, PeerNamespace};
 use rmcp::model::{CallToolResult, ContentBlock};
 use schemars::JsonSchema;
 use serde::Serialize;
+use std::sync::Arc;
 
 /// Independent of message response and base64 limits.
 pub(crate) const MAX_MEDIA_OVERHEAD_BYTES: usize = 65_536;
 
 pub(crate) struct MediaOutput {
     pub single: bool,
+    // Batch-only late delivery refunds. Single-call charging remains unchanged.
+    pub artifact_refund: Option<(Arc<dyn RateLimiterTrait>, u32)>,
     pub channel_reference: String,
     pub channel_id: types::ChannelId,
     pub peer_namespace: PeerNamespace,
@@ -25,6 +30,7 @@ pub(crate) struct MediaImage {
     pub metadata: GetMessageMediaResponse,
     pub artifact: Option<MediaArtifact>,
     pub artifact_uri: Option<String>,
+    pub artifact_pin: Option<Arc<ArtifactPin>>,
 }
 
 /// Metadata for a cached processed JPEG preview, never an original attachment.
@@ -53,6 +59,18 @@ pub enum ArtifactKind {
 pub struct MediaData {
     pub items: Vec<MediaItem>,
     pub summary: MediaSummary,
+}
+
+/// Internal lifetime wrapper; the DTO and its wire schema retain their existing shape.
+#[derive(Serialize, JsonSchema)]
+#[serde(transparent)]
+#[schemars(transparent)]
+pub(crate) struct ProtectedMediaData {
+    data: MediaData,
+    // Keep eviction protection alive through both JSON copies and content-block assembly.
+    #[serde(skip)]
+    #[schemars(skip)]
+    _artifact_pins: Vec<Arc<ArtifactPin>>,
 }
 #[derive(Debug, Serialize, JsonSchema)]
 #[serde(untagged)]
@@ -127,8 +145,10 @@ pub(crate) fn legacy_failure(error: &Error) -> String {
     }
 }
 impl WireData for MediaOutput {
-    type Canonical = MediaData;
-    fn canonical(self) -> Result<(MediaData, Vec<ContentBlock>), Error> {
+    type Canonical = ProtectedMediaData;
+    fn canonical(mut self) -> Result<(ProtectedMediaData, Vec<ContentBlock>), Error> {
+        self.reject_undeliverable_artifacts();
+        let mut artifact_pins = Vec::new();
         let mut images = Vec::new();
         let mut items = Vec::new();
         let mut bytes = 0;
@@ -136,6 +156,9 @@ impl WireData for MediaOutput {
         for (message_id, outcome) in self.items {
             match outcome {
                 Ok(mut image) => {
+                    if let Some(pin) = image.artifact_pin.take() {
+                        artifact_pins.push(pin);
+                    }
                     returned += 1;
                     bytes += image.base64.len();
                     let content_index = images.len() + 1;
@@ -168,14 +191,17 @@ impl WireData for MediaOutput {
             }
         }
         Ok((
-            MediaData {
-                items,
-                summary: MediaSummary {
-                    requested: self.requested,
-                    returned,
-                    failed: self.requested - returned,
-                    total_base64_bytes: bytes,
-                    max_total_bytes: self.max_total_bytes,
+            ProtectedMediaData {
+                _artifact_pins: artifact_pins,
+                data: MediaData {
+                    items,
+                    summary: MediaSummary {
+                        requested: self.requested,
+                        returned,
+                        failed: self.requested - returned,
+                        total_base64_bytes: bytes,
+                        max_total_bytes: self.max_total_bytes,
+                    },
                 },
             },
             images,
@@ -221,6 +247,23 @@ impl WireData for MediaOutput {
 }
 
 impl MediaOutput {
+    /// Reconcile monotonic expiry and known store failure at the publication boundary.
+    /// This checks only atomics/time: no filesystem or store mutex on the async executor.
+    fn reject_undeliverable_artifacts(&mut self) {
+        for (_, outcome) in &mut self.items {
+            if outcome.as_ref().is_ok_and(|image| {
+                image
+                    .artifact_pin
+                    .as_ref()
+                    .is_some_and(|pin| !pin.is_deliverable())
+            }) {
+                *outcome = Err(Error::ArtifactUnavailable);
+                if let Some((limiter, cost)) = &self.artifact_refund {
+                    limiter.refund(*cost);
+                }
+            }
+        }
+    }
     /// Measure the full response with image data omitted, retaining its exact summaries.
     pub(crate) fn check_overhead(&self, format: crate::config::OutputFormat) -> Result<(), Error> {
         let bytes = self
@@ -231,6 +274,7 @@ impl MediaOutput {
             .sum::<usize>();
         let shadow = Self {
             single: self.single,
+            artifact_refund: None,
             channel_reference: self.channel_reference.clone(),
             channel_id: self.channel_id,
             peer_namespace: self.peer_namespace,
@@ -248,6 +292,9 @@ impl MediaOutput {
                                 metadata: image.metadata.clone(),
                                 artifact: image.artifact.clone(),
                                 artifact_uri: image.artifact_uri.clone(),
+                                // A measurement shadow never owns/releases delivery protection
+                                // or reconciles/refunds the real response's items.
+                                artifact_pin: None,
                             }),
                             Err(error) => Err(error.clone()),
                         },
@@ -257,7 +304,7 @@ impl MediaOutput {
         };
         let result = if format == crate::config::OutputFormat::JsonV1 {
             let (mut data, images) = shadow.canonical()?;
-            data.summary.total_base64_bytes = bytes;
+            data.data.summary.total_base64_bytes = bytes;
             let mut result =
                 super::contract::tool_result(super::contract::ToolResponse::success(data))?;
             result.content.extend(images);

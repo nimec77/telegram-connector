@@ -12,7 +12,8 @@ mod privacy;
 use files::OwnedFile;
 use std::collections::VecDeque;
 use std::io::{Read as _, Write as _};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, MutexGuard, Weak};
 use tokio::time::Instant;
 
 use std::path::PathBuf;
@@ -57,24 +58,38 @@ pub(crate) enum StoreError {
 }
 const PREFIX: &str = "telegram-media://artifact/";
 const MAX_JPEG_BYTES: usize = 20 * 1024 * 1024;
+/// A response-owned eviction pin. Dropping it performs no locking, I/O or task scheduling.
+/// The store keeps only a Weak token, so cancellation releases capacity even after a worker
+/// finishes without an awaiter. Pins do not keep the store alive or extend logical expiry.
+#[derive(Debug)]
+pub(crate) struct ArtifactPin {
+    expires: Instant,
+    available: Arc<AtomicBool>,
+}
+impl ArtifactPin {
+    pub(crate) fn is_deliverable(&self) -> bool {
+        self.expires > Instant::now() && self.available.load(Ordering::Acquire)
+    }
+}
 struct Entry {
     uri: String,
     file: OwnedFile,
     expires: Instant,
+    pin: Weak<ArtifactPin>,
 }
 struct State {
     entries: VecDeque<Entry>,
     bytes: u64,
     pending: Option<OwnedFile>,
     lock: OwnedFile,
-    failed: bool,
-    closed: bool,
+    available: Arc<AtomicBool>,
 }
 pub(crate) struct ArtifactStore {
     config: StoreConfig,
     uid: u32,
     state: Mutex<Option<State>>,
     runtime: tokio::runtime::Handle,
+    available: Arc<AtomicBool>,
 }
 impl ArtifactStore {
     pub(crate) async fn try_new(mut config: StoreConfig) -> Result<Arc<Self>, StoreError> {
@@ -106,6 +121,7 @@ impl ArtifactStore {
                 return Err(StoreError::Unavailable);
             }
             let (lock, _) = OwnedFile::create(config.root.join(".lock"), uid)?;
+            let available = Arc::new(AtomicBool::new(true));
             Ok(Arc::new(Self {
                 config,
                 uid,
@@ -114,10 +130,10 @@ impl ArtifactStore {
                     bytes: 0,
                     pending: None,
                     lock,
-                    failed: false,
-                    closed: false,
+                    available: Arc::clone(&available),
                 })),
                 runtime,
+                available,
             }))
         })
         .await
@@ -144,18 +160,21 @@ impl ArtifactStore {
         });
     }
     fn state(&self) -> Result<MutexGuard<'_, Option<State>>, StoreError> {
-        let state = self.state.lock().map_err(|_| StoreError::Unavailable)?;
-        if state.as_ref().is_none_or(|s| s.failed || s.closed) {
+        let state = self.state.lock().map_err(|_| {
+            self.available.store(false, Ordering::Release);
+            StoreError::Unavailable
+        })?;
+        if state.is_none() || !self.available.load(Ordering::Acquire) {
             return Err(StoreError::Unavailable);
         }
         Ok(state)
     }
-    pub(crate) fn insert(
+    pub(crate) fn insert_protected(
         &self,
         bytes: &[u8],
         width: u32,
         height: u32,
-    ) -> Result<StoredArtifact, StoreError> {
+    ) -> Result<(StoredArtifact, Arc<ArtifactPin>), StoreError> {
         let mut guard = self.state()?;
         let state = guard.as_mut().ok_or(StoreError::Unavailable)?;
         if bytes.len() > MAX_JPEG_BYTES || bytes.len() as u64 > self.config.max_bytes {
@@ -169,7 +188,13 @@ impl ArtifactStore {
         while state.entries.len() >= self.config.max_entries
             || state.bytes + bytes.len() as u64 > self.config.max_bytes
         {
-            remove_entry(state, 0, self.uid)?;
+            let index = state
+                .entries
+                .iter()
+                .position(|entry| entry.pin.strong_count() == 0)
+                .ok_or(StoreError::Unavailable)?;
+            // Protected-capacity exhaustion is transient and must not poison the store.
+            remove_entry(state, index, self.uid)?;
         }
         let id = random_id()?;
         let uri = format!("{PREFIX}{id}");
@@ -180,7 +205,7 @@ impl ArtifactStore {
             match OwnedFile::create(self.config.root.join(format!("{id}.tmp")), self.uid) {
                 Ok(created) => created,
                 Err(_) => {
-                    state.failed = true;
+                    state.available.store(false, Ordering::Release);
                     return Err(StoreError::Unavailable);
                 }
             };
@@ -202,28 +227,36 @@ impl ArtifactStore {
             {
                 pending.size = metadata.len();
             }
-            state.failed = true;
+            state.available.store(false, Ordering::Release);
             return Err(StoreError::Unavailable);
         }
         file.path = path.clone();
         file.size = bytes.len() as u64;
         state.pending = None;
         let expires = Instant::now() + self.config.ttl;
+        let pin = Arc::new(ArtifactPin {
+            expires,
+            available: Arc::clone(&self.available),
+        });
         state.entries.push_back(Entry {
             uri: uri.clone(),
             file,
             expires,
+            pin: Arc::downgrade(&pin),
         });
-        Ok(StoredArtifact {
-            uri,
-            path,
-            size_bytes: bytes.len(),
-            width,
-            height,
-            expires_at: chrono::Utc::now()
-                + chrono::Duration::from_std(self.config.ttl)
-                    .map_err(|_| StoreError::Unavailable)?,
-        })
+        Ok((
+            StoredArtifact {
+                uri,
+                path,
+                size_bytes: bytes.len(),
+                width,
+                height,
+                expires_at: chrono::Utc::now()
+                    + chrono::Duration::from_std(self.config.ttl)
+                        .map_err(|_| StoreError::Unavailable)?,
+            },
+            pin,
+        ))
     }
     pub(crate) fn read(&self, uri: &str, max_bytes: usize) -> Result<ArtifactRead, StoreError> {
         validate_uri(uri)?;
@@ -304,7 +337,7 @@ impl ArtifactStore {
             Ok(())
         })();
         if result.is_err() {
-            state.failed = true;
+            state.available.store(false, Ordering::Release);
         }
         result
     }
@@ -312,11 +345,11 @@ impl ArtifactStore {
     /// A failed close leaves the store closed; another close may retry bounded cleanup. Poisoned
     /// state is refused. Unknown files survive, and live Arc clones cannot recreate storage.
     pub(crate) fn close(&self) -> Result<(), StoreError> {
+        self.available.store(false, Ordering::Release);
         let mut guard = self.state.lock().map_err(|_| StoreError::Unavailable)?;
         let Some(state) = guard.as_mut() else {
             return Ok(());
         };
-        state.closed = true;
         let mut failed = false;
         let mut index = 0;
         while index < state.entries.len() {
@@ -336,7 +369,7 @@ impl ArtifactStore {
             failed = true;
         }
         if failed {
-            state.failed = true;
+            state.available.store(false, Ordering::Release);
             return Err(StoreError::Unavailable);
         }
         // Successful finalization disarms Drop and makes repeated close a no-op, including
@@ -376,7 +409,7 @@ fn validate_uri(uri: &str) -> Result<(), StoreError> {
 }
 fn remove_entry(state: &mut State, index: usize, uid: u32) -> Result<(), StoreError> {
     if state.entries[index].file.remove(uid).is_err() {
-        state.failed = true;
+        state.available.store(false, Ordering::Release);
         return Err(StoreError::Unavailable);
     }
     let entry = state.entries.remove(index).ok_or(StoreError::Unavailable)?;
@@ -385,6 +418,7 @@ fn remove_entry(state: &mut State, index: usize, uid: u32) -> Result<(), StoreEr
 }
 impl Drop for ArtifactStore {
     fn drop(&mut self) {
+        self.available.store(false, Ordering::Release);
         let Ok(state) = self.state.get_mut() else {
             return;
         };

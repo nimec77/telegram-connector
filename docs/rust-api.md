@@ -189,8 +189,10 @@ constructor names and existing builder signatures stay compatible. The optional 
 feature adds `Config.media_artifacts`, defaulted request `delivery`, successful media
 item `artifact`, and status artifact metadata; downstream Rust struct literals must supply
 the new fields and exhaustive `Error` matches must cover `ArtifactTooLarge` and `ArtifactUnavailable`.
-`MediaDelivery` and `MediaArtifact` are public boundary DTOs; internal store
-representations remain crate-private. JSON defaults stay inline and omit absent handles.
+`MediaDelivery` and artifact configuration/status DTOs are public. `MediaArtifact` is
+an internal canonical wire representation in the crate-private `media_contract` module,
+not an externally importable DTO. Store representations also remain crate-private.
+JSON defaults stay inline and omit absent handles.
 See [media artifacts](media-artifacts.md) for store side effects, cleanup and protocol errors.
 Cargo now enables `clippy::wildcard_imports`, `clippy::missing_errors_doc`, and
 `clippy::return_self_not_must_use` across project targets; no blanket pedantic/restriction

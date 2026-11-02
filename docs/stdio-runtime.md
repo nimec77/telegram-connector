@@ -10,8 +10,10 @@ inherited from another modern request. Legacy clients explicitly initialize at
 Modern complete tools/list results identify the server in result metadata. Tool
 lists retain one-hour/private caching hints; discovery uses zero/private hints.
 Optional extensions, elicitation and changing tool lists remain unadvertised.
-Empty resource/prompt listings retain the SDK's harmless defaults; no product
-resource or prompt handlers have been added.
+Resources are advertised only when [media artifacts](media-artifacts.md) are enabled.
+The opt-in resource read handler retrieves cached processed JPEGs; resource and template
+listings remain empty. Disabled resources are unavailable. Prompt handlers and their
+empty listings retain the SDK defaults.
 
 ## Limits and errors
 

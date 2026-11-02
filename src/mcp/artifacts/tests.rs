@@ -1,5 +1,18 @@
 use super::*;
 
+// Existing store tests exercise ordinary eviction after the response pin is released.
+impl ArtifactStore {
+    pub(crate) fn insert(
+        &self,
+        bytes: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Result<StoredArtifact, StoreError> {
+        self.insert_protected(bytes, width, height)
+            .map(|(stored, _pin)| stored)
+    }
+}
+
 fn config(root: PathBuf) -> StoreConfig {
     StoreConfig {
         root,
@@ -557,6 +570,32 @@ async fn missing_ownership_lock_is_storage_failure_not_missing_artifact() {
 
 #[tokio::test]
 async fn queued_periodic_cleanup_does_not_retain_store() {
+    let mut command =
+        tokio::process::Command::new(std::env::current_exe().expect("test executable"));
+    command
+        .args([
+            "--exact",
+            "mcp::artifacts::tests::queued_periodic_cleanup_child",
+            "--ignored",
+            "--nocapture",
+        ])
+        .kill_on_drop(true);
+    let output = tokio::time::timeout(Duration::from_secs(15), command.output())
+        .await
+        .expect("isolated cleanup test bound")
+        .expect("child process");
+    assert!(
+        output.status.success(),
+        "isolated cleanup failed:\n{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed"));
+}
+
+#[tokio::test]
+#[ignore = "isolated child invoked by queued_periodic_cleanup_does_not_retain_store"]
+async fn queued_periodic_cleanup_child() {
     use std::sync::Condvar;
     let (_temp, store) = store().await;
     let weak = Arc::downgrade(&store);

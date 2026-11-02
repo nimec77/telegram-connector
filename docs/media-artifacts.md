@@ -123,14 +123,24 @@ was exercised; those remain separate operational checks.
 
 Use a dedicated empty private root: directories are 0700, generated JPEGs and the process
 lock are 0600. Existing permissions are verified without widening them. The server rejects
-symlinked/unsafe ancestry, granting macOS directory ACLs and linked/nonregular entries.
+symlinks at the leaf root and linked/nonregular artifact entries. Safe ancestor aliases
+are canonicalized; physical ancestry must satisfy the ownership, mode and macOS ACL
+rules. Granting macOS directory ACLs and unsafe physical ancestry are refused.
 The private root cannot itself be a shared sticky directory. Only one process can own a
 root; a create-new lock and empty-root requirement prevent cross-process reuse.
 Treat both URIs and paths as sensitive handles; they are not multi-user authentication.
 Hostile mutation by another process with the same user identity is outside this boundary.
 
-TTL is a maximum lifetime, never refreshed by reads. Oldest entries may be evicted
-earlier to admit an entry within byte/entry quotas. Too-large entries do not evict healthy
+TTL is a maximum lifetime, never refreshed by reads. Artifacts in a response being
+assembled are protected from quota eviction through complete tool-result assembly.
+If protected entries leave insufficient byte/entry capacity, the new item reports the
+existing typed `unavailable` cache error; batch items with no delivered image are refunded.
+This temporary capacity failure leaves the store usable. Protection releases after reply
+assembly or cancellation and does not extend TTL: artifacts already expired or known to
+be unavailable at publication become explicit delivery failures.
+
+After reply assembly, oldest entries may be evicted before their TTL to admit later
+requests. No minimum later retention is promised. Too-large entries do not evict healthy
 ones. Failed deletion keeps its quota reservation; unrecoverable storage failures refuse
 further mutations rather than accumulating unbounded orphan files.
 
