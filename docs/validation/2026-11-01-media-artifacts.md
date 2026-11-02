@@ -1,5 +1,13 @@
 # Media artifacts implementation verification — 2026-11-01
 
+**Subsequent local integration — 2026-11-02:** version **0.25.0** was committed and
+fast-forward merged into `master` at `84e170c`. The fresh version-bump gate passed
+995 library tests + 3 doctests, formatting, strict all-target Clippy and warning-free
+rustdoc. The production release build also passed and its binary reports
+`telegram-mcp 0.25.0`. Completed guide/media plans and specs were archived after the merge; their
+accepted content remains in Git history. Earlier sections below record the original
+0.24.1 feature-branch verification. This integration does not push or publish a release.
+
 M2 cached processed-JPEG resources and M3 explicit local file export are implemented on
 `feat/media-artifact-delivery`. This records macOS offline verification of the actual
 connector, following the [preimplementation client investigation](2026-11-01-deepseek-media-compatibility.md).

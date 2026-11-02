@@ -6,18 +6,20 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Current state
 
-- **Optional media artifacts:** M2/M3 are implemented on `feat/media-artifact-delivery`
+- **Optional media artifacts:** M2/M3 are integrated into local `master` as 0.25.0,
   with default inline previews, optional private cached resources/file export and bounded
-  cleanup. DeepSeek Harness 0.2.1-rc.5 installed adapters passed actual connector-fixture
+  cleanup. DeepSeek Harness 0.2.1-rc.5 installed components passed actual connector-fixture
   byte/resource/image checks without model/UI/account execution. Use the permanent
-  [media guide](media-artifacts.md) and [verification report](validation/2026-11-01-media-artifacts.md);
-  Final independent review and scoped fix review passed on 2026-11-02; the final macOS
-  gate passed 995 library tests + 3 doctests. The feature remains local and unmerged;
-  release publication remains separate from the accepted original roadmap.
+  [media guide](media-artifacts.md) and [verification report](validation/2026-11-01-media-artifacts.md).
+  Final independent review and scoped fix review passed on 2026-11-02; the 0.25.0 macOS
+  gate passed 995 library tests + 3 doctests. Completed guide/media plans and specs are
+  archived in Git history at the integrated release revision 84e170c. This local merge
+  does not publish a release or update the remote.
 
 - **All ten original roadmap tasks are implemented, accepted and integrated into
-  master.** Version 0.24.1 is pushed; its changelog includes the media-download regression
-  tests, animation classification fix and private session-parent hardening.
+  master.** Their 0.24.1 acceptance/fix release was pushed; its changelog includes
+  media-download regression tests, the animation classification fix and private
+  session-parent hardening.
   Completed plans/specs are archived in Git history at accepted revision adaaac8.
   All ten numbered tasks have explicit acceptance evidence. Final post-review macOS gate passed
   942 library tests + 3 doctests, strict all-target Clippy, warning-free docs, production
