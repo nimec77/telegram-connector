@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-11-02
+
 ### Added
 
 - Optional bounded private processed-JPEG artifacts, cache-only MCP resource reads and
@@ -22,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add defaulted media delivery/configuration/status DTO fields and the fallible async
   consuming `McpServer::with_media_artifacts` builder; Rust struct-literal consumers
   need the new fields. Declare already-locked getrandom 0.4.3 directly without changing
-  resolved package identities. No package version bump is included.
+  resolved package identities.
 
 ## [0.24.1] - 2026-11-01
 
