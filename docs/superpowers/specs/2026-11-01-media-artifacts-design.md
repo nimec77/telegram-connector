@@ -87,6 +87,16 @@ must not free quota or permit unbounded orphan accumulation; refuse further muta
 after an unrecoverable cleanup/write failure. Reads use strict exact URI/manifest lookup,
 validate current regular single-link ownership/size and bound allocations before reading.
 
+Protect artifacts belonging to a response still being assembled from quota eviction with
+bounded per-response reservations/pins. If no unprotected entry can free the required
+capacity, return the existing safe per-item artifact error instead of reporting a dead
+successful handle. Such transient capacity failure must not poison the store. Hold the
+protection through complete tool-result assembly; release it without blocking the async
+executor. Pins must not extend logical TTL. If an artifact has already expired before
+publication, report an explicit delivery failure, preserve actual indices/counts and the
+existing no-image refund policy. Ordinary eviction/expiry after a completed response is
+still allowed; no minimum later retention or cross-request persistence is promised.
+
 TTL is monotonic and never refreshed by reads. Reject expired entries immediately.
 Run periodic cleanup at most every 60 seconds while the store exists, plus cleanup on
 operations; explain that physical expiry deletion can lag by that interval and worker

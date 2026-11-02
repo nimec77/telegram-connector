@@ -11,7 +11,9 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   cleanup. DeepSeek Harness 0.2.1-rc.5 installed adapters passed actual connector-fixture
   byte/resource/image checks without model/UI/account execution. Use the permanent
   [media guide](media-artifacts.md) and [verification report](validation/2026-11-01-media-artifacts.md);
-  integration/release review remains separate from the accepted original roadmap.
+  Final independent review and scoped fix review passed on 2026-11-02; the final macOS
+  gate passed 995 library tests + 3 doctests. The feature remains local and unmerged;
+  release publication remains separate from the accepted original roadmap.
 
 - **All ten original roadmap tasks are implemented, accepted and integrated into
   master.** Version 0.24.1 is pushed; its changelog includes the media-download regression
@@ -26,7 +28,7 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   [Rust/S1–S6 assessment](validation/2026-11-01-rust-adoption-acceptance.md).
   There are 16 tools, json_v1 plus explicit legacy mode; nightly stays 2026-10-31, rmcp 3.8,
   and direct grammers pins stay 1e31e73cd9797790905bbea82cd75adcbe6f1242 (0.11).
-- **Latest media-test coverage (2026-11-01):** final acceptance reports 82.58%
+- **Pre-artifact media-test coverage baseline (2026-11-01):** final acceptance reports 82.58%
   library lines (9,301/11,263, unfiltered including inline unit code), with the original
   ops_media.rs at 51.62% (143/277), up from the integrated 0.24.0 baseline of 81.71% overall
   and 15.85% (39/246) operations coverage. Cached photo/video fixtures use the actual
@@ -61,7 +63,9 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 - **Media artifacts:** opt-in per-process private empty root, create-new lock, 0700/0600,
   strict opaque URI lookup and no arbitrary-path tool arguments. Default TTL 600s,
-  100 entries/256 MiB; oldest quota eviction may precede TTL. Reads never re-download.
+  100 entries/256 MiB; oldest quota eviction may precede TTL. Current-response pins
+  protect handles through assembly; insufficient capacity or expired/unavailable delivery
+  becomes a typed per-item failure with batch refunds. Reads never re-download.
   Logical expiry is immediate; physical deletion can lag 60s plus worker admission.
   Shutdown shares the original drain deadline; crashes/failed cleanup require inspected
   manual cleanup or a fresh root. Client attachment copies follow client retention.

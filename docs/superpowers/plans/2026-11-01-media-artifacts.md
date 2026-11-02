@@ -65,13 +65,13 @@
 
 **Interfaces:** Consume actual feature configuration and wire contracts. Extend existing mock-backed process fixture to opt into a disposable artifact root without credentials. Installed adapter probe remains in /private/tmp/deepseek-inspect; do not commit third-party bundled code or machine-specific paths as portable test dependencies.
 
-- [ ] Strengthen the existing malformed/missing wire assertions to exact data.code strings and expected numeric codes (-32602 malformed; missing legacy -32002, modern -32602). Cover expired/storage errors in the independent client matrix where naturally reachable; accurately distinguish direct-only oversize/timeout boundary tests from wire coverage.
-- [ ] Add failing independent Python fixture checks for every delivery mode, resource byte equality, exported file bytes, mixed item indices/errors, expiry and modern/legacy cache metadata. Implement fixture opt-in and client checks while keeping default fixture behavior unchanged.
-- [ ] Run actual connector fixture outputs through the installed DeepSeek adapter. Verify M2 canonical bytes plus placeholder projection and M3 read_image({file_path}) durable native attachment; assert text-only-route refusal. Record installed build/revision and distinguish adapter proof from real model/UI execution.
-- [ ] Document setup, modes, private-root/stale-lock ownership, TTL/quota/cleanup, no silent redownloads, processed-preview scope, per-process limits, client attachment persistence and read_image prerequisites. Update Rust API compatibility and the new direct dependency disposition; retain historical acceptance records.
-- [ ] Point README/Codex/memory user-facing links to permanent docs/media-artifacts.md rather than active specs that will be deleted on merge. Update the Rust manual's builder count wording for the new fallible consuming builder (Result is already must-use), preserving historical S6 evidence.
-- [ ] Run full offline macOS quality gate, production release and --version, independent existing/new wire/process clients, dependency policy fixtures and complete policy check; verify metadata/grammers pins and local docs/TOML links.
-- [ ] Obtain independent task review and final whole-branch security/code review, address real findings with regression evidence, commit and report exact results/limits. Keep feature branch local; no version bump/push/publication is included.
+- [x] Strengthen the existing malformed/missing wire assertions to exact data.code strings and expected numeric codes (-32602 malformed; missing legacy -32002, modern -32602). Cover expired/storage errors in the independent client matrix where naturally reachable; accurately distinguish direct-only oversize/timeout boundary tests from wire coverage.
+- [x] Add failing independent Python fixture checks for every delivery mode, resource byte equality, exported file bytes, mixed item indices/errors, expiry and modern/legacy cache metadata. Implement fixture opt-in and client checks while keeping default fixture behavior unchanged.
+- [x] Run actual connector fixture outputs through the installed DeepSeek adapter. Verify M2 canonical bytes plus placeholder projection and M3 read_image({file_path}) durable native attachment; assert text-only-route refusal. Record installed build/revision and distinguish adapter proof from real model/UI execution.
+- [x] Document setup, modes, private-root/stale-lock ownership, TTL/quota/cleanup, no silent redownloads, processed-preview scope, per-process limits, client attachment persistence and read_image prerequisites. Update Rust API compatibility and the new direct dependency disposition; retain historical acceptance records.
+- [x] Point README/Codex/memory user-facing links to permanent docs/media-artifacts.md rather than active specs that will be deleted on merge. Update the Rust manual's builder count wording for the new fallible consuming builder (Result is already must-use), preserving historical S6 evidence.
+- [x] Run full offline macOS quality gate, production release and --version, independent existing/new wire/process clients, dependency policy fixtures and complete policy check; verify metadata/grammers pins and local docs/TOML links.
+- [x] Obtain independent task review and final whole-branch security/code review, address real findings with regression evidence, commit and report exact results/limits. Keep feature branch local; no version bump/push/publication is included.
 
 ## Design and preflight evidence
 
@@ -101,3 +101,21 @@
   Log /private/tmp/media-artifacts-connector-smoke-red.log. The bundled client also
   warns about ignored Rust numeric schema format annotations; record any continuing
   client-side warnings separately from clean Rust gate output.
+
+## Final review closure — 2026-11-02
+
+- Full branch review over 1a53ea0..38e6fc6 identified I1 (same-batch dead handles), I2
+  (parallel held-worker test deadlock) and three factual guide corrections.
+- Fix c811191 protects current responses with nonblocking pins, reports capacity/expiry/
+  store failure honestly, preserves refunds/indices/budgets and public DTO construction,
+  isolates the cleanup regression, and corrects the guides.
+- One scoped independent re-review over 38e6fc6..c811191: I1/I2/M1 all addressed; no new
+  breakage or out-of-scope observation. All implementation and review work is complete.
+- Final macOS gate: 995 library tests + 3 doctests; 8 ignores (6 parent-invoked children,
+  2 optional existing measurements), strict Clippy/fmt/rustdoc, release 0.24.1, Python
+  clients and 25 policy fixtures / 340 external packages pass.
+- Root reran the installed DeepSeek client against the rebuilt fixed fixture: resource,
+  file, native preview and durable image bytes equal; zero model calls; 46 external
+  numeric-format warnings retained in the new November 2 transcript.
+- This feature branch is committed locally, without merge/push/version bump/publication.
+  Plans/specs stay active until their change merges; Git history then becomes the archive.

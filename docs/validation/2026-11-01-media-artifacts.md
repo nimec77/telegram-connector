@@ -4,7 +4,7 @@ M2 cached processed-JPEG resources and M3 explicit local file export are impleme
 `feat/media-artifact-delivery`. This records macOS offline verification of the actual
 connector, following the [preimplementation client investigation](2026-11-01-deepseek-media-compatibility.md).
 The permanent [media guide](../media-artifacts.md) describes activation and operational
-limits. Final independent task/whole-branch review and integration are tracked separately.
+limits. Final independent review closure is recorded below; integration remains separate.
 No version bump, push or publication is included.
 
 ## Environment and scope
@@ -205,3 +205,53 @@ New exact command logs and the detailed RED/GREEN report are retained in the loc
 The new installed-adapter transcript is committed separately at the link above. Final
 scoped re-review and integration remain root-owned; no push, merge, version bump, user/client
 configuration edit, live call or Linux setup is part of this fix wave.
+
+## Independent review closure — 2026-11-02
+
+The full branch review covered `1a53ea0..38e6fc6`, including the preceding current-guide
+cleanup. It found no Critical or production security-boundary issue, but identified
+unusable same-batch artifact handles and a parallel-test circular wait, plus three
+factual guide corrections. Fix `c811191df63fd05f0ba3b4c630854dde506b584b` addressed
+all findings. A fresh scoped re-review of `38e6fc6..c811191` judged I1, I2 and M1
+**ADDRESSED**, with no new breakage or out-of-scope observations.
+
+The root inspected the final 995-library/3-doctest, strict Clippy, rustdoc, release and
+policy evidence and independently executed the corrected fixture through installed
+DeepSeek components. The original dated gates/transcript remain historical evidence;
+the new [November 2 transcript](2026-11-02-media-artifacts-deepseek.txt) records the
+post-fix success. No live chosen-model/UI/account/Telegram or non-macOS execution is
+claimed. The feature remains on its local branch; no merge, version bump, push or
+publication occurred. Subsequent review closeout changes only Markdown.
+
+Implementation decisions and their tradeoffs:
+
+1. Used the clean existing checkout on a feature branch, adding no worktree; unrelated
+   simultaneous work would require renewed isolation. Earlier documentation branches remain.
+2. Retained inline previews in every delivery mode because this DeepSeek resource reader
+   does not project blobs as images; the initial image payload therefore remains.
+3. Refuse nonempty/stale roots without automatic deletion; forced failure/exit can require
+   inspected cleanup or a fresh private root.
+4. Promoted the already-locked getrandom 0.4.3 identity for safe OS randomness; this adds
+   one direct declaration without expanding the resolved package graph.
+5. Use exact `telegram-media://artifact/<48 lowercase hex>` identifiers; alternate URI
+   spellings are rejected rather than normalized.
+6. Cache reads have five seconds including admission; slow reads fail while started work
+   retains its worker ownership.
+7. Explicit closure shares the original shutdown deadline; zero/exhausted budgets can
+   leave the documented bounded stale-root state.
+8. Corrected terminal root-symlink spellings during integration, preserving physical
+   parent traversal; this required a narrow store-helper change and regressions.
+9. Preserved SDK protocol-specific numeric error mapping with stable safe discriminators;
+   clients use `error.data.code` where modern numeric codes converge.
+10. Protect current-response artifacts until assembly and fail insufficient/expired
+    delivery explicitly; temporary per-item capacity failures replace unusable success.
+11. Corrected factual resource/privacy/type documentation without widening public Rust
+    visibility or claiming support for an inaccessible type.
+
+The review explicitly left hostile same-UID races outside the established trust boundary,
+actual model/UI/account/client retention and other-platform acceptance unverified, and full
+original attachment/video/audio/document downloading outside this feature. Logical expiry,
+cleanup lag, cancellation ownership and exhausted-grace leftovers were reviewed within
+scope and match the documented behavior. Detailed session logs/review packages were
+inspected in the ignored plan workspace; the checked-in reports/transcripts and commands
+above are the durable record.
