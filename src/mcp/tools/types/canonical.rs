@@ -229,6 +229,8 @@ impl TryFrom<types::ChannelStats> for StatsData {
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct StatusData {
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub sending: Option<responses::SendingStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub media_artifacts: Option<responses::MediaArtifactsStatus>,
     pub telegram_connected: bool,
     pub rate_limiter: RateLimiterStatus,
@@ -248,6 +250,7 @@ impl TryFrom<responses::StatusResponse> for StatusData {
     type Error = Error;
     fn try_from(value: responses::StatusResponse) -> Result<Self, Error> {
         Ok(Self {
+            sending: value.sending,
             media_artifacts: value.media_artifacts,
             telegram_connected: value.telegram_connected,
             rate_limiter: value.rate_limiter,

@@ -68,10 +68,6 @@ impl SendDeadline {
         Instant::now() >= self.at
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "Send stages integrated in subsequent tasks")
-    )]
     pub(crate) async fn run<T>(
         self,
         stage: SendStage,

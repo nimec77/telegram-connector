@@ -288,12 +288,54 @@ impl TryFrom<SentMessage> for SendReceipt {
     type Error = SendFailure;
     fn try_from(value: SentMessage) -> Result<Self, Self::Error> {
         let wire_id = |id: MessageId| id.as_i32().ok_or_else(SendFailure::unknown);
-        if !(1..=i64::from(i32::MAX)).contains(&value.date.timestamp())
-            || value
-                .message_link
-                .as_ref()
-                .is_some_and(|link| link.len() > 256)
-        {
+        if !(1..=i64::from(i32::MAX)).contains(&value.date.timestamp()) {
+            return Err(SendFailure::unknown());
+        }
+        if let Some(link) = &value.message_link {
+            if value.recipient.namespace() != PeerNamespace::Channel
+                || link.len() > 128
+                || !link.starts_with("https://t.me/")
+                || !link
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"/:._-".contains(&b))
+            {
+                return Err(SendFailure::unknown());
+            }
+            let (channel, id) =
+                crate::link::parse_telegram_link(link).map_err(|_| SendFailure::unknown())?;
+            if id != value.message_id
+                || match channel {
+                    crate::link::ChannelRef::Id(id) => id.get() != value.recipient.id(),
+                    crate::link::ChannelRef::Username(name) => !Username::is_valid_shape(&name),
+                }
+            {
+                return Err(SendFailure::unknown());
+            }
+        }
+        let valid_media = match (value.content_kind, &value.media) {
+            (ContentKind::Text, None) => true,
+            (ContentKind::Image, Some(m)) => {
+                m.size_bytes > 0
+                    && m.size_bytes <= 10_485_760
+                    && matches!(m.mime_type.as_str(), "image/jpeg" | "image/png")
+            }
+            (ContentKind::Audio, Some(m)) => {
+                m.size_bytes > 0
+                    && m.size_bytes <= 104_857_600
+                    && matches!(
+                        m.mime_type.as_str(),
+                        "audio/mpeg" | "audio/mp4" | "audio/aac"
+                    )
+            }
+            (ContentKind::Voice, Some(m)) => {
+                m.size_bytes > 0 && m.size_bytes <= 104_857_600 && m.mime_type == "audio/ogg"
+            }
+            (ContentKind::Video, Some(m)) => {
+                m.size_bytes > 0 && m.size_bytes <= 104_857_600 && m.mime_type == "video/mp4"
+            }
+            _ => false,
+        };
+        if !valid_media {
             return Err(SendFailure::unknown());
         }
         Ok(Self {

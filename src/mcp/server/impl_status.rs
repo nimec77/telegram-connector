@@ -59,6 +59,11 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             None
         };
         let response = StatusResponse {
+            sending: if self.output_format == crate::config::OutputFormat::JsonV1 {
+                Some(self.cached_sending_status())
+            } else {
+                None
+            },
             media_artifacts,
             telegram_connected: account.authorized,
             rate_limiter: RateLimiterStatus {

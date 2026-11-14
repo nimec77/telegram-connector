@@ -12,6 +12,9 @@ use serde::{Deserialize, Serialize};
 /// Response for check_mcp_status tool
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct StatusResponse {
+    /// Effective outgoing availability and limits; absent from legacy output.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sending: Option<SendingStatus>,
     /// Optional private cache diagnostics, omitted when disabled.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub media_artifacts: Option<MediaArtifactsStatus>,
@@ -56,6 +59,21 @@ pub struct StatusResponse {
         description = "Whether the connected account has Telegram Premium (null if unknown)"
     )]
     pub premium: Option<bool>,
+}
+
+/// Cached outgoing policy without filesystem paths or Telegram lookups.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SendingStatus {
+    pub enabled: bool,
+    pub media_enabled: bool,
+    pub max_image_bytes: u64,
+    pub max_media_bytes: u64,
+    pub max_concurrent_media: usize,
+    pub max_staging_bytes: u64,
+    pub send_secs: u64,
+    pub upload_send_secs: u64,
+    pub send_message_cost: u32,
+    pub send_media_cost: u32,
 }
 
 /// Private cache settings and reserved usage; paths and handles are never enumerated.

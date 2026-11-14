@@ -24,3 +24,9 @@ or performed by these checks.
 - Deleted/migrated peers, missing authority, inaccessible broadcast metadata and incomplete/deleted/closed/hidden or wrong-peer topic states are rejected before subsequent stages.
 - [Telegram forum semantics](https://core.telegram.org/api/forum) identify General as topic 1 without an ordinary message root. Non-General replies retain the selected top thread; direct topic-root sends use the root itself. Offline TL fixtures check both forms and cross-topic/cross-peer refusal.
 - Community containers and channel direct-message monoforums are refused; the initial namespace/options contract does not supply their separate routing identities. No live topic placement was tested.
+
+## Canonical text route
+
+- Actual framed modern and legacy-handshake requests send through the canonical contract. Disabled catalogs retain 16 tools; enabled catalogs expose 18 with strict self-contained write input schemas and non-idempotent annotations.
+- Offline tests prove one charge before the client seam, no refunds, no charge for local/budget refusal, matching JSON text/structured receipts, scoped upstream diagnostic suppression and cached path-free status.
+- Forced serializer failure and invalid receipt metadata produce nonretryable unknown delivery; duplicate recovery keys reject before a second send. Full macOS locked offline gate passed after integration. Media remains a pre-dispatch unavailable stub until the staging/upload tasks land.

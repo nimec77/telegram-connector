@@ -10,6 +10,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             .await
             .map_err(|error| error.to_string())?;
         value.media_artifacts = None;
+        value.sending = None;
         tools::json_response(&value)
     }
     pub(super) async fn get_last_responses_impl(

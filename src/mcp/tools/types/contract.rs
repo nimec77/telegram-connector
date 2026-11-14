@@ -419,6 +419,45 @@ pub(crate) fn output_schema<T: WireData>() -> Arc<JsonObject> {
     Arc::new(schema)
 }
 
+pub(crate) fn send_output_schema() -> Arc<JsonObject> {
+    let mut schema = (*rmcp::handler::server::common::schema_for_output::<
+        ToolResponse<super::sending::SendReceipt>,
+    >())
+    .clone();
+    schema.insert("type".into(), serde_json::json!("object"));
+    Arc::new(schema)
+}
+
+pub(crate) fn render_send(
+    result: Result<super::sending::SendReceipt, crate::telegram::types::sending::SendFailure>,
+) -> CallToolResult {
+    render_send_data(result)
+}
+
+pub(crate) fn render_send_data<T: Serialize + JsonSchema>(
+    result: Result<T, crate::telegram::types::sending::SendFailure>,
+) -> CallToolResult {
+    let response = match result {
+        Ok(data) => ToolResponse::success(data),
+        Err(error) => ToolResponse::failure(error.into()),
+    };
+    tool_result(response).unwrap_or_else(|_| CallToolResult::structured_error(serde_json::json!({
+        "schema_version":"1", "data":null, "error":{"code":"delivery_unknown",
+        "message":"Telegram send failed (delivery_unknown)","retryable":false,"delivery_state":"unknown"}
+    })))
+}
+
+pub(crate) fn render_send_early(error: Error) -> CallToolResult {
+    let mut error: ToolError = error.into();
+    error.delivery_state = Some(crate::telegram::types::sending::FailureDeliveryState::NotSent);
+    tool_result(ToolResponse::<super::sending::SendReceipt>::failure(error)).unwrap_or_else(|_| {
+        render_send(Err(crate::telegram::types::sending::SendFailure::not_sent(
+            crate::telegram::types::sending::SendFailureKind::InternalError,
+            None,
+        )))
+    })
+}
+
 /// Add the shared wire-only recovery argument without changing Rust request APIs.
 pub(crate) fn recoverable_schema(schema: Arc<JsonObject>) -> Arc<JsonObject> {
     let mut schema = (*schema).clone();

@@ -288,6 +288,8 @@ mod progress;
 
 #[path = "protocol_contract.rs"]
 mod contract;
+#[path = "sending_text.rs"]
+mod sending_text;
 
 #[tokio::test]
 async fn artifact_resources_wire_capability_lists_reads_and_safe_errors() {
