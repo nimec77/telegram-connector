@@ -156,7 +156,12 @@ impl TelegramClient {
         staged: &Arc<StagedUpload>,
         deadline: SendDeadline,
     ) -> Result<Uploaded, SendFailure> {
-        let pool = UploadPool::start(Arc::clone(&self.session), self.api_id, Arc::clone(staged));
+        let pool = UploadPool::start(
+            Arc::clone(&self.session),
+            self.api_id,
+            Arc::clone(staged),
+            deadline,
+        )?;
         let result = deadline
             .run(
                 SendStage::Upload,

@@ -210,7 +210,9 @@ uncertain send. There is no durable outbox or application-level resend queue.
 Cancellation stops future stages, but cannot retract already enqueued requests or started
 filesystem work. MCP cancellation/shutdown may suppress a response entirely. Started jobs,
 queued upload buffers and their results retain admission until they actually finish.
-Capacity can therefore remain occupied after a cancelled call. Staging deletion is owned
+Upload transport supervision stops stalled initialization on cancellation or the original
+operation deadline; all vendor tasks/queued buffers are destroyed before admission can
+be reused. Capacity can remain occupied while teardown finishes. Staging deletion is owned
 and asynchronous; cleanup failure retains quota and refuses conflicting reuse. Shutdown
 uses the original drain deadline, not a second grace period.
 

@@ -293,8 +293,9 @@ stdio serving close it under the original runtime drain deadline.
 snapshot constructor. A snapshot exposes bounded submitted size/MIME/name facts and one
 verified AsyncRead; owned filesystem jobs and completed buffers retain its lease. Public
 `PreparedMediaSend` fields are revalidated before client RPCs. Uploads use temporary public
-sender pools sharing the authenticated session; retirement retains admission until their
-queued binary requests are gone. Final sends remain one-shot raw submissions on the
+sender pools sharing the authenticated session, each supervised by an owned current-thread
+runtime. Caller cancellation or the original operation deadline tears down the complete
+vendor task set before admission releases, including stalled connection initialization. Final sends remain one-shot raw submissions on the
 original pool, without changing read retry policy.
 
 `SendFailure` is distinct from existing `Error`: unknown delivery fixes the category/state
