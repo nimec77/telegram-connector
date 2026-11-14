@@ -14,6 +14,8 @@ pub(crate) async fn stalled_client() -> (TelegramClient, impl Send, tempfile::Te
         session,
         session_path: path,
         timeouts: TimeoutConfig {
+            send_secs: 30,
+            upload_send_secs: 120,
             resolve_secs: 2,
             history_secs: 5,
             search_secs: 5,

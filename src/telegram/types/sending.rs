@@ -3,7 +3,7 @@
 use crate::telegram::types::{MessageId, PeerNamespace, Username};
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// A positive recipient ID qualified by its Telegram namespace.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,11 +34,86 @@ impl QualifiedRecipient {
 }
 
 /// Namespaces accepted for public-username resolution.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
+#[schemars(inline)]
 pub enum UsernameNamespace {
     User,
     Channel,
+}
+
+impl SendOptions {
+    /// Validate recipient shape and positive wire-sized thread IDs without RPCs.
+    ///
+    /// # Errors
+    /// Rejects malformed usernames and message/topic IDs outside Telegram's i32 range.
+    pub fn validate(&self) -> Result<(), SendFailure> {
+        if let RecipientSpec::Username { username, .. } = &self.recipient
+            && !Username::is_valid_shape(username.as_str())
+        {
+            return Err(SendFailure::not_sent(SendFailureKind::InvalidInput, None));
+        }
+        if [self.reply_to_message_id, self.topic_id]
+            .into_iter()
+            .flatten()
+            .any(|id| id.as_i32().is_none())
+        {
+            return Err(SendFailure::not_sent(SendFailureKind::InvalidInput, None));
+        }
+        Ok(())
+    }
+}
+
+impl SendText {
+    /// Preserve text verbatim while rejecting blank/overlong content and bad options.
+    ///
+    /// # Errors
+    /// Rejects blank text, more than 4096 UTF-16 units or invalid local options.
+    pub fn validate(&self) -> Result<(), SendFailure> {
+        self.options.validate()?;
+        if self.text.trim().is_empty() || self.text.encode_utf16().count() > 4096 {
+            return Err(SendFailure::not_sent(SendFailureKind::InvalidInput, None));
+        }
+        Ok(())
+    }
+}
+
+impl SendMediaKind {
+    /// Validate explicit caller metadata; does not inspect codecs or create files.
+    ///
+    /// # Errors
+    /// Rejects nonpositive/nonfinite durations, invalid dimensions and overlong tags.
+    pub fn validate(&self) -> Result<(), SendFailure> {
+        let valid = match self {
+            Self::Image => true,
+            Self::Audio {
+                duration_seconds,
+                title,
+                performer,
+            } => {
+                *duration_seconds > 0
+                    && [title, performer]
+                        .into_iter()
+                        .flatten()
+                        .all(|s| s.encode_utf16().count() <= 256)
+            }
+            Self::Voice { duration_seconds } => *duration_seconds > 0,
+            Self::Video {
+                duration_seconds,
+                width,
+                height,
+            } => {
+                duration_seconds.is_finite()
+                    && *duration_seconds > 0.0
+                    && (1..=8192).contains(width)
+                    && (1..=8192).contains(height)
+            }
+        };
+        if !valid {
+            return Err(SendFailure::not_sent(SendFailureKind::InvalidInput, None));
+        }
+        Ok(())
+    }
 }
 
 /// A locally validated reference, resolved exactly once per send.

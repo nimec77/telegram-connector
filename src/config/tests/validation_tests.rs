@@ -111,6 +111,8 @@ fn test_secret_expose_returns_actual_value() {
 #[test]
 fn test_timeout_config_validate_rejects_zero_resolve() {
     let cfg = TimeoutConfig {
+        send_secs: 30,
+        upload_send_secs: 120,
         resolve_secs: 0,
         history_secs: 60,
         search_secs: 120,
@@ -128,6 +130,8 @@ fn test_timeout_config_validate_rejects_zero_resolve() {
 #[test]
 fn test_timeout_config_validate_rejects_zero_history() {
     let cfg = TimeoutConfig {
+        send_secs: 30,
+        upload_send_secs: 120,
         resolve_secs: 30,
         history_secs: 0,
         search_secs: 120,
@@ -142,6 +146,8 @@ fn test_timeout_config_validate_rejects_zero_history() {
 #[test]
 fn test_timeout_config_validate_rejects_zero_search() {
     let cfg = TimeoutConfig {
+        send_secs: 30,
+        upload_send_secs: 120,
         resolve_secs: 30,
         history_secs: 60,
         search_secs: 0,
@@ -239,6 +245,8 @@ fn below_floor_media_batch_payload_cap_is_rejected() {
 #[test]
 fn a_media_cost_above_the_bucket_capacity_is_rejected() {
     let config = RateLimitConfig {
+        send_message_cost: 1,
+        send_media_cost: 3,
         max_tokens: 10,
         refill_rate: 2.0,
         media_download_cost: 11,
@@ -256,6 +264,8 @@ fn a_media_cost_above_the_bucket_capacity_is_rejected() {
 #[test]
 fn a_transcription_cost_above_the_bucket_capacity_is_rejected() {
     let config = RateLimitConfig {
+        send_message_cost: 1,
+        send_media_cost: 3,
         max_tokens: 10,
         refill_rate: 2.0,
         media_download_cost: 3,
@@ -275,6 +285,8 @@ fn a_non_positive_refill_rate_is_rejected() {
     // Each is a permanent lockout, not a tight limit.
     for rate in [0.0, -1.0, f64::NAN] {
         let config = RateLimitConfig {
+            send_message_cost: 1,
+            send_media_cost: 3,
             max_tokens: 10,
             refill_rate: rate,
             media_download_cost: 3,
@@ -294,6 +306,8 @@ fn a_non_positive_refill_rate_is_rejected() {
 fn costs_equal_to_capacity_are_accepted() {
     // Exactly-capacity is satisfiable from a full bucket, so it is legal.
     let config = RateLimitConfig {
+        send_message_cost: 1,
+        send_media_cost: 3,
         max_tokens: 10,
         refill_rate: 2.0,
         media_download_cost: 10,

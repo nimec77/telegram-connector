@@ -27,10 +27,7 @@ impl Config {
     pub fn load_from(config_path: Option<&std::path::Path>) -> anyhow::Result<Self> {
         use anyhow::Context;
 
-        let path = match config_path {
-            Some(p) => p.to_path_buf(),
-            None => Self::resolve_config_path()?,
-        };
+        let path = Self::selected_path(config_path)?;
 
         let content = std::fs::read_to_string(&path)
             .context(format!("Failed to read config: {}", path.display()))?;
@@ -92,7 +89,28 @@ impl Config {
             .media_artifacts
             .validate()
             .context("invalid media_artifacts configuration")?;
+        config
+            .sending
+            .validate(config.server.output_format)
+            .context("invalid sending configuration")?;
+        if config.sending.enabled {
+            config
+                .rate_limiting
+                .validate_sending_costs()
+                .context("invalid sending costs")?;
+        }
         Ok(config)
+    }
+
+    /// Resolve the exact configuration file selection without opening it.
+    ///
+    /// # Errors
+    /// Returns an error if platform configuration directories are unavailable.
+    pub fn selected_path(explicit: Option<&std::path::Path>) -> anyhow::Result<PathBuf> {
+        explicit
+            .map(std::path::Path::to_path_buf)
+            .map(Ok)
+            .unwrap_or_else(Self::resolve_config_path)
     }
 
     /// Replace only the in-memory session path when an override is supplied.

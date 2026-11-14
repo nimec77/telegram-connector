@@ -49,6 +49,16 @@ impl<T> ToolResponse<T> {
 #[derive(Debug, Clone, Copy, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCode {
+    SendingDisabled,
+    RecipientNotFound,
+    RecipientMismatch,
+    SendForbidden,
+    InvalidReplyTarget,
+    UploadSourceInvalid,
+    UnsupportedMedia,
+    UploadFailed,
+    SendCapacityReached,
+    DeliveryUnknown,
     DuplicateRecoveryKey,
     RecoveryCapacityReached,
     ResponsePending,
@@ -81,6 +91,8 @@ pub enum ErrorCode {
 /// Safe client-facing failure; raw provider payloads are never serialized here.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct ToolError {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delivery_state: Option<crate::telegram::types::sending::FailureDeliveryState>,
     pub code: ErrorCode,
     pub message: String,
     pub retryable: bool,
@@ -267,10 +279,44 @@ impl From<Error> for ToolError {
             ),
         };
         Self {
+            delivery_state: None,
             code,
             message: message.to_string(),
             retryable,
             retry_after_seconds,
+        }
+    }
+}
+
+impl From<crate::telegram::types::sending::SendFailure> for ToolError {
+    fn from(error: crate::telegram::types::sending::SendFailure) -> Self {
+        use crate::telegram::types::sending::SendFailureKind as Kind;
+        let code = match error.kind() {
+            Kind::SendingDisabled => ErrorCode::SendingDisabled,
+            Kind::RecipientNotFound => ErrorCode::RecipientNotFound,
+            Kind::RecipientMismatch => ErrorCode::RecipientMismatch,
+            Kind::SendForbidden => ErrorCode::SendForbidden,
+            Kind::InvalidReplyTarget => ErrorCode::InvalidReplyTarget,
+            Kind::UploadSourceInvalid => ErrorCode::UploadSourceInvalid,
+            Kind::UnsupportedMedia => ErrorCode::UnsupportedMedia,
+            Kind::UploadFailed => ErrorCode::UploadFailed,
+            Kind::SendCapacityReached => ErrorCode::SendCapacityReached,
+            Kind::DeliveryUnknown => ErrorCode::DeliveryUnknown,
+            Kind::InvalidInput => ErrorCode::InvalidInput,
+            Kind::MediaTooLarge => ErrorCode::MediaTooLarge,
+            Kind::RateLimited => ErrorCode::RateLimited,
+            Kind::Unauthenticated => ErrorCode::Unauthenticated,
+            Kind::Timeout => ErrorCode::Timeout,
+            Kind::ResponseTooLarge => ErrorCode::ResponseTooLarge,
+            Kind::Unavailable => ErrorCode::Unavailable,
+            Kind::InternalError => ErrorCode::InternalError,
+        };
+        Self {
+            code,
+            message: error.to_string(),
+            retryable: error.retryable(),
+            retry_after_seconds: error.retry_after_seconds(),
+            delivery_state: Some(error.delivery_state()),
         }
     }
 }

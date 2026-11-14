@@ -13,6 +13,7 @@ use std::fmt;
 /// Neutral Telegram peer namespace. A bare numeric ID is unique only within it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
+#[schemars(inline)]
 pub enum PeerNamespace {
     /// Individual account, excluded from channel/group resolution.
     User,

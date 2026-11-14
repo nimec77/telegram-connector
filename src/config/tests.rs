@@ -39,6 +39,7 @@ fn assert_child_success(command: &mut std::process::Command) {
 
 fn create_test_config(api_id: i32, api_hash: Option<&str>, phone_number: Option<&str>) -> Config {
     Config {
+        sending: Default::default(),
         media_artifacts: Default::default(),
         telegram: TelegramConfig {
             api_id,
@@ -56,6 +57,8 @@ fn create_test_config(api_id: i32, api_hash: Option<&str>, phone_number: Option<
             deadline_seconds: 20,
         },
         rate_limiting: RateLimitConfig {
+            send_message_cost: 1,
+            send_media_cost: 3,
             max_tokens: 50,
             refill_rate: 2.0,
             media_download_cost: default_media_download_cost(),

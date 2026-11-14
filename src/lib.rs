@@ -75,6 +75,7 @@ pub mod link;
 pub mod logging;
 pub mod mcp;
 pub mod rate_limiter;
+pub mod sending;
 pub mod telegram;
 
 // Test helpers (only compiled in test builds)
