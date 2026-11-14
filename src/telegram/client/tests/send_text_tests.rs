@@ -45,6 +45,19 @@ async fn sending_text_request_preserves_content_and_omits_all_unrequested_mutati
     assert!(r.entities.is_none());
     assert!(r.rich_message.is_none());
     assert!(r.reply_markup.is_none());
+    for (preview, silent) in [(false, false), (false, true), (true, false), (true, true)] {
+        let mut input = input.clone();
+        input.link_preview = preview;
+        input.options.silent = silent;
+        let request = prepare_text_request(
+            &input,
+            &recipient,
+            &ValidatedTargets { reply_to: None },
+            739,
+        );
+        assert_eq!(request.no_webpage, !preview);
+        assert_eq!(request.silent, silent);
+    }
 }
 #[derive(Clone)]
 struct Capture(Arc<Mutex<Vec<u8>>>);

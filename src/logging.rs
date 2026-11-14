@@ -44,6 +44,7 @@ pub fn init(config: &LoggingConfig) -> anyhow::Result<()> {
     // Errors that are not double-init never reach here: `build_file_layer`
     // propagates through `?` above.
     if let Err(error) = tracing_subscriber::registry()
+        .with(tracing_subscriber::filter::filter_fn(safe_dependency_event))
         .with(filter)
         .with(stderr_layer)
         .with(file_layer)
@@ -54,6 +55,14 @@ pub fn init(config: &LoggingConfig) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn safe_dependency_event(metadata: &tracing::Metadata<'_>) -> bool {
+    // SDK request/response diagnostics and MTProto worker failures may contain
+    // bodies, paths or raw provider payloads. This gate also covers spawned
+    // workers and cannot be overridden by a more-specific RUST_LOG directive.
+    let target = metadata.target();
+    !target.starts_with("grammers_") && target != "rmcp" && !target.starts_with("rmcp::")
 }
 
 /// Build stderr layer with configured format

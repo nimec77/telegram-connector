@@ -21,7 +21,7 @@ async fn main() -> anyhow::Result<()> {
     config.server.validate()?;
     let limiter = Arc::new(RateLimiter::new(&config.rate_limiting));
     let server = McpServer::new(
-        Arc::new(offline_client::OfflineClient { media: false }),
+        Arc::new(offline_client::OfflineClient::new(false)),
         Arc::clone(&limiter),
     )
     .with_output_format(config.server.output_format)

@@ -291,6 +291,16 @@ mod contract;
 #[path = "sending_media.rs"]
 #[cfg(unix)]
 mod sending_media;
+#[cfg(unix)]
+#[path = "sending_privacy.rs"]
+mod sending_privacy;
+#[path = "sending_protocol.rs"]
+mod sending_protocol;
+#[path = "sending_recovery.rs"]
+mod sending_recovery;
+#[cfg(unix)]
+#[path = "sending_shutdown.rs"]
+mod sending_shutdown;
 #[path = "sending_text.rs"]
 mod sending_text;
 

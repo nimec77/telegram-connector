@@ -441,10 +441,12 @@ pub(crate) fn render_send_data<T: Serialize + JsonSchema>(
         Ok(data) => ToolResponse::success(data),
         Err(error) => ToolResponse::failure(error.into()),
     };
-    tool_result(response).unwrap_or_else(|_| CallToolResult::structured_error(serde_json::json!({
+    tool_result(response).unwrap_or_else(|_| {
+        tracing::warn!(stage="receipt",category="delivery_unknown","Send receipt serialization failed");
+        CallToolResult::structured_error(serde_json::json!({
         "schema_version":"1", "data":null, "error":{"code":"delivery_unknown",
         "message":"Telegram send failed (delivery_unknown)","retryable":false,"delivery_state":"unknown"}
-    })))
+    }))})
 }
 
 pub(crate) fn render_send_early(error: Error) -> CallToolResult {

@@ -69,6 +69,8 @@
 //! repository. Runtime shutdown and bootstrap limits: `docs/stdio-runtime.md`.
 
 pub mod cli;
+#[cfg(test)]
+extern crate self as telegram_connector;
 pub mod config;
 pub mod error;
 pub mod link;

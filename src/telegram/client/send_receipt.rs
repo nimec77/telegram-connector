@@ -77,9 +77,52 @@ fn matched_message(
         if message.date <= 0 || date.is_some_and(|date| date != message.date) {
             return Err(SendFailure::unknown());
         }
+        if !matches_options(message, expected) {
+            return Err(SendFailure::unknown());
+        }
         date = Some(message.date);
     }
     Ok((id, date.ok_or_else(SendFailure::unknown)?))
+}
+
+fn matches_options(message: &tl::types::Message, expected: &ExpectedSend) -> bool {
+    let header = match &message.reply_to {
+        None => None,
+        Some(tl::enums::MessageReplyHeader::Header(h)) => Some(h),
+        Some(_) => return false,
+    };
+    if header
+        .and_then(|h| h.reply_to_peer_id.as_ref())
+        .is_some_and(|peer| peer_identity(peer) != Some(expected.recipient))
+    {
+        return false;
+    }
+    let actual_reply = header.and_then(|h| h.reply_to_msg_id);
+    if let Some(reply) = expected.reply_to_message_id {
+        if actual_reply != reply.as_i32() {
+            return false;
+        }
+    } else if actual_reply.is_some_and(|id| {
+        expected
+            .topic_id
+            .and_then(|t| t.as_i32())
+            .filter(|t| *t != 1)
+            != Some(id)
+    }) {
+        return false;
+    }
+    let actual_topic = if let Some(h) = header.filter(|h| h.forum_topic) {
+        let Some(topic) = h.reply_to_top_id.or(h.reply_to_msg_id).filter(|id| *id > 1) else {
+            return false;
+        };
+        Some(topic)
+    } else {
+        None
+    };
+    match expected.topic_id {
+        Some(topic) => actual_topic.or(Some(1)) == topic.as_i32(),
+        None => actual_topic.is_none(),
+    }
 }
 
 pub(super) fn peer_identity(peer: &tl::enums::Peer) -> Option<QualifiedRecipient> {

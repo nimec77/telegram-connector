@@ -73,6 +73,14 @@ async fn application() -> anyhow::Result<()> {
                     config.media_artifacts.root = Some(value.into());
                 }
                 "--artifact-ttl-seconds" => config.media_artifacts.ttl_seconds = value.parse()?,
+                "--sending-enabled" => config.sending.enabled = value.parse()?,
+                "--upload-root" => {
+                    config
+                        .sending
+                        .upload_roots
+                        .insert("outgoing".into(), value.into());
+                }
+                "--staging-root" => config.sending.staging_root = Some(value.into()),
                 _ => anyhow::bail!("unknown fixture option"),
             }
         }
@@ -81,10 +89,18 @@ async fn application() -> anyhow::Result<()> {
             "fixture artifacts require an explicit root"
         );
         let server = telegram_connector::mcp::McpServer::new(
-            Arc::new(offline_client::OfflineClient { media: true }),
+            Arc::new(offline_client::OfflineClient::new(true)),
             Arc::new(telegram_connector::RateLimiter::new(&config.rate_limiting)),
         )
+        .with_output_format(config.server.output_format)
         .with_media_artifacts(&config.media_artifacts)
+        .await?
+        .with_sending(
+            telegram_connector::sending::SendingRuntimeConfig::try_from_config(
+                &config,
+                &std::env::temp_dir().join("offline-mcp-fixture.toml"),
+            )?,
+        )
         .await?;
         return server
             .run_io(

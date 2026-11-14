@@ -315,6 +315,133 @@ fn sending_transport_generates_nonzero_random_ids() {
     }
 }
 
+#[test]
+fn sending_protocol_full_ack_must_match_requested_reply_and_forum_thread() {
+    use crate::telegram::types::MessageId;
+    for (wanted_topic, wanted_reply, actual_topic, actual_reply, valid) in [
+        (Some(50), Some(60), Some(50), Some(60), true),
+        (Some(50), Some(60), Some(51), Some(60), false),
+        (Some(50), Some(60), Some(50), Some(61), false),
+        (Some(1), Some(60), None, Some(60), true),
+        (Some(1), Some(60), Some(50), Some(60), false),
+        (Some(50), None, Some(50), Some(50), true),
+        (None, None, Some(50), Some(50), false),
+        (None, None, None, Some(60), false),
+        (Some(1), None, None, Some(60), false),
+        (Some(50), None, Some(50), Some(60), false),
+    ] {
+        let mut expected = expected();
+        expected.topic_id = wanted_topic.map(|id| MessageId::new(id).expect("topic"));
+        expected.reply_to_message_id = wanted_reply.map(|id| MessageId::new(id).expect("reply"));
+        let mut raw = message(42, 1_700_000_000, PeerNamespace::Channel);
+        if let tl::enums::Message::Message(m) = &mut raw {
+            m.reply_to = Some(
+                tl::types::MessageReplyHeader {
+                    reply_to_scheduled: false,
+                    forum_topic: actual_topic.is_some(),
+                    quote: false,
+                    reply_to_ephemeral: false,
+                    reply_to_msg_id: actual_reply,
+                    reply_to_peer_id: None,
+                    reply_from: None,
+                    reply_media: None,
+                    reply_to_top_id: actual_topic,
+                    quote_text: None,
+                    quote_entities: None,
+                    quote_offset: None,
+                    todo_item_id: None,
+                    poll_option: None,
+                    quote_rich: None,
+                }
+                .into(),
+            );
+        }
+        let result = map_ack(
+            full(
+                vec![
+                    mapping(739, 42),
+                    tl::types::UpdateNewChannelMessage {
+                        message: raw,
+                        pts: 1,
+                        pts_count: 1,
+                    }
+                    .into(),
+                ],
+                false,
+            ),
+            &expected,
+        );
+        assert_eq!(
+            result.is_ok(),
+            valid,
+            "requested {wanted_topic:?}/{wanted_reply:?}, returned {actual_topic:?}/{actual_reply:?}"
+        );
+        if !valid {
+            assert_eq!(
+                result.expect_err("mismatch").kind(),
+                SendFailureKind::DeliveryUnknown
+            );
+        }
+    }
+}
+
+#[test]
+fn sending_protocol_incomplete_forum_header_cannot_be_inferred_as_general() {
+    use crate::telegram::types::MessageId;
+    let mut expected = expected();
+    expected.topic_id = Some(MessageId::new(1).expect("General"));
+    let mut raw = message(42, 1_700_000_000, PeerNamespace::Channel);
+    if let tl::enums::Message::Message(m) = &mut raw {
+        m.reply_to = Some(
+            tl::types::MessageReplyHeader {
+                reply_to_scheduled: false,
+                forum_topic: true,
+                quote: false,
+                reply_to_ephemeral: false,
+                reply_to_msg_id: None,
+                reply_to_peer_id: None,
+                reply_from: None,
+                reply_media: None,
+                reply_to_top_id: None,
+                quote_text: None,
+                quote_entities: None,
+                quote_offset: None,
+                todo_item_id: None,
+                poll_option: None,
+                quote_rich: None,
+            }
+            .into(),
+        );
+    }
+    assert_eq!(
+        map_ack(
+            full(
+                vec![
+                    mapping(739, 42),
+                    tl::types::UpdateNewChannelMessage {
+                        message: raw,
+                        pts: 1,
+                        pts_count: 1
+                    }
+                    .into()
+                ],
+                false
+            ),
+            &expected
+        )
+        .expect_err("thread not established")
+        .kind(),
+        SendFailureKind::DeliveryUnknown
+    );
+    assert_eq!(
+        map_ack(short(42, 1_700_000_000), &expected)
+            .expect("direct short ack is allowed by contract")
+            .message_id
+            .get(),
+        42
+    );
+}
+
 #[tokio::test(start_paused = true)]
 async fn sending_transport_expiry_prevents_every_predispatch_continuation() {
     use crate::telegram::sending::SendStage;

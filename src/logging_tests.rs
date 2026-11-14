@@ -1,5 +1,52 @@
 use super::*;
 
+#[test]
+fn sending_privacy_worker_payloads_are_suppressed_even_with_explicit_trace_directives() {
+    let output = std::process::Command::new(std::env::current_exe().expect("test executable"))
+        .args([
+            "--exact",
+            "logging::tests::sending_privacy_vendor_child",
+            "--ignored",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env(
+            "RUST_LOG",
+            "trace,grammers_mtsender::sender=trace,rmcp::service=trace",
+        )
+        .output()
+        .expect("isolated logger child");
+    assert!(output.status.success());
+    let text = String::from_utf8_lossy(&output.stderr);
+    assert!(text.contains("SAFE_SEND_STATUS"), "{text}");
+    assert!(!text.contains("PRIVATE_PROVIDER_PAYLOAD"), "{text}");
+    assert!(!text.contains("PRIVATE_TOOL_ARGUMENTS"), "{text}");
+}
+
+#[test]
+#[ignore = "subprocess entrypoint; parent validates actual worker output"]
+fn sending_privacy_vendor_child() {
+    let config = crate::config::LoggingConfig {
+        level: "trace".into(),
+        format: "compact".into(),
+        file_enabled: false,
+        file_path: std::path::PathBuf::from("unused-offline-log-directory"),
+        max_log_days: 1,
+    };
+    init(&config).expect("child logging");
+    std::thread::spawn(|| {
+        tracing::error!(target:"grammers_mtsender::sender","PRIVATE_PROVIDER_PAYLOAD");
+        tracing::trace!(target:"rmcp::service","PRIVATE_TOOL_ARGUMENTS");
+        tracing::info!(
+            stage = "final_send",
+            category = "delivery_unknown",
+            "SAFE_SEND_STATUS"
+        );
+    })
+    .join()
+    .expect("worker");
+}
+
 // ========================================================================
 // Phone Number Redaction Tests
 // ========================================================================
