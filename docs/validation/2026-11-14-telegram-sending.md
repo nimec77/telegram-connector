@@ -17,3 +17,10 @@ or performed by these checks.
 - The raw one-shot seam does not regenerate requests or random IDs. Lower-level
   MTProto retransmission and Telegram's deduplication retention remain unverified
   by these offline fixtures.
+
+## Recipient and thread validation
+
+- Qualified dialog selection includes users and distinguishes colliding user/chat/channel IDs. The real stalled client proves resolve/topic stage caps and the shared deadline.
+- Deleted/migrated peers, missing authority, inaccessible broadcast metadata and incomplete/deleted/closed/hidden or wrong-peer topic states are rejected before subsequent stages.
+- [Telegram forum semantics](https://core.telegram.org/api/forum) identify General as topic 1 without an ordinary message root. Non-General replies retain the selected top thread; direct topic-root sends use the root itself. Offline TL fixtures check both forms and cross-topic/cross-peer refusal.
+- Community containers and channel direct-message monoforums are refused; the initial namespace/options contract does not supply their separate routing identities. No live topic placement was tested.

@@ -34,6 +34,11 @@ mod raw_fetch;
 mod raw_page;
 mod raw_pager;
 mod resolve;
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "Write resolver is integrated in Task 4")
+)]
+mod resolve_recipient;
 mod results;
 mod search_budget;
 #[cfg_attr(
@@ -43,9 +48,21 @@ mod search_budget;
 mod send_receipt;
 #[cfg_attr(
     not(test),
+    expect(dead_code, reason = "Write target validation is integrated in Task 4")
+)]
+mod send_targets;
+#[cfg_attr(
+    not(test),
     expect(dead_code, reason = "Send integration follows the transport gate")
 )]
 mod send_transport;
+
+#[cfg(test)]
+#[path = "client/tests/recipient_tests.rs"]
+mod recipient_tests;
+#[cfg(test)]
+#[path = "client/tests/send_target_tests.rs"]
+mod send_target_tests;
 mod walk;
 
 #[cfg(test)]

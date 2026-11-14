@@ -30,6 +30,24 @@ pub(crate) enum SendStage {
 }
 
 impl SendDeadline {
+    pub(crate) async fn run_capped<T>(
+        self,
+        stage: SendStage,
+        cap_secs: u64,
+        future: impl Future<Output = Result<T, SendFailure>>,
+    ) -> Result<T, SendFailure> {
+        if cap_secs == 0 {
+            return Err(SendFailure::not_sent(SendFailureKind::InvalidInput, None));
+        }
+        let stage_at = Instant::now()
+            .checked_add(Duration::from_secs(cap_secs))
+            .unwrap_or(self.at);
+        Self {
+            at: self.at.min(stage_at),
+        }
+        .run(stage, future)
+        .await
+    }
     /// Start a finite nonzero budget. Copying this value never restarts it.
     ///
     /// # Errors
