@@ -16,6 +16,7 @@ pub mod ids;
 pub mod media;
 pub mod names;
 pub mod params;
+pub mod sending;
 pub mod stats;
 pub mod transcription;
 

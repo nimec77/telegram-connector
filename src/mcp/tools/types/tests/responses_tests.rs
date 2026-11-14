@@ -3,6 +3,7 @@ use super::*;
 #[test]
 fn status_response_serializes() {
     let response = StatusResponse {
+        sending: None,
         media_artifacts: None,
         telegram_connected: true,
         rate_limiter: RateLimiterStatus {

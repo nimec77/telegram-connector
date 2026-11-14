@@ -8,6 +8,9 @@ use std::path::PathBuf;
 /// Complete connector configuration; secrets remain wrapped in `SecretString`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
+    /// Explicit opt-in outgoing message/media policy.
+    #[serde(default)]
+    pub sending: SendingConfig,
     /// Optional private processed-preview storage.
     #[serde(default)]
     pub media_artifacts: MediaArtifactsConfig,
@@ -102,6 +105,12 @@ pub struct TelegramConfig {
 /// iterations, not per-iteration.
 #[derive(Debug, Clone, Deserialize)]
 pub struct TimeoutConfig {
+    /// Total text-send budget, starting before local admission.
+    #[serde(default = "defaults::default_send_secs")]
+    pub send_secs: u64,
+    /// Total media-send budget including staging, upload and final acknowledgement.
+    #[serde(default = "defaults::default_upload_send_secs")]
+    pub upload_send_secs: u64,
     /// Resolve/dialog lookups, account checks and authentication RPCs. Interactive
     /// code/password entry is not timed; each login RPC gets this budget.
     #[serde(default = "defaults::default_resolve_secs")]
@@ -168,6 +177,12 @@ pub struct SearchConfig {
 /// Account token-bucket capacity, refill speed and weighted operation costs.
 #[derive(Debug, Clone, Deserialize)]
 pub struct RateLimitConfig {
+    /// Charge for an admitted outgoing text operation; never refunded.
+    #[serde(default = "defaults::default_send_message_cost")]
+    pub send_message_cost: u32,
+    /// Charge for an admitted media operation, independent of upload part count.
+    #[serde(default = "defaults::default_send_media_cost")]
+    pub send_media_cost: u32,
     /// Initial and maximum token capacity; builders do not validate this automatically.
     #[serde(default = "defaults::default_max_tokens")]
     pub max_tokens: u32,
@@ -181,6 +196,40 @@ pub struct RateLimitConfig {
     /// transcription quota makes these calls precious; searches cost 1).
     #[serde(default = "defaults::default_transcription_cost")]
     pub transcription_cost: u32,
+}
+
+/// Opt-in outgoing file policy. Paths belong to the connector host.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct SendingConfig {
+    /// Enable immediate account sends, only with the canonical output contract.
+    pub enabled: bool,
+    /// Per-image maximum, at most 10 MiB.
+    pub max_image_bytes: u64,
+    /// Per-audio/voice/video maximum, at most 100 MiB.
+    pub max_media_bytes: u64,
+    /// One or two nonwaiting media-operation slots.
+    pub max_concurrent_media: usize,
+    /// Aggregate occupied/reserved staging bytes.
+    pub max_staging_bytes: u64,
+    /// A separate fresh private empty directory; required for configured media roots.
+    pub staging_root: Option<PathBuf>,
+    /// Explicit aliases for existing absolute prepared-attachment directories.
+    pub upload_roots: std::collections::BTreeMap<String, PathBuf>,
+}
+
+impl Default for SendingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_image_bytes: 10_485_760,
+            max_media_bytes: 104_857_600,
+            max_concurrent_media: 2,
+            max_staging_bytes: 209_715_200,
+            staging_root: None,
+            upload_roots: Default::default(),
+        }
+    }
 }
 
 /// Bounds for the `transcribe_voice_message` `timeout_seconds` request param.

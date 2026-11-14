@@ -4,9 +4,9 @@
 [mcp_servers.telegram]
 command = "/absolute/path/to/telegram-connector/target/release/telegram-mcp"
 args = ["--config", "/absolute/path/to/telegram-connector-config.toml"]
-# Authorization and best-effort Premium lookup each use resolve_secs (30s default).
-startup_timeout_sec = 90
-# Transcription can take 120 seconds, above Codex's default 60-second tool timeout.
+# Authorization/Premium each use resolve_secs (30s); optional media roots add bounded setup.
+startup_timeout_sec = 120
+# Leaves headroom for media sending/transcription totals of up to 120 seconds by default.
 tool_timeout_sec = 180
 
 # Optional, read-only official documentation for Codex/OpenAI integration work:

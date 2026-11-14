@@ -42,6 +42,8 @@ phone_number = "+1234567890"
 # history_secs = 60   # iter_messages / get_messages_by_id
 # search_secs  = 120  # search_messages (single-channel and global)
 # download_secs = 120 # media downloads (get_message_media / get_messages_media_batch)
+# send_secs = 30      # total text send, before local preparation through acknowledgement
+# upload_send_secs = 120 # total media send including staging, lookup and upload
 
 [server]
 # Versioned structured JSON + matching text fallback (default); use "legacy" temporarily
@@ -69,6 +71,22 @@ ttl_seconds = 600           # 1..=3600; maximum lifetime, quota eviction may be 
 max_entries = 100           # 1..=1000, per process
 max_total_bytes = 268435456 # 1..=1073741824, per process; 20 MiB per JPEG
 
+# Optional immediate sends as the authenticated account; canonical json_v1 only.
+# Disabled mode creates no outgoing directories. Text-only enabled mode needs no roots.
+# See docs/sending.md; ambiguous final dispatch is delivery_unknown, never auto-retryable.
+[sending]
+enabled = false
+max_image_bytes = 10485760
+max_media_bytes = 104857600
+max_concurrent_media = 2
+max_staging_bytes = 209715200
+# Existing separate private empty directory, mode 0700; required for media roots.
+# staging_root = "/absolute/private/empty-outgoing-staging"
+# Explicit existing prepared-attachment folders on the connector host.
+# Keep config, sessions, logs and artifact caches outside these roots.
+# [sending.upload_roots]
+# outgoing = "/absolute/private/prepared-attachments"
+
 [search]
 # Wall-clock budget for a search's accumulation loop. On expiry the search
 # returns the results gathered so far with "timed_out": true and
@@ -93,6 +111,8 @@ max_total_bytes = 268435456 # 1..=1073741824, per process; 20 MiB per JPEG
 # refill_rate = 2.0                        # Default: 2.0 tokens/second
 # media_download_cost = 3                  # Default: 3 tokens per image
 # transcription_cost = 5                   # Default: 5 (Telegram's weekly quota is scarce)
+# send_message_cost = 1                    # Default: 1; enabled sending, never refunded
+# send_media_cost = 3                      # Default: 3 per operation, not per upload part
 
 # Costs are validated at startup: a cost above max_tokens is rejected, since
 # such a call could never be served even from a full bucket.

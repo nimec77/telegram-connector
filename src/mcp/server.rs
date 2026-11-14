@@ -32,6 +32,8 @@ use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+mod impl_send;
+
 /// One MCP service sharing a client, limiter and session diagnostics through `Arc`.
 ///
 /// Construction/builders perform no RPCs or account charges. Builders consume
@@ -55,6 +57,8 @@ use std::time::{Duration, Instant};
 /// blocks. String errors preserve established wire behavior rather than exposing
 /// the complete typed error domain to MCP callers.
 pub struct McpServer<T: TelegramClientTrait, R: RateLimiterTrait> {
+    sending_config: Option<Arc<crate::sending::SendingRuntimeConfig>>,
+    outgoing_store: Option<Arc<crate::sending::staging::StagingStore>>,
     telegram_client: Arc<T>,
     rate_limiter: Arc<R>,
     metrics: Arc<SessionMetrics>,
@@ -76,6 +80,8 @@ pub struct McpServer<T: TelegramClientTrait, R: RateLimiterTrait> {
 impl<T: TelegramClientTrait, R: RateLimiterTrait> Clone for McpServer<T, R> {
     fn clone(&self) -> Self {
         Self {
+            sending_config: self.sending_config.as_ref().map(Arc::clone),
+            outgoing_store: self.outgoing_store.as_ref().map(Arc::clone),
             telegram_client: Arc::clone(&self.telegram_client),
             rate_limiter: Arc::clone(&self.rate_limiter),
             metrics: Arc::clone(&self.metrics),
@@ -101,7 +107,9 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     /// Session ownership and network tasks belong to the supplied client.
     pub fn new(telegram_client: Arc<T>, rate_limiter: Arc<R>) -> Self {
         let observability = ObservabilityConfig::default();
-        Self {
+        let mut server = Self {
+            sending_config: None,
+            outgoing_store: None,
             telegram_client,
             rate_limiter,
             metrics: Arc::new(SessionMetrics::new()),
@@ -121,7 +129,9 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             media_artifacts: None,
             media_artifacts_config: Default::default(),
             tool_router: Self::tool_router(),
-        }
+        };
+        server.refresh_tool_router();
+        server
     }
 
     /// Initialize optional private preview storage without Telegram RPCs.
@@ -166,12 +176,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     #[must_use = "this builder returns the configured server"]
     pub fn with_output_format(mut self, format: crate::config::OutputFormat) -> Self {
         self.output_format = format;
-        self.tool_router = Self::tool_router();
-        if format == crate::config::OutputFormat::Legacy {
-            for route in self.tool_router.map.values_mut() {
-                route.attr.output_schema = None;
-            }
-        }
+        self.refresh_tool_router();
         self
     }
 
@@ -350,6 +355,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         F: Future<Output = std::io::Result<()>> + Send,
     {
         let server = self.with_output_format(config.output_format);
+        server.validate_sending_mode()?;
         let runtime = crate::mcp::runtime::Runtime::try_new(
             config,
             server.metrics(),
@@ -357,8 +363,26 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             server.slow_write_threshold,
         )?;
         let artifacts = server.media_artifacts.as_ref().map(Arc::clone);
+        let outgoing = server.outgoing_store.as_ref().map(Arc::clone);
         let drain_deadline = runtime.drain_deadline();
+        if let Some(store) = &outgoing {
+            store.bind_runtime_deadline(drain_deadline.clone())?;
+        }
         let result = runtime.serve(server, io, shutdown).await;
+        if let Some(store) = outgoing {
+            let deadline = drain_deadline
+                .get()
+                .unwrap_or_else(tokio::time::Instant::now);
+            let _ = store.stop_admission(deadline);
+            if tokio::time::Instant::now() < deadline {
+                match tokio::time::timeout_at(deadline, store.close(deadline)).await {
+                    Ok(Ok(())) => {}
+                    _ => tracing::warn!(
+                        "Outgoing staging cleanup did not complete within the original shutdown budget"
+                    ),
+                }
+            }
+        }
         if result.is_ok()
             && let Some(store) = artifacts
             && let Some(deadline) = drain_deadline.get()
@@ -415,6 +439,20 @@ mod impl_status;
 
 #[tool_router]
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {
+    #[tool(name = "send_message", description = "Send plain text immediately as the authenticated Telegram account. Requires enabled canonical sending. One recipient; use a unique recovery_key. Unknown delivery must not be automatically retried. Telegram applies ordinary channel posting identity; no sender override is offered.",
+        input_schema = crate::mcp::tools::types::contract::recoverable_schema(rmcp::handler::server::common::schema_for_input::<crate::mcp::tools::types::sending::SendMessageRequest>().expect("request schema is an object")),
+        output_schema = crate::mcp::tools::types::contract::send_output_schema(),
+        annotations(read_only_hint = false, destructive_hint = false, idempotent_hint = false, open_world_hint = true))]
+    async fn send_message_wire(&self, arguments: rmcp::model::JsonObject) -> CallToolResult {
+        self.send_message_wire_impl(arguments).await
+    }
+    #[tool(name = "send_media", description = "Send one local image, audio, prepared Ogg/Opus voice note or MP4 video immediately as the authenticated account. Paths are relative to configured connector-host roots. Supply duration and video dimensions; no codec discovery or transcoding. Requires enabled canonical sending; use a unique recovery_key and do not automatically retry unknown delivery. Telegram applies ordinary channel posting identity; no sender override is offered.",
+        input_schema = crate::mcp::tools::types::contract::recoverable_schema(rmcp::handler::server::common::schema_for_input::<crate::mcp::tools::types::sending::SendMediaRequest>().expect("request schema is an object")),
+        output_schema = crate::mcp::tools::types::contract::send_output_schema(),
+        annotations(read_only_hint = false, destructive_hint = false, idempotent_hint = false, open_world_hint = true))]
+    async fn send_media_wire(&self, arguments: rmcp::model::JsonObject) -> CallToolResult {
+        self.send_media_wire_impl(arguments).await
+    }
     // ========================================================================
     // MCP Tools
     // ========================================================================

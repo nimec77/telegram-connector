@@ -21,7 +21,7 @@ is not evidence that downstream users do not exist. Every existing public path i
 | Supported surface | Scope and preferred imports |
 | --- | --- |
 | Crate root | `Cli`, `Config`, `ObservabilityConfig`, `ServerConfig`, `MediaArtifactsConfig`, `Error`, `MessageLink`, `RateLimiter`, `RateLimiterTrait`, `TelegramClient`, `TelegramClientTrait` are canonical conveniences. |
-| `config` | `Config`, `TelegramConfig`, `TimeoutConfig`, `SearchConfig`, `RateLimitConfig`, `TranscriptionConfig`, `LimitsConfig`, `LoggingConfig`, `ObservabilityConfig`, `ServerConfig`, `MediaArtifactsConfig`; fields and validation/loading methods remain public. |
+| `config` | `Config`, `TelegramConfig`, `TimeoutConfig`, `SearchConfig`, `RateLimitConfig`, `TranscriptionConfig`, `LimitsConfig`, `LoggingConfig`, `ObservabilityConfig`, `ServerConfig`, `MediaArtifactsConfig`, `SendingConfig`; fields and validation/loading methods remain public. |
 | `mcp::McpServer` and `mcp::server::McpServer` | Inert construction, consuming `with_*` builders (optional artifact initialization writes private disk state), metrics/replay handles, stdio/injected I/O and existing tool methods. Direct tools retain legacy adapters and string errors/content blocks; registered wire entrypoints select the configured typed contract. |
 | `telegram::{TelegramClient, TelegramClientTrait}` | Production client and intentionally substitutable, unsealed client seam. Concrete `new`, `client`, `session`, `session_path`, `request_login_code`, `check_password` stay available. |
 | `telegram::types` | All domain facade exports: IDs/names, account/channel/message/album/link-preview/reaction entities, media metadata and outcomes, query/history parameters/results, stats and transcription data. This includes `MediaDownload`, metadata types and `SizeCandidate` even when not reexported directly by `telegram`. |
@@ -49,7 +49,8 @@ is not evidence that downstream users do not exist. Every existing public path i
 The `config` facade explicitly reexports its stable types; private `types`, `loading` and
 `validation` siblings own representation, loading/CLI overrides and validation respectively.
 Splitting inherent impls preserves all method paths. The crate-visible image floor remains
-`config::MIN_IMAGE_BASE64_BYTES`. The path resolver stays private to loading.
+`config::MIN_IMAGE_BASE64_BYTES`. The default path resolver stays private to loading; `Config::selected_path` exposes
+the effective explicit/environment/platform selection without opening it.
 
 Already internal: config representation/loading/validation/defaults/environment expansion;
 MCP fanout/media-budget/shaping; Telegram albums/envelope and client operations/raw pagers/
@@ -153,7 +154,10 @@ and `session()` are upstream-coupled escape hatches that bypass connector wrappe
 Interactive auth waits for user input without a timer and can write terminal prompts/hints;
 each login RPC has a resolve deadline. Keep setup separate from MCP stdout serving.
 `logging::init` reads `RUST_LOG`, creates optional daily files and installs global tracing;
-already-installed tracing is accepted. Retention deletes only owned dated regular log files
+already-installed tracing is accepted. Native setup suppresses payload-bearing rmcp/grammers
+diagnostics independently of RUST_LOG, including spawned workers; connector metadata logs
+remain. Embedders that install their own subscriber own the corresponding payload filters.
+Retention deletes only owned dated regular log files
 by modification age, best effort, and leaves foreign files untouched.
 
 The seven infallible server builders are inert and consume `self`; validate configuration
@@ -266,3 +270,44 @@ client implementations retain their own network/memory responsibility.
 also checks this cap before opening storage. Image processing rejects source dimensions over
 8192, area over 8,388,608 pixels or decoded allocation over 64 MiB, with ImageLimitExceeded.
 Status reports raw, processing, decoding, base64 and non-binary overhead limits separately.
+
+
+## Opt-in sending API
+
+`config::SendingConfig`, `sending::SendingRuntimeConfig`, `telegram::sending::SendDeadline`
+and `telegram::types::sending` describe the new outgoing contract. The public client seam
+adds defaulted `send_message(&SendText, SendDeadline) -> Result<SentMessage, SendFailure>`
+and `send_media(&PreparedMediaSend, SendDeadline) -> Result<SentMessage, SendFailure>`;
+read-only implementers remain source-compatible and refuse those operations by default.
+Production overrides both. Direct Rust callers own write authorization and charging;
+MCP dispatch/data operations independently enforce enablement and canonical output.
+
+`McpServer::with_sending(self, SendingRuntimeConfig)` is an async fallible consuming
+builder. Construct settings with `SendingRuntimeConfig::try_from_config(&config, &path)`
+after CLI session overrides, supplying the actual selected config path. Disabled/text-only
+settings create no outgoing storage; enabled media settings verify existing source roots
+and a separate private empty staging root. Server clones share that store. `run_io` and
+stdio serving close it under the original runtime drain deadline.
+
+`StagedUpload`/`StagedReader` are opaque public seam types. There is no arbitrary-path
+snapshot constructor. A snapshot exposes bounded submitted size/MIME/name facts and one
+verified AsyncRead; owned filesystem jobs and completed buffers retain its lease. Public
+`PreparedMediaSend` fields are revalidated before client RPCs. Uploads use temporary public
+sender pools sharing the authenticated session, each supervised by an owned current-thread
+runtime. Caller cancellation or the original operation deadline tears down the complete
+vendor task set before admission releases, including stalled connection initialization. Final sends remain one-shot raw submissions on the
+original pool, without changing read retry policy.
+
+`SendFailure` is distinct from existing `Error`: unknown delivery fixes the category/state
+and retryability, and all source chains are redacted. Its MCP conversion adds optional
+`ToolError.delivery_state`, omitted for existing errors. No legacy string convenience
+sending adapters are added. See [the operation guide](sending.md).
+
+Rust compatibility notes: `Config.sending`, `TimeoutConfig.{send_secs,upload_send_secs}`,
+`RateLimitConfig.{send_message_cost,send_media_cost}`, `StatusResponse.sending` and
+`ToolError.delivery_state` add fields for Rust struct-literal consumers. New ErrorCode
+variants require exhaustive-match updates. JSON config defaults preserve existing files;
+existing legacy read output shapes remain supported. New strict wire DTOs live in
+`mcp::tools::types::sending` and do not weaken strict domain identities. Send deadlines
+start before staging, reject zero/clock overflow and never renew on stage changes;
+`TranscriptionDeadline` retains its existing compatibility contract.

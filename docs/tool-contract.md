@@ -9,7 +9,7 @@ for the default-output and Rust API migration.
 
 ## Envelope and errors
 
-All sixteen registered tools return one versioned JSON object in `structuredContent` and
+The sixteen default tools and the two optional sending tools return one versioned JSON object in `structuredContent` and
 the same JSON value in the first text content block. Success has required
 `{"schema_version":"1","data":{...},"error":null}`; failure has required
 `{"schema_version":"1","data":null,"error":{"code":"invalid_input","message":"...",
@@ -24,16 +24,23 @@ unsupported_platform, desktop_open_failed, internal_error, all_channels_failed,
 telegram_error, download_failed, no_visual_media, media_too_large, payload_cap_reached,
 premium_required, transcription_failed, voice_too_long, not_transcribable, response_too_large, duplicate_recovery_key,
 recovery_capacity_reached, response_pending and response_unavailable. A rate-limit
-error includes integer retry_after_seconds and is retryable; timeouts are retryable. Other
+error includes integer retry_after_seconds and is retryable; read timeouts are retryable.
+Write errors add optional `delivery_state: "not_sent" | "unknown"`, omitted by existing
+tools. Post-dispatch uncertainty is `delivery_unknown`, never a generic retryable timeout. Other
 categories conservatively report false, without claiming arbitrary provider failures are
-transient. No automatic retry occurs. Canonical messages omit raw provider/auth/download
+transient. Sending additionally uses sending_disabled, recipient_not_found, recipient_mismatch,
+send_forbidden, invalid_reply_target, upload_source_invalid, unsupported_media, upload_failed,
+send_capacity_reached and delivery_unknown. No application-level resend occurs. Canonical messages omit raw provider/auth/download
 payloads. Typed argument decoding reports safe validation errors without exposing parser values.
 
 Valid argument objects with missing required or invalid typed fields produce tool errors.
 Missing/null arguments behave as an empty object: optional-only requests may succeed,
 required-field requests fail. Non-object arguments, malformed call envelopes and unknown
-tools remain JSON-RPC errors. Existing scalar coercions and unknown-field acceptance remain
-at the request boundary. Uncorrelated protocol errors retain the SDK’s permitted omitted id.
+tools remain JSON-RPC errors. Existing read scalar coercions and unknown-field acceptance remain
+at the request boundary; new writes reject unknown fields at every object/variant level.
+Known disabled send names refuse with a safe canonical sending_disabled/not_sent error.
+See [sending](sending.md) for opt-in catalogs (16/18), strict recipients, local media inputs
+and typed receipts. Legacy reads remain supported; enabling legacy writes is invalid. Uncorrelated protocol errors retain the SDK’s permitted omitted id.
 
 ## IDs, dates and partial data
 
@@ -140,6 +147,12 @@ one oversized message only when metadata itself fits; metadata overflow returns
 Media uses independent per-image/batch base64 limits and a separate 65,536-byte cap on
 serialized non-binary overhead. Exceeding it returns a small error, no images, and refunds
 all no-image charges. Image data appears once in image blocks, outside JSON metadata.
+
+Sending preflights complete worst-case receipt/error serialization against the real
+request ID and protocol identity before account charging or RPCs. Upload bytes are
+streamed from private local snapshots, outside the response/image binary budgets.
+A lost/cancelled/missing recovery entry never establishes that a send did not happen;
+there is no persisted outgoing queue or cross-restart idempotency guarantee.
 
 Every tool except `get_last_responses` accepts an optional wire-only `recovery_key` of
 1–128 printable ASCII characters. Use unique random keys. A key is reserved before

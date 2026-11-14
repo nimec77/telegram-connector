@@ -43,6 +43,73 @@ impl TimeoutConfig {
         if self.download_secs == 0 {
             anyhow::bail!("telegram.timeouts.download_secs must be > 0");
         }
+        for seconds in [self.send_secs, self.upload_send_secs] {
+            crate::telegram::sending::SendDeadline::new(seconds).map_err(|_| {
+                anyhow::anyhow!("sending timeouts must be nonzero and fit the clock")
+            })?;
+        }
+        Ok(())
+    }
+}
+
+impl super::SendingConfig {
+    /// Check local settings; filesystem ownership/ACL checks occur at media startup.
+    ///
+    /// # Errors
+    /// Rejects legacy-enabled writes, unsupported caps, aliases or media configuration.
+    pub fn validate(&self, format: super::OutputFormat) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            !self.enabled || format == super::OutputFormat::JsonV1,
+            "sending requires canonical json_v1 output"
+        );
+        anyhow::ensure!(
+            (1..=10_485_760).contains(&self.max_image_bytes)
+                && (1..=104_857_600).contains(&self.max_media_bytes),
+            "invalid sending file caps"
+        );
+        anyhow::ensure!(
+            (1..=2).contains(&self.max_concurrent_media),
+            "sending concurrency must be one or two"
+        );
+        anyhow::ensure!(
+            self.max_staging_bytes >= self.max_image_bytes.max(self.max_media_bytes),
+            "sending staging quota must fit the largest permitted file"
+        );
+        for (alias, root) in &self.upload_roots {
+            anyhow::ensure!(
+                !alias.is_empty()
+                    && alias.len() <= 64
+                    && alias
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-'),
+                "invalid upload root alias"
+            );
+            anyhow::ensure!(
+                root.is_absolute(),
+                "upload roots must be absolute directories"
+            );
+        }
+        if !self.upload_roots.is_empty() {
+            anyhow::ensure!(
+                self.staging_root.as_ref().is_some_and(|p| p.is_absolute()),
+                "configured upload roots require an absolute private staging root"
+            );
+        }
+        Ok(())
+    }
+}
+
+impl RateLimitConfig {
+    /// Validate new send costs when writes are enabled, preserving disabled read policies.
+    ///
+    /// # Errors
+    /// Rejects zero costs and costs larger than the account bucket.
+    pub fn validate_sending_costs(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            (1..=self.max_tokens).contains(&self.send_message_cost)
+                && (1..=self.max_tokens).contains(&self.send_media_cost),
+            "invalid sending account costs"
+        );
         Ok(())
     }
 }

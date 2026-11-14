@@ -13,6 +13,7 @@
 
 pub mod requests;
 pub mod responses;
+pub mod sending;
 pub mod serde_helpers;
 
 // Re-export all types for convenience
@@ -35,3 +36,7 @@ pub(crate) mod canonical;
 pub mod contract;
 
 pub(crate) mod media_contract;
+
+#[cfg(test)]
+#[path = "types/tests/sending_tests.rs"]
+mod sending_tests;

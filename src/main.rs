@@ -16,11 +16,15 @@ async fn application() -> Result<()> {
     let cli = Cli::parse();
 
     // Load configuration (does not validate auth credentials)
+    let config_path =
+        Config::selected_path(cli.config.as_deref()).context("Failed to select configuration")?;
     let mut config =
-        Config::load_from(cli.config.as_deref()).context("Failed to load configuration")?;
+        Config::load_from(Some(&config_path)).context("Failed to load configuration")?;
 
     // Apply CLI overrides
     config.apply_cli_overrides(cli.session_file);
+    let sending =
+        telegram_connector::sending::SendingRuntimeConfig::try_from_config(&config, &config_path)?;
 
     // Initialize logging
     logging::init(&config.logging).context("Failed to initialize logging")?;
@@ -72,7 +76,7 @@ async fn application() -> Result<()> {
     tracing::info!("Authenticated with Telegram");
 
     // Run MCP server
-    run_mcp_server(telegram_client, config).await
+    run_mcp_server(telegram_client, config, sending).await
 }
 
 /// Run interactive setup mode for authentication
@@ -109,12 +113,17 @@ async fn run_setup_mode(client: &TelegramClient, config: &Config) -> Result<()> 
 }
 
 /// Run the MCP server with graceful shutdown handling
-async fn run_mcp_server(telegram_client: TelegramClient, config: Config) -> Result<()> {
+async fn run_mcp_server(
+    telegram_client: TelegramClient,
+    config: Config,
+    sending: telegram_connector::sending::SendingRuntimeConfig,
+) -> Result<()> {
     // Create rate limiter
     let rate_limiter = RateLimiter::new(&config.rate_limiting);
 
     // Create MCP server
     let server = McpServer::new(Arc::new(telegram_client), Arc::new(rate_limiter))
+        .with_output_format(config.server.output_format)
         .with_observability(&config.observability)
         .with_media_download_cost(config.rate_limiting.media_download_cost)
         .with_transcription_cost(config.rate_limiting.transcription_cost)
@@ -125,6 +134,8 @@ async fn run_mcp_server(telegram_client: TelegramClient, config: Config) -> Resu
         .with_response_byte_budget(config.limits.response_byte_budget)
         .with_media_batch_max_total_bytes(config.limits.media_batch_max_total_bytes)
         .with_media_artifacts(&config.media_artifacts)
+        .await?
+        .with_sending(sending)
         .await?;
 
     tracing::info!("Starting MCP server on stdio...");

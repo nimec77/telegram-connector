@@ -3,6 +3,8 @@ use tokio::time::{Duration, sleep};
 
 fn test_config(max_tokens: u32, refill_rate: f64) -> RateLimitConfig {
     RateLimitConfig {
+        send_message_cost: 1,
+        send_media_cost: 3,
         max_tokens,
         refill_rate,
         media_download_cost: 5,

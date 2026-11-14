@@ -6,6 +6,18 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Current state
 
+- **Opt-in sending is integrated into local `master` as 0.26.0.** Canonical-only
+  `send_message`/`send_media` extend the default 16-tool
+  catalog to 18 when enabled. Qualified recipients include users/groups/channels/Saved
+  Messages; local media uses configured roots and a private bounded snapshot store.
+  See [sending](sending.md) and its [offline validation](validation/2026-11-14-telegram-sending.md).
+  Unknown final dispatch is nonretryable; recovery is not a durable idempotency ledger.
+  Native logging suppresses payload-bearing SDK/MTProto worker diagnostics.
+  Independent review's uploader-lifetime finding was regression-fixed; the final macOS
+  gate passed 1,078 library tests and 3 doctests. Completed design/plan files are archived
+  in Git history at feature revision d57eb9b. Local integration does not publish a release
+  or update the remote.
+
 - **Optional media artifacts:** M2/M3 are integrated into local `master` as 0.25.0,
   with default inline previews, optional private cached resources/file export and bounded
   cleanup. DeepSeek Harness 0.2.1-rc.5 installed components passed actual connector-fixture
@@ -28,7 +40,8 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   parent sidecar finding was regression-fixed. See [final acceptance](validation/2026-11-01-final-acceptance.md),
   [Task 9 evidence](validation/2026-11-01-task9-workflows.md), and
   [Rust/S1–S6 assessment](validation/2026-11-01-rust-adoption-acceptance.md).
-  There are 16 tools, json_v1 plus explicit legacy mode; nightly stays 2026-10-31, rmcp 3.8,
+  There are 16 default tools (18 with canonical sending enabled), json_v1 plus explicit
+  legacy reads; nightly stays 2026-10-31, rmcp 3.8,
   and direct grammers pins stay 1e31e73cd9797790905bbea82cd75adcbe6f1242 (0.11).
 - **Pre-artifact media-test coverage baseline (2026-11-01):** final acceptance reports 82.58%
   library lines (9,301/11,263, unfiltered including inline unit code), with the original
@@ -170,7 +183,7 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   observation. Startup refreshes once. Transcription refreshes an unknown Premium cache
   only after acquisition; cached false Premium still rejects free. Channel list/basic/full
   info cost one token per operation, including optional enrichment. A channel-list dialog
-  walk has one total `history_secs` deadline. The Codex example leaves 90 seconds for startup
+  walk has one total `history_secs` deadline. The Codex example leaves 120 seconds for startup
   (two default 30-second RPC budgets plus headroom).
 - **Timeouts:** three global knobs by call type (`resolve`/`history`/`search`, plus
   `download`), not per-tool; a multi-page `next().await` walk lives inside *one*

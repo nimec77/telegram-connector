@@ -28,15 +28,40 @@ mod ops_media;
 mod ops_message;
 mod ops_resolve;
 mod ops_search;
+mod ops_send;
 mod ops_stats;
 mod ops_transcribe;
 mod raw_fetch;
 mod raw_page;
 mod raw_pager;
 mod resolve;
+mod resolve_recipient;
 mod results;
 mod search_budget;
+mod send_diagnostics;
+mod send_media;
+#[cfg(all(test, unix))]
+#[path = "client/tests/send_media_tests.rs"]
+mod send_media_tests;
+mod send_receipt;
+mod send_targets;
+mod send_transport;
+mod upload_pool;
+
+#[cfg(test)]
+#[path = "client/tests/recipient_tests.rs"]
+mod recipient_tests;
+#[cfg(test)]
+#[path = "client/tests/send_target_tests.rs"]
+mod send_target_tests;
+#[cfg(test)]
+#[path = "client/tests/send_text_tests.rs"]
+mod send_text_tests;
 mod walk;
+
+#[cfg(test)]
+#[path = "client/tests/send_transport_tests.rs"]
+mod send_transport_tests;
 
 #[cfg(test)]
 #[path = "client/tests/helpers_tests.rs"]
@@ -56,7 +81,9 @@ pub(crate) use resolve::username_to_resolve;
 
 /// Telegram client wrapping grammers-client
 pub struct TelegramClient {
+    api_id: i32,
     client: Client,
+    send_adapter: send_transport::FinalSendAdapter,
     session: Arc<SqliteSession>,
     session_path: PathBuf,
     timeouts: TimeoutConfig,
@@ -71,6 +98,26 @@ pub struct TelegramClient {
 
 #[async_trait::async_trait]
 impl TelegramClientTrait for TelegramClient {
+    async fn send_media(
+        &self,
+        request: &crate::telegram::types::sending::PreparedMediaSend,
+        deadline: crate::telegram::sending::SendDeadline,
+    ) -> Result<
+        crate::telegram::types::sending::SentMessage,
+        crate::telegram::types::sending::SendFailure,
+    > {
+        self.send_media_impl(request, deadline).await
+    }
+    async fn send_message(
+        &self,
+        request: &crate::telegram::types::sending::SendText,
+        deadline: crate::telegram::sending::SendDeadline,
+    ) -> Result<
+        crate::telegram::types::sending::SentMessage,
+        crate::telegram::types::sending::SendFailure,
+    > {
+        self.send_message_impl(request, deadline).await
+    }
     async fn search_messages(&self, params: &SearchParams) -> Result<SearchResult, Error> {
         self.search_messages_impl(params).await
     }

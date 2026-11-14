@@ -1,6 +1,6 @@
 [package]
 name = "telegram-connector"
-version = "0.25.0"
+version = "0.26.0"
 edition = "2024"
 
 [lib]
@@ -28,6 +28,7 @@ grammers-mtsender = { git = "https://codeberg.org/Lonami/grammers", rev = "1e31e
 # Explicit feature list rather than `full`: "net" and "fs" are unused here, and
 # `full` also pulls "parking_lot". Each entry below backs a real call site —
 # io-std: `tokio::io::{stdin, stdout}` for the MCP stdio transport;
+# io-util: transport extension traits and bounded outgoing AsyncRead streams;
 # macros: `#[tokio::main]` / `#[tokio::test]` and `select!`;
 # process: `tokio::process::Command` (open_message_in_telegram);
 # rt-multi-thread: the default `#[tokio::main]` flavor, `spawn`,
@@ -37,6 +38,7 @@ grammers-mtsender = { git = "https://codeberg.org/Lonami/grammers", rev = "1e31e
 # time: timeout budgets, `sleep`, `Instant`.
 tokio = { version = "1.54.1", features = [
     "io-std",
+    "io-util",
     "macros",
     "process",
     "rt-multi-thread",

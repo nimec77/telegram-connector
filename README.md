@@ -1,7 +1,7 @@
 # Telegram MCP Connector
 
 A local stdio Model Context Protocol (MCP) server for searching and reading Telegram
-channels and messages over MTProto. It supports Codex and other compatible MCP clients,
+channels and messages, with opt-in text/media sending over MTProto. It supports Codex and other compatible MCP clients,
 using Rust, `rmcp` and `grammers`.
 
 Supported MCP revisions are **2026-07-28** and **2025-11-25**. Since version 0.23.0,
@@ -10,6 +10,10 @@ migrating from historical text responses can select `output_format = "legacy"`; 
 the [output contract](docs/tool-contract.md) and [changelog](CHANGELOG.md).
 
 ## Features
+
+- **Opt-in sending** — plain text, photos, audio, prepared voice notes and videos to
+  channels/groups, private chats and Saved Messages, with bounded local upload roots
+  and explicit delivery outcomes; see the [sending guide](docs/sending.md)
 
 - **Real-time Telegram access** over MTProto — search across all subscribed channels, one
   channel, or a fan-out of up to 20 channels
@@ -31,9 +35,9 @@ the [output contract](docs/tool-contract.md) and [changelog](CHANGELOG.md).
 ```
 MCP Client (Codex or another stdio client)
         │ JSON-RPC over stdio
-MCP Server Layer — 16 tools (rmcp, src/mcp/)
+MCP Server Layer — 16 default tools, 18 with sending enabled (rmcp, src/mcp/)
         │
-Application Layer (config, logging, rate_limiter, link, error)
+Application Layer (config, logging, rate_limiter, link, sending, error)
         │
 Telegram Layer (grammers client, auth, converters, src/telegram/)
         │ MTProto
@@ -151,15 +155,15 @@ replacing both paths with absolute paths:
 [mcp_servers.telegram]
 command = "/absolute/path/to/telegram-connector/target/release/telegram-mcp"
 args = ["--config", "/absolute/path/to/telegram-connector-config.toml"]
-startup_timeout_sec = 90
+startup_timeout_sec = 120
 tool_timeout_sec = 180
 ```
 
 Restart the Codex session and check `/mcp` for the active server. Startup allows
 one `resolve_secs` budget each for authorization and best-effort Premium lookup
-(up to 60 seconds with defaults); the 90-second client budget leaves headroom.
-The longer tool timeout accommodates voice transcription, which can take up to 120 seconds
-with default limits.
+(up to 60 seconds with defaults), plus bounded optional media-root setup; the
+120-second startup budget leaves headroom. The 180-second tool timeout covers media
+sending and transcription totals of up to 120 seconds with default limits.
 See [the configuration example](.codex/config.toml.example) and
 [Codex development guide](docs/codex.md) for CLI registration, project setup,
 and recommended tools. These settings follow the
@@ -172,6 +176,8 @@ over stdio using their own MCP configuration format.
 
 Required parameters are marked `*`. Tool schemas are self-describing over MCP; this table
 summarizes the default `json_v1` output. Legacy mode retains historical text shapes.
+There are 16 default tools; the two sending tools appear only when canonical sending
+is explicitly enabled.
 
 | Tool | Purpose | Key parameters |
 |------|---------|----------------|
@@ -191,12 +197,17 @@ summarizes the default `json_v1` output. Legacy mode retains historical text sha
 | `get_messages_batch` | Fetch up to 50 specific messages from one channel in one RPC — the designated path to re-fetch full untruncated text. | `channel_id`*, `message_ids`* (1–50, deduped), `max_text_length` |
 | `resolve_channels` | Batch-resolve up to 20 identifiers (numeric ID, `@username`, or exact subscribed-chat title) to full channel entities, with per-entry errors. | `identifiers`* (1–20) |
 | `get_channel_stats` | Posting-rate and engagement summary (posts/day, median views, media/album share) over a bounded recent-history sample. | `channel_id`*, `days_back` (max 30; sweep also capped at 500 messages) |
+| `send_message` (opt-in) | Immediately send plain text as the authenticated account; typed sent/not-sent/unknown outcome. | `recipient`*, `text`*, `silent`, `link_preview`, reply/topic IDs, `recovery_key` |
+| `send_media` (opt-in) | Stream one prepared local image/audio/voice/video snapshot and caption; no arbitrary paths or URL fetch. | `recipient`*, `source`*, `media`*, `caption`, `silent`, reply/topic IDs, `recovery_key` |
 
 Every tool except `get_last_responses` also accepts the optional wire-only `recovery_key`.
 
+See [sending](docs/sending.md) for enablement, qualified recipients, metadata, limits
+and safe recovery after uncertain delivery.
+
 ### Behavior notes
 
-- **Tool output migration:** all 16 tools default to a versioned JSON envelope in
+- **Tool output migration:** the 16 default tools and optional sending tools use a versioned JSON envelope in
   `structuredContent` and matching text: `schema_version: "1"`, with exactly one of
   `data` or `error` non-null. Channel/user IDs are decimal strings; message IDs remain
   integers. Tool errors carry stable codes and set `isError: true`; partial successes
@@ -319,6 +330,7 @@ skills in `.agents/skills/`.
 | Guide | Contents |
 | --- | --- |
 | [Output contract and migration](docs/tool-contract.md) | JSON envelopes, schemas, typed errors, IDs, media ordering and legacy mode |
+| [Sending](docs/sending.md) | Opt-in text/media, local upload roots, exact destinations, delivery truth and recovery |
 | [Stdio runtime](docs/stdio-runtime.md) | Protocol negotiation, admission, cancellation, progress, shutdown and offline probes |
 | [Codex development](docs/codex.md) | Repository workflow, client setup and the version-bump skill |
 | [Rust manual](docs/rust-style.md) / [API inventory](docs/rust-api.md) | Coding rules, supported interfaces and Rust compatibility changes |

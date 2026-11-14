@@ -30,6 +30,47 @@ use crate::telegram::types::{
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
 pub trait TelegramClientTrait: Send + Sync {
+    /// Upload a validated snapshot and create one media message under the shared deadline.
+    /// Direct callers own write authorization and account charging.
+    ///
+    /// # Errors
+    /// Fails not-sent before final dispatch/definitive refusal; ambiguous final
+    /// delivery is nonretryable unknown. Default read-only implementations refuse.
+    async fn send_media(
+        &self,
+        request: &crate::telegram::types::sending::PreparedMediaSend,
+        deadline: crate::telegram::sending::SendDeadline,
+    ) -> Result<
+        crate::telegram::types::sending::SentMessage,
+        crate::telegram::types::sending::SendFailure,
+    > {
+        let _ = (request, deadline);
+        Err(crate::telegram::types::sending::SendFailure::not_sent(
+            crate::telegram::types::sending::SendFailureKind::SendingDisabled,
+            None,
+        ))
+    }
+    /// Send plain text under one absolute deadline, without MCP charging.
+    /// Direct Rust callers own write authorization and account admission.
+    ///
+    /// # Errors
+    /// Returns safe not-sent failures before dispatch/definitive refusal, or
+    /// nonretryable unknown delivery after ambiguous final dispatch. The default
+    /// preserves custom read-only implementers by refusing writes.
+    async fn send_message(
+        &self,
+        request: &crate::telegram::types::sending::SendText,
+        deadline: crate::telegram::sending::SendDeadline,
+    ) -> Result<
+        crate::telegram::types::sending::SentMessage,
+        crate::telegram::types::sending::SendFailure,
+    > {
+        let _ = (request, deadline);
+        Err(crate::telegram::types::sending::SendFailure::not_sent(
+            crate::telegram::types::sending::SendFailureKind::SendingDisabled,
+            None,
+        ))
+    }
     /// Search for messages matching the given parameters
     ///
     /// Accumulates under the cooperative search deadline: expiry returns a

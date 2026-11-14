@@ -13,7 +13,7 @@ mod validation;
 
 pub use types::{
     Config, LimitsConfig, LoggingConfig, MediaArtifactsConfig, ObservabilityConfig, OutputFormat,
-    RateLimitConfig, SearchConfig, ServerConfig, TelegramConfig, TimeoutConfig,
+    RateLimitConfig, SearchConfig, SendingConfig, ServerConfig, TelegramConfig, TimeoutConfig,
     TranscriptionConfig,
 };
 pub(crate) use validation::MIN_IMAGE_BASE64_BYTES;
@@ -21,3 +21,7 @@ pub(crate) use validation::MIN_IMAGE_BASE64_BYTES;
 #[cfg(test)]
 #[path = "config/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "config/tests/sending_tests.rs"]
+mod sending_tests;

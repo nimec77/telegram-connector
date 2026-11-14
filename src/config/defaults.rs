@@ -125,6 +125,8 @@ pub(crate) fn default_max_buffered_payload_bytes() -> usize {
 
 pub(crate) fn default_timeout_config() -> TimeoutConfig {
     TimeoutConfig {
+        send_secs: default_send_secs(),
+        upload_send_secs: default_upload_send_secs(),
         resolve_secs: default_resolve_secs(),
         history_secs: default_history_secs(),
         search_secs: default_search_secs(),
@@ -149,11 +151,26 @@ pub(crate) fn default_search_config() -> SearchConfig {
 
 pub(crate) fn default_rate_limit_config() -> RateLimitConfig {
     RateLimitConfig {
+        send_message_cost: default_send_message_cost(),
+        send_media_cost: default_send_media_cost(),
         max_tokens: default_max_tokens(),
         refill_rate: default_refill_rate(),
         media_download_cost: default_media_download_cost(),
         transcription_cost: default_transcription_cost(),
     }
+}
+
+pub(crate) fn default_send_secs() -> u64 {
+    30
+}
+pub(crate) fn default_upload_send_secs() -> u64 {
+    120
+}
+pub(crate) fn default_send_message_cost() -> u32 {
+    1
+}
+pub(crate) fn default_send_media_cost() -> u32 {
+    3
 }
 
 pub(crate) fn default_logging_config() -> LoggingConfig {

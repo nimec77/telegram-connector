@@ -11,7 +11,11 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         context: RequestContext<RoleServer>,
     ) -> Result<rmcp::model::CallToolResponse, rmcp::ErrorData> {
         use crate::mcp::tools::types::contract;
+        let write = super::impl_send::send_name(&request.name);
         let failure = |error| {
+            if write {
+                return Ok(contract::render_send_early(error).into());
+            }
             Ok(
                 contract::render::<crate::mcp::tools::LastResponsesResponse>(
                     self.output_format,
@@ -20,7 +24,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                 .into(),
             )
         };
-        if !self.tool_router.has_route(&request.name) {
+        if !write && !self.tool_router.has_route(&request.name) {
             let call = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
             return self.tool_router.call(call).await;
         }
@@ -47,8 +51,19 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         };
         let request_id = context.id.to_string();
         let tool_name = request.name.to_string();
-        let call = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
-        let result = self.tool_router.call(call).await?;
+        let result = if write && !self.sending_enabled() {
+            rmcp::model::CallToolResponse::Complete(
+                crate::mcp::tools::types::contract::render_send(Err(
+                    crate::telegram::types::sending::SendFailure::not_sent(
+                        crate::telegram::types::sending::SendFailureKind::SendingDisabled,
+                        None,
+                    ),
+                )),
+            )
+        } else {
+            let call = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
+            self.tool_router.call(call).await?
+        };
         if let Some(reservation) = reservation
             && let rmcp::model::CallToolResponse::Complete(response) = &result
             && let Ok(payload) = crate::mcp::runtime::response_payload(response)

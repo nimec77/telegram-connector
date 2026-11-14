@@ -7,11 +7,16 @@ pub(crate) async fn stalled_client() -> (TelegramClient, impl Send, tempfile::Te
     let path = dir.path().join("session.db");
     let session = Arc::new(SqliteSession::open(&path).await.expect("temporary session"));
     let pool = SenderPool::new(Arc::clone(&session), 1);
+    let send_adapter = super::send_transport::FinalSendAdapter::new(pool.handle.thin.clone());
     let client = TelegramClient {
+        api_id: 1,
         client: Client::new(pool.handle),
+        send_adapter,
         session,
         session_path: path,
         timeouts: TimeoutConfig {
+            send_secs: 30,
+            upload_send_secs: 120,
             resolve_secs: 2,
             history_secs: 5,
             search_secs: 5,
