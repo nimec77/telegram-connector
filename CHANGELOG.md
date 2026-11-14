@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Opt-in canonical text/photo/audio/voice/video sends with exact recipient/thread routing,
+  private bounded local snapshots, typed receipts and nonretryable unknown delivery.
+- Offline wire, recovery, cancellation, filesystem and queued-upload lifetime fixtures;
+  permanent sending configuration and operation guidance.
+
+### Changed
+
+- Preserve the default 16-tool catalog; canonical sending adds two tools and cached
+  status limits. Legacy reads remain supported; legacy-enabled writes are rejected.
+- Suppress payload-bearing SDK/MTProto diagnostics even under explicit trace directives.
+- Extend public configuration/error/status Rust fields and defaulted client send methods;
+  see the Rust API inventory for struct-literal and exhaustive-match compatibility.
+
 ## [0.25.0] - 2026-11-02
 
 ### Added

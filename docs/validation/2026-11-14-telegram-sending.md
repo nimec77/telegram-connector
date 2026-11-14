@@ -52,4 +52,11 @@ or performed by these checks.
 - A deterministically queued local copy can be cancelled before account acquisition or client work. Actual uploader cancellation and read/copy/cleanup lease tests remain part of the suite.
 - Full/combined acknowledgements must match requested reply/topic metadata; malformed forum headers cannot fall back to General. Direct short acknowledgements retain the approved ID/date rule.
 - Native logging now suppresses payload-bearing rmcp/grammers events even in spawned workers and under explicit RUST_LOG trace overrides. Safe connector stage/category/duration logs remain. This deliberately removes low-level vendor diagnostics; read retry policy and wire outputs remain supported.
-- Gate after integration: 1,075 library tests, 3 doctests, strict all-target Clippy, format and warning-free rustdoc passed on macOS. Nine subprocess child entrypoints are ignored in the top-level harness and exercised by their normal parent tests.
+- Gate after integration: 1,075 library tests, 3 doctests, strict all-target Clippy, format and warning-free rustdoc passed on macOS. Of nine ignored tests in the top-level harness, seven subprocess child entrypoints are exercised by normal parent tests; two pre-existing explicit measurement benchmarks remain outside the routine gate.
+
+## Final pre-review checks
+
+- Final locked offline macOS gate passed: 1,075 library tests, 9 ignored harness entries and 3 doctests; strict all-target Clippy, format and warning-free rustdoc. Seven ignored subprocess children are exercised by parents; two pre-existing measurement benchmarks are intentionally explicit.
+- `cargo run --offline --locked --example inert_server` passed. `python3 scripts/test_mcp_probe.py target/debug/examples/offline_mcp_fixture` passed modern, discovery-skip and legacy echo checks. The integration script takes a binary argument; unittest discovery is not its runner.
+- Additional inert modern/legacy CLI probes validated 18 tools, text/image receipts, targeted recovery and completely closed disposable staging roots. TOML/JSON examples, relative documentation links and whitespace checks passed. Source pins and Cargo.lock are unchanged.
+- Independent whole-branch review follows these checks. Live account delivery/playback and Linux/Windows validation are not claimed.

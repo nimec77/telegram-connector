@@ -67,6 +67,7 @@ impl SendRecipientRequest {
 #[serde(deny_unknown_fields)]
 pub struct SendMessageRequest {
     pub recipient: SendRecipientRequest,
+    /// Nonblank plain text, preserved verbatim; at most 4096 UTF-16 code units.
     pub text: String,
     #[serde(default)]
     pub silent: bool,
@@ -122,7 +123,9 @@ impl SendMessageRequest {
 #[serde(deny_unknown_fields)]
 #[schemars(inline)]
 pub struct UploadSource {
+    /// Configured connector-host upload-root alias; no default home/project root.
     pub root: String,
+    /// File beneath the alias on the connector host; no URL, absolute path or parent escape.
     pub relative_path: PathBuf,
 }
 
@@ -209,6 +212,7 @@ pub struct SendMediaRequest {
     pub recipient: SendRecipientRequest,
     pub source: UploadSource,
     pub media: SendMediaRequestKind,
+    /// Plain caption in the same message; defaults empty, maximum 1024 UTF-16 units.
     #[serde(default)]
     pub caption: String,
     #[serde(default)]

@@ -87,10 +87,11 @@ codex mcp add telegram -- /absolute/path/to/telegram-connector/target/release/te
 codex mcp list
 ```
 
-Then add `startup_timeout_sec = 90` and `tool_timeout_sec = 180` to the generated server
+Then add `startup_timeout_sec = 120` and `tool_timeout_sec = 180` to the generated server
 table. Startup authorization and best-effort Premium RPCs each have a default 30-second
-budget; transcription has one total budget of up to 120 seconds by default. The example client
-budgets leave headroom. Restart the Codex session and use `/mcp` to check the connection.
+budget; optional media-root initialization adds bounded setup. Transcription and media
+sending have total budgets of up to 120 seconds by default. The example client budgets
+leave headroom. Restart the Codex session and use `/mcp` to check the connection.
 See the [official MCP guide](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
 
 Optional MCP servers have a separate initial-catalog wait, currently 1000 ms. If you
@@ -98,6 +99,10 @@ need Codex to wait for their full startup budgets, set `mcp_optional_startup_gra
 at the top level of your user config, before any table headers. This applies to all
 optional servers and can delay startup. The server's `startup_timeout_sec` still bounds
 its initialization; see the same official guide.
+
+[Sending](sending.md) is disabled by default. Enable it explicitly for immediate account
+writes, with separate prepared-source/staging roots for media; unknown delivery must not
+be automatically retried.
 
 Calls default to `json_v1`: read the envelope from `structuredContent` or its matching
 text fallback, and inspect `data` or `error`. Applications parsing historical text can

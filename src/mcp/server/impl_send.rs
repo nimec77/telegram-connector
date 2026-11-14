@@ -174,6 +174,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         let staged = store
             .stage(&request.source, &request.media, deadline)
             .await?;
+        tracing::debug!(
+            tool = "send_media",
+            stage = "local_preparation",
+            size_bytes = staged.size_bytes(),
+            "Outgoing snapshot prepared"
+        );
         deadline
             .run(SendStage::LocalPreparation, async {
                 self.rate_limiter

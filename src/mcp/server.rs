@@ -439,14 +439,14 @@ mod impl_status;
 
 #[tool_router]
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {
-    #[tool(name = "send_message", description = "Send plain text immediately as the authenticated Telegram account. Requires enabled canonical sending. One recipient; use a unique recovery_key. Unknown delivery must not be automatically retried.",
+    #[tool(name = "send_message", description = "Send plain text immediately as the authenticated Telegram account. Requires enabled canonical sending. One recipient; use a unique recovery_key. Unknown delivery must not be automatically retried. Telegram applies ordinary channel posting identity; no sender override is offered.",
         input_schema = crate::mcp::tools::types::contract::recoverable_schema(rmcp::handler::server::common::schema_for_input::<crate::mcp::tools::types::sending::SendMessageRequest>().expect("request schema is an object")),
         output_schema = crate::mcp::tools::types::contract::send_output_schema(),
         annotations(read_only_hint = false, destructive_hint = false, idempotent_hint = false, open_world_hint = true))]
     async fn send_message_wire(&self, arguments: rmcp::model::JsonObject) -> CallToolResult {
         self.send_message_wire_impl(arguments).await
     }
-    #[tool(name = "send_media", description = "Send one local image, audio, prepared Ogg/Opus voice note or MP4 video immediately as the authenticated account. Paths are relative to configured connector-host roots. Supply duration and video dimensions; no codec discovery or transcoding. Requires enabled canonical sending; use a unique recovery_key and do not automatically retry unknown delivery.",
+    #[tool(name = "send_media", description = "Send one local image, audio, prepared Ogg/Opus voice note or MP4 video immediately as the authenticated account. Paths are relative to configured connector-host roots. Supply duration and video dimensions; no codec discovery or transcoding. Requires enabled canonical sending; use a unique recovery_key and do not automatically retry unknown delivery. Telegram applies ordinary channel posting identity; no sender override is offered.",
         input_schema = crate::mcp::tools::types::contract::recoverable_schema(rmcp::handler::server::common::schema_for_input::<crate::mcp::tools::types::sending::SendMediaRequest>().expect("request schema is an object")),
         output_schema = crate::mcp::tools::types::contract::send_output_schema(),
         annotations(read_only_hint = false, destructive_hint = false, idempotent_hint = false, open_world_hint = true))]
