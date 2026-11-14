@@ -125,7 +125,10 @@ Use $bump-version to bump the patch version.
 
 It reads `[package].version`, updates Cargo.toml and the root Cargo.lock entry, rolls
 Unreleased notes into a dated CHANGELOG section, leaves a fresh Unreleased section,
-and runs the Rust gate. An empty Unreleased section still gets a dated version heading.
+and updates README's current package version and changelog link. It runs a read-only
+four-file consistency check and the Rust gate. An empty Unreleased section still gets
+a dated version heading. An already-matching target repairs stale documentation
+without moving Unreleased notes or changing historical release dates.
 Dry runs describe changes without editing. Preserve dependency pins, historical notes
 and unrelated work. Commits, merging, tags, pushes and publication follow the user's
 explicit scope; a version bump does not publish a release.
