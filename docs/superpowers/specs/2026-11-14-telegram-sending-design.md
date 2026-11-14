@@ -2,7 +2,9 @@
 
 Date: 2026-11-14
 
-Status: Draft specification for review; no implementation is authorized by this document.
+Status: Approved by the user on 2026-11-14, including the proposed defaults below.
+Proceed to implementation planning; live sends remain separately authorized as described
+in §11.
 
 Baseline: Telegram MCP Connector 0.25.0; grammers revision
 `1e31e73cd9797790905bbea82cd75adcbe6f1242`; rmcp 3.8.
@@ -13,14 +15,13 @@ Extend the existing authenticated MTProto connector so MCP clients can send text
 images, audio and video using the connected Telegram account. The user explicitly
 confirmed destinations: channels, groups, private chats and Saved Messages.
 
-All other product choices below are **proposals**, not recorded user approvals:
+The user approved the following product choices with this specification:
 
 - Two tools: `send_message` and `send_media`.
 - Sending is opt-in through configuration. An enabled tool call performs the send;
   there is no connector-owned confirmation dialog or prepare/commit ceremony.
 - Media comes from configured local upload folders. Audio includes regular audio
-  attachments and prepared voice notes. These are proposed defaults awaiting
-  confirmation.
+  attachments and prepared voice notes.
 - One destination and at most one attachment per call; optional caption, reply,
   forum topic and silent delivery. Plain text only in this version.
 - No application-level resend or durable outgoing queue. An uncertain final send
@@ -76,7 +77,7 @@ guarantee. See [sendMessage](https://core.telegram.org/method/messages.sendMessa
 | Approach | Tradeoff | Disposition |
 | --- | --- | --- |
 | One `send_message` with a tagged text/media payload | Small catalog, but all calls inherit a larger conditional schema. | Viable alternative. |
-| `send_message` plus `send_media` with image/audio/voice/video variants | Simple text calls, shared upload/error policy, explicit media requirements. | Recommended; not yet user-approved. |
+| `send_message` plus `send_media` with image/audio/voice/video variants | Simple text calls, shared upload/error policy, explicit media requirements. | Approved approach. |
 | Four or five separate content-specific tools | Very simple individual schemas; duplicates destination/options and expands the catalog. | Unnecessary for the initial scope. |
 
 Continue using the existing user session and MTProto. A separate bot changes the
@@ -236,7 +237,7 @@ Inspect the staged snapshot, then upload that same snapshot. Never modify the so
 Use a sanitized basename with a verified-kind extension as Telegram's filename;
 never send a local directory path as a filename.
 
-Proposed limits: images 10 MiB; audio/voice/video 100 MiB each; two concurrent media
+Approved limits: images 10 MiB; audio/voice/video 100 MiB each; two concurrent media
 operations; 200 MiB aggregate staging reservations; 512 KiB copy buffers. Reserve
 declared size before staging and enforce actual limits while copying. Reject capacity
 exhaustion promptly before account charging. All allocations, probing and started
@@ -278,7 +279,7 @@ cancellation after acquisition do not refund the charge. All upload parts run un
 that prior admission. Existing read/media-download refund rules are unchanged.
 
 Start one absolute operation deadline after basic decoding, before staging/admission.
-Proposed totals: text 30 seconds; media 120 seconds. Remaining time bounds staging,
+Approved totals: text 30 seconds; media 120 seconds. Remaining time bounds staging,
 resolution, dependency waits, upload, final send and receipt mapping. Existing per-RPC
 resolve/history caps are additionally bounded by that same remaining time. Neither
 moving to upload nor completing a part restarts the deadline. There is no queue that
@@ -377,7 +378,7 @@ guarantee is part of v1. Inspect Telegram before choosing to repeat an uncertain
 
 ## 9. Configuration, compatibility and observability
 
-Proposed configuration (values shown are defaults, except illustrative paths):
+Approved configuration (values shown are defaults, except illustrative paths):
 
 ```toml
 [sending]
@@ -516,10 +517,9 @@ Suggested order for a later implementation plan:
 4. Complete wire compatibility, cancellation/recovery/limits tests and documentation;
    obtain independent code review, then owner-authorized live acceptance if requested.
 
-The draft is ready to plan against with its proposed defaults. Product choices to
-confirm before treating it as an approved implementation specification are media
-source policy, voice-note inclusion, the canonical-only write requirement and the
-limited retry guarantee. If durable safe resubmission across restarts is required,
+The approved specification is ready for implementation planning. Approval includes
+configured local media sources, voice notes, canonical-only writes and the limited
+retry guarantee. If durable safe resubmission across restarts is required,
 design a persisted outbox and query/reconciliation contract as additional scope;
 do not relabel the current recovery buffer as idempotency.
 
