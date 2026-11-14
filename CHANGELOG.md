@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-11-14
+
 ### Added
 
 - Opt-in canonical text/photo/audio/voice/video sends with exact recipient/thread routing,
