@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Version bumps publish and verify an annotated GitHub version tag after validation,
+  including missing-tag repair, with dry-run/local-only support and immutable tag checks.
 - Version bumps synchronize the README's current package version and changelog link
   with Cargo metadata, with an automated consistency check in the bump-version skill.
 

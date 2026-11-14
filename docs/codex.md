@@ -130,5 +130,10 @@ four-file consistency check and the Rust gate. An empty Unreleased section still
 a dated version heading. An already-matching target repairs stale documentation
 without moving Unreleased notes or changing historical release dates.
 Dry runs describe changes without editing. Preserve dependency pins, historical notes
-and unrelated work. Commits, merging, tags, pushes and publication follow the user's
-explicit scope; a version bump does not publish a release.
+and unrelated work. A normal bump commits its scoped metadata changes, creates an
+annotated `v<version>` tag, and pushes only that tag to the selected GitHub remote
+(default `origin`). It verifies the remote tag's commit and never moves an existing
+version tag. A current-version request also repairs a missing tag. Use `local-only`
+or `no-push` to stop after local validation; dry runs create no commits or tags.
+Branch pushes, additional merges and GitHub Release publication remain separate
+operations requiring their own scope.

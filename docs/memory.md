@@ -15,8 +15,8 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   Native logging suppresses payload-bearing SDK/MTProto worker diagnostics.
   Independent review's uploader-lifetime finding was regression-fixed; the final macOS
   gate passed 1,078 library tests and 3 doctests. Completed design/plan files are archived
-  in Git history at feature revision d57eb9b. Local integration does not publish a release
-  or update the remote.
+  in Git history at feature revision d57eb9b. GitHub version tags follow the
+  version-bump workflow; branch pushes and GitHub Release publication remain separate.
 
 - **Optional media artifacts:** M2/M3 are integrated into local `master` as 0.25.0,
   with default inline previews, optional private cached resources/file export and bounded
@@ -65,8 +65,8 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 - **Operational limits:** chosen live model/desktop UI and Telegram/account behavior
   remain unverified; offline Rust/Python payloads and installed DeepSeek adapter
   rendering/attachment checks passed.
-  Linux remains owner-managed and Windows ACLs unverified. Release publication requires
-  separate authorization.
+  Linux remains owner-managed and Windows ACLs unverified. GitHub Release publication
+  requires separate authorization.
 - **Raw pagers exist only because grammers pins `Message.peers: PeerMap` `pub(crate)`**
   (verified at pinned rev = upstream HEAD). If a future grammers rev exposes public peer
   resolution, collapse `raw_pager`/`raw_fetch` back to the high-level iterators.
