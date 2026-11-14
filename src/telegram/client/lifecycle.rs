@@ -41,6 +41,7 @@ impl TelegramClient {
         // Create sender pool
         tracing::info!("Creating sender pool...");
         let pool = SenderPool::new(Arc::clone(&session), config.api_id);
+        let send_adapter = super::send_transport::FinalSendAdapter::new(pool.handle.thin.clone());
 
         // Create client before spawning runner (Client::new takes SenderPoolFatHandle)
         let client = Client::new(pool.handle);
@@ -54,6 +55,7 @@ impl TelegramClient {
 
         Ok(Self {
             client,
+            send_adapter,
             session,
             session_path: config.session_file.clone(),
             timeouts: config.timeouts.clone(),

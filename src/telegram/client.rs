@@ -36,7 +36,21 @@ mod raw_pager;
 mod resolve;
 mod results;
 mod search_budget;
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "Send integration follows the transport gate")
+)]
+mod send_receipt;
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "Send integration follows the transport gate")
+)]
+mod send_transport;
 mod walk;
+
+#[cfg(test)]
+#[path = "client/tests/send_transport_tests.rs"]
+mod send_transport_tests;
 
 #[cfg(test)]
 #[path = "client/tests/helpers_tests.rs"]
@@ -57,6 +71,11 @@ pub(crate) use resolve::username_to_resolve;
 /// Telegram client wrapping grammers-client
 pub struct TelegramClient {
     client: Client,
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "Send integration follows the transport gate")
+    )]
+    send_adapter: send_transport::FinalSendAdapter,
     session: Arc<SqliteSession>,
     session_path: PathBuf,
     timeouts: TimeoutConfig,
