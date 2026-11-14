@@ -27,6 +27,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         {
             return Err(SendFailure::not_sent(SendFailureKind::InvalidInput, None));
         }
+        self.outgoing_store = if config.settings.enabled && !config.settings.upload_roots.is_empty()
+        {
+            Some(crate::sending::staging::StagingStore::try_new(&config).await?)
+        } else {
+            None
+        };
         self.sending_config = Some(Arc::new(config));
         self.refresh_tool_router();
         Ok(self)
@@ -141,11 +147,20 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
     pub(super) async fn send_media_wire_impl(&self, arguments: JsonObject) -> CallToolResult {
         let result = async {
-            self.sending_policy()?;
+            let policy = self.sending_policy()?;
+            let deadline = SendDeadline::new(policy.upload_send_secs)?;
             let request: SendMediaRequest =
                 serde_json::from_value(serde_json::Value::Object(arguments))
                     .map_err(|_| SendFailure::not_sent(SendFailureKind::InvalidInput, None))?;
-            let _ = request.try_into_domain()?;
+            let request = request.try_into_domain()?;
+            send_budget::preflight(self.response_byte_budget)?;
+            let store = self
+                .outgoing_store
+                .as_ref()
+                .ok_or_else(|| SendFailure::not_sent(SendFailureKind::UploadSourceInvalid, None))?;
+            let _staged = store
+                .stage(&request.source, &request.media, deadline)
+                .await?;
             Err(SendFailure::not_sent(SendFailureKind::Unavailable, None))
         }
         .await;

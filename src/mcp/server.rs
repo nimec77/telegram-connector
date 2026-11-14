@@ -58,6 +58,7 @@ mod impl_send;
 /// the complete typed error domain to MCP callers.
 pub struct McpServer<T: TelegramClientTrait, R: RateLimiterTrait> {
     sending_config: Option<Arc<crate::sending::SendingRuntimeConfig>>,
+    outgoing_store: Option<Arc<crate::sending::staging::StagingStore>>,
     telegram_client: Arc<T>,
     rate_limiter: Arc<R>,
     metrics: Arc<SessionMetrics>,
@@ -80,6 +81,7 @@ impl<T: TelegramClientTrait, R: RateLimiterTrait> Clone for McpServer<T, R> {
     fn clone(&self) -> Self {
         Self {
             sending_config: self.sending_config.as_ref().map(Arc::clone),
+            outgoing_store: self.outgoing_store.as_ref().map(Arc::clone),
             telegram_client: Arc::clone(&self.telegram_client),
             rate_limiter: Arc::clone(&self.rate_limiter),
             metrics: Arc::clone(&self.metrics),
@@ -107,6 +109,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         let observability = ObservabilityConfig::default();
         let mut server = Self {
             sending_config: None,
+            outgoing_store: None,
             telegram_client,
             rate_limiter,
             metrics: Arc::new(SessionMetrics::new()),
@@ -360,8 +363,26 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             server.slow_write_threshold,
         )?;
         let artifacts = server.media_artifacts.as_ref().map(Arc::clone);
+        let outgoing = server.outgoing_store.as_ref().map(Arc::clone);
         let drain_deadline = runtime.drain_deadline();
+        if let Some(store) = &outgoing {
+            store.bind_runtime_deadline(drain_deadline.clone())?;
+        }
         let result = runtime.serve(server, io, shutdown).await;
+        if let Some(store) = outgoing {
+            let deadline = drain_deadline
+                .get()
+                .unwrap_or_else(tokio::time::Instant::now);
+            let _ = store.stop_admission(deadline);
+            if tokio::time::Instant::now() < deadline {
+                match tokio::time::timeout_at(deadline, store.close(deadline)).await {
+                    Ok(Ok(())) => {}
+                    _ => tracing::warn!(
+                        "Outgoing staging cleanup did not complete within the original shutdown budget"
+                    ),
+                }
+            }
+        }
         if result.is_ok()
             && let Some(store) = artifacts
             && let Some(deadline) = drain_deadline.get()

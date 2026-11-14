@@ -30,3 +30,9 @@ or performed by these checks.
 - Actual framed modern and legacy-handshake requests send through the canonical contract. Disabled catalogs retain 16 tools; enabled catalogs expose 18 with strict self-contained write input schemas and non-idempotent annotations.
 - Offline tests prove one charge before the client seam, no refunds, no charge for local/budget refusal, matching JSON text/structured receipts, scoped upstream diagnostic suppression and cached path-free status.
 - Forced serializer failure and invalid receipt metadata produce nonretryable unknown delivery; duplicate recovery keys reject before a second send. Full macOS locked offline gate passed after integration. Media remains a pre-dispatch unavailable stub until the staging/upload tasks land.
+
+## Private staging
+
+- Real disposable macOS filesystem fixtures verify private snapshots, descriptor identity, source preservation, symlink/hardlink/FIFO/path refusal, sensitive directory overlap, ACL/ancestry policy, byte/slot admission and bounded header probes.
+- Cancellation tests retain reservations in started workers; detached read jobs and unconsumed completed buffers retain the snapshot lease. Failed deletion retains quota and does not delete replacement objects. Runtime cleanup reuses the existing shutdown deadline.
+- The bounded reader uses owned blocking jobs rather than Tokio filesystem internals, so no Tokio fs feature was added. Explicit io-util does not change Cargo.lock. All 1,055 library tests and 3 doctests, strict all-target Clippy, format and warning-free docs passed.

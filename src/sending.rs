@@ -4,12 +4,28 @@ use crate::config::{Config, OutputFormat, SendingConfig};
 use crate::telegram::types::sending::{SendFailure, SendFailureKind};
 use std::path::{Path, PathBuf};
 
+mod privacy;
+mod probe;
+mod reader;
+pub(crate) mod staging;
+pub use reader::StagedReader;
+pub use staging::StagedUpload;
+
+#[cfg(all(test, unix))]
+#[path = "sending/tests/privacy_tests.rs"]
+mod privacy_tests;
+#[cfg(test)]
+#[path = "sending/tests/probe_tests.rs"]
+mod probe_tests;
+#[cfg(all(test, unix))]
+#[path = "sending/tests/staging_tests.rs"]
+mod staging_tests;
+#[cfg(all(test, unix))]
+#[path = "sending/tests/fixtures.rs"]
+pub(crate) mod test_support;
+
 /// Validated settings and effective protected paths after CLI session overrides.
 #[derive(Clone)]
-#[expect(
-    dead_code,
-    reason = "Runtime fields consumed by subsequent sending integration"
-)]
 pub struct SendingRuntimeConfig {
     pub(crate) settings: SendingConfig,
     pub(crate) output_format: OutputFormat,
@@ -48,13 +64,8 @@ impl SendingRuntimeConfig {
             sidecar.push(suffix);
             protected_paths.push(sidecar.into());
         }
-        if let Some(parent) = config.logging.file_path.parent() {
-            protected_paths.push(if parent.as_os_str().is_empty() {
-                PathBuf::from(".")
-            } else {
-                parent.to_path_buf()
-            });
-        }
+        // LoggingConfig.file_path names the rolling-log directory, not a file.
+        protected_paths.push(config.logging.file_path.clone());
         if let Some(root) = &config.media_artifacts.root {
             protected_paths.push(root.clone());
         }
