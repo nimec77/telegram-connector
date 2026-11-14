@@ -2,13 +2,15 @@
 use super::McpServer;
 use crate::config::OutputFormat;
 use crate::mcp::tools::send_budget;
-use crate::mcp::tools::types::contract;
 use crate::mcp::tools::types::sending::{SendMediaRequest, SendMessageRequest, SendReceipt};
 use crate::rate_limiter::RateLimiterTrait;
 use crate::sending::SendingRuntimeConfig;
 use crate::telegram::TelegramClientTrait;
 use crate::telegram::sending::{SendDeadline, SendStage};
-use crate::telegram::types::sending::{SendFailure, SendFailureKind};
+use crate::telegram::types::sending::{
+    PreparedMediaSend, RecipientSpec, SendFailure, SendFailureKind, SendOptions, SentMessage,
+    UsernameNamespace,
+};
 use rmcp::model::{CallToolResult, JsonObject};
 use std::sync::Arc;
 
@@ -52,7 +54,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         let settings = policy.map_or(&defaults, |c| &c.settings);
         crate::mcp::tools::types::responses::SendingStatus {
             enabled: self.sending_enabled(),
-            media_enabled: false,
+            media_enabled: self.sending_enabled() && self.outgoing_store.is_some(),
             max_image_bytes: settings.max_image_bytes,
             max_media_bytes: settings.max_media_bytes,
             max_concurrent_media: settings.max_concurrent_media,
@@ -126,8 +128,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             return Err(SendFailure::unknown());
         }
         if receipt.content_kind != crate::telegram::types::sending::ContentKind::Text
-            || receipt.reply_to_message_id != request.options.reply_to_message_id
-            || receipt.topic_id != request.options.topic_id
+            || !receipt_options_match(&request.options, &receipt)
         {
             return Err(SendFailure::unknown());
         }
@@ -146,25 +147,83 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         send_budget::finish(result, self.response_byte_budget)
     }
     pub(super) async fn send_media_wire_impl(&self, arguments: JsonObject) -> CallToolResult {
+        let started = std::time::Instant::now();
         let result = async {
-            let policy = self.sending_policy()?;
-            let deadline = SendDeadline::new(policy.upload_send_secs)?;
+            self.sending_policy()?;
             let request: SendMediaRequest =
                 serde_json::from_value(serde_json::Value::Object(arguments))
                     .map_err(|_| SendFailure::not_sent(SendFailureKind::InvalidInput, None))?;
-            let request = request.try_into_domain()?;
-            send_budget::preflight(self.response_byte_budget)?;
-            let store = self
-                .outgoing_store
-                .as_ref()
-                .ok_or_else(|| SendFailure::not_sent(SendFailureKind::UploadSourceInvalid, None))?;
-            let _staged = store
-                .stage(&request.source, &request.media, deadline)
-                .await?;
-            Err(SendFailure::not_sent(SendFailureKind::Unavailable, None))
+            self.send_media_data(request).await
         }
         .await;
-        contract::render_send(result)
+        log_outcome("send_media", started, &result);
+        send_budget::finish(result, self.response_byte_budget)
+    }
+    pub(super) async fn send_media_data(
+        &self,
+        request: SendMediaRequest,
+    ) -> Result<SendReceipt, SendFailure> {
+        let policy = self.sending_policy()?;
+        let deadline = SendDeadline::new(policy.upload_send_secs)?;
+        let request = request.try_into_domain()?;
+        send_budget::preflight(self.response_byte_budget)?;
+        let store = self
+            .outgoing_store
+            .as_ref()
+            .ok_or_else(|| SendFailure::not_sent(SendFailureKind::UploadSourceInvalid, None))?;
+        let staged = store
+            .stage(&request.source, &request.media, deadline)
+            .await?;
+        deadline
+            .run(SendStage::LocalPreparation, async {
+                self.rate_limiter
+                    .acquire(policy.send_media_cost)
+                    .await
+                    .map_err(admission_failure)
+            })
+            .await?;
+        let request = PreparedMediaSend {
+            options: request.options,
+            caption: request.caption,
+            media: request.media,
+            staged,
+        };
+        let receipt = self.telegram_client.send_media(&request, deadline).await?;
+        if deadline.expired()
+            || receipt.content_kind != request.media.content_kind()
+            || !receipt_options_match(&request.options, &receipt)
+            || !receipt.media.as_ref().is_some_and(|m| {
+                m.mime_type == request.staged.mime_type()
+                    && m.size_bytes == request.staged.size_bytes()
+            })
+        {
+            return Err(SendFailure::unknown());
+        }
+        SendReceipt::try_from(receipt)
+    }
+}
+fn receipt_options_match(options: &SendOptions, receipt: &SentMessage) -> bool {
+    use crate::telegram::types::PeerNamespace;
+    if receipt.reply_to_message_id != options.reply_to_message_id
+        || receipt.topic_id != options.topic_id
+    {
+        return false;
+    }
+    match &options.recipient {
+        RecipientSpec::SavedMessages => {
+            receipt.saved_messages && receipt.recipient.namespace() == PeerNamespace::User
+        }
+        RecipientSpec::Peer(id) => !receipt.saved_messages && receipt.recipient == *id,
+        RecipientSpec::Username {
+            expected_namespace, ..
+        } => {
+            !receipt.saved_messages
+                && receipt.recipient.namespace()
+                    == match expected_namespace {
+                        UsernameNamespace::User => PeerNamespace::User,
+                        UsernameNamespace::Channel => PeerNamespace::Channel,
+                    }
+        }
     }
 }
 pub(super) fn admission_failure(error: crate::error::Error) -> SendFailure {

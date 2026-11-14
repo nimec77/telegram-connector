@@ -13,13 +13,6 @@
 
 pub mod requests;
 pub mod responses;
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "Write DTO consumers are integrated in Tasks 4 and 6"
-    )
-)]
 pub mod sending;
 pub mod serde_helpers;
 

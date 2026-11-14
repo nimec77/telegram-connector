@@ -288,6 +288,9 @@ mod progress;
 
 #[path = "protocol_contract.rs"]
 mod contract;
+#[path = "sending_media.rs"]
+#[cfg(unix)]
+mod sending_media;
 #[path = "sending_text.rs"]
 mod sending_text;
 

@@ -39,9 +39,14 @@ mod resolve_recipient;
 mod results;
 mod search_budget;
 mod send_diagnostics;
+mod send_media;
+#[cfg(all(test, unix))]
+#[path = "client/tests/send_media_tests.rs"]
+mod send_media_tests;
 mod send_receipt;
 mod send_targets;
 mod send_transport;
+mod upload_pool;
 
 #[cfg(test)]
 #[path = "client/tests/recipient_tests.rs"]
@@ -76,6 +81,7 @@ pub(crate) use resolve::username_to_resolve;
 
 /// Telegram client wrapping grammers-client
 pub struct TelegramClient {
+    api_id: i32,
     client: Client,
     send_adapter: send_transport::FinalSendAdapter,
     session: Arc<SqliteSession>,
@@ -92,6 +98,16 @@ pub struct TelegramClient {
 
 #[async_trait::async_trait]
 impl TelegramClientTrait for TelegramClient {
+    async fn send_media(
+        &self,
+        request: &crate::telegram::types::sending::PreparedMediaSend,
+        deadline: crate::telegram::sending::SendDeadline,
+    ) -> Result<
+        crate::telegram::types::sending::SentMessage,
+        crate::telegram::types::sending::SendFailure,
+    > {
+        self.send_media_impl(request, deadline).await
+    }
     async fn send_message(
         &self,
         request: &crate::telegram::types::sending::SendText,

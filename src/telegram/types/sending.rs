@@ -169,6 +169,55 @@ pub enum SendMediaKind {
     },
 }
 
+impl SendMediaKind {
+    /// Content label for the requested Telegram media representation.
+    pub fn content_kind(&self) -> ContentKind {
+        match self {
+            Self::Image => ContentKind::Image,
+            Self::Audio { .. } => ContentKind::Audio,
+            Self::Voice { .. } => ContentKind::Voice,
+            Self::Video { .. } => ContentKind::Video,
+        }
+    }
+}
+
+/// Media options plus an opaque validated local snapshot; never an arbitrary path.
+#[derive(Clone)]
+pub struct PreparedMediaSend {
+    pub options: SendOptions,
+    pub caption: String,
+    pub media: SendMediaKind,
+    pub staged: std::sync::Arc<crate::sending::StagedUpload>,
+}
+impl std::fmt::Debug for PreparedMediaSend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PreparedMediaSend").finish_non_exhaustive()
+    }
+}
+impl PreparedMediaSend {
+    /// Revalidate public Rust fields before any recipient/upload RPC.
+    ///
+    /// # Errors
+    /// Rejects invalid options, metadata, captions or media/snapshot type mismatch.
+    pub fn validate(&self) -> Result<(), SendFailure> {
+        self.options.validate()?;
+        self.media.validate()?;
+        let matches = match self.media {
+            SendMediaKind::Image => matches!(self.staged.mime_type(), "image/jpeg" | "image/png"),
+            SendMediaKind::Audio { .. } => matches!(
+                self.staged.mime_type(),
+                "audio/mpeg" | "audio/mp4" | "audio/aac"
+            ),
+            SendMediaKind::Voice { .. } => self.staged.mime_type() == "audio/ogg",
+            SendMediaKind::Video { .. } => self.staged.mime_type() == "video/mp4",
+        };
+        if !matches || self.caption.encode_utf16().count() > 1024 {
+            return Err(SendFailure::not_sent(SendFailureKind::InvalidInput, None));
+        }
+        Ok(())
+    }
+}
+
 /// Content submitted in one acknowledged message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]

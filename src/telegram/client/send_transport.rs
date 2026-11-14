@@ -90,6 +90,7 @@ pub(super) fn classify_final_error(error: InvocationError) -> SendFailure {
             | "CHAT_SEND_PHOTOS_FORBIDDEN"
             | "CHAT_SEND_AUDIOS_FORBIDDEN"
             | "CHAT_SEND_VOICES_FORBIDDEN"
+            | "VOICE_MESSAGES_FORBIDDEN"
             | "CHAT_SEND_VIDEOS_FORBIDDEN"
             | "CHAT_SEND_PLAIN_FORBIDDEN"
             | "CHAT_RESTRICTED"
@@ -114,6 +115,20 @@ pub(super) fn classify_final_error(error: InvocationError) -> SendFailure {
         (400..=499, "MESSAGE_EMPTY" | "MESSAGE_TOO_LONG" | "MEDIA_CAPTION_TOO_LONG") => {
             SendFailureKind::InvalidInput
         }
+        (
+            400,
+            "DOCUMENT_INVALID"
+            | "MEDIA_EMPTY"
+            | "MEDIA_FILE_INVALID"
+            | "MEDIA_INVALID"
+            | "PHOTO_EXT_INVALID"
+            | "PHOTO_INVALID_DIMENSIONS"
+            | "VIDEO_CONTENT_TYPE_INVALID"
+            | "INPUT_FILE_INVALID"
+            | "FILE_PARTS_INVALID"
+            | "FILE_PART_LENGTH_INVALID"
+            | "MD5_CHECKSUM_INVALID",
+        ) => SendFailureKind::UnsupportedMedia,
         _ => return SendFailure::unknown(),
     };
     SendFailure::not_sent(kind, None)

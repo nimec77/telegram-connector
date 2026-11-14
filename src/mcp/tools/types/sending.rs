@@ -219,7 +219,6 @@ pub struct SendMediaRequest {
     pub topic_id: Option<i64>,
 }
 
-#[expect(dead_code, reason = "Staged media consumers arrive in Task 6")]
 pub(crate) struct ValidatedMediaSend {
     pub options: SendOptions,
     pub source: UploadSource,

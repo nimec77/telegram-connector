@@ -54,6 +54,7 @@ impl TelegramClient {
         tracing::info!("Telegram client created successfully");
 
         Ok(Self {
+            api_id: config.api_id,
             client,
             send_adapter,
             session,

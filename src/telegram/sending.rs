@@ -13,13 +13,6 @@ pub struct SendDeadline {
 
 /// Stages after final dispatch cannot claim that expiry prevented delivery.
 #[derive(Debug, Clone, Copy)]
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "Pre-dispatch stages are integrated in subsequent tasks"
-    )
-)]
 pub(crate) enum SendStage {
     LocalPreparation,
     Resolve,
