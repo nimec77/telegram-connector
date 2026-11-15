@@ -280,9 +280,11 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   resolution is a full uncached dialog walk (`resolve_peer`), so N looped calls pay N walks
   regardless of concurrency — hoist resolution out of the loop, resolve+fetch once per
   batch. Live: 4.4–7.2× faster.
-- **Test organization:** `#[path]`-extracted test files (no `mod.rs` ever);
-  `EnvGuard`/`ENV_LOCK` in `src/config/tests.rs`; shared fixtures in `src/test_helpers.rs`.
-  Deterministic time tests use `#[tokio::test(start_paused = true)]` + `time::advance`.
+- **Test organization:** `#[path]`-extracted test files (no `mod.rs` ever); shared fixtures
+  in `src/test_helpers.rs`. Config expansion uses pure injected lookups; real environment/path
+  loader and global logging tests run in subprocesses configured with `Command::env`/
+  `env_remove`, never `set_var`/`remove_var`. Deterministic time tests use
+  `#[tokio::test(start_paused = true)]` + `time::advance`.
 
 ## Gotchas & lessons
 
@@ -348,10 +350,6 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   The `../tests/` idiom: `converters/message.rs` declares
   `#[path = "../tests/message_tests.rs"]` to reuse `telegram/tests/` instead of a one-file
   `converters/tests/` dir.
-- **`EnvGuard` cannot be nested** — `ENV_LOCK` is a plain non-reentrant `Mutex`; exactly one
-  guard per test body or self-deadlock.
-- **A test-only invariant kept in a recipe/doc ("run serially") is a latent race** — enforce
-  it in the test module (lock), not the invocation.
 - **`rmcp::RequestContext<RoleServer>` can't be constructed in unit tests** — factor logic
   to take already-decoded values (e.g. `Option<ProtocolVersion>`), leaving only the accessor
   call unverified.
