@@ -6,10 +6,11 @@ Implementation source baseline: `f4375a6ce90844a0467ae82e8e4dcb81cb83eef7`.
 Final validated source: `13fda27e58c2d422cc7518b2e098f4de8bd2f037`.
 
 All 15 implementation tasks have independent scoped approval in the controller's task
-ledgers. The final combined macOS matrix below passes on that source. This document is
-an integration evidence artifact: **fresh whole-branch independent review remains pending**
-with the controller, including this artifact and the deferred test-helper minor below.
-It does not claim final acceptance, merge, publication or hosted CI execution. Active
+ledgers. The final combined macOS matrix below passes on that source. **Fresh independent
+whole-branch review approved all 19 dispositions and this evidence artifact on 2026-11-15**,
+reviewing `f4375a6..66706b0`, with no Critical/Important findings and one nonblocking
+test-helper minor below. Local technical acceptance is complete; merge, publication and
+hosted CI execution are separate. Active
 [specification](../superpowers/specs/2026-11-15-review-remediation-design.md) and five
 [implementation plans](../superpowers/plans/) remain until merge.
 
@@ -244,7 +245,7 @@ All current `Ruling:` entries in the five controller progress ledgers are retain
    exact retained-ID/threshold tests cover formats/protocols/escaping/compact/omissions;
    setup/event increases are measured, without whole-size monotonicity assumptions.
 
-**Deferred minor for controller whole-branch review:** ManualClock's watchdog panics inside
+**Deferred minor M1, confirmed nonblocking by whole-branch review:** ManualClock's watchdog panics inside
 its blocking task, but that result is awaited only at finish. A missing processing_complete
 notification can leave the main notification wait hanging even after watchdog failure.
 This is a test-helper failure-path limitation in `src/test_helpers.rs` and the paused media
@@ -257,7 +258,18 @@ Author integration self-review reconciled all 19 rows, committed regressions and
 reports/rulings, complete lock scope, feature output, default/ignored counts, all gate logs,
 work aggregates and unchanged documentation links. `git diff --check` and final scoped
 prose diff inspection pass; historical validation reports are unchanged. All 15 completed
-implementation tasks' plan steps are marked complete; integration Task 4 remains pending
-the controller's fresh whole-branch review. No unavailable local gate remains. Independent
-review resolution is the outstanding acceptance boundary, alongside its explicit triage
-of the inherited minor; this report does not replace that review.
+implementation tasks' plan steps and integration Task 4 are complete. No unavailable local
+gate remains. The fresh reviewer read the full 105-file package, inspected all 15 gate logs,
+independently recomputed the 144 O02 comparisons/counters, checked O03 work/timing evidence,
+and approved the six compatibility decisions. The full local report remains at
+`.superpowers/sdd/2026-11-15-remediation-maintenance-performance/final-review-report.md`.
+No source changed after the validated `13fda27`; subsequent commits only record evidence
+and approval. M1 can delay diagnosis/consume a CI timeout if a future regression suppresses
+the notification; it is not an identified production defect or a failed current gate.
+
+The reviewer explicitly set aside live account/real-terminal outcomes, Linux/Windows and
+hosted execution, and allocator/RSS/end-to-end performance guarantees. The controller
+confirmed those limits against the authorized offline macOS scope: operational/platform
+acceptance remains unclaimed, and performance conclusions stay limited to the supplied
+serialization/map work and qualified debug timing. No extra account, provisioning,
+publication or unsupported performance claim is needed for this acceptance.

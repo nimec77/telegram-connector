@@ -8,8 +8,9 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 - **2026-11-15 review remediation is implemented on local `fix/review-remediation`.**
   All 15 implementation slices have independent scoped review; the combined macOS gates
-  pass on 0.26.0 with rmcp 3.9.0. Whole-branch acceptance review remains pending, including
-  the deferred test-clock watchdog failure-path issue. See the
+  pass on 0.26.0 with rmcp 3.9.0. Fresh whole-branch review approved all 19 dispositions
+  with no Critical/Important findings; the test-clock watchdog failure path remains a
+  disclosed nonblocking follow-up. See the
   [validation evidence](validation/2026-11-15-review-remediation.md). Active design/plans
   remain until merge; no merge or remote publication is implied.
 
