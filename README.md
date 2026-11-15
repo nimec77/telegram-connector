@@ -4,7 +4,7 @@ A local stdio Model Context Protocol (MCP) server for searching and reading Tele
 channels and messages, with opt-in text/media sending over MTProto. It supports Codex and other compatible MCP clients,
 using Rust, `rmcp` and `grammers`.
 
-Current package version: [0.26.0](CHANGELOG.md#0260---2026-11-14).
+Current package version: [0.26.1](CHANGELOG.md#0261---2026-11-15).
 
 Supported MCP revisions are **2026-07-28** and **2025-11-25**. Since version 0.23.0,
 tools default to versioned JSON outputs with advertised output schemas. Applications
