@@ -9,12 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Isolate cancelled and reused MCP request lifetimes through queued output, progress,
+  metrics and recovery; admit sequential ID reuse after complete-frame acceptance.
+- Continue global search across mixed-peer pages, preserve album/sender/source namespaces,
+  deduplicate equivalent fan-out observations, and honor Telegram URL entities.
+- Report channel subscription only from authoritative membership evidence, including
+  conservative unknown results for minimal username observations.
+- Preserve sending preparation error categories and exact password bytes; inspect JPEG/MP3
+  beyond large metadata with bounded reads, checked seeks and restored reader positions.
+- Interpolate parsed configuration values without TOML injection and reject unusable
+  zero-capacity or nonfinite rate-limit settings.
 - Update rmcp and rmcp-macros to reviewed 3.9.0, resolving RUSTSEC-2026-0462
   while retaining the server/stdio feature scope and protocol compatibility.
 - Version bumps publish and verify an annotated GitHub version tag after validation,
   including missing-tag repair, with dry-run/local-only support and immutable tag checks.
 - Version bumps synchronize the README's current package version and changelog link
   with Cargo metadata, with an automated consistency check in the bump-version skill.
+
+### Changed
+
+- Stop qualified send-recipient traversal at its first exact match; avoid redundant wire
+  fitting/body clones and index artifact paths once during locked filesystem verification.
+- Clarify private-inclusive, nonexhaustive account global-search scope and subprocess-only
+  environment tests; run offline artifact clients on both configured CI runners.
 
 ## [0.26.0] - 2026-11-14
 

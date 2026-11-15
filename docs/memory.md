@@ -6,6 +6,13 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Current state
 
+- **2026-11-15 review remediation is implemented on local `fix/review-remediation`.**
+  All 15 implementation slices have independent scoped review; the combined macOS gates
+  pass on 0.26.0 with rmcp 3.9.0. Whole-branch acceptance review remains pending, including
+  the deferred test-clock watchdog failure-path issue. See the
+  [validation evidence](validation/2026-11-15-review-remediation.md). Active design/plans
+  remain until merge; no merge or remote publication is implied.
+
 - **Opt-in sending is integrated into local `master` as 0.26.0.** Canonical-only
   `send_message`/`send_media` extend the default 16-tool
   catalog to 18 when enabled. Qualified recipients include users/groups/channels/Saved
@@ -75,6 +82,13 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   `RawChannelSearchPager` first — not a redesign.
 
 ## Key decisions
+
+- **Response/artifact work:** wire paths fit once against complete frames and retain the
+  accepted rendering; direct Rust adapters retain raw DTO budgets. Required serialized
+  row bytes can prune impossible prefixes only after a real oversized candidate, with
+  real metadata checked after every pop. Artifact verification builds one borrowed path
+  map under the existing mutex, retaining fresh filesystem validation and fail-closed
+  behavior. Work measurements do not establish allocation/RSS or universal latency gains.
 
 - **Media artifacts:** opt-in per-process private empty root, create-new lock, 0700/0600,
   strict opaque URI lookup and no arbitrary-path tool arguments. Default TTL 600s,
