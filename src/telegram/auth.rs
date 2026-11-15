@@ -57,17 +57,33 @@ pub async fn interactive_auth(
                 println!("2FA enabled. Password hint: {}", hint);
             }
 
-            let password = Password::new()
-                .with_prompt("Enter your 2FA password")
-                .interact()
-                .map_err(|e| Error::Auth(format!("Failed to read password: {}", e)))?;
-
-            client
-                .check_password(password_token, password.trim())
-                .await?;
-
-            tracing::info!("Successfully authenticated with 2FA");
-            Ok(())
+            read_and_submit_password(
+                || {
+                    Password::new()
+                        .with_prompt("Enter your 2FA password")
+                        .interact()
+                },
+                |password| async move { client.check_password(password_token, &password).await },
+            )
+            .await
         }
     }
 }
+
+async fn read_and_submit_password<F>(
+    read: impl FnOnce() -> Result<String, dialoguer::Error>,
+    submit: impl FnOnce(String) -> F,
+) -> Result<(), Error>
+where
+    F: Future<Output = Result<(), Error>>,
+{
+    let password = read().map_err(|e| Error::Auth(format!("Failed to read password: {}", e)))?;
+    // The terminal reader handles Enter; every returned character is password data.
+    submit(password).await?;
+    tracing::info!("Successfully authenticated with 2FA");
+    Ok(())
+}
+
+#[cfg(test)]
+#[path = "tests/auth_tests.rs"]
+mod tests;
