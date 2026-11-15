@@ -11,9 +11,14 @@ path = "src/lib.rs"
 name = "telegram-mcp"
 path = "src/main.rs"
 
+[[example]]
+name = "safe_send"
+path = "examples/safe_send/main.rs"
+test = true
+
 [dependencies]
 # MCP
-rmcp = { version = "3.9", features = ["server"] }
+rmcp = { version = "3.10.0", features = ["server"] }
 
 # Telegram — upstream moved to Codeberg in Feb 2026; the GitHub repo is a
 # stale mirror slated for deletion. Do not point these back at github.com.
