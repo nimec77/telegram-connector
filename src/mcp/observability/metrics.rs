@@ -39,7 +39,12 @@ pub struct SessionMetrics {
     requests_received: AtomicU64,
     responses_written: AtomicU64,
     last_write: Mutex<Option<Instant>>,
-    in_flight: Mutex<HashMap<String, InFlightRequest>>,
+    in_flight: Mutex<HashMap<String, PendingRequest>>,
+}
+
+struct PendingRequest {
+    external_id: String,
+    request: InFlightRequest,
 }
 
 impl Default for SessionMetrics {
@@ -77,15 +82,27 @@ impl SessionMetrics {
         request_id: &str,
         tool_name: &str,
     ) -> Result<(), StateUnavailable> {
+        self.try_record_correlated_request(request_id, request_id, tool_name)
+    }
+
+    pub(crate) fn try_record_correlated_request(
+        &self,
+        correlation: &str,
+        external_id: &str,
+        tool_name: &str,
+    ) -> Result<(), StateUnavailable> {
         self.requests_received.fetch_add(1, Ordering::Relaxed);
         self.in_flight
             .lock()
             .map_err(|_| StateUnavailable::InFlight)?
             .insert(
-                request_id.to_string(),
-                InFlightRequest {
-                    tool_name: tool_name.to_string(),
-                    received_at: Instant::now(),
+                correlation.to_string(),
+                PendingRequest {
+                    external_id: external_id.to_string(),
+                    request: InFlightRequest {
+                        tool_name: tool_name.to_string(),
+                        received_at: Instant::now(),
+                    },
                 },
             );
         Ok(())
@@ -115,7 +132,7 @@ impl SessionMetrics {
         let request = self
             .in_flight
             .lock()
-            .map(|mut pending| pending.remove(request_id))
+            .map(|mut pending| pending.remove(request_id).map(|pending| pending.request))
             .map_err(|_| StateUnavailable::InFlight);
         WriteObservation {
             request,
@@ -184,8 +201,13 @@ impl SessionMetrics {
             .map_err(|_| StateUnavailable::InFlight)
             .map(|pending| {
                 pending
-                    .iter()
-                    .map(|(id, request)| (id.clone(), request.tool_name.clone()))
+                    .values()
+                    .map(|pending| {
+                        (
+                            pending.external_id.clone(),
+                            pending.request.tool_name.clone(),
+                        )
+                    })
                     .collect()
             })
     }

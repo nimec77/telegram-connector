@@ -12,9 +12,11 @@ use crate::mcp::observability::{ResponseBuffer, SessionMetrics};
 use futures::FutureExt;
 use rmcp::model::{
     ClientNotification, ClientRequest, ErrorData, Implementation, InitializeResult, MetaObject,
-    ProgressNotificationParam, ProtocolVersion, ServerResult,
+    ProgressNotificationParam, ProgressToken, ProtocolVersion, ServerResult,
 };
-use rmcp::service::{NotificationContext, RequestContext, RoleServer, Service};
+use rmcp::service::{
+    NotificationContext, OriginatingRequestId, RequestContext, RoleServer, Service,
+};
 use rmcp::{Peer, ServiceExt};
 use state::{Operation, State};
 use std::borrow::Cow;
@@ -202,19 +204,27 @@ impl<S: Service<RoleServer>> Service<RoleServer> for RuntimeService<S> {
     async fn handle_request(
         &self,
         request: ClientRequest,
-        context: RequestContext<RoleServer>,
+        mut context: RequestContext<RoleServer>,
     ) -> Result<ServerResult, ErrorData> {
-        let operation = self.state.operations.lock().await.get(&context.id).cloned();
+        let operation = context.extensions.get::<Arc<Operation>>().cloned();
         let Some(operation) = operation else {
             return Err(ErrorData::invalid_request("Request cancelled", None));
         };
+        // SDK subscription sinks derive their immutable ID from context.id.
+        // Preserve the external identity in a public, nonserialized SDK extension
+        // for subscription handlers; ordinary handlers also receive it in id.
+        let external_id = OriginatingRequestId(operation.external_id.clone());
+        if !matches!(request, ClientRequest::SubscriptionsListenRequest(_)) {
+            context.id = external_id.0.clone();
+        }
+        context.extensions.insert(external_id);
         let modern = context
             .protocol_version()
             .is_some_and(|version| version == ProtocolVersion::V_2026_07_28)
             && !matches!(request, ClientRequest::InitializeRequest(_));
         let ct = context.ct.clone();
         let progress = OperationContext {
-            response_id: context.id.clone(),
+            response_id: operation.external_id.clone(),
             modern,
             identity: self.service.get_info().server_info,
             operation: Arc::clone(&operation),
@@ -236,9 +246,14 @@ impl<S: Service<RoleServer>> Service<RoleServer> for RuntimeService<S> {
     }
     async fn handle_notification(
         &self,
-        notification: ClientNotification,
+        mut notification: ClientNotification,
         context: NotificationContext<RoleServer>,
     ) -> Result<(), ErrorData> {
+        if let ClientNotification::CancelledNotification(cancelled) = &mut notification
+            && let Some(external_id) = context.extensions.get::<OriginatingRequestId>()
+        {
+            cancelled.params.request_id = Some(external_id.0.clone());
+        }
         self.service
             .handle_notification(notification, context)
             .await
@@ -317,7 +332,8 @@ pub(crate) async fn scope_response<F: Future>(
 /// Messages must be static descriptions without user data. No detached tasks.
 pub(crate) async fn report_progress(message: &'static str) {
     let context = OPERATION.try_with(|context| {
-        let token = context.operation.token.clone()?;
+        context.operation.token.as_ref()?;
+        let token = ProgressToken(context.operation.sdk_id.clone());
         Some((
             Arc::clone(&context.operation),
             context.peer.clone(),

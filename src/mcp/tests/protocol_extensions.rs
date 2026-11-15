@@ -28,7 +28,7 @@ impl rmcp::ServerHandler for PatternHandler {
     ) -> Result<CallToolResponse, ErrorData> {
         if request.name == "context" {
             return Ok(CallToolResult::success(vec![ContentBlock::text(json!({
-                "version":context.protocol_version(), "client":context.client_info(), "caps":context.client_capabilities()
+                "id":context.id, "version":context.protocol_version(), "client":context.client_info(), "caps":context.client_capabilities()
             }).to_string())]).into());
         }
         if request.name == "requires-input"
@@ -57,6 +57,18 @@ impl rmcp::ServerHandler for PatternHandler {
         Some(request.clone())
     }
     async fn listen(&self, context: SubscriptionContext) -> Result<(), ErrorData> {
+        let external = &context
+            .request_context()
+            .extensions
+            .get::<rmcp::service::OriginatingRequestId>()
+            .expect("runtime preserves original subscription identity")
+            .0;
+        assert!(matches!(external, rmcp::model::RequestId::Number(1 | 2)));
+        assert_ne!(
+            context.sink().id(),
+            external,
+            "SDK subscription sink keeps immutable identity"
+        );
         context
             .sink()
             .notify_tool_list_changed()
@@ -93,6 +105,10 @@ async fn request_identity_and_capabilities_do_not_leak_across_interleaved_calls(
                 .expect("text"),
         )
         .expect("context JSON");
+        assert_eq!(
+            data["id"], reply["id"],
+            "application receives the external ID"
+        );
         if reply["id"] == 1 {
             assert_eq!(data["client"]["name"], "A");
             assert!(data["caps"].get("elicitation").is_some());
@@ -163,6 +179,10 @@ async fn subscriptions_acknowledge_filtered_events_then_close_or_cancel() {
             fixture.close.notify_one();
             let result = wire.recv().await;
             assert_eq!(result["id"], 1);
+            assert_eq!(
+                result["result"]["_meta"]["io.modelcontextprotocol/subscriptionId"], 1,
+                "private subscription identity must not escape in the final result"
+            );
             assert_eq!(result["result"]["resultType"], "complete");
         } else {
             wire.send(json!({"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":id}})).await;

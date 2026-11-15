@@ -6,10 +6,10 @@ use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use rmcp::RoleServer;
 use rmcp::model::{
-    ClientJsonRpcMessage, ClientNotification, ClientRequest, ErrorCode, ErrorData, GetMeta,
-    JsonRpcMessage, RequestId, ServerNotification,
+    ClientJsonRpcMessage, ClientNotification, ClientRequest, ErrorCode, ErrorData, GetExtensions,
+    GetMeta, JsonRpcMessage, RequestId, ServerNotification,
 };
-use rmcp::service::{RxJsonRpcMessage, TxJsonRpcMessage};
+use rmcp::service::{OriginatingRequestId, RxJsonRpcMessage, TxJsonRpcMessage};
 use rmcp::transport::Transport;
 use rmcp::transport::async_rw::AsyncRwTransport;
 use serde_json::Value;
@@ -17,13 +17,14 @@ use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, BufReader, Empty};
+use tokio::sync::Mutex;
 use tokio::time::Instant;
 
 const MAX_PENDING_PROTOCOL_ERRORS: usize = 16;
 
 pub(super) struct StdioTransport<R: AsyncRead, W: AsyncWrite> {
     reader: BufReader<R>,
-    writer: InstrumentedTransport<AsyncRwTransport<RoleServer, Empty, W>>,
+    writer: Arc<Mutex<InstrumentedTransport<AsyncRwTransport<RoleServer, Empty, W>>>>,
     state: Arc<State>,
     frame: Vec<u8>,
     discarding: bool,
@@ -59,7 +60,7 @@ where
         );
         Self {
             reader: BufReader::new(read),
-            writer,
+            writer: Arc::new(Mutex::new(writer)),
             state,
             frame: Vec::new(),
             discarding: false,
@@ -114,7 +115,12 @@ where
             return false;
         }
         let state = Arc::clone(&self.state);
-        let send = self.writer.inner.send(JsonRpcMessage::error(error, id));
+        let send = self
+            .writer
+            .lock()
+            .await
+            .inner
+            .send(JsonRpcMessage::error(error, id));
         self.rejections.push(
             async move {
                 tokio::select! {
@@ -140,7 +146,7 @@ where
     type Error = io::Error;
     fn send(
         &mut self,
-        item: TxJsonRpcMessage<RoleServer>,
+        mut item: TxJsonRpcMessage<RoleServer>,
     ) -> impl Future<Output = io::Result<()>> + Send + 'static {
         let state = Arc::clone(&self.state);
         let response_id = match &item {
@@ -165,7 +171,7 @@ where
             _ => None,
         };
         let outbound_request = matches!(&item, JsonRpcMessage::Request(_));
-        let send = self.writer.send(item);
+        let writer = Arc::clone(&self.writer);
         async move {
             if outbound_request {
                 return Err(io::Error::other("Server initiated requests are disabled"));
@@ -176,8 +182,8 @@ where
                     entries.get(id).cloned()
                 } else if let Some((token, _)) = &progress {
                     entries
-                        .values()
-                        .find(|op| op.token.as_ref() == Some(token))
+                        .get(&token.0)
+                        .filter(|op| op.token.is_some())
                         .cloned()
                 } else {
                     None
@@ -212,6 +218,40 @@ where
                 }
                 *last = value;
             }
+            // Translate only after generation lookup and cancellation checks. Never
+            // construct instrumentation for suppressed SDK-queued output.
+            match &mut item {
+                JsonRpcMessage::Response(response) => {
+                    response.id = operation.external_id.clone();
+                    if let rmcp::model::ServerResult::SubscriptionsListenResult(result) =
+                        &mut response.result
+                    {
+                        result
+                            .meta
+                            .set_subscription_id(operation.external_id.clone());
+                    }
+                }
+                JsonRpcMessage::Error(error) => error.id = Some(operation.external_id.clone()),
+                JsonRpcMessage::Notification(notification) => {
+                    if subscription.is_some() {
+                        notification
+                            .notification
+                            .get_meta_mut()
+                            .set_subscription_id(operation.external_id.clone());
+                    }
+                    if let ServerNotification::ProgressNotification(progress) =
+                        &mut notification.notification
+                        && let Some(token) = &operation.token
+                    {
+                        progress.params.progress_token = token.clone();
+                    }
+                }
+                _ => {}
+            }
+            let send = writer.lock().await.send_correlated(
+                item,
+                Some(operation.sdk_id.clone().into_json_value().to_string()),
+            );
             // Once a frame starts writing it is committed: finish its bytes even
             // if cancellation races. Only connection shutdown interrupts a frame.
             let result = tokio::select! {
@@ -220,8 +260,8 @@ where
                 _ = bootstrap_write_stalled(&state, bootstrap_deadline) => Err(io::Error::new(io::ErrorKind::TimedOut, "Bootstrap output stalled")),
                 result = send => result,
             };
-            if let Some(id) = &response_id {
-                state.finish(id).await;
+            if response_id.is_some() {
+                state.finish(&operation).await;
             }
             drop(gate);
             if let Err(error) = &result
@@ -310,7 +350,7 @@ where
                 }
                 continue;
             }
-            let message = match serde_json::from_value::<ClientJsonRpcMessage>(value) {
+            let mut message = match serde_json::from_value::<ClientJsonRpcMessage>(value) {
                 Ok(message) => message,
                 Err(_) if notification => continue,
                 Err(_) => {
@@ -323,7 +363,7 @@ where
                     continue;
                 }
             };
-            match &message {
+            match &mut message {
                 JsonRpcMessage::Request(request) => {
                     let meta = request.request.get_meta();
                     let inline_modern = meta
@@ -395,15 +435,18 @@ where
                                 | ClientRequest::DiscoverRequest(_)
                                 | ClientRequest::PingRequest(_)
                         );
-                    if let Err(error) = state
+                    let operation = match state
                         .admit(request.id.clone(), meta.get_progress_token(), bootstrap)
                         .await
                     {
-                        if !self.reject(Some(request.id.clone()), error).await {
-                            return None;
+                        Ok(operation) => operation,
+                        Err(error) => {
+                            if !self.reject(Some(request.id.clone()), error).await {
+                                return None;
+                            }
+                            continue;
                         }
-                        continue;
-                    }
+                    };
                     if matches!(request.request, ClientRequest::InitializeRequest(_)) {
                         self.started = true;
                     } else if !self.started
@@ -423,17 +466,31 @@ where
                         ClientRequest::CallToolRequest(call) => call.params.name.as_ref(),
                         other => other.method(),
                     };
-                    let _ = state.metrics.try_record_request(
-                        &request.id.clone().into_json_value().to_string(),
+                    let _ = state.metrics.try_record_correlated_request(
+                        &operation.sdk_id.clone().into_json_value().to_string(),
+                        &operation.external_id.clone().into_json_value().to_string(),
                         tool,
                     );
+                    request.id = operation.sdk_id.clone();
+                    if operation.token.is_some() {
+                        request.request.get_meta_mut().set_progress_token(
+                            rmcp::model::ProgressToken(operation.sdk_id.clone()),
+                        );
+                    }
+                    request.request.extensions_mut().insert(operation);
                 }
                 JsonRpcMessage::Notification(notification) => {
                     if let ClientNotification::CancelledNotification(cancelled) =
-                        &notification.notification
+                        &mut notification.notification
                         && let Some(id) = &cancelled.params.request_id
                     {
-                        state.cancel(id).await;
+                        let Some(sdk_id) = state.cancel(id).await else {
+                            continue;
+                        };
+                        cancelled
+                            .extensions
+                            .insert(OriginatingRequestId(id.clone()));
+                        cancelled.params.request_id = Some(sdk_id);
                     }
                     if !self.started {
                         continue;
@@ -447,7 +504,7 @@ where
     async fn close(&mut self) -> io::Result<()> {
         self.state.stop().await;
         self.rejections.clear();
-        self.writer.close().await
+        self.writer.lock().await.close().await
     }
 }
 

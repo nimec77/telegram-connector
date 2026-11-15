@@ -226,3 +226,100 @@ async fn task8_pending_duplicate_and_cancelled_recovery_share_the_real_request_l
     assert!(unavailable, "cancelled reservation stayed pending");
     wire.close().await;
 }
+
+struct RecoveryAdmission {
+    server: McpServer<MockTelegramClientTrait, MockRateLimiterTrait>,
+    replacement_started: Arc<tokio::sync::Notify>,
+}
+impl rmcp::ServerHandler for RecoveryAdmission {
+    fn get_info(&self) -> rmcp::model::InitializeResult {
+        rmcp::ServerHandler::get_info(&self.server)
+    }
+    async fn call_tool(
+        &self,
+        request: rmcp::model::CallToolRequestParams,
+        context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Result<rmcp::model::CallToolResponse, rmcp::ErrorData> {
+        if request.name == "get_messages_batch" {
+            self.replacement_started.notify_one();
+        }
+        rmcp::ServerHandler::call_tool(&self.server, request, context).await
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn cancelled_committed_response_keeps_distinct_recovery_keys_for_reused_ids() {
+    use tokio::io::AsyncReadExt;
+    for modern_mode in [false, true] {
+        for id in [json!(7), json!("same-id-with-longer-wire-framing")] {
+            let replacement_started = Arc::new(tokio::sync::Notify::new());
+            let handler = RecoveryAdmission {
+                server: complete_server(OutputFormat::JsonV1),
+                replacement_started: Arc::clone(&replacement_started),
+            };
+            let mut wire = Wire::configured(handler, crate::config::ServerConfig::default(), 256);
+            if !modern_mode {
+                wire.send(json!({"jsonrpc":"2.0","id":0,"method":"initialize","params":{
+                    "protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"identity-test","version":"1"}}})).await;
+                assert_eq!(wire.recv().await["id"], 0);
+                wire.send(json!({"jsonrpc":"2.0","method":"notifications/initialized"}))
+                    .await;
+            }
+            let mut old = request(7, "tools/call", modern_mode);
+            old["id"] = id.clone();
+            old["params"]["name"] = json!("get_message_by_link");
+            old["params"]["arguments"] =
+                json!({"link":"https://t.me/news/1","recovery_key":"old-lifetime"});
+            wire.send(old).await;
+            let mut first = [0];
+            wire.read
+                .read_exact(&mut first)
+                .await
+                .expect("old frame committed");
+            wire.send(json!({"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":id}})).await;
+            let mut replacement = request(7, "tools/call", modern_mode);
+            replacement["id"] = id.clone();
+            replacement["params"]["name"] = json!("get_messages_batch");
+            replacement["params"]["arguments"] =
+                json!({"channel_id":"news","message_ids":[1,2],"recovery_key":"new-lifetime"});
+            wire.send(replacement).await;
+            tokio::time::timeout(Duration::from_secs(1), replacement_started.notified())
+                .await
+                .expect("replacement admitted before old frame drains");
+            let mut old_line = String::from_utf8(first.to_vec()).expect("frame prefix");
+            wire.read
+                .read_line(&mut old_line)
+                .await
+                .expect("old frame completes");
+            let old: Value = serde_json::from_str(&old_line).expect("old JSON");
+            let replacement = wire.recv().await;
+            assert_eq!(old["id"], id);
+            assert_eq!(replacement["id"], id);
+            assert_eq!(old["result"]["isError"], false);
+            assert_eq!(replacement["result"]["isError"], false);
+            assert_ne!(old["result"], replacement["result"]);
+            for (key, expected) in [("old-lifetime", old), ("new-lifetime", replacement)] {
+                let recovered = call(
+                    &mut wire,
+                    99,
+                    "get_last_responses",
+                    json!({"recovery_keys":[key]}),
+                    modern_mode,
+                )
+                .await;
+                assert_eq!(
+                    envelope(&recovered)["data"]["responses"][0]["response"],
+                    expected,
+                    "each reservation retains its own original framing and payload"
+                );
+            }
+            assert!(
+                wire.metrics
+                    .try_abandoned_requests()
+                    .expect("healthy metrics")
+                    .is_empty()
+            );
+            wire.close().await;
+        }
+    }
+}

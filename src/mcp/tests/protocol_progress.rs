@@ -251,3 +251,132 @@ async fn cancelling_real_media_call_drops_admission_wait_and_never_starts_telegr
     assert_eq!(wire.recv().await["id"], 2);
     wire.close().await;
 }
+
+struct ReusedProgress {
+    started: Arc<tokio::sync::Notify>,
+    dropped: Arc<tokio::sync::Notify>,
+    cancelled: tokio::sync::mpsc::UnboundedSender<rmcp::model::RequestId>,
+}
+impl rmcp::ServerHandler for ReusedProgress {
+    async fn call_tool(
+        &self,
+        request: rmcp::model::CallToolRequestParams,
+        context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Result<rmcp::model::CallToolResponse, rmcp::ErrorData> {
+        use futures::FutureExt;
+        if request.name == "blocker" {
+            return Ok(rmcp::model::CallToolResult::success(vec![
+                rmcp::model::ContentBlock::text("x".repeat(2048)),
+            ])
+            .into());
+        }
+        let _guard = DropNotice(Arc::clone(&self.dropped));
+        let token = context.meta.get_progress_token().expect("token requested");
+        let progress = rmcp::model::ProgressNotificationParam::new(token, 1.0)
+            .with_message(request.name.to_string());
+        let _ = context.peer.notify_progress(progress).now_or_never();
+        self.started.notify_one();
+        std::future::pending().await
+    }
+    async fn on_cancelled(
+        &self,
+        notification: rmcp::model::CancelledNotificationParam,
+        _: rmcp::service::NotificationContext<rmcp::RoleServer>,
+    ) {
+        self.cancelled
+            .send(notification.request_id.expect("cancel ID"))
+            .expect("observer");
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn cancelled_sdk_progress_cannot_follow_reused_token_and_replacement_remains_cancellable() {
+    use tokio::io::AsyncReadExt;
+    for modern_mode in [false, true] {
+        for id in [json!(7), json!("reused-call")] {
+            for token in [json!(11), json!("reused-token")] {
+                let started = Arc::new(tokio::sync::Notify::new());
+                let dropped = Arc::new(tokio::sync::Notify::new());
+                let (cancelled, mut cancellation) = tokio::sync::mpsc::unbounded_channel();
+                let handler = ReusedProgress {
+                    started: Arc::clone(&started),
+                    dropped: Arc::clone(&dropped),
+                    cancelled,
+                };
+                let mut wire =
+                    Wire::configured(handler, crate::config::ServerConfig::default(), 256);
+                if !modern_mode {
+                    wire.send(json!({"jsonrpc":"2.0","id":0,"method":"initialize","params":{
+                        "protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"progress-test","version":"1"}}})).await;
+                    wire.recv().await;
+                    wire.send(json!({"jsonrpc":"2.0","method":"notifications/initialized"}))
+                        .await;
+                }
+                let make_call = |id: Value, name: &str| {
+                    let mut message = if modern_mode {
+                        modern(id.clone(), "tools/call")
+                    } else {
+                        json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{}})
+                    };
+                    message["params"]["name"] = json!(name);
+                    message["params"]["arguments"] = json!({});
+                    if name != "blocker" {
+                        message["params"]["_meta"]["progressToken"] = token.clone();
+                    }
+                    message
+                };
+                wire.send(make_call(json!(1), "blocker")).await;
+                let mut prefix = [0];
+                wire.read
+                    .read_exact(&mut prefix)
+                    .await
+                    .expect("blocked writer committed");
+                wire.send(make_call(id.clone(), "old-progress")).await;
+                started.notified().await;
+                wire.send(json!({"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":id}})).await;
+                dropped.notified().await;
+                assert_eq!(
+                    cancellation
+                        .recv()
+                        .await
+                        .expect("application cancellation")
+                        .into_json_value(),
+                    id
+                );
+                wire.send(make_call(id.clone(), "replacement-progress"))
+                    .await;
+                started.notified().await;
+                let mut line = String::from_utf8(prefix.to_vec()).expect("prefix");
+                wire.read.read_line(&mut line).await.expect("blocker frame");
+                assert_eq!(serde_json::from_str::<Value>(&line).expect("JSON")["id"], 1);
+                let progress = wire.recv().await;
+                assert_eq!(progress["method"], "notifications/progress");
+                assert_eq!(progress["params"]["progressToken"], token);
+                assert_eq!(progress["params"]["message"], "replacement-progress");
+                wire.send(json!({"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":id}})).await;
+                dropped.notified().await;
+                assert_eq!(
+                    cancellation
+                        .recv()
+                        .await
+                        .expect("replacement cancellation")
+                        .into_json_value(),
+                    id
+                );
+                wire.send(make_call(json!(99), "blocker")).await;
+                assert_eq!(
+                    wire.recv().await["id"],
+                    99,
+                    "no stale progress after replacement cancellation"
+                );
+                assert!(
+                    wire.metrics
+                        .try_abandoned_requests()
+                        .expect("metrics")
+                        .is_empty()
+                );
+                wire.close().await;
+            }
+        }
+    }
+}

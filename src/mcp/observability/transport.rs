@@ -48,13 +48,12 @@ impl<T> InstrumentedTransport<T> {
     }
 }
 
-impl<T: Transport<RoleServer>> Transport<RoleServer> for InstrumentedTransport<T> {
-    type Error = T::Error;
-
-    fn send(
+impl<T: Transport<RoleServer>> InstrumentedTransport<T> {
+    pub(crate) fn send_correlated(
         &mut self,
         item: TxJsonRpcMessage<RoleServer>,
-    ) -> impl Future<Output = Result<(), Self::Error>> + Send + 'static {
+        correlation: Option<String>,
+    ) -> impl Future<Output = Result<(), T::Error>> + Send + 'static {
         // Pre-compute identity and payload here: the returned future must be
         // 'static, so it cannot borrow from self or the message.
         let response_id = match &item {
@@ -79,14 +78,19 @@ impl<T: Transport<RoleServer>> Transport<RoleServer> for InstrumentedTransport<T
             let Some(request_id) = response_id else {
                 return result; // notifications/requests pass through unaccounted
             };
-            let request_key = request_id.clone().into_json_value().to_string();
+            let require_match = correlation.is_some();
+            let request_key =
+                correlation.unwrap_or_else(|| request_id.clone().into_json_value().to_string());
             let request_id = request_id.to_string();
             match &result {
                 Ok(()) => {
                     let write_elapsed = write_started.elapsed();
                     let write_ms = write_elapsed.as_millis() as u64;
                     let observation = metrics.observe_response_written(&request_key);
-                    let correlation_available = observation.request.is_ok();
+                    let correlation_available = observation
+                        .request
+                        .as_ref()
+                        .is_ok_and(|request| !require_match || request.is_some());
                     let in_flight = observation.request.ok().flatten();
                     let tool_name = in_flight
                         .as_ref()
@@ -137,6 +141,17 @@ impl<T: Transport<RoleServer>> Transport<RoleServer> for InstrumentedTransport<T
             }
             result
         }
+    }
+}
+
+impl<T: Transport<RoleServer>> Transport<RoleServer> for InstrumentedTransport<T> {
+    type Error = T::Error;
+
+    fn send(
+        &mut self,
+        item: TxJsonRpcMessage<RoleServer>,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send + 'static {
+        self.send_correlated(item, None)
     }
 
     async fn receive(&mut self) -> Option<RxJsonRpcMessage<RoleServer>> {
