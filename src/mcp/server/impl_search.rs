@@ -35,6 +35,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     pub(super) async fn search_messages_data(
         &self,
         request: SearchRequest,
+        budget_mode: shaping::BudgetMode,
     ) -> Result<SearchResponse<Error>, Error> {
         // Validate: query required unless media_filter is set
         if request.query.trim().is_empty() && request.media_filter.is_none() {
@@ -145,7 +146,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                 max_text_length,
             };
             return self
-                .run_fanout(list, before_id.is_some() || after_id.is_some(), page, fetch)
+                .run_fanout(
+                    list,
+                    before_id.is_some() || after_id.is_some(),
+                    page,
+                    fetch,
+                    budget_mode,
+                )
                 .await;
         }
 
@@ -206,6 +213,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             cursor_policy,
             self.response_byte_budget,
             shaping::CompactScope::Single,
+            budget_mode,
         )?;
         Ok(response)
     }
@@ -247,6 +255,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         has_cursor: bool,
         page: FanoutPage,
         fetch: F,
+        budget_mode: shaping::BudgetMode,
     ) -> Result<SearchResponse<Error>, Error>
     where
         F: Fn(String) -> Fut,
@@ -278,6 +287,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             shaping::CursorPolicy::Unavailable,
             self.response_byte_budget,
             shaping::CompactScope::Multi,
+            budget_mode,
         )?;
         Ok(response)
     }
@@ -285,6 +295,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     pub(super) async fn get_recent_messages_data(
         &self,
         request: GetRecentMessagesRequest,
+        budget_mode: shaping::BudgetMode,
     ) -> Result<SearchResponse<Error>, Error> {
         // Apply defaults and limits
         let hours_back = request
@@ -366,7 +377,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                 max_text_length,
             };
             return self
-                .run_fanout(list, before_id.is_some() || after_id.is_some(), page, fetch)
+                .run_fanout(
+                    list,
+                    before_id.is_some() || after_id.is_some(),
+                    page,
+                    fetch,
+                    budget_mode,
+                )
                 .await;
         }
 
@@ -413,6 +430,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             shaping::CursorPolicy::SingleChannel,
             self.response_byte_budget,
             shaping::CompactScope::Single,
+            budget_mode,
         )?;
         Ok(response)
     }

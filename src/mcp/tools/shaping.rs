@@ -63,6 +63,13 @@ pub(crate) enum CompactScope {
     Multi,
 }
 
+/// Select fitting by call path, independently of the configured wire output format.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BudgetMode {
+    Direct,
+    Wire,
+}
+
 /// Whether message IDs can identify a continuation in this result scope.
 /// Independent of compact header layout: global search has no channel cursor.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -108,9 +115,16 @@ fn fit_to_budget<E: serde::Serialize>(
 ) -> Result<(), crate::error::Error> {
     let mut popped = false;
     loop {
+        #[cfg(test)]
+        super::wire_budget::work::record(|counts| {
+            counts.preliminary_serializations += 1;
+            counts.preliminary_rows += resp.messages.len();
+        });
         let len = serde_json::to_string(resp)
             .map_err(|_| crate::error::Error::Internal("response serialization failed"))?
             .len();
+        #[cfg(test)]
+        super::wire_budget::work::record(|counts| counts.preliminary_output_bytes += len);
         if len <= budget || resp.messages.len() <= 1 {
             break;
         }
@@ -136,8 +150,8 @@ fn fit_to_budget<E: serde::Serialize>(
 /// Run the full post-fetch shaping pipeline in the order the audit verified:
 /// (1) per-message text truncation, (2) `next_cursor` emission when the page
 /// was truncated and the scope is single-channel, (3) compact hoisting, then
-/// (4) byte-budget fitting. Shared by `search_messages_impl` and
-/// `get_recent_messages_impl` so the order and conditions live in one place.
+/// (4) preliminary DTO-byte fitting for direct adapters. Registered wire calls
+/// fit the complete frame later. Search and history share this shaping order.
 pub(crate) fn shape_response<E: serde::Serialize>(
     resp: &mut SearchResponse<E>,
     format: ResponseFormat,
@@ -145,6 +159,7 @@ pub(crate) fn shape_response<E: serde::Serialize>(
     cursor_policy: CursorPolicy,
     byte_budget: usize,
     scope: CompactScope,
+    budget_mode: BudgetMode,
 ) -> Result<(), crate::error::Error> {
     for msg in &mut resp.messages {
         truncate_text(msg, max_text_length);
@@ -181,7 +196,10 @@ pub(crate) fn shape_response<E: serde::Serialize>(
             CompactScope::Multi => compact_response_multi(resp),
         }
     }
-    fit_to_budget(resp, byte_budget, cursor_policy)
+    if budget_mode == BudgetMode::Direct {
+        fit_to_budget(resp, byte_budget, cursor_policy)?;
+    }
+    Ok(())
 }
 
 /// Pop trailing messages from a batch response until it serializes within
@@ -194,9 +212,16 @@ pub(crate) fn fit_batch_to_budget(
 ) -> Result<(), crate::error::Error> {
     let mut omitted = Vec::new();
     loop {
+        #[cfg(test)]
+        super::wire_budget::work::record(|counts| {
+            counts.preliminary_serializations += 1;
+            counts.preliminary_rows += resp.messages.len();
+        });
         let len = serde_json::to_string(resp)
             .map_err(|_| crate::error::Error::Internal("response serialization failed"))?
             .len();
+        #[cfg(test)]
+        super::wire_budget::work::record(|counts| counts.preliminary_output_bytes += len);
         if len <= budget || resp.messages.len() <= 1 {
             break;
         }

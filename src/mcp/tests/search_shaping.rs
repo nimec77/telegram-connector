@@ -390,10 +390,13 @@ async fn global_search_keeps_user_group_and_channel_namespaces_without_a_cursor(
             .returning(move |_| Ok(upstream.clone()));
         let server = McpServer::new(Arc::new(client), Arc::new(permissive_limiter()));
         let response = server
-            .search_messages_data(SearchRequest {
-                query: "q".into(),
-                ..Default::default()
-            })
+            .search_messages_data(
+                SearchRequest {
+                    query: "q".into(),
+                    ..Default::default()
+                },
+                crate::mcp::tools::shaping::BudgetMode::Direct,
+            )
             .await;
         let rendered = crate::mcp::tools::types::contract::render(mode, response);
         let wire = serde_json::to_value(rendered).expect("wire result");
@@ -502,10 +505,13 @@ async fn global_search_renders_converted_namespaced_albums_in_both_modes() {
             .returning(move |_| Ok(upstream.clone()));
         let server = McpServer::new(Arc::new(client), Arc::new(permissive_limiter()));
         let response = server
-            .search_messages_data(SearchRequest {
-                query: "q".into(),
-                ..Default::default()
-            })
+            .search_messages_data(
+                SearchRequest {
+                    query: "q".into(),
+                    ..Default::default()
+                },
+                crate::mcp::tools::shaping::BudgetMode::Direct,
+            )
             .await;
         let wire = serde_json::to_value(crate::mcp::tools::types::contract::render(mode, response))
             .expect("wire result");
@@ -636,29 +642,35 @@ async fn assert_fanout_namespaced_rendering(search: bool) {
             let server = McpServer::new(Arc::new(client), Arc::new(limiter));
             let response = if search {
                 server
-                    .search_messages_data(SearchRequest {
-                        query: "q".into(),
-                        channel_ids: Some(vec!["111".into(), "222".into()]),
-                        limit: Some(2),
-                        ..Default::default()
-                    })
+                    .search_messages_data(
+                        SearchRequest {
+                            query: "q".into(),
+                            channel_ids: Some(vec!["111".into(), "222".into()]),
+                            limit: Some(2),
+                            ..Default::default()
+                        },
+                        crate::mcp::tools::shaping::BudgetMode::Direct,
+                    )
                     .await
             } else {
                 server
-                    .get_recent_messages_data(GetRecentMessagesRequest {
-                        channel_id: None,
-                        channel_ids: Some(vec!["111".into(), "222".into()]),
-                        hours_back: None,
-                        limit: Some(2),
-                        media_filter: None,
-                        from_date: None,
-                        to_date: None,
-                        collapse_albums: None,
-                        before_id: None,
-                        after_id: None,
-                        max_text_length: None,
-                        format: None,
-                    })
+                    .get_recent_messages_data(
+                        GetRecentMessagesRequest {
+                            channel_id: None,
+                            channel_ids: Some(vec!["111".into(), "222".into()]),
+                            hours_back: None,
+                            limit: Some(2),
+                            media_filter: None,
+                            from_date: None,
+                            to_date: None,
+                            collapse_albums: None,
+                            before_id: None,
+                            after_id: None,
+                            max_text_length: None,
+                            format: None,
+                        },
+                        crate::mcp::tools::shaping::BudgetMode::Direct,
+                    )
                     .await
             };
             let rendered = crate::mcp::tools::types::contract::render(mode, response);

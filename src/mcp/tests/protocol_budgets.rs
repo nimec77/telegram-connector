@@ -15,11 +15,13 @@ fn budget_server(
                     let mut m = message();
                     m.id = types::MessageId::new(id).expect("id");
                     m.text = "\"\\🦀".repeat(400);
+                    m.timestamp =
+                        chrono::DateTime::from_timestamp(1_800_000_000, 0).expect("timestamp");
                     m
                 })
                 .collect()
         };
-        create_test_search_result(
+        let mut result = create_test_search_result(
             messages,
             &if metadata_only {
                 "q".repeat(20_000)
@@ -27,7 +29,10 @@ fn budget_server(
                 "q".into()
             },
             1,
-        )
+        );
+        result.query_metadata.window_from =
+            chrono::DateTime::from_timestamp(1_800_000_000, 0).expect("timestamp");
+        result
     }
     client
         .expect_search_messages()
@@ -415,4 +420,394 @@ async fn task8_sdk_embedding_counts_the_actual_rpc_id_without_the_custom_runtime
             .expect("messages")
             .is_empty()
     );
+}
+
+#[tokio::test]
+async fn o02_wire_fitting_keeps_rows_when_typed_channel_errors_shrink() {
+    for modern_mode in [true, false] {
+        let mut client = MockTelegramClientTrait::new();
+        client.expect_search_messages().returning(|params| {
+            if params.channel_id.expect("scoped").get() == 222 {
+                Err(crate::error::Error::TelegramApi(
+                    "upstream detail".repeat(10_000),
+                ))
+            } else {
+                Ok(create_test_search_result(
+                    (1..=6)
+                        .rev()
+                        .map(|id| crate::test_helpers::create_test_message(id, "я\"\\🦀", 111))
+                        .collect(),
+                    "q",
+                    1,
+                ))
+            }
+        });
+        client.expect_get_recent_messages().returning(|params| {
+            if params.channel_id.expect("scoped").get() == 222 {
+                Err(crate::error::Error::TelegramApi(
+                    "upstream detail".repeat(10_000),
+                ))
+            } else {
+                Ok(create_test_search_result(
+                    (1..=6)
+                        .rev()
+                        .map(|id| crate::test_helpers::create_test_message(id, "я\"\\🦀", 111))
+                        .collect(),
+                    "",
+                    1,
+                ))
+            }
+        });
+        let server = McpServer::new(Arc::new(client), Arc::new(permissive_limiter()))
+            .with_output_format(OutputFormat::JsonV1)
+            .with_response_byte_budget(14_000);
+        // The direct compatibility methods intentionally keep the historical raw fit.
+        let direct_args = json!({"query":"q","channel_ids":["111","222"],"limit":100});
+        let direct = server
+            .search_messages_impl(
+                serde_json::from_value(direct_args.clone()).expect("search request"),
+            )
+            .await
+            .expect("direct search");
+        assert_eq!(
+            serde_json::from_str::<Value>(&direct).expect("legacy DTO")["returned"],
+            1
+        );
+        let direct = server
+            .get_recent_messages_impl(serde_json::from_value(direct_args).expect("history request"))
+            .await
+            .expect("direct history");
+        assert_eq!(
+            serde_json::from_str::<Value>(&direct).expect("legacy DTO")["returned"],
+            1
+        );
+        let mut wire = start_mode(server, modern_mode).await;
+        for (id, name) in [(1, "search_messages"), (2, "get_recent_messages")] {
+            let reply = call(
+                &mut wire,
+                id,
+                name,
+                json!({"query":"q","channel_ids":["111","222"],"limit":100}),
+                modern_mode,
+            )
+            .await;
+            let body = envelope(&reply);
+            assert_eq!(body["data"]["returned"], 6, "{name}: {reply}");
+            assert_eq!(
+                body["data"]["channel_errors"]
+                    .as_array()
+                    .expect("partial failures")
+                    .len(),
+                1
+            );
+            assert!(serde_json::to_vec(&reply).expect("actual frame").len() <= 14_000);
+        }
+        wire.close().await;
+    }
+}
+
+async fn o02_call_with_id(
+    wire: &mut Wire,
+    id: Value,
+    name: &str,
+    args: Value,
+    modern_mode: bool,
+) -> Value {
+    let mut request = if modern_mode {
+        modern(id.clone(), "tools/call")
+    } else {
+        json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{}})
+    };
+    request["params"]["name"] = json!(name);
+    request["params"]["arguments"] = args;
+    wire.send(request).await;
+    let reply = wire.recv().await;
+    assert_eq!(reply["id"], id, "original external ID");
+    reply
+}
+
+#[tokio::test]
+async fn o02_exact_frame_threshold_preserves_external_ids_and_greedy_rows() {
+    for mode in [OutputFormat::JsonV1, OutputFormat::Legacy] {
+        for modern_mode in [true, false] {
+            for compact in [false, true] {
+                for name in [
+                    "search_messages",
+                    "get_recent_messages",
+                    "get_messages_batch",
+                ] {
+                    let id = json!("escaped\"\\я🦀".repeat(100));
+                    let args = json!({"query":"q","channel_id":LARGE_ID,"message_ids":[6,5,4,3,2,1,7],
+                        "max_text_length":20_000,"format":if compact {"compact"} else {"full"}});
+                    let mut wire = start_mode(
+                        budget_server(mode, false).with_response_byte_budget(1_000_000),
+                        modern_mode,
+                    )
+                    .await;
+                    let reply =
+                        o02_call_with_id(&mut wire, id.clone(), name, args.clone(), modern_mode)
+                            .await;
+                    let exact = serde_json::to_vec(&reply).expect("complete frame").len();
+                    assert_eq!(data(&reply, mode)["returned"], 6);
+                    wire.close().await;
+                    let mut thresholds = vec![(exact, 6), (exact - 1, 5)];
+                    // Independently assemble exact complete frames for shorter prefixes.
+                    // This checks that the row bound never jumps past a fitting prefix.
+                    for retained in [4usize, 2] {
+                        let mut expected = reply.clone();
+                        let mut body = data(&reply, mode);
+                        body["messages"]
+                            .as_array_mut()
+                            .expect("messages")
+                            .truncate(retained);
+                        body["returned"] = json!(retained);
+                        if name == "get_messages_batch" {
+                            body["omitted_ids"] =
+                                json!((1..=(6 - retained)).rev().collect::<Vec<_>>());
+                        } else {
+                            body["has_more"] = json!(true);
+                            body["next_cursor"] = json!({"before_id":7-retained});
+                        }
+                        if mode == OutputFormat::JsonV1 {
+                            expected["result"]["structuredContent"]["data"] = body;
+                            expected["result"]["content"][0]["text"] = json!(
+                                serde_json::to_string(&expected["result"]["structuredContent"])
+                                    .expect("matching fallback")
+                            );
+                        } else {
+                            expected["result"]["content"][0]["text"] =
+                                json!(serde_json::to_string(&body).expect("legacy fallback"));
+                        }
+                        thresholds.push((
+                            serde_json::to_vec(&expected)
+                                .expect("exact prefix frame")
+                                .len(),
+                            retained,
+                        ));
+                    }
+                    for (budget, retained) in thresholds {
+                        let mut wire = start_mode(
+                            budget_server(mode, false).with_response_byte_budget(budget as u64),
+                            modern_mode,
+                        )
+                        .await;
+                        let reply = o02_call_with_id(
+                            &mut wire,
+                            id.clone(),
+                            name,
+                            args.clone(),
+                            modern_mode,
+                        )
+                        .await;
+                        let bytes = serde_json::to_vec(&reply).expect("complete frame").len();
+                        let body = data(&reply, mode);
+                        assert_eq!(
+                            body["returned"], retained,
+                            "{name} {mode:?} compact={compact} modern={modern_mode} budget={budget} bytes={bytes}"
+                        );
+                        assert!(bytes <= budget);
+                        if retained == 6 {
+                            assert_eq!(bytes, exact);
+                        }
+                        if retained == 5 {
+                            assert_eq!(
+                                body["messages"]
+                                    .as_array()
+                                    .expect("rows")
+                                    .iter()
+                                    .map(|m| m["id"].as_i64().unwrap())
+                                    .collect::<Vec<_>>(),
+                                vec![6, 5, 4, 3, 2]
+                            );
+                            if name == "get_messages_batch" {
+                                assert_eq!(body["omitted_ids"], json!([1]));
+                                assert_eq!(body["missing"].as_array().expect("missing").len(), 1);
+                            } else {
+                                assert_eq!(body["next_cursor"]["before_id"], 2);
+                                assert_eq!(body["has_more"], true);
+                            }
+                        }
+                        wire.close().await;
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn o02_direct_adapters_keep_raw_fitting_in_both_output_modes_and_wire_contexts() {
+    use rmcp::handler::server::common::RequestId;
+    use rmcp::handler::server::wrapper::Parameters;
+    for mode in [OutputFormat::JsonV1, OutputFormat::Legacy] {
+        for modern_mode in [true, false] {
+            let server = budget_server(mode, false);
+            for name in [
+                "search_messages",
+                "get_recent_messages",
+                "get_messages_batch",
+            ] {
+                let args = json!({"query":"q","channel_id":LARGE_ID,"message_ids":[6,5,4,3,2,1,7],"max_text_length":20_000});
+                let invoke = || async {
+                    let id = RequestId(rmcp::model::NumberOrString::Number(9));
+                    match name {
+                        "search_messages" => {
+                            server
+                                .search_messages(
+                                    Parameters(serde_json::from_value(args.clone()).unwrap()),
+                                    id,
+                                )
+                                .await
+                        }
+                        "get_recent_messages" => {
+                            server
+                                .get_recent_messages(
+                                    Parameters(serde_json::from_value(args.clone()).unwrap()),
+                                    id,
+                                )
+                                .await
+                        }
+                        _ => {
+                            server
+                                .get_messages_batch(
+                                    Parameters(serde_json::from_value(args.clone()).unwrap()),
+                                    id,
+                                )
+                                .await
+                        }
+                    }
+                    .expect("direct adapter")
+                };
+                let direct = invoke().await;
+                let contextual = crate::mcp::runtime::scope_response(
+                    rmcp::model::RequestId::String("long\"\\я🦀".repeat(1_000).into()),
+                    Some(if modern_mode {
+                        rmcp::model::ProtocolVersion::V_2026_07_28
+                    } else {
+                        rmcp::model::ProtocolVersion::V_2025_11_25
+                    }),
+                    invoke(),
+                )
+                .await;
+                assert_eq!(direct, contextual, "direct budget must ignore wire context");
+                let body: Value = serde_json::from_str(&direct).expect("legacy DTO");
+                assert!(direct.len() <= 14_000);
+                assert_eq!(body["returned"], 3, "raw DTO retains three rows for {name}");
+                assert_eq!(
+                    body["messages"]
+                        .as_array()
+                        .expect("rows")
+                        .iter()
+                        .map(|m| m["id"].as_i64().unwrap())
+                        .collect::<Vec<_>>(),
+                    vec![6, 5, 4]
+                );
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn o02_floor_requires_every_actual_metadata_byte_in_both_protocols() {
+    for mode in [OutputFormat::JsonV1, OutputFormat::Legacy] {
+        for modern_mode in [true, false] {
+            for name in [
+                "search_messages",
+                "get_recent_messages",
+                "get_messages_batch",
+            ] {
+                let id = json!("floor\"\\я🦀".repeat(100));
+                let args = json!({"query":"q","channel_id":LARGE_ID,"message_ids":[6,5,4,3,2,1,7],"max_text_length":20_000,"format":"compact"});
+                let mut wire = start_mode(
+                    budget_server(mode, false).with_response_byte_budget(5_000),
+                    modern_mode,
+                )
+                .await;
+                let reply =
+                    o02_call_with_id(&mut wire, id.clone(), name, args.clone(), modern_mode).await;
+                assert_eq!(data(&reply, mode)["returned"], 1);
+                wire.close().await;
+                // Derive a metadata-only frame from the actual accepted response, retaining
+                // its ID, identity, compact headers, cursor, errors and omitted IDs.
+                let mut metadata = reply.clone();
+                if mode == OutputFormat::JsonV1 {
+                    let body = &mut metadata["result"]["structuredContent"];
+                    body["data"]["messages"] = json!([]);
+                    body["data"]["returned"] = json!(0);
+                    if name != "get_messages_batch" {
+                        body["data"]["query_metadata"]["channels_in_results"] = json!(0);
+                    }
+                    let text = serde_json::to_string(body).expect("matching fallback");
+                    metadata["result"]["content"][0]["text"] = json!(text);
+                } else {
+                    let mut body = data(&reply, mode);
+                    body["messages"] = json!([]);
+                    body["returned"] = json!(0);
+                    metadata["result"]["content"][0]["text"] =
+                        json!(serde_json::to_string(&body).expect("legacy metadata"));
+                }
+                let exact = serde_json::to_vec(&metadata)
+                    .expect("full metadata frame")
+                    .len();
+                for (budget, overflow) in [(exact, false), (exact - 1, true)] {
+                    let mut wire = start_mode(
+                        budget_server(mode, false).with_response_byte_budget(budget as u64),
+                        modern_mode,
+                    )
+                    .await;
+                    let reply =
+                        o02_call_with_id(&mut wire, id.clone(), name, args.clone(), modern_mode)
+                            .await;
+                    assert_eq!(
+                        reply["result"]["isError"], overflow,
+                        "{name} {mode:?} modern={modern_mode} budget={budget}: {reply}"
+                    );
+                    if overflow {
+                        if mode == OutputFormat::JsonV1 {
+                            assert_eq!(envelope(&reply)["error"]["code"], "response_too_large");
+                        }
+                    } else {
+                        assert_eq!(data(&reply, mode)["returned"], 1);
+                        assert!(serde_json::to_vec(&reply).expect("floor frame").len() > budget);
+                    }
+                    wire.close().await;
+                }
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn o02_wire_fitting_never_hides_conflicting_compact_headers() {
+    for mode in [OutputFormat::JsonV1, OutputFormat::Legacy] {
+        for fanout in [false, true] {
+            let mut client = MockTelegramClientTrait::new();
+            client.expect_get_recent_messages().returning(|_| {
+                let first = crate::test_helpers::create_test_message(
+                    2,
+                    "large".repeat(2_000).as_str(),
+                    100,
+                );
+                let mut second = crate::test_helpers::create_test_message(1, "conflict", 100);
+                second.peer_namespace = Some(PeerNamespace::Chat);
+                Ok(create_test_search_result(vec![first, second], "", 2))
+            });
+            let server = McpServer::new(Arc::new(client), Arc::new(permissive_limiter()))
+                .with_output_format(mode)
+                .with_response_byte_budget(2_000);
+            let mut wire = start_mode(server, true).await;
+            let mut args = json!({"format":"compact"});
+            if fanout {
+                args["channel_ids"] = json!(["100"]);
+            } else {
+                args["channel_id"] = json!("100");
+            }
+            let reply = call(&mut wire, 1, "get_recent_messages", args, true).await;
+            assert_eq!(reply["result"]["isError"], true);
+            if mode == OutputFormat::JsonV1 {
+                assert_eq!(envelope(&reply)["error"]["code"], "ambiguous_channel");
+            }
+            wire.close().await;
+        }
+    }
 }

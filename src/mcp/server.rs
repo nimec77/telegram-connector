@@ -942,7 +942,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             crate::error::Error,
         > = async {
             let request: SearchRequest = crate::mcp::tools::types::contract::decode(arguments)?;
-            self.search_messages_data(request).await
+            self.search_messages_data(request, crate::mcp::tools::shaping::BudgetMode::Wire)
+                .await
         }
         .await;
         crate::mcp::tools::wire_budget::search(
@@ -979,7 +980,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         > = async {
             let request: GetRecentMessagesRequest =
                 crate::mcp::tools::types::contract::decode(arguments)?;
-            self.get_recent_messages_data(request).await
+            self.get_recent_messages_data(request, crate::mcp::tools::shaping::BudgetMode::Wire)
+                .await
         }
         .await;
         crate::mcp::tools::wire_budget::search(
@@ -1103,7 +1105,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         let result: Result<crate::mcp::tools::MessagesBatchResponse, crate::error::Error> = async {
             let request: GetMessagesBatchRequest =
                 crate::mcp::tools::types::contract::decode(arguments)?;
-            self.get_messages_batch_data(request).await
+            self.get_messages_batch_data(request, crate::mcp::tools::shaping::BudgetMode::Wire)
+                .await
         }
         .await;
         crate::mcp::tools::wire_budget::batch(

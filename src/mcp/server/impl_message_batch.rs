@@ -17,6 +17,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     pub(super) async fn get_messages_batch_data(
         &self,
         request: GetMessagesBatchRequest,
+        budget_mode: shaping::BudgetMode,
     ) -> Result<MessagesBatchResponse, Error> {
         if request.channel_id.trim().is_empty() {
             return Err(Error::InvalidInput("channel_id is required".to_string()));
@@ -81,7 +82,9 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             missing,
             omitted_ids: None,
         };
-        shaping::fit_batch_to_budget(&mut response, self.response_byte_budget)?;
+        if budget_mode == shaping::BudgetMode::Direct {
+            shaping::fit_batch_to_budget(&mut response, self.response_byte_budget)?;
+        }
         Ok(response)
     }
 }
