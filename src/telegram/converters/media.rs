@@ -317,10 +317,38 @@ fn media_matches_filter(
     }
 }
 
+// Inspect TL evidence before Media::from_raw can discard partial webpage metadata.
+fn raw_message_has_url(message: &tl::types::Message) -> bool {
+    let has_url_entity = message.entities.as_ref().is_some_and(|entities| {
+        entities.iter().any(|entity| {
+            matches!(
+                entity,
+                tl::enums::MessageEntity::Url(_) | tl::enums::MessageEntity::TextUrl(_)
+            )
+        })
+    });
+    let webpage_url = match message.media.as_ref() {
+        Some(tl::enums::MessageMedia::WebPage(media)) => match &media.webpage {
+            tl::enums::WebPage::Page(page) => Some(page.url.as_str()),
+            tl::enums::WebPage::Empty(page) => page.url.as_deref(),
+            tl::enums::WebPage::Pending(page) => page.url.as_deref(),
+            tl::enums::WebPage::NotModified(_) => None,
+        },
+        _ => None,
+    };
+    has_url_entity
+        || webpage_url.is_some_and(|url| !url.is_empty())
+        || message.message.contains("http://")
+        || message.message.contains("https://")
+}
+
 /// Check if a raw message's media matches the given filter, for the raw
 /// history pager path (client-side filtering — `messages.GetHistory` has no
 /// server-side filter).
 pub(crate) fn matches_media_filter_raw(raw: &tl::enums::Message, filter: &MediaFilter) -> bool {
+    if matches!(filter, MediaFilter::Url) {
+        return matches!(raw, tl::enums::Message::Message(message) if raw_message_has_url(message));
+    }
     let (media, text, pinned) = match raw {
         tl::enums::Message::Message(m) => (
             m.media.clone().and_then(Media::from_raw),

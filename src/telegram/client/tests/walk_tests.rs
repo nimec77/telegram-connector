@@ -445,3 +445,71 @@ fn equal_album_ids_in_three_namespaces_do_not_bypass_the_walk_limit() {
     assert_eq!(messages.len(), 2);
     assert!(messages.iter().all(|message| message.album.is_none()));
 }
+
+#[test]
+fn history_url_filter_admits_entity_only_links_and_skips_plain_prose() {
+    use crate::telegram::types::MediaFilter;
+    use crate::test_helpers::raw_tl_message_grouped;
+    use grammers_client::tl;
+
+    let client = inert_client();
+    let peer = channel_peer(&client, 11);
+    let filter = MediaFilter::Url;
+    let cfg = WalkConfig {
+        media_filter: Some(&filter),
+        ..open_config(at(1_000))
+    };
+    let mut walk = MessageWalk::new(cfg, AlbumMode::Separate, 10, 0);
+    for (id, text, entity) in [
+        (9, "plain prose", None),
+        (
+            8,
+            "Read more",
+            Some(tl::enums::MessageEntity::TextUrl(
+                tl::types::MessageEntityTextUrl {
+                    offset: 0,
+                    length: 9,
+                    url: "https://example.com".into(),
+                },
+            )),
+        ),
+        (
+            7,
+            "example.com",
+            Some(tl::enums::MessageEntity::Url(tl::types::MessageEntityUrl {
+                offset: 0,
+                length: 11,
+            })),
+        ),
+    ] {
+        let mut raw = raw_tl_message_grouped(id, 2_000, 11, 1);
+        let tl::enums::Message::Message(message) = &mut raw else {
+            unreachable!()
+        };
+        message.grouped_id = None;
+        message.message = text.into();
+        message.entities = entity.map(|e| vec![e]);
+        assert_eq!(
+            walk.step(
+                Some(Fetched {
+                    raw,
+                    entities: no_entities(),
+                    peer: Some(&peer)
+                }),
+                (id == 9).then_some(3)
+            ),
+            Flow::Continue
+        );
+    }
+    assert_eq!(walk.kept(), 2);
+    let (page, budget) = walk.into_parts();
+    assert!(!page.has_more());
+    assert_eq!(budget.messages_scanned(), 3);
+    assert_eq!(
+        page.into_messages()
+            .iter()
+            .map(|m| m.id.get())
+            .collect::<Vec<_>>(),
+        vec![8, 7]
+    );
+}

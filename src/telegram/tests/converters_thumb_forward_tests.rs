@@ -151,6 +151,129 @@ fn raw_filter_url_matches_text_without_media() {
     assert!(!matches_media_filter_raw(&raw, &MediaFilter::Photo));
 }
 
+#[test]
+fn raw_filter_url_matches_telegram_url_entities() {
+    for (text, entity) in [
+        (
+            "Read more",
+            tl::enums::MessageEntity::TextUrl(tl::types::MessageEntityTextUrl {
+                offset: 0,
+                length: 9,
+                url: "https://example.com".into(),
+            }),
+        ),
+        (
+            "example.com",
+            tl::enums::MessageEntity::Url(tl::types::MessageEntityUrl {
+                offset: 0,
+                length: 11,
+            }),
+        ),
+    ] {
+        let mut raw = raw_message_with_media(None, text);
+        let tl::enums::Message::Message(message) = &mut raw else {
+            unreachable!()
+        };
+        message.entities = Some(vec![entity]);
+        assert!(matches_media_filter_raw(&raw, &MediaFilter::Url), "{text}");
+        assert!(!matches_media_filter_raw(&raw, &MediaFilter::Photo));
+    }
+}
+
+#[test]
+fn raw_filter_url_matches_webpage_metadata() {
+    for (url, expected) in [
+        (None, false),
+        (Some(""), false),
+        (Some("example.com"), true),
+    ] {
+        let mut page = webpage_media("", None, None, None);
+        if let tl::enums::WebPage::Page(value) = &mut page.webpage {
+            value.url = url.unwrap_or_default().into();
+            value.display_url = "example.com".into();
+        }
+        for webpage in [
+            page.webpage,
+            tl::enums::WebPage::Empty(tl::types::WebPageEmpty {
+                id: 1,
+                url: url.map(String::from),
+            }),
+            tl::enums::WebPage::Pending(tl::types::WebPagePending {
+                id: 1,
+                url: url.map(String::from),
+                date: 1_700_000_000,
+            }),
+        ] {
+            let media = tl::types::MessageMediaWebPage {
+                webpage,
+                ..webpage_media("", None, None, None)
+            };
+            let raw =
+                raw_message_with_media(Some(tl::enums::MessageMedia::WebPage(media)), "Read more");
+            assert_eq!(
+                matches_media_filter_raw(&raw, &MediaFilter::Url),
+                expected,
+                "{url:?}: {raw:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn raw_filter_url_rejects_unrelated_evidence_and_retains_literal_fallback() {
+    let mut raw = raw_message_with_media(None, "example.com is plain prose");
+    let tl::enums::Message::Message(message) = &mut raw else {
+        unreachable!()
+    };
+    message.entities = Some(vec![tl::enums::MessageEntity::Bold(
+        tl::types::MessageEntityBold {
+            offset: 0,
+            length: 11,
+        },
+    )]);
+    assert!(!matches_media_filter_raw(&raw, &MediaFilter::Url));
+    assert!(!matches_media_filter_raw(
+        &raw_message_with_media(None, "plain prose"),
+        &MediaFilter::Url
+    ));
+    for webpage in [
+        tl::enums::WebPage::NotModified(tl::types::WebPageNotModified {
+            cached_page_views: Some(1),
+        }),
+        tl::enums::WebPage::Empty(tl::types::WebPageEmpty { id: 1, url: None }),
+    ] {
+        let media = tl::enums::MessageMedia::WebPage(tl::types::MessageMediaWebPage {
+            webpage,
+            ..webpage_media("", None, None, None)
+        });
+        assert!(!matches_media_filter_raw(
+            &raw_message_with_media(Some(media.clone()), "Read more"),
+            &MediaFilter::Url
+        ));
+        for text in ["http://example.com", "https://example.com"] {
+            assert!(matches_media_filter_raw(
+                &raw_message_with_media(Some(media.clone()), text),
+                &MediaFilter::Url
+            ));
+        }
+    }
+    let photo = tl::enums::MessageMedia::Photo(tl::types::MessageMediaPhoto {
+        spoiler: false,
+        photo: Some(tl::enums::Photo::Empty(tl::types::PhotoEmpty { id: 1 })),
+        ttl_seconds: None,
+        live_photo: false,
+        video: None,
+    });
+    assert!(!matches_media_filter_raw(
+        &raw_message_with_media(Some(photo.clone()), ""),
+        &MediaFilter::Url
+    ));
+    assert!(matches_media_filter_raw(
+        &raw_message_with_media(Some(photo), "http://example.com"),
+        &MediaFilter::Url
+    ));
+}
+
 fn fwd_header() -> tl::types::MessageFwdHeader {
     tl::types::MessageFwdHeader {
         imported: false,
