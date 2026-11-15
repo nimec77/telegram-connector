@@ -14,6 +14,7 @@ pub(super) struct Operation {
     pub sdk_id: RequestId,
     pub token: Option<ProgressToken>,
     pub bootstrap: bool,
+    pub terminal_accepted: AtomicBool,
     pub cancelled: watch::Sender<bool>,
     pub last_progress: Mutex<f64>,
 }
@@ -41,6 +42,9 @@ pub(super) struct State {
     admission_closed: AtomicBool,
     pub changed: Notify,
     pub write_gate: Mutex<()>,
+    // The write gate bounds this slot to one terminal frame, including a frame
+    // fully accepted by AsyncWrite whose SDK flush has not settled yet.
+    pub terminal_frame: std::sync::Mutex<Option<Arc<Operation>>>,
     pub failure: Mutex<Option<std::io::Error>>,
 }
 impl State {
@@ -55,6 +59,7 @@ impl State {
             admission_closed: AtomicBool::new(false),
             changed: Notify::new(),
             write_gate: Mutex::new(()),
+            terminal_frame: std::sync::Mutex::new(None),
             failure: Mutex::new(None),
         })
     }
@@ -88,6 +93,13 @@ impl State {
         bootstrap: bool,
     ) -> Result<Arc<Operation>, ErrorData> {
         let mut entries = self.operations.lock().await;
+        // The writer holds this barrier across nonblocking poll_write and the
+        // acceptance mark, so even another thread cannot admit between them.
+        let _acceptance = self
+            .terminal_frame
+            .lock()
+            .map_err(|_| ErrorData::internal_error("Output completion state unavailable", None))?;
+        entries.retain(|_, operation| !operation.terminal_accepted.load(Ordering::Acquire));
         if self.admission_closed.load(Ordering::Acquire)
             || matches!(*self.phase.borrow(), Phase::Stopped)
             || entries.len() >= self.config.max_in_flight_requests
@@ -128,6 +140,7 @@ impl State {
             sdk_id: RequestId::String(format!("operation-{generation}").into()),
             token,
             bootstrap,
+            terminal_accepted: AtomicBool::new(false),
             cancelled: watch::channel(false).0,
             last_progress: Mutex::new(f64::NEG_INFINITY),
         });
@@ -141,6 +154,13 @@ impl State {
             .is_some_and(|current| Arc::ptr_eq(current, operation))
         {
             entries.remove(&operation.sdk_id);
+        }
+        if let Ok(mut frame) = self.terminal_frame.lock()
+            && frame
+                .as_ref()
+                .is_some_and(|current| Arc::ptr_eq(current, operation))
+        {
+            frame.take();
         }
         // A committed write still owns its original handle after cancellation.
         operation.cancelled.send_replace(true);
@@ -176,6 +196,15 @@ impl State {
             self.metrics
                 .discard_request(&id.into_json_value().to_string());
         }
+        if let Ok(mut frame) = self.terminal_frame.lock()
+            && let Some(operation) = frame.take()
+        {
+            // Admission may already have retired an accepted response while its
+            // SDK flush still owns metrics. Shutdown must release that entry too.
+            operation.cancelled.send_replace(true);
+            self.metrics
+                .discard_request(&operation.sdk_id.clone().into_json_value().to_string());
+        }
         self.changed.notify_waiters();
     }
     pub async fn stopped(&self) {
@@ -204,6 +233,10 @@ impl State {
             let changed = self.changed.notified();
             if self.admission_closed.load(Ordering::Acquire)
                 && self.operations.lock().await.is_empty()
+                && self
+                    .terminal_frame
+                    .lock()
+                    .is_ok_and(|frame| frame.is_none())
             {
                 return;
             }

@@ -1,5 +1,6 @@
 //! Strict bounded framing before SDK dispatch; SDK still owns output encoding.
 use super::state::State;
+use super::writer::CompletionWriter;
 use crate::mcp::observability::{InstrumentedTransport, ResponseBuffer};
 use futures::future::BoxFuture;
 use futures::stream::FuturesUnordered;
@@ -21,10 +22,12 @@ use tokio::sync::Mutex;
 use tokio::time::Instant;
 
 const MAX_PENDING_PROTOCOL_ERRORS: usize = 16;
+type InstrumentedWriter<W> =
+    InstrumentedTransport<AsyncRwTransport<RoleServer, Empty, CompletionWriter<W>>>;
 
-pub(super) struct StdioTransport<R: AsyncRead, W: AsyncWrite> {
+pub(super) struct StdioTransport<R: AsyncRead, W: AsyncWrite + Unpin> {
     reader: BufReader<R>,
-    writer: Arc<Mutex<InstrumentedTransport<AsyncRwTransport<RoleServer, Empty, W>>>>,
+    writer: Arc<Mutex<InstrumentedWriter<W>>>,
     state: Arc<State>,
     frame: Vec<u8>,
     discarding: bool,
@@ -53,7 +56,10 @@ where
         threshold: Duration,
     ) -> Self {
         let writer = InstrumentedTransport::new(
-            AsyncRwTransport::new_server(tokio::io::empty(), write),
+            AsyncRwTransport::new_server(
+                tokio::io::empty(),
+                CompletionWriter::new(write, Arc::clone(&state)),
+            ),
             Arc::clone(&state.metrics),
             buffer,
             threshold,
@@ -247,6 +253,21 @@ where
                     }
                 }
                 _ => {}
+            }
+            if response_id.is_some() {
+                let registered = state
+                    .terminal_frame
+                    .lock()
+                    .map(|mut frame| {
+                        *frame = Some(Arc::clone(&operation));
+                    })
+                    .map_err(|_| ());
+                if registered.is_err() {
+                    state
+                        .fail(io::Error::other("Output completion state unavailable"))
+                        .await;
+                    return Err(io::Error::other("Output completion state unavailable"));
+                }
             }
             let send = writer.lock().await.send_correlated(
                 item,

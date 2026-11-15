@@ -6,6 +6,7 @@ pub mod process;
 mod processing;
 mod state;
 mod transport;
+mod writer;
 
 use crate::config::ServerConfig;
 use crate::mcp::observability::{ResponseBuffer, SessionMetrics};

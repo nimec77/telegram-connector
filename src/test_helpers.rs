@@ -463,6 +463,50 @@ pub fn permissive_limiter() -> crate::rate_limiter::MockRateLimiterTrait {
     limiter
 }
 
+/// Keep paused Tokio time stationary while awaiting real workers or another runtime.
+/// Callers advance virtual time explicitly; dropping the guard also releases its worker.
+pub(crate) struct ManualClock {
+    release: Option<std::sync::mpsc::Sender<()>>,
+    worker: Option<tokio::task::JoinHandle<()>>,
+}
+impl ManualClock {
+    pub(crate) async fn start() -> Self {
+        let (release, wait) = std::sync::mpsc::channel();
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let worker = tokio::task::spawn_blocking(move || {
+            let _ = started.send(());
+            // This real-time bound detects a broken test coordination path. It
+            // does not advance or extend any application/virtual deadline.
+            assert!(
+                !matches!(
+                    wait.recv_timeout(std::time::Duration::from_secs(10)),
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+                ),
+                "manual clock owner did not finish"
+            );
+        });
+        let guard = Self {
+            release: Some(release),
+            worker: Some(worker),
+        };
+        ready.await.expect("manual clock worker started");
+        guard
+    }
+    pub(crate) async fn finish(mut self) {
+        self.release.take();
+        self.worker
+            .take()
+            .expect("clock worker")
+            .await
+            .expect("clock worker stopped");
+    }
+}
+impl Drop for ManualClock {
+    fn drop(&mut self) {
+        self.release.take();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

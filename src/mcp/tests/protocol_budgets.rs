@@ -322,17 +322,25 @@ async fn task8_media_payload_uses_its_own_budget_above_forty_thousand_bytes() {
 
 #[tokio::test(start_paused = true)]
 async fn task8_pipeline_deadline_keeps_completed_images_and_refunds_remaining_items() {
+    let clock = crate::test_helpers::ManualClock::start().await;
+    let processing_complete = Arc::new(tokio::sync::Notify::new());
+    let observed = Arc::clone(&processing_complete);
     use futures::StreamExt as _;
     let mut client = MockTelegramClientTrait::new();
     client
         .expect_download_messages_media_pipeline()
         .times(1)
-        .return_once(|_, _, _| {
+        .return_once(move |_, _, _| {
             let stream = futures::stream::iter(vec![types::MediaFetchOutcome {
                 message_id: 1,
                 result: Ok(photo()),
             }])
-            .chain(futures::stream::pending())
+            .chain(futures::stream::poll_fn(move |_| {
+                // The next outcome is requested only after the first image has
+                // passed processing and been collected by the production loop.
+                observed.notify_one();
+                std::task::Poll::Pending
+            }))
             .boxed();
             Ok(types::MediaBatch {
                 channel_id: ChannelId::new(LARGE_ID).expect("id"),
@@ -356,14 +364,20 @@ async fn task8_pipeline_deadline_keeps_completed_images_and_refunds_remaining_it
         .times(1)
         .return_const(());
     let mut wire = Wire::with_handler(McpServer::new(Arc::new(client), Arc::new(limiter)));
-    let reply = call(
-        &mut wire,
-        1,
-        "get_messages_media_batch",
-        json!({"channel_id":"news","message_ids":[1,2,3]}),
-        true,
-    )
-    .await;
+    let mut request = request(1, "tools/call", true);
+    request["params"]["name"] = json!("get_messages_media_batch");
+    request["params"]["arguments"] = json!({"channel_id":"news","message_ids":[1,2,3]});
+    let started = tokio::time::Instant::now();
+    wire.send(request).await;
+    processing_complete.notified().await;
+    assert_eq!(
+        started.elapsed(),
+        Duration::ZERO,
+        "real image work must not consume virtual time"
+    );
+    tokio::time::advance(Duration::from_secs(1)).await;
+    let reply = wire.recv().await;
+    assert_eq!(started.elapsed(), Duration::from_secs(1));
     let body = envelope(&reply);
     assert_eq!(reply["result"]["isError"], false);
     assert_eq!(body["data"]["summary"]["returned"], 1);
@@ -380,6 +394,7 @@ async fn task8_pipeline_deadline_keeps_completed_images_and_refunds_remaining_it
         assert!(item.get("content_index").is_none());
     }
     wire.close().await;
+    clock.finish().await;
 }
 
 #[tokio::test]
