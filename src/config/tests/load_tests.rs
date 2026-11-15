@@ -104,6 +104,27 @@ pub(super) fn run_child_case(case: &str) {
             assert!(!config.sending.enabled);
             assert!(!config.logging.file_enabled);
         }
+        "rate_refill_invalid" | "rate_capacity_invalid" => {
+            let error = result.expect_err("invalid rate limit must fail actual loading");
+            let message = format!("{error:#}");
+            assert!(
+                message.contains("invalid rate_limiting configuration"),
+                "{message}"
+            );
+            let key = if case == "rate_refill_invalid" {
+                "refill_rate"
+            } else {
+                "max_tokens"
+            };
+            assert!(message.contains(key), "{message}");
+        }
+        "rate_valid" => {
+            let config = result.expect("finite positive refill and zero read costs load");
+            assert_eq!(config.rate_limiting.max_tokens, 1);
+            assert_eq!(config.rate_limiting.refill_rate, 0.5);
+            assert_eq!(config.rate_limiting.media_download_cost, 0);
+            assert_eq!(config.rate_limiting.transcription_cost, 0);
+        }
         "valid" => {
             let config = result.expect("valid config");
             assert_eq!(config.telegram.api_id, 12345);
@@ -365,4 +386,30 @@ fn config_parse_secrets_case() {
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn rate_limit_loader_rejects_nonfinite_and_nonpositive_refill() {
+    for rate in ["nan", "inf", "-inf", "0.0", "-1.0"] {
+        run_config_child(
+            "rate_refill_invalid",
+            &format!("[telegram]\napi_id=1\n[rate_limiting]\nrefill_rate={rate}\n"),
+        );
+    }
+}
+
+#[test]
+fn rate_limit_loader_rejects_zero_capacity_even_with_all_costs_zero() {
+    run_config_child(
+        "rate_capacity_invalid",
+        "[telegram]\napi_id=1\n[rate_limiting]\nmax_tokens=0\nsend_message_cost=0\nsend_media_cost=0\nmedia_download_cost=0\ntranscription_cost=0\n",
+    );
+}
+
+#[test]
+fn rate_limit_loader_accepts_positive_finite_refill_and_zero_read_costs() {
+    run_config_child(
+        "rate_valid",
+        "[telegram]\napi_id=1\n[rate_limiting]\nmax_tokens=1\nrefill_rate=0.5\nmedia_download_cost=0\ntranscription_cost=0\n",
+    );
 }

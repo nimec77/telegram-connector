@@ -337,3 +337,47 @@ fn task8_download_cap_must_fit_one_global_raw_memory_reservation() {
     .expect("largest permitted input");
     assert!(Config::load_from(Some(file.path())).is_ok());
 }
+
+#[test]
+fn rate_limit_validation_rejects_zero_capacity_even_with_all_costs_zero() {
+    let config = RateLimitConfig {
+        max_tokens: 0,
+        refill_rate: 1.0,
+        send_message_cost: 0,
+        send_media_cost: 0,
+        media_download_cost: 0,
+        transcription_cost: 0,
+    };
+    let error = config
+        .validate()
+        .expect_err("zero capacity cannot admit a read");
+    assert!(error.to_string().contains("max_tokens"), "{error:#}");
+}
+
+#[test]
+fn rate_limit_validation_rejects_infinite_refill() {
+    for refill_rate in [f64::INFINITY, f64::NEG_INFINITY] {
+        let config = RateLimitConfig {
+            refill_rate,
+            ..toml::from_str("").expect("default rate limits")
+        };
+        let error = config.validate().expect_err("refill must be finite");
+        assert!(error.to_string().contains("refill_rate"), "{error:#}");
+    }
+}
+
+#[test]
+fn rate_limit_validation_accepts_positive_finite_refill_and_zero_read_costs() {
+    for refill_rate in [f64::MIN_POSITIVE, 0.5, f64::MAX] {
+        let config = RateLimitConfig {
+            max_tokens: 1,
+            refill_rate,
+            media_download_cost: 0,
+            transcription_cost: 0,
+            ..toml::from_str("").expect("default rate limits")
+        };
+        config
+            .validate()
+            .expect("positive finite refill and free reads are supported");
+    }
+}

@@ -183,10 +183,12 @@ pub struct RateLimitConfig {
     /// Charge for an admitted media operation, independent of upload part count.
     #[serde(default = "defaults::default_send_media_cost")]
     pub send_media_cost: u32,
-    /// Initial and maximum token capacity; builders do not validate this automatically.
+    /// Initial and maximum token capacity; validation requires at least one token.
+    /// Builders do not validate this automatically.
     #[serde(default = "defaults::default_max_tokens")]
     pub max_tokens: u32,
     /// Tokens restored per elapsed second on acquisition or snapshot.
+    /// Validation requires a finite, positive value.
     #[serde(default = "defaults::default_refill_rate")]
     pub refill_rate: f64,
     /// Tokens charged per get_message_media call (searches cost 1).

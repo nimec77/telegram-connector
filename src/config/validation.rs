@@ -152,24 +152,23 @@ impl SearchConfig {
 }
 
 impl RateLimitConfig {
-    /// Reject a bucket that can never refill or a per-call cost it can never
-    /// satisfy — configurations that are not merely tight but unsatisfiable.
+    /// Require usable capacity and refill speed, and satisfiable read costs.
     ///
-    /// A `refill_rate` of zero (or negative, or NaN) is a permanent lockout:
-    /// the bucket drains once and never recovers, and the rejection's retry
-    /// hint is `ceil(deficit / 0)`, which saturates to `u64::MAX` seconds.
-    /// A cost above `max_tokens` means every call of that kind fails even on
-    /// a full bucket; the check also keeps per-call costs proportionate to
-    /// the bucket's capacity.
+    /// Capacity must be at least one token because ordinary reads cost one.
+    /// Refill must be finite and positive. Media and transcription costs may
+    /// be zero, but cannot exceed capacity. Enabled-send costs are checked
+    /// separately by [`Self::validate_sending_costs`].
     ///
     /// # Errors
-    /// Returns an error for a NaN/non-positive refill rate or a media/transcription
-    /// cost exceeding bucket capacity.
+    /// Returns an error for zero capacity, a nonfinite/nonpositive refill rate,
+    /// or a media/transcription cost exceeding bucket capacity.
     pub fn validate(&self) -> anyhow::Result<()> {
-        if self.refill_rate.is_nan() || self.refill_rate <= 0.0 {
+        if self.max_tokens == 0 {
+            anyhow::bail!("rate_limiting.max_tokens must be >= 1: ordinary reads cost one token");
+        }
+        if !self.refill_rate.is_finite() || self.refill_rate <= 0.0 {
             anyhow::bail!(
-                "rate_limiting.refill_rate must be > 0 (got {}): the bucket would never \
-                 refill, so every call would fail once it is drained",
+                "rate_limiting.refill_rate must be finite and > 0 (got {})",
                 self.refill_rate
             );
         }

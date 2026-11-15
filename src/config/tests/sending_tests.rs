@@ -29,7 +29,7 @@ fn sending_config_disabled_defaults_and_text_only_require_no_storage() {
 
 #[test]
 fn sending_config_rejects_unsatisfiable_or_legacy_enabled_settings() {
-    for change in 0..13 {
+    for change in 0..15 {
         let mut config = config();
         config.sending.enabled = true;
         match change {
@@ -57,6 +57,8 @@ fn sending_config_rejects_unsatisfiable_or_legacy_enabled_settings() {
                     .insert("../bad".into(), "/tmp/files".into());
                 config.sending.staging_root = Some("/tmp/staging".into());
             }
+            13 => config.rate_limiting.send_media_cost = 0,
+            14 => config.rate_limiting.send_message_cost = config.rate_limiting.max_tokens + 1,
             _ => unreachable!(),
         }
         assert!(
