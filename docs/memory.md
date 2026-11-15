@@ -6,13 +6,15 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Current state
 
-- **2026-11-15 review remediation is implemented on local `fix/review-remediation`.**
-  All 15 implementation slices have independent scoped review; the combined macOS gates
-  pass on 0.26.0 with rmcp 3.9.0. Fresh whole-branch review approved all 19 dispositions
-  with no Critical/Important findings; the test-clock watchdog failure path remains a
-  disclosed nonblocking follow-up. See the
-  [validation evidence](validation/2026-11-15-review-remediation.md). Active design/plans
-  remain until merge; no merge or remote publication is implied.
+- **2026-11-15 review remediation is integrated into `master` as 0.26.1.**
+  All 15 implementation slices have independent scoped review. Fresh whole-branch
+  review approved all 19 dispositions with no Critical/Important findings; the test-clock
+  watchdog failure path remains a disclosed nonblocking follow-up. The
+  [validation evidence](validation/2026-11-15-review-remediation.md) records the original
+  0.26.0/rmcp 3.9.0 run. Subsequent TOML 1.2.1 and rmcp 3.10.0 updates and the offline
+  `safe_send` example passed independent review and the full macOS gate: 1,188 library
+  tests, 9 example tests and 3 doctests passed, with 12 existing ignored tests.
+  Completed designs/plans are archived in Git history at `dab4de3`.
 
 - **Opt-in sending is integrated into local `master` as 0.26.0.** Canonical-only
   `send_message`/`send_media` extend the default 16-tool
@@ -49,7 +51,7 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   [Task 9 evidence](validation/2026-11-01-task9-workflows.md), and
   [Rust/S1–S6 assessment](validation/2026-11-01-rust-adoption-acceptance.md).
   There are 16 default tools (18 with canonical sending enabled), json_v1 plus explicit
-  legacy reads; nightly stays 2026-10-31, rmcp is now 3.9.0,
+  legacy reads; nightly stays 2026-10-31, rmcp is now 3.10.0,
   and direct grammers pins stay 1e31e73cd9797790905bbea82cd75adcbe6f1242 (0.11).
 - **Pre-artifact media-test coverage baseline (2026-11-01):** final acceptance reports 82.58%
   library lines (9,301/11,263, unfiltered including inline unit code), with the original
@@ -261,10 +263,11 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 - **Albums:** `PostCounter` counts posts against `limit`, not raw messages — an admitted
   album is never split at the limit boundary (a page can exceed `limit` raw messages). A
   lone surviving sibling stays a plain message (`album: None`).
-- **Per-item failures are data, not errors:** `get_messages_batch.missing_ids`, fan-out
-  `channel_errors`, `resolve_channels` per-identifier `channel` XOR `error`. Batch
-  invariant: every requested id lands in exactly one of `messages`/`missing_ids`. Only
-  transport-level failure fails the call.
+- **Per-item failures remain data:** message batches expose `missing` entries, fan-out
+  retains `channel_errors`, and resolution returns per-identifier channel-or-error outcomes.
+  Each deduplicated requested message ID is in returned `messages`, `missing`, or
+  budget-trimmed `omitted_ids`; the internal Telegram batch uses `missing_ids`. Canonical
+  entries retain typed safe errors. Whole-operation failures still fail the call.
 - **Fan-out lives at the MCP layer** over the existing single-channel trait methods
   (`futures::stream::iter(..).buffered(4)`) — client/mock untouched, merge logic pure and
   unit-testable.

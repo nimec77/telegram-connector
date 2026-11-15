@@ -9,10 +9,11 @@ All 15 implementation tasks have independent scoped approval in the controller's
 ledgers. The final combined macOS matrix below passes on that source. **Fresh independent
 whole-branch review approved all 19 dispositions and this evidence artifact on 2026-11-15**,
 reviewing `f4375a6..66706b0`, with no Critical/Important findings and one nonblocking
-test-helper minor below. Local technical acceptance is complete; merge, publication and
-hosted CI execution are separate. Active
-[specification](../superpowers/specs/2026-11-15-review-remediation-design.md) and five
-[implementation plans](../superpowers/plans/) remain until merge.
+test-helper minor below. This report records pre-integration local acceptance;
+hosted CI execution remains separate. The completed
+[specification](https://github.com/nimec77/telegram-connector/blob/dab4de3bb32e8487a9835df8de7c1f5d9831e071/docs/superpowers/specs/2026-11-15-review-remediation-design.md) and five
+[implementation plans](https://github.com/nimec77/telegram-connector/tree/dab4de3bb32e8487a9835df8de7c1f5d9831e071/docs/superpowers/plans/)
+are archived in Git history.
 
 ## Evidence and scope
 
