@@ -60,14 +60,13 @@ impl TelegramClient {
     ) -> Result<crate::telegram::Channel, Error> {
         validate_channel_identifier(identifier)?;
 
-        // Resolve the channel reference (numeric id or username) to a peer. The
-        // former inline @-prefix / numeric / bare-username branches are exactly
-        // the cases `resolve_peer` already covers (AD-1).
-        let peer = self.resolve_peer(identifier).await?;
+        // Numeric references carry dialog evidence; username observations retain
+        // raw membership flags before SDK peer normalization.
+        let resolved = self.resolve_channel_peer_with_evidence(identifier).await?;
 
-        convert_peer_to_channel(&peer).ok_or_else(|| {
+        resolved.channel().ok_or_else(|| {
             tracing::warn!(
-                peer_id = peer.id().bare_id(),
+                peer_id = resolved.peer.id().bare_id(),
                 "Resolved peer is not a channel or group"
             );
             Error::InvalidInput("Not a channel or group".to_string())
@@ -82,9 +81,19 @@ impl TelegramClient {
         // something to hand to peer resolution.
         validate_channel_identifier(identifier)?;
 
-        let peer = self.resolve_peer(identifier).await?;
-        let mut channel = convert_peer_to_channel(&peer)
+        let resolved = self.resolve_channel_peer_with_evidence(identifier).await?;
+        self.full_channel_from_resolved(resolved).await
+    }
+
+    pub(super) async fn full_channel_from_resolved(
+        &self,
+        resolved: super::resolve_subscription::ResolvedChannelPeer,
+    ) -> Result<crate::telegram::Channel, Error> {
+        let mut channel = resolved
+            .channel()
             .ok_or_else(|| Error::InvalidInput("Not a channel or group".to_string()))?;
+
+        let peer = resolved.peer;
 
         // channels.GetFullChannel only exists for channel-kind peers
         // (broadcasts + megagroups). Others keep basic info.

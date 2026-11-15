@@ -85,9 +85,27 @@ impl TelegramClient {
         })
         .await?;
 
+        self.resolve_channels_with(identifiers, &dialogs, |identifier| async move {
+            self.resolve_username_peer_with_evidence(&identifier).await
+        })
+        .await
+    }
+
+    pub(super) async fn resolve_channels_with<F, Fut>(
+        &self,
+        identifiers: &[String],
+        dialogs: &[Channel],
+        mut resolve: F,
+    ) -> Result<Vec<ChannelResolution<Error>>, Error>
+    where
+        F: FnMut(String) -> Fut,
+        Fut: std::future::Future<
+                Output = Result<Option<super::resolve_subscription::ResolvedChannelPeer>, Error>,
+            >,
+    {
         let mut out = Vec::with_capacity(identifiers.len());
         for identifier in identifiers {
-            let resolution = match match_identifier(identifier, &dialogs) {
+            let resolution = match match_identifier(identifier, dialogs) {
                 MatchOutcome::Found(channel) => ChannelResolution {
                     identifier: identifier.clone(),
                     channel: Some(channel),
@@ -106,8 +124,8 @@ impl TelegramClient {
                     }),
                 },
                 MatchOutcome::TryUsernameRpc => {
-                    match self.resolve_username_peer(identifier.trim()).await {
-                        Ok(Some(peer)) => match convert_peer_to_channel(&peer) {
+                    match resolve(identifier.trim().to_string()).await {
+                        Ok(Some(resolved)) => match resolved.channel() {
                             Some(channel) => ChannelResolution {
                                 identifier: identifier.clone(),
                                 channel: Some(channel),

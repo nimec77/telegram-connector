@@ -61,23 +61,54 @@ pub(crate) fn peer_chat_type(peer: &grammers_client::peer::Peer) -> Option<ChatT
     }
 }
 
+/// Evidence is scoped to the observation, never inferred from public discoverability.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SubscriptionEvidence {
+    Dialog,
+    Joined,
+    Unconfirmed,
+}
+
+/// Read membership before SDK normalization erases forbidden variants.
+/// A creator is positive evidence even in a minimal object; an explicit left
+/// flag wins. Missing access hashes affect cache authority, not membership.
+pub(crate) fn subscription_evidence(
+    chat: &grammers_client::tl::enums::Chat,
+) -> SubscriptionEvidence {
+    use grammers_client::tl::enums::Chat;
+    let joined = match chat {
+        Chat::Chat(chat) => !chat.left && !chat.deactivated,
+        Chat::Channel(channel) => !channel.left && (!channel.min || channel.creator),
+        Chat::Community(community) => !community.left && (!community.min || community.creator),
+        Chat::Empty(_)
+        | Chat::Forbidden(_)
+        | Chat::ChannelForbidden(_)
+        | Chat::CommunityForbidden(_) => false,
+    };
+    if joined {
+        SubscriptionEvidence::Joined
+    } else {
+        SubscriptionEvidence::Unconfirmed
+    }
+}
+
 /// Convert grammers Peer to our Channel type (dialog-list path: subscribed).
 pub fn convert_peer_to_channel(peer: &grammers_client::peer::Peer) -> Option<Channel> {
-    convert_peer_with_subscription(peer, true)
+    convert_peer_with_evidence(peer, SubscriptionEvidence::Dialog)
 }
 
 /// Same conversion for peers found via public search (`contacts.Search`) — the
 /// caller isn't necessarily subscribed to these, so `is_subscribed` is false.
 pub fn convert_discovered_peer(peer: &grammers_client::peer::Peer) -> Option<Channel> {
-    convert_peer_with_subscription(peer, false)
+    convert_peer_with_evidence(peer, SubscriptionEvidence::Unconfirmed)
 }
 
 /// Shared conversion body for [`convert_peer_to_channel`] and
 /// [`convert_discovered_peer`] — the two entry points differ only in whether
 /// the resulting `Channel` is marked as subscribed.
-fn convert_peer_with_subscription(
+pub(crate) fn convert_peer_with_evidence(
     peer: &grammers_client::peer::Peer,
-    is_subscribed: bool,
+    evidence: SubscriptionEvidence,
 ) -> Option<Channel> {
     use grammers_client::peer::Peer;
 
@@ -111,7 +142,10 @@ fn convert_peer_with_subscription(
         member_count: None, // Not fetched from basic chat info; None ≠ a real zero (CQ-4)
         is_verified,
         is_public,
-        is_subscribed,
+        is_subscribed: matches!(
+            evidence,
+            SubscriptionEvidence::Dialog | SubscriptionEvidence::Joined
+        ),
         last_message_date: None,
     })
 }

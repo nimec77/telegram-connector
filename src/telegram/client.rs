@@ -36,6 +36,7 @@ mod raw_page;
 mod raw_pager;
 mod resolve;
 mod resolve_recipient;
+mod resolve_subscription;
 mod results;
 mod search_budget;
 mod send_diagnostics;

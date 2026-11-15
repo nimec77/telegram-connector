@@ -564,3 +564,51 @@ async fn invalid_channel_requests_spend_no_tokens() {
         );
     }
 }
+
+#[tokio::test]
+async fn channel_subscription_boolean_survives_basic_full_canonical_and_legacy() {
+    use crate::config::OutputFormat;
+    use serde_json::{Value, json};
+    for subscribed in [false, true] {
+        for full in [false, true] {
+            for mode in [OutputFormat::JsonV1, OutputFormat::Legacy] {
+                let mut client = MockTelegramClientTrait::new();
+                let mut channel = create_test_channel_named(7, "Observed channel", true);
+                channel.is_subscribed = subscribed;
+                if full {
+                    client
+                        .expect_get_full_channel_info()
+                        .times(1)
+                        .return_once(move |_| Ok(channel));
+                } else {
+                    client
+                        .expect_get_channel_info()
+                        .times(1)
+                        .return_once(move |_| Ok(channel));
+                }
+                let server = McpServer::new(Arc::new(client), Arc::new(permissive_limiter()))
+                    .with_output_format(mode);
+                let result = server
+                    .get_channel_info_wire(
+                        json!({"channel_identifier":"channelname", "include_full":full})
+                            .as_object()
+                            .expect("args")
+                            .clone(),
+                        RequestId(NumberOrString::Number(1)),
+                    )
+                    .await;
+                assert_ne!(result.is_error, Some(true));
+                let text: Value =
+                    serde_json::from_str(&result.content[0].as_text().expect("text").text)
+                        .expect("JSON");
+                let data = if mode == OutputFormat::JsonV1 {
+                    assert_eq!(result.structured_content.as_ref(), Some(&text));
+                    &text["data"]
+                } else {
+                    &text
+                };
+                assert_eq!(data["is_subscribed"], subscribed);
+            }
+        }
+    }
+}

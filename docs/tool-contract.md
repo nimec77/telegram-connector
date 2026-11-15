@@ -74,6 +74,14 @@ unsliced responses establish exhaustion. `has_more` requires a qualifying result
 by limit/budget; an exact-limit page alone does not establish it. Page/raw counters include
 actual fetched pages, including a terminal empty round trip.
 
+Channel `is_subscribed` remains a conservative boolean: `true` means current positive
+membership evidence (a dialog, public-search `my_results`, or authoritative username
+response flags). `false` includes unknown membership, minimal peers without positive
+creator evidence, left/deactivated peers, and forbidden observations. Public discovery
+alone does not establish membership. Basic/full info and unmatched username batch
+resolution use the same policy; full-info enrichment failures preserve the basic result.
+No additional membership RPC or dialog traversal is performed to fill this field.
+
 Dates serialize as RFC3339 UTC. Unknown counts and nullable base fields remain null;
 optional enrichment fields are omitted when absent. Envelope data/error keys are always
 present. Optional retry_after_seconds is omitted. Successful media entries carry an image

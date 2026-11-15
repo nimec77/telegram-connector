@@ -41,8 +41,8 @@ impl TelegramClient {
     /// Canonical channel-reference resolver: a numeric ref is found by walking the
     /// dialog list; anything else is treated as a username (leading `@` stripped).
     /// Both forms return a typed not-found error when nothing matches. This is the
-    /// single entry point — `get_channel_info`, `get_message_by_id`,
-    /// `download_message_media`, and `transcribe_audio` all go through it (AD-1).
+    /// read entry point for `get_message_by_id`, `download_message_media`, and
+    /// `transcribe_audio` (AD-1). Channel info uses contextual subscription evidence.
     pub(super) async fn resolve_peer(
         &self,
         channel_ref: &str,

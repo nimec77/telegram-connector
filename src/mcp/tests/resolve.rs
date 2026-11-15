@@ -84,3 +84,53 @@ async fn resolve_rejects_empty_oversized_and_blank_lists() {
             .contains("blank")
     );
 }
+
+#[tokio::test]
+async fn resolved_subscription_boolean_survives_canonical_and_legacy() {
+    use crate::config::OutputFormat;
+    use rmcp::handler::server::common::RequestId;
+    use rmcp::model::NumberOrString;
+    use serde_json::{Value, json};
+    for mode in [OutputFormat::JsonV1, OutputFormat::Legacy] {
+        let mut client = MockTelegramClientTrait::new();
+        client.expect_resolve_channels().times(1).returning(|_| {
+            Ok([false, true]
+                .into_iter()
+                .map(|subscribed| {
+                    let mut channel = create_test_channel(7, "channelname");
+                    channel.is_subscribed = subscribed;
+                    ChannelResolution {
+                        identifier: "channelname".into(),
+                        channel: Some(channel),
+                        error: None,
+                    }
+                })
+                .collect())
+        });
+        let server = McpServer::new(
+            Arc::new(client),
+            Arc::new(crate::test_helpers::permissive_limiter()),
+        )
+        .with_output_format(mode);
+        let result = server
+            .resolve_channels_wire(
+                json!({"identifiers":["channelname","joinedname"]})
+                    .as_object()
+                    .expect("args")
+                    .clone(),
+                RequestId(NumberOrString::Number(1)),
+            )
+            .await;
+        assert_ne!(result.is_error, Some(true));
+        let text: Value =
+            serde_json::from_str(&result.content[0].as_text().expect("text").text).expect("JSON");
+        let data = if mode == OutputFormat::JsonV1 {
+            assert_eq!(result.structured_content.as_ref(), Some(&text));
+            &text["data"]
+        } else {
+            &text
+        };
+        assert_eq!(data["resolutions"][0]["channel"]["is_subscribed"], false);
+        assert_eq!(data["resolutions"][1]["channel"]["is_subscribed"], true);
+    }
+}

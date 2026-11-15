@@ -189,6 +189,15 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   info cost one token per operation, including optional enrichment. A channel-list dialog
   walk has one total `history_secs` deadline. The Codex example leaves 120 seconds for startup
   (two default 30-second RPC budgets plus headroom).
+- **Subscription evidence:** `is_subscribed=true` requires current dialog/my_results
+  evidence or authoritative raw username flags: active Chat, or nonleft Channel/Community
+  that is full or creator. False includes unknown/minimal/forbidden observations. Capture
+  this before `Peer::from_raw`: forbidden broadcasts/communities normalize to apparently
+  nonleft/full peers. Username channel info/batch uses one raw ResolveUsername RPC,
+  preserving SDK typed last-duplicate-wins envelope caching through public PeerInfo/Session
+  APIs. Cache only authorized peers from the entire envelope; cache failure is best effort
+  with fixed safe diagnostics, within the original resolve timeout. Cache authority and
+  subscription are independent. Ordinary scoped read eligibility remains unchanged.
 - **Timeouts:** three global knobs by call type (`resolve`/`history`/`search`, plus
   `download`), not per-tool; a multi-page `next().await` walk lives inside *one*
   `with_timeout` (budget = total elapsed). No retries — `Error::Timeout` goes to the client,
