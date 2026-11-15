@@ -70,15 +70,18 @@
 
 **Files:**
 - Modify: `src/mcp/tools/fanout.rs`, `src/mcp/tools/validation.rs`, `src/mcp/tools/helpers.rs` only for shared reference parsing, `src/mcp/server/impl_search.rs` (both search and history handlers)
-- Test: fanout inline tests, `src/mcp/tests/multi_channel.rs`, `src/mcp/tests/search_shaping.rs`
+- Modify: `src/mcp/tools/types/responses.rs`, `src/telegram/client/results.rs` only for matching namespaced returned-source counts
+- Test: fanout inline tests, `src/mcp/tests/multi_channel.rs`, `src/mcp/tests/search_shaping.rs`, `src/mcp/tools/types/tests/responses_tests.rs`, `src/telegram/client/tests/helpers_tests.rs`
+- Adjust fixture: `src/mcp/tests/protocol_contract.rs` compact-header conflict must use distinct surviving message identities
 
 **Interfaces:**
 - Consumes `ChannelId`, `Username::is_valid_shape`, existing atomic acquire and ordered buffered fan-out.
 - Produces `FanoutChannel { reference: String, original: String }`, internal `ChannelReferenceKey::{Id(ChannelId), Username(String)}` and `channel_reference_key(reference: &str) -> Result<ChannelReferenceKey, String>`.
 - Updates `validate_channel_scope(...) -> Result<Option<Vec<FanoutChannel>>, String>` and `run<F,Fut>(list: Vec<FanoutChannel>, fetch: F) -> Vec<ChannelFetchOutcome>`; fetch still receives the normalized usable String and errors carry the first supplied spelling.
 - Retains `merge_results`' existing signature and typed per-channel failures.
+- Returned-source counting in both result assembly and MCP shaping uses `(Option<PeerNamespace>, channel_id)`, retaining unknown namespaces and existing missing-ID behavior. RPC/page/raw/attempt counters are unchanged.
 
-- [ ] **Step 1: Add failing normalization, charging and merge tests.** Optional @, case and whitespace variants spend one attempt; accepted `+123`/`00123` normalize to numeric 123 without conflating `@123`. Validate every supplied entry before dedupe/acquire. Numeric-plus-username observations spend two real attempts but return one message/album. Assert first complete payload wins in input order, full `(namespace, channel_id, message_id)` identity, true RPC/page/error counts, no duplicate-only has_more, and surviving compact-header conflicts still fail.
+- [ ] **Step 1: Add failing normalization, charging and merge tests.** Optional @, case and whitespace variants spend one attempt; accepted `+123`/`00123` normalize to numeric 123 without conflating `@123`. Validate every supplied entry before dedupe/acquire. Numeric-plus-username observations spend two real attempts but return one message/album. Assert first complete payload wins in input order, full `(namespace, channel_id, message_id)` identity, three returned sources for same-bare-ID User/Chat/Channel observations, true RPC/page/error counts, no duplicate-only has_more, and surviving compact-header conflicts still fail. Existing conflict fixtures must use distinct message identities; same-identity payload conflicts keep the first observation.
 - [ ] **Step 2: Run `cargo test --offline --locked fanout` and new `multi_channel` filters.** Expected RED: aliases charge multiple attempts and duplicates survive final merge.
 - [ ] **Step 3: Implement typed local keys and first-observation dedupe before sorting/truncation.** Preserve all attempted charges, partial flags and upstream has_more. Normalize only equivalent local spellings; never resolve ID/username equivalence before charging. Preserve invalid-input rejection and unqualified read resolver ambiguity checks.
 - [ ] **Step 4: Run both search/history multi-channel suites, compact ambiguity tests and full Rust gate.** Expected all pass; atomic acquire uses locally deduplicated count, no refunds.
