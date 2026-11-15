@@ -119,10 +119,14 @@ no HTML/Markdown/entities are parsed, and content is not split or truncated.
 
 Captions default to empty and allow at most 1,024 UTF-16 units. An emoji outside the
 basic multilingual plane counts as two units. Metadata is supplied by the caller; no
-FFmpeg, recording, tag extraction or transcoding is performed. Bounded signatures and
-container headers (up to 64 KiB) reject obvious mismatches; they do not establish codec
-validity. Telegram can reject a plausible but invalid file. No generic-file fallback is
-performed. Only a sanitized basename with the detected kind's extension is submitted.
+FFmpeg, recording, tag extraction or transcoding is performed. Signature and container
+inspection reads at most 65,536 bytes in total. JPEG marker headers are inspected incrementally, with at most 4,096 markers (including SOI,
+SOF and SOS); APP/COM payloads are skipped within the verified snapshot length. MP3 ID3
+headers, declared sizes and optional v2.4 footers are checked before seeking to the MPEG
+header. Skipped metadata does not consume the inspection-read budget. The configured
+file-size cap and original send deadline still apply. These bounds can reject otherwise
+valid files and do not establish codec validity. Telegram can reject a plausible but
+invalid file. No generic-file fallback is performed. Only a sanitized basename with the detected kind's extension is submitted.
 
 Text to Saved Messages:
 

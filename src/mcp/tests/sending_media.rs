@@ -125,3 +125,57 @@ async fn sending_media_upload_failure_and_unknown_delivery_never_refund_the_char
         wire.close().await;
     }
 }
+
+#[tokio::test]
+async fn sending_media_large_metadata_retains_canonical_mime_and_size() {
+    for (bytes, media, mime, content_kind) in [
+        (
+            crate::sending::media_fixtures::metadata_jpeg(),
+            json!({"kind":"image"}),
+            "image/jpeg",
+            ContentKind::Image,
+        ),
+        (
+            crate::sending::media_fixtures::tagged_mp3(4, 0, &vec![0; 131_072]),
+            json!({"kind":"audio","duration_seconds":1}),
+            "audio/mpeg",
+            ContentKind::Audio,
+        ),
+    ] {
+        let fixture = Fixture::new();
+        std::fs::write(fixture.source.join("metadata.bin"), &bytes).expect("source");
+        let size = bytes.len() as u64;
+        let mut limiter = MockRateLimiterTrait::new();
+        limiter.expect_acquire().times(1).returning(|_| Ok(()));
+        limiter.expect_refund().times(0);
+        let mut client = MockTelegramClientTrait::new();
+        client.expect_send_media().times(1).returning(move |r, _| {
+            assert_eq!(r.staged.mime_type(), mime);
+            assert_eq!(r.staged.size_bytes(), size);
+            Ok(SentMessage {
+                recipient: QualifiedRecipient::try_new(PeerNamespace::User, 91).expect("ID"),
+                saved_messages: true,
+                message_id: MessageId::new(42).expect("ID"),
+                date: chrono::DateTime::from_timestamp(1_700_000_000, 0).expect("date"),
+                content_kind,
+                reply_to_message_id: None,
+                topic_id: None,
+                message_link: None,
+                media: Some(SubmittedMedia {
+                    mime_type: mime.into(),
+                    size_bytes: size,
+                }),
+            })
+        });
+        let mut wire = Wire::with_handler(enabled_media(&fixture, client, limiter).await);
+        let mut request = call(1, "metadata.bin");
+        request["params"]["arguments"]["media"] = media;
+        wire.send(request).await;
+        let response = wire.recv().await;
+        assert_eq!(response["result"]["isError"], false, "{response}");
+        let data = &response["result"]["structuredContent"]["data"];
+        assert_eq!(data["media"]["mime_type"], mime);
+        assert_eq!(data["media"]["size_bytes"], size);
+        wire.close().await;
+    }
+}

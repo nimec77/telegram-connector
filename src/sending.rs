@@ -11,6 +11,9 @@ pub(crate) mod staging;
 pub use reader::StagedReader;
 pub use staging::StagedUpload;
 
+#[cfg(test)]
+#[path = "sending/tests/media_fixtures.rs"]
+pub(crate) mod media_fixtures;
 #[cfg(all(test, unix))]
 #[path = "sending/tests/privacy_tests.rs"]
 mod privacy_tests;

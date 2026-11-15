@@ -118,3 +118,106 @@ async fn sending_staging_reader_cannot_return_buffered_bytes_after_operation_exp
         .await
         .expect("cleanup");
 }
+
+#[tokio::test]
+async fn sending_staging_large_metadata_reader_starts_at_zero_and_preserves_all_bytes() {
+    use tokio::io::AsyncReadExt as _;
+    let fixture = Fixture::new();
+    let store = StagingStore::try_new(&fixture.config).await.expect("store");
+    for (bytes, kind, mime) in [
+        (
+            crate::sending::media_fixtures::metadata_jpeg(),
+            SendMediaKind::Image,
+            "image/jpeg",
+        ),
+        (
+            crate::sending::media_fixtures::tagged_mp3(4, 0, &vec![0; 131_072]),
+            SendMediaKind::Audio {
+                duration_seconds: 1,
+                title: None,
+                performer: None,
+            },
+            "audio/mpeg",
+        ),
+    ] {
+        std::fs::write(fixture.source.join("metadata.bin"), &bytes).expect("source");
+        let staged = store
+            .stage(
+                &fixture.source("metadata.bin"),
+                &kind,
+                SendDeadline::new(30).expect("budget"),
+            )
+            .await
+            .expect("metadata snapshot");
+        assert_eq!(staged.mime_type(), mime);
+        assert_eq!(staged.size_bytes(), bytes.len() as u64);
+        std::fs::write(fixture.source.join("metadata.bin"), b"changed source").expect("replace");
+        let mut reader = staged.reader().await.expect("verified reader");
+        let mut actual = Vec::new();
+        reader
+            .read_to_end(&mut actual)
+            .await
+            .expect("read full snapshot");
+        assert_eq!(
+            actual, bytes,
+            "probe cursor must not leave the upload at EOF"
+        );
+    }
+    store
+        .close(Instant::now() + Duration::from_secs(5))
+        .await
+        .expect("cleanup");
+}
+
+#[tokio::test]
+async fn sending_staging_large_metadata_counts_against_the_entire_file_cap() {
+    for (bytes, kind) in [
+        (
+            crate::sending::media_fixtures::metadata_jpeg(),
+            SendMediaKind::Image,
+        ),
+        (
+            crate::sending::media_fixtures::tagged_mp3(4, 0, &vec![0; 131_072]),
+            SendMediaKind::Audio {
+                duration_seconds: 1,
+                title: None,
+                performer: None,
+            },
+        ),
+    ] {
+        let mut fixture = Fixture::new();
+        std::fs::write(fixture.source.join("metadata.bin"), &bytes).expect("source");
+        let cap = bytes.len() as u64;
+        fixture.config.settings.max_image_bytes = cap;
+        fixture.config.settings.max_media_bytes = cap;
+        let store = StagingStore::try_new(&fixture.config).await.expect("store");
+        let staged = store
+            .stage(
+                &fixture.source("metadata.bin"),
+                &kind,
+                SendDeadline::new(30).expect("budget"),
+            )
+            .await
+            .expect("exact file cap");
+        drop(staged);
+        let mut oversized = bytes.clone();
+        oversized.push(0);
+        std::fs::write(fixture.source.join("metadata.bin"), &oversized).expect("cap plus one");
+        assert_eq!(
+            store
+                .stage(
+                    &fixture.source("metadata.bin"),
+                    &kind,
+                    SendDeadline::new(30).expect("budget")
+                )
+                .await
+                .expect_err("metadata still consumes file quota")
+                .kind(),
+            SendFailureKind::MediaTooLarge
+        );
+        store
+            .close(Instant::now() + Duration::from_secs(5))
+            .await
+            .expect("cleanup");
+    }
+}

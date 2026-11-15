@@ -638,9 +638,13 @@ impl CopyJob {
         }
         privacy::same_file(&source_path, identity)?;
         output.flush().map_err(|_| unavailable())?;
-        let inspected = probe::probe(output, &self.media)?;
-        output.rewind().map_err(|_| unavailable())?;
         snapshot.identity = privacy::identity(&output.metadata().map_err(|_| unavailable())?)?;
+        if snapshot.identity.len != identity.len {
+            return Err(unavailable());
+        }
+        let inspected = probe::probe(output, &self.media, snapshot.identity.len, self.deadline)?;
+        // The probe preserves its caller's cursor (currently EOF after copying).
+        output.rewind().map_err(|_| unavailable())?;
         let readonly = File::open(&snapshot.path).map_err(|_| unavailable())?;
         if privacy::identity(&readonly.metadata().map_err(|_| unavailable())?)? != snapshot.identity
         {

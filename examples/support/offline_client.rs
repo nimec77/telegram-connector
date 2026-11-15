@@ -122,13 +122,16 @@ impl TelegramClientTrait for OfflineClient {
     ) -> Result<SentMessage, SendFailure> {
         request.validate()?;
         let mut reader = request.staged.reader().await?;
-        tokio::time::timeout_at(
+        let copied = tokio::time::timeout_at(
             deadline.instant(),
             tokio::io::copy(&mut reader, &mut tokio::io::sink()),
         )
         .await
         .map_err(|_| SendFailure::not_sent(SendFailureKind::Timeout, None))?
         .map_err(|_| SendFailure::not_sent(SendFailureKind::UploadFailed, None))?;
+        if copied != request.staged.size_bytes() {
+            return Err(SendFailure::not_sent(SendFailureKind::UploadFailed, None));
+        }
         self.simulated_send(
             &request.options,
             request.media.content_kind(),

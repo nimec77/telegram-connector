@@ -1,6 +1,10 @@
 //! Bounded container/signature inspection, never codec validation or full image decoding.
+mod reader;
+
+use crate::telegram::sending::SendDeadline;
 use crate::telegram::types::sending::{SendFailure, SendFailureKind, SendMediaKind};
-use std::io::{Read as _, Seek as _};
+use reader::Reader;
+use std::io::{Seek as _, SeekFrom};
 
 #[derive(Debug)]
 pub(super) struct ProbedMedia {
@@ -14,24 +18,75 @@ fn unsupported() -> SendFailure {
 pub(super) fn probe(
     file: &mut std::fs::File,
     kind: &SendMediaKind,
+    snapshot_len: u64,
+    deadline: SendDeadline,
 ) -> Result<ProbedMedia, SendFailure> {
-    file.rewind().map_err(|_| unsupported())?;
-    let mut bytes = Vec::new();
-    (&mut *file)
-        .take(65_536)
-        .read_to_end(&mut bytes)
+    let original = file.stream_position().map_err(|_| unsupported())?;
+    let result = (|| {
+        if deadline.expired() {
+            return Err(SendFailure::not_sent(SendFailureKind::Timeout, None));
+        }
+        file.rewind().map_err(|_| unsupported())?;
+        inspect(
+            &mut Reader::new(file, snapshot_len, deadline),
+            kind,
+            snapshot_len,
+        )
+    })();
+    // Restoration must run even when inspection fails or its original budget expires.
+    file.seek(SeekFrom::Start(original))
         .map_err(|_| unsupported())?;
-    file.rewind().map_err(|_| unsupported())?;
-    let (mime_type, extension) = match kind {
-        SendMediaKind::Image if png(&bytes) => ("image/png", "png"),
-        SendMediaKind::Image if jpeg(&bytes) => ("image/jpeg", "jpg"),
-        SendMediaKind::Audio { .. } if mp3(&bytes) => ("audio/mpeg", "mp3"),
-        SendMediaKind::Audio { .. } if aac(&bytes) => ("audio/aac", "aac"),
-        SendMediaKind::Audio { .. } if mp4(&bytes, false) => ("audio/mp4", "m4a"),
-        SendMediaKind::Voice { .. } if opus(&bytes) => ("audio/ogg", "ogg"),
-        SendMediaKind::Video { .. } if mp4(&bytes, true) => ("video/mp4", "mp4"),
-        _ => return Err(unsupported()),
+    if deadline.expired() {
+        return Err(SendFailure::not_sent(SendFailureKind::Timeout, None));
+    }
+    result
+}
+
+fn inspect(
+    reader: &mut Reader<'_>,
+    kind: &SendMediaKind,
+    len: u64,
+) -> Result<ProbedMedia, SendFailure> {
+    let prefix = reader.read::<2>()?;
+    let (mime_type, extension) = if matches!(kind, SendMediaKind::Image) && prefix == [0xff, 0xd8] {
+        jpeg(reader)?;
+        ("image/jpeg", "jpg")
+    } else {
+        let mut bytes = prefix.to_vec();
+        if matches!(kind, SendMediaKind::Audio { .. }) {
+            // ID3's ten-byte header is the only MP3 metadata we read before skipping its body.
+            let head_len = len.min(10) as usize;
+            bytes.resize(head_len, 0);
+            reader.read_into(&mut bytes[2..])?;
+            if bytes.starts_with(b"ID3") {
+                mp3(reader, &bytes)?;
+                return Ok(ProbedMedia {
+                    mime_type: "audio/mpeg",
+                    extension: "mp3",
+                });
+            }
+            if mpeg(&bytes) {
+                return Ok(ProbedMedia {
+                    mime_type: "audio/mpeg",
+                    extension: "mp3",
+                });
+            }
+        }
+        // The other existing signature/container checks retain their fixed-prefix behavior.
+        let prefix_len = len.min(reader::READ_LIMIT as u64) as usize;
+        let inspected = bytes.len();
+        bytes.resize(prefix_len, 0);
+        reader.read_into(&mut bytes[inspected..])?;
+        match kind {
+            SendMediaKind::Image if png(&bytes) => ("image/png", "png"),
+            SendMediaKind::Audio { .. } if aac(&bytes) => ("audio/aac", "aac"),
+            SendMediaKind::Audio { .. } if mp4(&bytes, false) => ("audio/mp4", "m4a"),
+            SendMediaKind::Voice { .. } if opus(&bytes) => ("audio/ogg", "ogg"),
+            SendMediaKind::Video { .. } if mp4(&bytes, true) => ("video/mp4", "mp4"),
+            _ => return Err(unsupported()),
+        }
     };
+    reader.check()?;
     Ok(ProbedMedia {
         mime_type,
         extension,
@@ -45,55 +100,113 @@ fn png(b: &[u8]) -> bool {
         && b[16..20] != [0, 0, 0, 0]
         && b[20..24] != [0, 0, 0, 0]
 }
-fn jpeg(b: &[u8]) -> bool {
-    if !b.starts_with(b"\xff\xd8") {
-        return false;
-    }
-    let mut at = 2;
-    while at + 4 <= b.len() {
-        if b[at] != 0xff {
-            return false;
+
+fn jpeg(reader: &mut Reader<'_>) -> Result<(), SendFailure> {
+    let mut dimensions = false;
+    // SOI already consumed; include SOI, SOF and SOS in the independent marker limit.
+    for _ in 1..4096 {
+        if reader.read::<1>()? != [0xff] {
+            return Err(unsupported());
         }
-        while at < b.len() && b[at] == 0xff {
-            at += 1;
-        }
-        if at >= b.len() {
-            return false;
-        }
-        let marker = b[at];
-        at += 1;
-        if marker == 0xda || marker == 0xd9 {
-            return false;
-        }
-        if marker == 1 || (0xd0..=0xd8).contains(&marker) {
+        let marker = loop {
+            let [byte] = reader.read::<1>()?;
+            if byte != 0xff {
+                break byte;
+            }
+        };
+        if marker == 1 {
             continue;
+        } // TEM is the only standalone marker before a scan.
+        if !(0xc0..=0xfe).contains(&marker) || (0xd0..=0xd9).contains(&marker) {
+            return Err(unsupported());
         }
-        if at + 2 > b.len() {
-            return false;
+        let size = u16::from_be_bytes(reader.read::<2>()?);
+        let payload = size.checked_sub(2).ok_or_else(unsupported)?;
+        let end = reader.end(u64::from(payload))?;
+        if matches!(marker, 0xc0..=0xc3 | 0xc5..=0xc7 | 0xc9..=0xcb | 0xcd..=0xcf) {
+            if payload < 6 || dimensions {
+                return Err(unsupported());
+            }
+            let header = reader.read::<6>()?;
+            if header[1..3] == [0, 0]
+                || header[3..5] == [0, 0]
+                || header[5] == 0
+                || payload != 6 + 3 * u16::from(header[5])
+            {
+                return Err(unsupported());
+            }
+            dimensions = true;
+        } else if marker == 0xda {
+            if !dimensions || payload < 4 {
+                return Err(unsupported());
+            }
+            let [components] = reader.read::<1>()?;
+            if components == 0 || payload != 4 + 2 * u16::from(components) {
+                return Err(unsupported());
+            }
+            reader.seek(end)?;
+            return Ok(());
         }
-        let size = usize::from(u16::from_be_bytes([b[at], b[at + 1]]));
-        if size < 2 || at + size > b.len() {
-            return false;
-        }
-        if matches!(marker,0xc0..=0xc3|0xc5..=0xc7|0xc9..=0xcb|0xcd..=0xcf) {
-            return size >= 8 && b[at + 3..at + 5] != [0, 0] && b[at + 5..at + 7] != [0, 0];
-        }
-        at += size;
+        // Includes APP/COM metadata and bounded non-image tables; no payload decoding.
+        reader.seek(end)?;
     }
-    false
+    Err(unsupported())
 }
-fn mp3(b: &[u8]) -> bool {
-    let mut at = 0;
-    if b.starts_with(b"ID3") {
-        if b.len() < 10 || b[6..10].iter().any(|b| b & 0x80 != 0) {
-            return false;
-        }
-        let size = b[6..10]
-            .iter()
-            .fold(0usize, |n, b| (n << 7) | usize::from(*b));
-        at = 10 + size;
+
+fn synchsafe(bytes: [u8; 4]) -> Result<u64, SendFailure> {
+    if bytes.iter().any(|byte| byte & 0x80 != 0) {
+        return Err(unsupported());
     }
-    b.get(at..at + 4).is_some_and(|h| {
+    Ok(bytes
+        .into_iter()
+        .fold(0, |size, byte| (size << 7) | u64::from(byte)))
+}
+
+fn mp3(reader: &mut Reader<'_>, header: &[u8]) -> Result<(), SendFailure> {
+    if header.len() != 10 || header[4] == 0xff {
+        return Err(unsupported());
+    }
+    let mask = match header[3] {
+        2 => 0xc0,
+        3 => 0xe0,
+        4 => 0xf0,
+        _ => return Err(unsupported()),
+    };
+    if header[5] & !mask != 0 {
+        return Err(unsupported());
+    }
+    let size = synchsafe([header[6], header[7], header[8], header[9]])?;
+    let body_end = reader.end(size)?;
+    if header[3] >= 3 && header[5] & 0x40 != 0 {
+        if size < 4 {
+            return Err(unsupported());
+        }
+        let raw = reader.read::<4>()?;
+        let extended = if header[3] == 4 {
+            synchsafe(raw)?
+        } else {
+            u64::from(u32::from_be_bytes(raw)) + 4
+        };
+        let minimum = if header[3] == 4 { 6 } else { 10 };
+        if extended < minimum || extended > size {
+            return Err(unsupported());
+        }
+    }
+    reader.seek(body_end)?;
+    if header[3] == 4 && header[5] & 0x10 != 0 {
+        // v2.4 declares body size excluding BOTH the header and the optional footer.
+        let footer = reader.read::<10>()?;
+        if &footer[..3] != b"3DI" || footer[3..] != header[3..] {
+            return Err(unsupported());
+        }
+    }
+    if !mpeg(&reader.read::<4>()?) {
+        return Err(unsupported());
+    }
+    Ok(())
+}
+fn mpeg(bytes: &[u8]) -> bool {
+    bytes.get(..4).is_some_and(|h| {
         h[0] == 0xff
             && h[1] & 0xe0 == 0xe0
             && h[1] & 0x18 != 0x08
