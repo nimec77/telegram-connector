@@ -75,7 +75,7 @@ fn observations() -> Vec<(&'static str, tl::enums::Chat, bool)> {
             ("joined channel", false, false, false, true),
             ("left channel", true, false, false, false),
             ("minimal channel", false, true, false, false),
-            ("minimal creator channel", false, true, true, true),
+            ("minimal creator channel", false, true, true, false),
             ("left creator channel", true, true, true, false),
         ] {
             let mut chat = raw_tl_channel(7, "Channel", Some("channelname"));
@@ -104,7 +104,7 @@ fn observations() -> Vec<(&'static str, tl::enums::Chat, bool)> {
         ("joined community", false, false, false, true),
         ("left community", true, false, false, false),
         ("minimal community", false, true, false, false),
-        ("minimal creator community", false, true, true, true),
+        ("minimal creator community", false, true, true, false),
         ("left creator community", true, true, true, false),
     ] {
         let mut chat = raw_tl_community(7, "Community");

@@ -190,8 +190,9 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   walk has one total `history_secs` deadline. The Codex example leaves 120 seconds for startup
   (two default 30-second RPC budgets plus headroom).
 - **Subscription evidence:** `is_subscribed=true` requires current dialog/my_results
-  evidence or authoritative raw username flags: active Chat, or nonleft Channel/Community
-  that is full or creator. False includes unknown/minimal/forbidden observations. Capture
+  evidence or authoritative raw username flags: active Chat, or nonminimal, nonleft
+  Channel/Community. All minimal observations are unconfirmed, including creator flags;
+  false also includes unknown/forbidden observations. Capture
   this before `Peer::from_raw`: forbidden broadcasts/communities normalize to apparently
   nonleft/full peers. Username channel info/batch uses one raw ResolveUsername RPC,
   preserving SDK typed last-duplicate-wins envelope caching through public PeerInfo/Session

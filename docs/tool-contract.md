@@ -76,8 +76,8 @@ actual fetched pages, including a terminal empty round trip.
 
 Channel `is_subscribed` remains a conservative boolean: `true` means current positive
 membership evidence (a dialog, public-search `my_results`, or authoritative username
-response flags). `false` includes unknown membership, minimal peers without positive
-creator evidence, left/deactivated peers, and forbidden observations. Public discovery
+response flags). `false` includes unknown membership, all minimal username observations
+(including creator flags), left/deactivated peers, and forbidden observations. Public discovery
 alone does not establish membership. Basic/full info and unmatched username batch
 resolution use the same policy; full-info enrichment failures preserve the basic result.
 No additional membership RPC or dialog traversal is performed to fill this field.

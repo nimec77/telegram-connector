@@ -70,16 +70,16 @@ pub(crate) enum SubscriptionEvidence {
 }
 
 /// Read membership before SDK normalization erases forbidden variants.
-/// A creator is positive evidence even in a minimal object; an explicit left
-/// flag wins. Missing access hashes affect cache authority, not membership.
+/// Minimal observations cannot establish membership, including creator flags.
+/// Missing access hashes affect cache authority, not full membership evidence.
 pub(crate) fn subscription_evidence(
     chat: &grammers_client::tl::enums::Chat,
 ) -> SubscriptionEvidence {
     use grammers_client::tl::enums::Chat;
     let joined = match chat {
         Chat::Chat(chat) => !chat.left && !chat.deactivated,
-        Chat::Channel(channel) => !channel.left && (!channel.min || channel.creator),
-        Chat::Community(community) => !community.left && (!community.min || community.creator),
+        Chat::Channel(channel) => !channel.min && !channel.left,
+        Chat::Community(community) => !community.min && !community.left,
         Chat::Empty(_)
         | Chat::Forbidden(_)
         | Chat::ChannelForbidden(_)
