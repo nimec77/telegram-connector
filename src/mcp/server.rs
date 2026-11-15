@@ -567,7 +567,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         inv.finish(self.open_message_in_telegram_impl(request).await)
     }
 
-    /// Tool 6: search_messages - Search messages across Telegram channels
+    /// Tool 6: search_messages - Search messages in account global or channel scope
     /// Legacy direct adapter; configured output mode affects registered MCP calls only.
     ///
     /// # Errors
@@ -910,13 +910,15 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     }
 
     #[tool(
-        description = "Search messages across subscribed Telegram channels with optional \
-                       filters. Scoping with channel_id or channel_ids is cheaper than an \
-                       unscoped global search and supports cursor pagination \
-                       (before_id/after_id); global searches support neither, because there \
-                       is no per-channel offset to resume from. A search that exceeds its \
-                       configured deadline returns the results gathered so far with \
-                       query_metadata.timed_out and .partial set, never an error."
+        description = "Search Telegram's available global index for the authenticated account, \
+                       which may include private conversations, groups and channels. This is \
+                       not an exhaustive search of every accessible or public peer. Scope with \
+                       channel_id or channel_ids to search eligible subscribed channels. Only \
+                       single-channel channel_id searches support before_id/after_id cursor \
+                       pagination; global and channel_ids searches have no message-ID cursor. \
+                       A search that exceeds its configured deadline returns the results \
+                       gathered so far with query_metadata.timed_out and .partial set, never \
+                       an error."
     , name = "search_messages", input_schema = crate::mcp::tools::types::contract::recoverable_schema(rmcp::handler::server::common::schema_for_input::<SearchRequest>().expect("request schema is an object")), output_schema = crate::mcp::tools::types::contract::output_schema::<crate::mcp::tools::SearchResponse<crate::error::Error>>(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = true))]
     async fn search_messages_wire(
         &self,

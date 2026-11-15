@@ -362,3 +362,70 @@ async fn healthy_search_omits_the_degradation_flags() {
     assert!(parsed["query_metadata"].get("timed_out").is_none());
     assert!(parsed["query_metadata"].get("partial").is_none());
 }
+
+#[tokio::test]
+async fn global_search_keeps_user_group_and_channel_namespaces_without_a_cursor() {
+    use crate::config::OutputFormat;
+    use crate::telegram::types::PeerNamespace;
+
+    for mode in [OutputFormat::JsonV1, OutputFormat::Legacy] {
+        let messages = [
+            PeerNamespace::User,
+            PeerNamespace::Chat,
+            PeerNamespace::Channel,
+        ]
+        .into_iter()
+        .map(|namespace| {
+            let mut message = create_test_message(9, "global hit", 11);
+            message.peer_namespace = Some(namespace);
+            message
+        })
+        .collect();
+        let mut upstream = create_test_search_result(messages, "q", 3);
+        upstream.has_more = true;
+        let mut client = MockTelegramClientTrait::new();
+        client
+            .expect_search_messages()
+            .withf(|params| params.channel_id.is_none())
+            .returning(move |_| Ok(upstream.clone()));
+        let server = McpServer::new(Arc::new(client), Arc::new(permissive_limiter()));
+        let response = server
+            .search_messages_data(SearchRequest {
+                query: "q".into(),
+                ..Default::default()
+            })
+            .await;
+        let rendered = crate::mcp::tools::types::contract::render(mode, response);
+        let wire = serde_json::to_value(rendered).expect("wire result");
+        let data = if mode == OutputFormat::JsonV1 {
+            wire["structuredContent"]["data"].clone()
+        } else {
+            serde_json::from_str(wire["content"][0]["text"].as_str().expect("legacy text"))
+                .expect("legacy JSON")
+        };
+        assert_eq!(data["returned"], 3);
+        assert_eq!(data["has_more"], true);
+        assert!(
+            data.get("next_cursor").is_none(),
+            "global IDs cannot form a cursor"
+        );
+        let messages = data["messages"].as_array().expect("messages");
+        assert_eq!(messages.len(), 3);
+        if mode == OutputFormat::JsonV1 {
+            assert_eq!(
+                messages
+                    .iter()
+                    .map(|message| message["peer_namespace"].as_str().expect("namespace"))
+                    .collect::<Vec<_>>(),
+                ["user", "chat", "channel"]
+            );
+        } else {
+            assert!(
+                messages
+                    .iter()
+                    .all(|message| message.get("peer_namespace").is_none()),
+                "legacy keeps its established field shape"
+            );
+        }
+    }
+}

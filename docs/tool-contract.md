@@ -63,6 +63,17 @@ unqualified. An incomplete search dialog traversal keeps the existing deadline p
 semantics and never starts message fetches from a provisional identity. Source identity remains available for all-missing
 message batches and all-failed media batches.
 
+Unscoped `search_messages` searches Telegram's available global index for the
+authenticated account, which may include private conversations, groups and channels.
+It does not guarantee exhaustive coverage of every accessible or public peer. Scoped
+search retains subscribed-dialog eligibility. Only single-channel `channel_id` searches
+support message-ID cursors; global and `channel_ids` results never include one. Global
+pagination continues nonempty slices regardless of low IDs, short pages or absent
+`next_rate`, using the actual last raw message for offsets. Empty pages and terminal
+unsliced responses establish exhaustion. `has_more` requires a qualifying result refused
+by limit/budget; an exact-limit page alone does not establish it. Page/raw counters include
+actual fetched pages, including a terminal empty round trip.
+
 Dates serialize as RFC3339 UTC. Unknown counts and nullable base fields remain null;
 optional enrichment fields are omitted when absent. Envelope data/error keys are always
 present. Optional retry_after_seconds is omitted. Successful media entries carry an image

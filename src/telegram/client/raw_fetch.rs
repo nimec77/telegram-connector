@@ -2,7 +2,6 @@
 //! envelope, so converters can enrich from the same call's chats/users.
 
 use super::raw_page::{raw_peer_id, unpack_page};
-use super::raw_pager::PAGE_LIMIT;
 use crate::telegram::envelope::EntityLookup;
 use grammers_client::{Client, tl};
 use grammers_mtsender::InvocationError;
@@ -65,9 +64,7 @@ pub(super) async fn fetch_messages_by_id(
         GetMessagesRequest::Channel(request) => client.invoke(&request).await?,
         GetMessagesRequest::Plain(request) => client.invoke(&request).await?,
     };
-    // `limit` only drives the pager's last-chunk rule, which getMessages has
-    // no use for; PAGE_LIMIT keeps the single decode path.
-    let page = unpack_page(response, PAGE_LIMIT);
+    let page = unpack_page(response);
     let entities = Arc::new(EntityLookup::from_envelope(&page.chats, &page.users));
     Ok((index_messages(page.messages, peer), entities))
 }

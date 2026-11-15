@@ -17,8 +17,8 @@ the [output contract](docs/tool-contract.md) and [changelog](CHANGELOG.md).
   channels/groups, private chats and Saved Messages, with bounded local upload roots
   and explicit delivery outcomes; see the [sending guide](docs/sending.md)
 
-- **Real-time Telegram access** over MTProto — search across all subscribed channels, one
-  channel, or a fan-out of up to 20 channels
+- **Real-time Telegram access** over MTProto — search the account’s available global index, one
+  subscribed channel, or a fan-out of up to 20 subscribed channels
 - **Recent history by time window** (no search query needed), with media-type filtering,
   date ranges, album collapsing, and drift-free pagination cursors
 - **Media retrieval** — photos and video thumbnails returned as MCP image content blocks,
@@ -242,6 +242,10 @@ and safe recovery after uncertain delivery.
 - **Fan-out token cost:** `channel_ids` fan-out atomically acquires one token per deduped
   channel; `get_messages_media_batch` acquires `media_download_cost × ids` up front and
   refunds ids that produced no image (whole-call failure refunds all but 1 token).
+- **Global search scope:** omitting both `channel_id` and `channel_ids` searches
+  Telegram’s available global index for the authenticated account. Results may include
+  private conversations, groups and channels; this does not guarantee an exhaustive
+  search of every accessible or public peer. Single-channel eligibility is unchanged.
 - **Pagination:** single-channel responses with more data carry
   `next_cursor: {"before_id": ...}` — pass it back as `before_id` for drift-free older
   pages; global search reports `has_more` without a cursor; cursors are rejected in

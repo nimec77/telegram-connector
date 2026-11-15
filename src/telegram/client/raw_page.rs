@@ -12,7 +12,31 @@ pub(super) struct RawPage {
     pub(super) chats: Vec<tl::enums::Chat>,
     pub(super) users: Vec<tl::enums::User>,
     pub(super) next_rate: Option<i32>,
-    pub(super) last_chunk: bool,
+    kind: PageKind,
+}
+
+enum PageKind {
+    Messages,
+    Slice,
+    ChannelMessages,
+    NotModified,
+}
+
+impl RawPage {
+    /// Preserve the existing grammers exhaustion policy within a single peer.
+    pub(super) fn single_peer_exhausted(&self, limit: i32) -> bool {
+        self.global_exhausted()
+            || self
+                .messages
+                .first()
+                .is_some_and(|message| message.id() <= limit)
+    }
+
+    /// Global message IDs belong to different peers, so neither a low ID nor
+    /// a short slice or absent next_rate establishes exhaustion.
+    pub(super) fn global_exhausted(&self) -> bool {
+        self.messages.is_empty() || matches!(self.kind, PageKind::Messages | PageKind::NotModified)
+    }
 }
 
 /// Raw peer the message lives in (mirrors grammers `utils::peer_from_message`).
@@ -24,32 +48,29 @@ pub(super) fn raw_peer_id(raw: &tl::enums::Message) -> Option<&tl::enums::Peer> 
     }
 }
 
-/// Decode a `messages.Messages` response, preserving the envelope and
-/// computing grammers' last-chunk rule: `Messages` is always final;
-/// `Slice`/`ChannelMessages` are final when empty or when the newest id in
-/// the page is within `limit` of the absolute lowest message id (1).
-pub(super) fn unpack_page(res: tl::enums::messages::Messages, limit: i32) -> RawPage {
+/// Decode a response without applying a scope-specific exhaustion policy.
+pub(super) fn unpack_page(res: tl::enums::messages::Messages) -> RawPage {
     use tl::enums::messages::Messages;
-    let (messages, chats, users, next_rate, last_chunk) = match res {
-        Messages::Messages(m) => (m.messages, m.chats, m.users, None, true),
-        Messages::Slice(m) => {
-            let last = m.messages.is_empty() || m.messages[0].id() <= limit;
-            (m.messages, m.chats, m.users, m.next_rate, last)
-        }
-        Messages::ChannelMessages(m) => {
-            let last = m.messages.is_empty() || m.messages[0].id() <= limit;
-            (m.messages, m.chats, m.users, None, last)
-        }
-        // hash is always 0 in our requests, so NotModified cannot occur.
-        // Treat it as an empty final page rather than panicking (never unwrap).
-        Messages::NotModified(_) => (vec![], vec![], vec![], None, true),
+    let (messages, chats, users, next_rate, kind) = match res {
+        Messages::Messages(m) => (m.messages, m.chats, m.users, None, PageKind::Messages),
+        Messages::Slice(m) => (m.messages, m.chats, m.users, m.next_rate, PageKind::Slice),
+        Messages::ChannelMessages(m) => (
+            m.messages,
+            m.chats,
+            m.users,
+            None,
+            PageKind::ChannelMessages,
+        ),
+        // Hash is always 0 in our requests, so NotModified cannot occur.
+        // Treat it as an empty final page rather than panicking.
+        Messages::NotModified(_) => (vec![], vec![], vec![], None, PageKind::NotModified),
     };
     RawPage {
         messages,
         chats,
         users,
         next_rate,
-        last_chunk,
+        kind,
     }
 }
 

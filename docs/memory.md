@@ -212,6 +212,15 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   where `MockTelegramClientTrait` replaces the whole client, so branching placed there stays
   untestable. The three differ only in `WalkConfig`'s five fields (`cutoff_time`, `to_date`,
   `after_bound`, `media_filter`, `below_cutoff`) plus the deadline (history: disabled).
+- **Global search scope/exhaustion:** unscoped search uses Telegram's available account
+  global index, which can include private conversations/groups/channels and is not exhaustive
+  over every accessible/public peer. Retain RPC flags and single-channel subscribed-dialog
+  eligibility. Raw page decoding retains envelope kind; single-peer history/search keep
+  their existing low-ID exhaustion rule. Global slices continue despite a low first ID,
+  short page or absent `next_rate`; only empty or terminal-unsliced pages stop. Advance all
+  global offsets from the actual last raw message, and count every actual page/raw item,
+  including a terminal empty fetch. Exact-limit results probe for a refused qualifying
+  result within the same total deadline before setting `has_more`.
 - **Pagination:** `before_id` maps to the RPC's `offset_id`; `after_id` is a client-side
   break (grammers has no `min_id` setter); both exclusive. Message ids are only unique per
   channel, so global search reports `has_more` but never a `next_cursor`. `has_more` means

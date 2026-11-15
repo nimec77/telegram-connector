@@ -129,7 +129,7 @@ pub struct SearchRequest {
     pub channel_id: Option<String>,
 
     #[schemars(
-        description = "Optional: fan out over up to 20 channels (IDs or usernames) in one call with bounded concurrency; results are merged newest-first and limit counts the merged total. Mutually exclusive with channel_id; incompatible with before_id/after_id. Omit both for a global search."
+        description = "Optional: fan out over up to 20 channels (IDs or usernames) in one call with bounded concurrency; results are merged newest-first and limit counts the merged total. Mutually exclusive with channel_id; incompatible with before_id/after_id. Omit both to search the available account global index, which may include private conversations, groups and channels; it is not exhaustive across all accessible or public peers and has no message-ID cursor."
     )]
     #[serde(default)]
     pub channel_ids: Option<Vec<String>>,

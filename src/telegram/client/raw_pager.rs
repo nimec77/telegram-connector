@@ -4,8 +4,8 @@
 //! `GlobalSearchIter` (pinned rev, `client/messages.rs`) while keeping the
 //! response envelope's `chats`+`users`, which the high-level iterators
 //! discard behind a crate-private `PeerMap`. Same requests, same order, same
-//! stop conditions — zero additional network calls; the envelope feeds
-//! forward attribution (see `telegram/envelope.rs`).
+//! single-peer stop conditions; global slices continue across peer IDs. The
+//! envelope feeds forward attribution (see `telegram/envelope.rs`).
 
 use super::raw_page::{
     RawPage, chat_peer_for_message, fill_buffer, input_peer_for_message, unpack_page,
@@ -86,10 +86,8 @@ fn window_bounds(from: DateTime<Utc>, to: Option<DateTime<Utc>>) -> (i32, i32) {
 
 /// Write a time window onto a `SearchGlobal` request.
 ///
-/// Split out of `RawGlobalSearchPager::new` so the assignment itself is
-/// testable: `new` needs a live `Client`, which no unit test can build, and a
-/// transposition here (`min_date` ← the upper bound) would compile, pass, and
-/// silently reinstate the unbounded global walk.
+/// A transposition here (`min_date` ← the upper bound) would silently
+/// reinstate the unbounded global walk.
 fn apply_window(
     request: &mut tl::functions::messages::SearchGlobal,
     from: DateTime<Utc>,
@@ -140,8 +138,8 @@ impl RawHistoryPager {
         if self.last_chunk {
             return Ok(None);
         }
-        let page = unpack_page(self.client.invoke(&self.request).await?, self.request.limit);
-        self.last_chunk = page.last_chunk;
+        let page = unpack_page(self.client.invoke(&self.request).await?);
+        self.last_chunk = page.single_peer_exhausted(self.request.limit);
         // Measured on the page, not the buffer: the field reports raw messages
         // walked, which only coincides with the buffer length while the buffer
         // is provably empty here and nothing filters on the way in.
@@ -219,8 +217,8 @@ impl RawChannelSearchPager {
         if self.last_chunk {
             return Ok(None);
         }
-        let page = unpack_page(self.client.invoke(&self.request).await?, self.request.limit);
-        self.last_chunk = page.last_chunk;
+        let page = unpack_page(self.client.invoke(&self.request).await?);
+        self.last_chunk = page.single_peer_exhausted(self.request.limit);
         // Measured on the page, not the buffer — see `RawHistoryPager::next`.
         let page_size = page.messages.len();
         advance_search_offsets(&mut self.request, &page);
@@ -230,13 +228,27 @@ impl RawChannelSearchPager {
     }
 }
 
-/// Raw `messages.SearchGlobal` pager (search_messages all-channels path).
-///
-/// Yields each message with its envelope entities and its own chat as a
-/// high-level `Peer` (built from the same envelope), which the ops layer
-/// needs for identity and link building.
-pub(super) struct RawGlobalSearchPager {
+/// The network boundary used by the production pager and offline page scripts.
+pub(super) trait GlobalSearchFetch {
+    fn fetch(
+        &self,
+        request: &tl::functions::messages::SearchGlobal,
+    ) -> impl std::future::Future<Output = Result<tl::enums::messages::Messages, InvocationError>> + Send;
+}
+
+impl GlobalSearchFetch for Client {
+    async fn fetch(
+        &self,
+        request: &tl::functions::messages::SearchGlobal,
+    ) -> Result<tl::enums::messages::Messages, InvocationError> {
+        self.invoke(request).await
+    }
+}
+
+/// Raw global-index pager, retaining each result's own peer and envelope.
+pub(super) struct RawGlobalSearchPager<F = Client> {
     client: Client,
+    fetch: F,
     request: tl::functions::messages::SearchGlobal,
     buffer: VecDeque<(
         tl::enums::Message,
@@ -250,12 +262,23 @@ pub(super) struct RawGlobalSearchPager {
 }
 
 impl RawGlobalSearchPager {
+    pub(super) fn new(client: &Client, from: DateTime<Utc>, to: Option<DateTime<Utc>>) -> Self {
+        Self::with_fetch(client, from, to, client.clone())
+    }
+}
+
+impl<F: GlobalSearchFetch> RawGlobalSearchPager<F> {
     /// The time window is a constructor argument, not an optional builder step:
     /// without server-side bounds the pager walks the entire global index
     /// backwards discarding out-of-window results — measured at 44.86 s for a
     /// rare media filter over a 24 h window. An omitted builder call would
     /// reinstate that silently, so the unbounded request is not constructible.
-    pub(super) fn new(client: &Client, from: DateTime<Utc>, to: Option<DateTime<Utc>>) -> Self {
+    fn with_fetch(
+        client: &Client,
+        from: DateTime<Utc>,
+        to: Option<DateTime<Utc>>,
+        fetch: F,
+    ) -> Self {
         let mut request = tl::functions::messages::SearchGlobal {
             folder_id: None,
             q: String::new(),
@@ -275,6 +298,7 @@ impl RawGlobalSearchPager {
         apply_window(&mut request, from, to);
         Self {
             client: client.clone(),
+            fetch,
             request,
             buffer: VecDeque::new(),
             last_chunk: false,
@@ -315,8 +339,8 @@ impl RawGlobalSearchPager {
         // Order matters: advance offsets while `page` is whole, then
         // destructure — the message vec is consumed by the buffer fill while
         // chats/users are still needed for per-message chat peers.
-        let page = unpack_page(self.client.invoke(&self.request).await?, self.request.limit);
-        self.last_chunk = page.last_chunk;
+        let page = unpack_page(self.fetch.fetch(&self.request).await?);
+        self.last_chunk = page.global_exhausted();
         // Measured on the page, not the buffer — see `RawHistoryPager::next`.
         let page_size = page.messages.len();
         if let Some(last) = page.messages.last() {
