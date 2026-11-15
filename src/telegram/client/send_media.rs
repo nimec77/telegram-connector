@@ -1,10 +1,12 @@
 //! Stream prepared snapshots, then submit exactly one final media mutation.
 use super::TelegramClient;
-use super::resolve_recipient::{ResolvedRecipient, read_failure};
+use super::resolve_recipient::ResolvedRecipient;
 use super::send_diagnostics::{private_rpc, stage_result};
 use super::send_receipt::ExpectedSend;
 use super::send_targets::ValidatedTargets;
-use super::send_transport::{PreparedFinalSend, random_id, submit_final_with};
+use super::send_transport::{
+    PreparedFinalSend, classify_final_error, random_id, submit_final_with,
+};
 use super::upload_pool::UploadPool;
 use crate::sending::StagedUpload;
 use crate::telegram::sending::{SendDeadline, SendStage};
@@ -145,7 +147,12 @@ pub(super) fn upload_failure(error: std::io::Error) -> SendFailure {
     if let Some(inner) = error.into_inner()
         && let Ok(error) = inner.downcast::<grammers_mtsender::InvocationError>()
     {
-        return read_failure(*error, SendFailureKind::UploadFailed);
+        let failure = classify_final_error(*error);
+        return if failure.kind() == SendFailureKind::DeliveryUnknown {
+            SendFailure::not_sent(SendFailureKind::UploadFailed, None)
+        } else {
+            failure
+        };
     }
     SendFailure::not_sent(SendFailureKind::UploadFailed, None)
 }

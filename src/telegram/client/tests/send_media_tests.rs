@@ -228,3 +228,16 @@ fn sending_media_upload_errors_keep_typed_wait_hints_without_raw_sources() {
     assert_eq!(error.kind(), SendFailureKind::UploadFailed);
     assert!(!format!("{error:?} {error}").contains("secret"));
 }
+
+#[test]
+fn sending_media_upload_uncertainty_retains_upload_failure_policy() {
+    use crate::telegram::types::sending::{FailureDeliveryState, SendFailureKind};
+    for raw in super::send_transport_tests::uncertain_read_errors() {
+        let failure = super::send_media::upload_failure(std::io::Error::other(raw));
+        assert_eq!(failure.kind(), SendFailureKind::UploadFailed);
+        assert_eq!(failure.delivery_state(), FailureDeliveryState::NotSent);
+        assert!(!failure.retryable());
+        assert!(!format!("{failure:?} {failure}").contains("secret"));
+        assert!(std::error::Error::source(&failure).is_none());
+    }
+}

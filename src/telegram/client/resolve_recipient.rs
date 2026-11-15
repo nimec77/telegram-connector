@@ -1,7 +1,7 @@
 //! Write-specific resolution: one qualified identity, no read-resolver fallback or raw logging.
 
 use super::TelegramClient;
-use super::send_transport::classify_final_error;
+use super::send_transport::{ReadContext, classify_read_error, read_with};
 use crate::telegram::converters::peer_namespace;
 use crate::telegram::sending::{SendDeadline, SendStage};
 use crate::telegram::types::sending::{
@@ -32,38 +32,28 @@ impl std::fmt::Debug for ResolvedRecipient {
     }
 }
 
-pub(super) struct RecipientSelection<T> {
+// Thread iterator ownership through the next-item future so it remains Send without
+// locking the iterator or requiring a lending-future trait.
+pub(super) async fn find_qualified_with<T, State, Next, Fut>(
     wanted: QualifiedRecipient,
-    selected: Option<T>,
-}
-impl<T> RecipientSelection<T> {
-    pub(super) fn new(wanted: QualifiedRecipient) -> Self {
-        Self {
-            wanted,
-            selected: None,
+    mut state: State,
+    mut next: Next,
+) -> Result<Option<T>, SendFailure>
+where
+    Next: FnMut(State) -> Fut,
+    Fut: Future<Output = Result<Option<(State, QualifiedRecipient, T)>, SendFailure>>,
+{
+    while let Some((remaining, identity, value)) = next(state).await? {
+        state = remaining;
+        if identity == wanted {
+            return Ok(Some(value));
         }
     }
-    pub(super) fn consider(&mut self, identity: QualifiedRecipient, value: T) {
-        if identity == self.wanted && self.selected.is_none() {
-            self.selected = Some(value);
-        }
-    }
-    pub(super) fn finish(self) -> Option<T> {
-        self.selected
-    }
+    Ok(None)
 }
 
 fn missing() -> SendFailure {
     SendFailure::not_sent(SendFailureKind::RecipientNotFound, None)
-}
-
-pub(super) fn read_failure(error: InvocationError, fallback: SendFailureKind) -> SendFailure {
-    let failure = classify_final_error(error);
-    if failure.kind() == SendFailureKind::DeliveryUnknown {
-        SendFailure::not_sent(fallback, None)
-    } else {
-        failure
-    }
 }
 
 fn chat_forum(raw: &tl::enums::Chat) -> Result<bool, SendFailure> {
@@ -123,6 +113,13 @@ pub(super) async fn from_peer(peer: &Peer) -> Result<ResolvedRecipient, SendFail
     })
 }
 
+pub(super) async fn resolve_cached_with(
+    read: impl Future<Output = Result<Peer, InvocationError>>,
+) -> Result<ResolvedRecipient, SendFailure> {
+    let peer = read_with(ReadContext::Recipient, read).await?;
+    from_peer(&peer).await
+}
+
 pub(super) async fn resolve_with(
     spec: &RecipientSpec,
     deadline: SendDeadline,
@@ -175,7 +172,7 @@ impl TelegramClient {
                     self.client
                         .get_me()
                         .await
-                        .map_err(|e| read_failure(e, SendFailureKind::Unavailable))?,
+                        .map_err(|e| classify_read_error(e, ReadContext::Recipient))?,
                 ),
                 RecipientSpec::Username { username, .. } => {
                     if !Username::is_valid_shape(username.as_str()) {
@@ -184,7 +181,7 @@ impl TelegramClient {
                     self.client
                         .resolve_username(username.as_str())
                         .await
-                        .map_err(|e| read_failure(e, SendFailureKind::Unavailable))?
+                        .map_err(|e| classify_read_error(e, ReadContext::Recipient))?
                         .ok_or_else(missing)?
                 }
                 RecipientSpec::Peer(identity) => {
@@ -196,30 +193,36 @@ impl TelegramClient {
                     if let Some(reference) = cached {
                         // Session references do not carry migration/forum metadata;
                         // retrieve that metadata without synthesizing an access hash.
-                        self.client
-                            .resolve_peer(reference)
-                            .await
-                            .map_err(|e| read_failure(e, SendFailureKind::RecipientNotFound))?
+                        return resolve_cached_with(self.client.resolve_peer(reference)).await;
                     } else {
-                        let mut dialogs = self.client.iter_dialogs();
-                        let mut selection = RecipientSelection::new(*identity);
-                        while let Some(dialog) = dialogs
-                            .next()
-                            .await
-                            .map_err(|e| read_failure(e, SendFailureKind::Unavailable))?
-                        {
-                            if deadline.expired() {
-                                return Err(SendFailure::not_sent(SendFailureKind::Timeout, None));
-                            }
-                            let peer = dialog.peer();
-                            if let Some(id) = peer.id().bare_id() {
-                                selection.consider(
-                                    QualifiedRecipient::try_new(peer_namespace(peer), id)?,
-                                    peer.clone(),
-                                );
-                            }
-                        }
-                        selection.finish().ok_or_else(missing)?
+                        find_qualified_with(
+                            *identity,
+                            self.client.iter_dialogs(),
+                            |mut dialogs| async move {
+                                loop {
+                                    let Some(dialog) =
+                                        read_with(ReadContext::Recipient, dialogs.next()).await?
+                                    else {
+                                        return Ok(None);
+                                    };
+                                    if deadline.expired() {
+                                        return Err(SendFailure::not_sent(
+                                            SendFailureKind::Timeout,
+                                            None,
+                                        ));
+                                    }
+                                    let peer = dialog.peer();
+                                    if let Some(id) = peer.id().bare_id() {
+                                        let identity =
+                                            QualifiedRecipient::try_new(peer_namespace(peer), id)?;
+                                        let peer = peer.clone();
+                                        return Ok(Some((dialogs, identity, peer)));
+                                    }
+                                }
+                            },
+                        )
+                        .await?
+                        .ok_or_else(missing)?
                     }
                 }
             };

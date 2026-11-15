@@ -1,11 +1,14 @@
 //! Validate exact reply/forum targets before any upload; never change destination/thread.
 
 use super::TelegramClient;
-use super::resolve_recipient::{ResolvedRecipient, read_failure};
+use super::resolve_recipient::ResolvedRecipient;
 use super::send_receipt::peer_identity;
+use super::send_transport::{ReadContext, read_with};
+use crate::config::TimeoutConfig;
 use crate::telegram::sending::{SendDeadline, SendStage};
 use crate::telegram::types::sending::{SendFailure, SendFailureKind, SendOptions};
 use grammers_client::tl;
+use grammers_mtsender::InvocationError;
 use std::future::Future;
 
 #[derive(Debug)]
@@ -91,14 +94,15 @@ pub(super) async fn validate_targets_with<T, TF, R, RF>(
     recipient: &ResolvedRecipient,
     options: &SendOptions,
     deadline: SendDeadline,
+    timeouts: &TimeoutConfig,
     topic_lookup: T,
     reply_lookup: R,
 ) -> Result<ValidatedTargets, SendFailure>
 where
     T: FnOnce(i32) -> TF,
-    TF: Future<Output = Result<Vec<tl::enums::ForumTopic>, SendFailure>>,
+    TF: Future<Output = Result<Vec<tl::enums::ForumTopic>, InvocationError>>,
     R: FnOnce(i32) -> RF,
-    RF: Future<Output = Result<Option<tl::enums::Message>, SendFailure>>,
+    RF: Future<Output = Result<Option<tl::enums::Message>, InvocationError>>,
 {
     options.validate()?;
     if recipient.forum != options.topic_id.is_some() {
@@ -108,13 +112,21 @@ where
     let reply = options.reply_to_message_id.and_then(|id| id.as_i32());
     if let Some(id) = topic {
         let topics = deadline
-            .run(SendStage::ValidateTargets, async { topic_lookup(id).await })
+            .run_capped(
+                SendStage::ValidateTargets,
+                timeouts.resolve_secs,
+                read_with(ReadContext::TopicTarget, async { topic_lookup(id).await }),
+            )
             .await?;
         check_topic(&topics, id, recipient)?;
     }
     if let Some(id) = reply {
         let message = deadline
-            .run(SendStage::ValidateTargets, async { reply_lookup(id).await })
+            .run_capped(
+                SendStage::ValidateTargets,
+                timeouts.history_secs,
+                read_with(ReadContext::ReplyTarget, async { reply_lookup(id).await }),
+            )
             .await?;
         check_reply(message.as_ref(), id, topic, recipient)?;
     }
@@ -149,44 +161,25 @@ impl TelegramClient {
             recipient,
             options,
             deadline,
+            &self.timeouts,
             |id| async move {
-                deadline
-                    .run_capped(
-                        SendStage::ValidateTargets,
-                        self.timeouts.resolve_secs,
-                        async {
-                            let tl::enums::messages::ForumTopics::Topics(topics) = self
-                                .client
-                                .invoke(&tl::functions::messages::GetForumTopicsById {
-                                    peer: recipient.reference.into(),
-                                    topics: vec![id],
-                                })
-                                .await
-                                .map_err(|e| {
-                                    read_failure(e, SendFailureKind::InvalidReplyTarget)
-                                })?;
-                            Ok(topics.topics)
-                        },
-                    )
-                    .await
+                let tl::enums::messages::ForumTopics::Topics(topics) = self
+                    .client
+                    .invoke(&tl::functions::messages::GetForumTopicsById {
+                        peer: recipient.reference.into(),
+                        topics: vec![id],
+                    })
+                    .await?;
+                Ok(topics.topics)
             },
             |id| async move {
-                deadline
-                    .run_capped(
-                        SendStage::ValidateTargets,
-                        self.timeouts.history_secs,
-                        async {
-                            let (mut messages, _) = super::raw_fetch::fetch_messages_by_id(
-                                &self.client,
-                                recipient.reference,
-                                &[id],
-                            )
-                            .await
-                            .map_err(|e| read_failure(e, SendFailureKind::InvalidReplyTarget))?;
-                            Ok(messages.remove(&id))
-                        },
-                    )
-                    .await
+                let (mut messages, _) = super::raw_fetch::fetch_messages_by_id(
+                    &self.client,
+                    recipient.reference,
+                    &[id],
+                )
+                .await?;
+                Ok(messages.remove(&id))
             },
         )
         .await

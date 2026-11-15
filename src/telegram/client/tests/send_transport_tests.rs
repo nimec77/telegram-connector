@@ -466,3 +466,185 @@ async fn sending_transport_expiry_prevents_every_predispatch_continuation() {
         assert_eq!(error.delivery_state(), FailureDeliveryState::NotSent);
     }
 }
+
+pub(super) fn uncertain_read_errors() -> Vec<InvocationError> {
+    vec![
+        InvocationError::Dropped("secret driver failure"),
+        InvocationError::Io(std::io::Error::other("secret I/O failure")),
+        InvocationError::Session(Box::new(std::io::Error::other("secret session failure"))),
+        InvocationError::InvalidDc,
+        InvocationError::from(tl::deserialize::Error::UnexpectedEof),
+        InvocationError::Rpc(RpcError {
+            code: 500,
+            name: "secret unknown provider failure".into(),
+            value: None,
+            caused_by: Some(739),
+        }),
+    ]
+}
+
+#[test]
+fn sending_transport_preparation_contexts_preserve_distinct_safe_categories() {
+    use super::send_transport::{ReadContext, classify_read_error};
+    for context in [
+        ReadContext::Recipient,
+        ReadContext::ReplyTarget,
+        ReadContext::TopicTarget,
+    ] {
+        for (code, name, value, kind, retry_after) in [
+            (
+                401,
+                "AUTH_KEY_UNREGISTERED",
+                None,
+                SendFailureKind::Unauthenticated,
+                None,
+            ),
+            (
+                420,
+                "FLOOD_WAIT",
+                Some(27),
+                SendFailureKind::RateLimited,
+                Some(27),
+            ),
+            (
+                420,
+                "SLOWMODE_WAIT",
+                Some(9),
+                SendFailureKind::RateLimited,
+                Some(9),
+            ),
+        ] {
+            let failure = classify_read_error(
+                InvocationError::Rpc(RpcError {
+                    code,
+                    name: name.into(),
+                    value,
+                    caused_by: None,
+                }),
+                context,
+            );
+            assert_eq!(failure.kind(), kind);
+            assert_eq!(failure.retry_after_seconds(), retry_after);
+            assert_eq!(failure.delivery_state(), FailureDeliveryState::NotSent);
+            assert!(!format!("{failure:?} {failure}").contains(name));
+            assert!(std::error::Error::source(&failure).is_none());
+        }
+    }
+    for raw in uncertain_read_errors() {
+        let failure = classify_final_error(raw);
+        assert_eq!(failure.kind(), SendFailureKind::DeliveryUnknown);
+        assert_eq!(failure.delivery_state(), FailureDeliveryState::Unknown);
+        assert!(!failure.retryable());
+        assert!(!format!("{failure:?} {failure}").contains("secret"));
+    }
+}
+
+#[test]
+fn sending_transport_preparation_only_definitive_target_refusals_claim_missing() {
+    use super::send_transport::{ReadContext, classify_read_error};
+    for (context, name, kind) in [
+        (
+            ReadContext::Recipient,
+            "CHANNEL_PRIVATE",
+            SendFailureKind::RecipientNotFound,
+        ),
+        (
+            ReadContext::Recipient,
+            "USERNAME_NOT_OCCUPIED",
+            SendFailureKind::RecipientNotFound,
+        ),
+        (
+            ReadContext::Recipient,
+            "PEER_ID_INVALID",
+            SendFailureKind::RecipientNotFound,
+        ),
+        (
+            ReadContext::ReplyTarget,
+            "MSG_ID_INVALID",
+            SendFailureKind::InvalidReplyTarget,
+        ),
+        (
+            ReadContext::TopicTarget,
+            "TOPIC_ID_INVALID",
+            SendFailureKind::InvalidReplyTarget,
+        ),
+    ] {
+        for code in [400, 500] {
+            let failure = classify_read_error(
+                InvocationError::Rpc(RpcError {
+                    code,
+                    name: name.into(),
+                    value: None,
+                    caused_by: None,
+                }),
+                context,
+            );
+            assert_eq!(
+                failure.kind(),
+                if code == 400 {
+                    kind
+                } else {
+                    SendFailureKind::Unavailable
+                }
+            );
+            assert_eq!(failure.delivery_state(), FailureDeliveryState::NotSent);
+            assert!(!failure.retryable());
+        }
+    }
+}
+
+#[tokio::test]
+async fn sending_transport_preparation_diagnostics_discard_raw_errors_across_polls() {
+    use super::send_diagnostics::{private_rpc, stage_result};
+    use super::send_transport::{ReadContext, read_with};
+    use std::sync::{Arc, Mutex};
+    use tracing::instrument::WithSubscriber as _;
+    #[derive(Clone)]
+    struct Capture(Arc<Mutex<Vec<u8>>>);
+    impl std::io::Write for Capture {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().expect("capture").extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let capture = Capture(Arc::new(Mutex::new(Vec::new())));
+    let output = Arc::clone(&capture.0);
+    let subscriber = tracing_subscriber::fmt()
+        .without_time()
+        .with_ansi(false)
+        .with_max_level(tracing::Level::TRACE)
+        .with_writer(move || capture.clone())
+        .finish();
+    async {
+        for context in [
+            ReadContext::Recipient,
+            ReadContext::ReplyTarget,
+            ReadContext::TopicTarget,
+        ] {
+            for raw in uncertain_read_errors() {
+                let result = private_rpc(read_with::<()>(context, async {
+                    tracing::error!(?raw, "secret upstream diagnostic");
+                    tokio::task::yield_now().await;
+                    tracing::warn!(error = %raw, "secret upstream diagnostic after yield");
+                    Err(raw)
+                }))
+                .await;
+                let failure =
+                    stage_result("preparation", result).expect_err("safe classified failure");
+                assert_eq!(failure.kind(), SendFailureKind::Unavailable);
+                assert!(!format!("{failure:?} {failure}").contains("secret"));
+                assert!(std::error::Error::source(&failure).is_none());
+            }
+        }
+    }
+    .with_subscriber(subscriber)
+    .await;
+    let output = output.lock().expect("capture");
+    let text = String::from_utf8_lossy(&output);
+    assert!(!text.contains("secret"));
+    assert!(text.contains("preparation"));
+    assert!(text.contains("unavailable"));
+}

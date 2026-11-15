@@ -1,4 +1,4 @@
-//! Final mutation submission bypasses pool application retries and discards raw failures.
+//! Stage-specific read classification and one-shot final mutation submission.
 
 use super::send_receipt::{ExpectedSend, map_ack};
 use crate::telegram::sending::{SendDeadline, SendStage};
@@ -37,6 +37,65 @@ pub(super) fn random_id() -> Result<i64, SendFailure> {
         return Err(SendFailure::not_sent(SendFailureKind::InternalError, None));
     }
     Ok(id)
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum ReadContext {
+    Recipient,
+    ReplyTarget,
+    TopicTarget,
+}
+
+pub(super) async fn read_with<T>(
+    context: ReadContext,
+    read: impl Future<Output = Result<T, InvocationError>>,
+) -> Result<T, SendFailure> {
+    read.await
+        .map_err(|error| classify_read_error(error, context))
+}
+
+pub(super) fn classify_read_error(error: InvocationError, context: ReadContext) -> SendFailure {
+    // Preparation has not dispatched a mutation. Transport/provider uncertainty
+    // establishes unavailability, never absence or unknown delivery. Discard raw
+    // error fields and sources after inspecting only the typed provider category.
+    let InvocationError::Rpc(rpc) = error else {
+        return SendFailure::not_sent(SendFailureKind::Unavailable, None);
+    };
+    let missing = match context {
+        ReadContext::Recipient => SendFailureKind::RecipientNotFound,
+        ReadContext::ReplyTarget | ReadContext::TopicTarget => SendFailureKind::InvalidReplyTarget,
+    };
+    let kind = match (rpc.code, rpc.name.as_str()) {
+        (420, "FLOOD_WAIT" | "FLOOD_PREMIUM_WAIT" | "SLOWMODE_WAIT") => {
+            return SendFailure::not_sent(SendFailureKind::RateLimited, rpc.value.map(u64::from));
+        }
+        (
+            401,
+            "AUTH_KEY_UNREGISTERED" | "SESSION_REVOKED" | "SESSION_EXPIRED" | "USER_DEACTIVATED",
+        ) => SendFailureKind::Unauthenticated,
+        (
+            400..=499,
+            "PEER_ID_INVALID"
+            | "USER_ID_INVALID"
+            | "CHAT_ID_INVALID"
+            | "CHANNEL_INVALID"
+            | "CHANNEL_PRIVATE"
+            | "USERNAME_INVALID"
+            | "USERNAME_NOT_OCCUPIED"
+            | "INPUT_USER_DEACTIVATED",
+        ) => missing,
+        (
+            400..=499,
+            "REPLY_MESSAGE_ID_INVALID"
+            | "REPLY_TO_INVALID"
+            | "MSG_ID_INVALID"
+            | "TOPIC_CLOSED"
+            | "TOPIC_DELETED"
+            | "TOPIC_ID_INVALID",
+        ) if matches!(context, ReadContext::ReplyTarget | ReadContext::TopicTarget) => missing,
+        _ => SendFailureKind::Unavailable,
+    };
+    SendFailure::not_sent(kind, None)
 }
 
 pub(super) async fn submit_final_with<F, Fut>(

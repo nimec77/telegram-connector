@@ -2,7 +2,7 @@ use super::resolve_recipient::from_peer;
 use super::send_targets::validate_targets_with;
 use crate::telegram::sending::SendDeadline;
 use crate::telegram::types::MessageId;
-use crate::telegram::types::sending::{RecipientSpec, SendFailure, SendFailureKind, SendOptions};
+use crate::telegram::types::sending::{RecipientSpec, SendFailureKind, SendOptions};
 use crate::test_helpers::{raw_tl_channel, raw_tl_message};
 use grammers_client::peer::Peer;
 use grammers_client::tl;
@@ -98,6 +98,7 @@ async fn sending_targets_general_uses_topic_state_without_fetching_message_one()
         &recipient,
         &options(Some(1), None),
         SendDeadline::new(30).expect("budget"),
+        &client.timeouts,
         |id| async move {
             assert_eq!(id, 1);
             Ok(vec![topic(1, false, false)])
@@ -116,6 +117,7 @@ async fn sending_targets_general_uses_topic_state_without_fetching_message_one()
             &recipient,
             &options(Some(1), None),
             SendDeadline::new(30).expect("budget"),
+            &client.timeouts,
             |_| async move { Ok(vec![topic(1, closed, hidden)]) },
             |_| async { Ok(None) },
         )
@@ -141,6 +143,7 @@ async fn sending_targets_non_general_reply_preserves_top_thread_and_refuses_cros
             &recipient,
             &options(Some(50), Some(60)),
             SendDeadline::new(30).expect("budget"),
+            &client.timeouts,
             |_| async { Ok(vec![topic(50, false, false)]) },
             |_| async move { Ok(Some(reply(60, Some(reply_root), channel))) },
         )
@@ -177,8 +180,17 @@ async fn sending_targets_forum_shape_and_missing_targets_never_fall_back() {
             &recipient,
             &options,
             SendDeadline::new(30).expect("budget"),
-            |_| async { Err(SendFailure::unknown()) },
-            |_| async { Err(SendFailure::unknown()) },
+            &client.timeouts,
+            |_| async {
+                Err(grammers_mtsender::InvocationError::Dropped(
+                    "unexpected lookup",
+                ))
+            },
+            |_| async {
+                Err(grammers_mtsender::InvocationError::Dropped(
+                    "unexpected lookup",
+                ))
+            },
         )
         .await
         .expect_err("shape before RPC");
@@ -214,6 +226,7 @@ async fn sending_targets_missing_deleted_short_or_wrong_peer_topic_prevents_repl
             &recipient,
             &options(Some(50), Some(60)),
             SendDeadline::new(30).expect("budget"),
+            &client.timeouts,
             |_| async move { Ok(topics) },
             |_| async {
                 called.set(true);
@@ -242,6 +255,7 @@ async fn sending_targets_topic_root_and_general_reply_use_exact_telegram_routing
             &recipient,
             &options(Some(topic_id), reply_id),
             SendDeadline::new(30).expect("budget"),
+            &client.timeouts,
             |id| async move { Ok(vec![topic(id, false, false)]) },
             |id| async move { Ok(Some(reply(id, None, 91))) },
         )
@@ -256,28 +270,162 @@ async fn sending_targets_topic_root_and_general_reply_use_exact_telegram_routing
 }
 
 #[tokio::test(start_paused = true)]
-async fn sending_targets_real_topic_read_obeys_stage_and_operation_caps() {
+async fn sending_targets_real_reads_obey_stage_and_operation_caps() {
     let (client, _runner, _dir) = super::stalled_client().await;
+    for forum in [false, true] {
+        let mut raw = raw_tl_channel(91, "private", None);
+        raw.date = 1_700_000_000;
+        raw.forum = forum;
+        let recipient = from_peer(&Peer::from_raw(client.client(), raw.into()))
+            .await
+            .expect("recipient");
+        let cap = if forum {
+            client.timeouts.resolve_secs
+        } else {
+            client.timeouts.history_secs
+        };
+        for total in [1, 30] {
+            let start = tokio::time::Instant::now();
+            let failure = client
+                .validate_send_targets(
+                    &recipient,
+                    &options(forum.then_some(50), (!forum).then_some(60)),
+                    SendDeadline::new(total).expect("budget"),
+                )
+                .await
+                .expect_err("stalled read");
+            assert_eq!(failure.kind(), SendFailureKind::Timeout);
+            assert_eq!(
+                (tokio::time::Instant::now() - start).as_secs(),
+                total.min(cap)
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn sending_targets_raw_reply_and_topic_read_failures_preserve_unavailable() {
+    use crate::telegram::types::sending::FailureDeliveryState;
+    let (client, _runner, _dir) = super::stalled_client().await;
+    for is_topic in [false, true] {
+        let mut raw = raw_tl_channel(91, "private", None);
+        raw.date = 1_700_000_000;
+        raw.forum = is_topic;
+        let recipient = from_peer(&Peer::from_raw(client.client(), raw.into()))
+            .await
+            .expect("recipient");
+        for error in super::send_transport_tests::uncertain_read_errors() {
+            let (topic_error, reply_error) = if is_topic {
+                (Some(error), None)
+            } else {
+                (None, Some(error))
+            };
+            let failure = validate_targets_with(
+                &recipient,
+                &options(is_topic.then_some(50), (!is_topic).then_some(60)),
+                SendDeadline::new(30).expect("budget"),
+                &client.timeouts,
+                |_| {
+                    let error = topic_error;
+                    async move { Err(error.expect("topic error")) }
+                },
+                |_| {
+                    let error = reply_error;
+                    async move { Err(error.expect("reply error")) }
+                },
+            )
+            .await
+            .expect_err("read failure");
+            assert_eq!(failure.kind(), SendFailureKind::Unavailable);
+            assert_eq!(failure.delivery_state(), FailureDeliveryState::NotSent);
+            assert!(!failure.retryable());
+            assert!(!format!("{failure:?} {failure}").contains("secret"));
+            assert!(std::error::Error::source(&failure).is_none());
+        }
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn sending_targets_unused_and_expired_reads_are_never_polled() {
+    use crate::telegram::types::sending::FailureDeliveryState;
+    let (client, _runner, _dir) = super::stalled_client().await;
+    for forum in [false, true] {
+        let mut raw = raw_tl_channel(91, "private", None);
+        raw.date = 1_700_000_000;
+        raw.forum = forum;
+        let recipient = from_peer(&Peer::from_raw(client.client(), raw.into()))
+            .await
+            .expect("recipient");
+        let result = validate_targets_with(
+            &recipient,
+            &options(forum.then_some(50), None),
+            SendDeadline::new(30).expect("budget"),
+            &client.timeouts,
+            |_| async {
+                assert!(forum, "unused topic lookup");
+                Ok(vec![topic(50, false, false)])
+            },
+            |_| async { panic!("unused reply lookup") },
+        )
+        .await
+        .expect("unused reads stay unpolled");
+        assert_eq!(result.reply_to.is_some(), forum);
+    }
     let mut raw = raw_tl_channel(91, "private", None);
     raw.date = 1_700_000_000;
     raw.forum = true;
     let recipient = from_peer(&Peer::from_raw(client.client(), raw.into()))
         .await
         .expect("forum");
-    for total in [1, 30] {
-        let start = tokio::time::Instant::now();
-        let failure = client
-            .validate_send_targets(
-                &recipient,
-                &options(Some(50), None),
-                SendDeadline::new(total).expect("budget"),
-            )
+    for already_expired in [false, true] {
+        let deadline = SendDeadline::new(1).expect("budget");
+        if already_expired {
+            tokio::time::advance(std::time::Duration::from_secs(1)).await;
+        }
+        let error = validate_targets_with(
+            &recipient,
+            &options(Some(50), Some(60)),
+            deadline,
+            &client.timeouts,
+            |_| async {
+                assert!(
+                    !already_expired,
+                    "expired operation must not poll topic lookup"
+                );
+                tokio::time::advance(std::time::Duration::from_secs(1)).await;
+                Ok(vec![topic(50, false, false)])
+            },
+            |_| async { panic!("expired operation must not poll subsequent reply lookup") },
+        )
+        .await
+        .expect_err("shared operation deadline");
+        assert_eq!(error.kind(), SendFailureKind::Timeout);
+        assert_eq!(error.delivery_state(), FailureDeliveryState::NotSent);
+        assert!(error.retryable());
+    }
+}
+
+#[tokio::test]
+async fn sending_targets_successful_absence_remains_invalid() {
+    let (client, _runner, _dir) = super::stalled_client().await;
+    for forum in [false, true] {
+        let mut raw = raw_tl_channel(91, "private", None);
+        raw.date = 1_700_000_000;
+        raw.forum = forum;
+        let recipient = from_peer(&Peer::from_raw(client.client(), raw.into()))
             .await
-            .expect_err("stalled topic read");
-        assert_eq!(failure.kind(), SendFailureKind::Timeout);
-        assert_eq!(
-            (tokio::time::Instant::now() - start).as_secs(),
-            total.min(2)
-        );
+            .expect("recipient");
+        let failure = validate_targets_with(
+            &recipient,
+            &options(forum.then_some(50), (!forum).then_some(60)),
+            SendDeadline::new(30).expect("budget"),
+            &client.timeouts,
+            |_| async { Ok(vec![]) },
+            |_| async { Ok(None) },
+        )
+        .await
+        .expect_err("authoritative absence");
+        assert_eq!(failure.kind(), SendFailureKind::InvalidReplyTarget);
+        assert!(!failure.retryable());
     }
 }
