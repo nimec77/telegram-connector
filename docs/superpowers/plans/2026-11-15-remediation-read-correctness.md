@@ -91,7 +91,8 @@
 
 **Files:**
 - Modify: `src/telegram/converters/channel.rs`, `src/telegram/client/channels.rs`, `src/telegram/client/ops_resolve.rs`, `src/telegram/client/resolve.rs` if contextual resolution belongs there
-- Test: converter inline tests, `src/telegram/client/tests/channels_tests.rs`, `src/mcp/tests/channels.rs`, `src/mcp/tests/resolve.rs`
+- Create: focused `src/telegram/client/resolve_subscription.rs` and its private client module declaration/converter reexports
+- Test: `src/telegram/client/tests/subscription_tests.rs` (raw converter, routing, cache and enrichment coverage), existing converter/channel suites, `src/mcp/tests/channels.rs`, `src/mcp/tests/resolve.rs`
 - Modify: `docs/tool-contract.md`, `docs/memory.md` for conservative boolean semantics
 
 **Interfaces:**
@@ -99,7 +100,7 @@
 - Produces `resolve_username_peer_with_evidence(&self, reference: &str) -> Result<Option<ResolvedChannelPeer>, Error>` using the single existing contacts.ResolveUsername RPC and preserving SDK peer-cache effects through public session APIs.
 - Retains established public dialog/discovery converter APIs as context-specific compatibility wrappers; basic/full and unmatched username batch paths consume contextual evidence.
 
-- [ ] **Step 1: Enumerate pinned TL variants in a fixture table and add failing converter/decoder/path tests.** Chat Empty/Forbidden, ChannelForbidden and CommunityForbidden => unconfirmed; Chat requires !left && !deactivated; full Channel/Community requires !left and nonminimal evidence, with creator evidence handled explicitly. A minimal observation without positive membership stays false. Dialog evidence and public-search my_results stay true. Joined/left username cases must exercise basic/full/batch contextual production decoders, no extra membership RPC, and unchanged best-effort enrichment.
+- [ ] **Step 1: Enumerate pinned TL variants in a fixture table and add failing converter/decoder/path tests.** Chat Empty/Forbidden, ChannelForbidden and CommunityForbidden => unconfirmed; Chat requires !left && !deactivated; full Channel/Community requires !left && !min. Minimal username observations remain unconfirmed even if creator is set: Telegram's authoritative minimal-field whitelist does not establish membership from creator/left. Dialog evidence and public-search my_results stay true. Joined/left username cases must exercise basic/full/batch contextual production decoders, no extra membership RPC, and unchanged best-effort enrichment.
 - [ ] **Step 2: Run subscription/channel/resolve test filters.** Expected RED: username resolution currently reports true without membership evidence. Include forbidden conversion: SDK fabricates left=false/min=false for forbidden channel/community, so high-level raw flags alone must fail the regression.
 - [ ] **Step 3: Capture raw TL evidence before Peer::from_raw.** Preserve missing username/error behavior and relevant session-cache insertion performed by the SDK resolver; consult its pinned `build_peer_map` behavior. Keep ordinary message/read resolution unchanged where evidence is unnecessary. No full dialog traversal or extra membership call. Boolean true means positively established; false includes unknown.
 - [ ] **Step 4: Run converter/channel/resolve suites and full Rust gate.** Expected all pass, existing public-search my_results and full-info degradation remain intact.
