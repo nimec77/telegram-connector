@@ -1,7 +1,8 @@
 # Stdio runtime contract
 
-The connector tests and advertises MCP 2026-07-28 and legacy 2025-11-25. Modern
-clients can send tools/list or tools/call first, without discovery or initialize.
+The connector uses rmcp 3.9.0 and tests and advertises MCP 2026-07-28 and legacy
+2025-11-25. Modern clients can send tools/list or tools/call first, without discovery
+or initialize.
 Every modern request supplies protocolVersion and clientCapabilities under the
 `io.modelcontextprotocol/` metadata prefix. Client identity is optional and never
 inherited from another modern request. Legacy clients explicitly initialize at
@@ -87,6 +88,27 @@ The input pump and bootstrap write-stall guard cover actual product bootstrap
 output blocked at EOF, including input larger than the pump capacity. A zero-grace
 configuration still initializes normally; observed EOF/signals cancel immediately,
 but detecting a blocked bootstrap with hidden EOF can take up to one second.
+
+## Custom handler request identity
+
+Each admitted operation has an immutable internal SDK identity; the adapter restores
+external request IDs and progress tokens on the wire and in recovery payloads.
+Ordinary tool handlers receive the external `RequestContext.id`.
+
+The product does not advertise subscriptions. For custom `subscriptions/listen`
+handlers using the injectable runtime, `SubscriptionContext` retains the internal
+SDK lifecycle identity in its request context ID. rmcp 3.9.0 keeps its constructor
+private and derives subscription acknowledgements and sink correlation from that ID.
+Retrieve the external ID through the public, nonserialized extension instead:
+
+```rust,ignore
+context.request_context().extensions
+    .get::<rmcp::service::OriginatingRequestId>()
+    .map(|id| &id.0)
+```
+
+The adapter translates subscription wire fields and suppresses cancelled queued
+notifications, preserving external identity across reused IDs.
 
 ## Offline verification and probe
 

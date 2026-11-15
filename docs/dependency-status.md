@@ -10,9 +10,24 @@ and exact license exceptions are recorded in [the contract guide](tool-contract.
 Task 7 reran the full metadata policy and fresh source/advisory checks; the historical
 304-package counts and duplicate tables below describe Task 6, not the expanded graph.
 
-## Direct dependencies
+## Security update — 2026-11-15
 
-All 25 distinct registry direct dependencies resolve to their current non-yanked stable release. The three direct grammers Git dependencies share the reviewed immutable Codeberg revision below. rmcp 3.8.0 was migrated in the preceding SDK work; this refresh preserves its runtime/protocol integration. Broad existing requirements that already admitted the latest lockfile release remain reviewed dispositions, not presumed stale versions.
+The current SDK is rmcp **3.9.0**, with rmcp-macros **3.9.0** and manifest floor
+**3.9**. The [RustSec advisory](https://rustsec.org/advisories/RUSTSEC-2026-0462)
+was rechecked on 2026-11-15 and lists >=3.9.0 as patched. The
+[reviewed release](https://github.com/modelcontextprotocol/rust-sdk/releases/tag/rmcp-v3.9.0)
+and published source retain the configured default/server/async-I/O feature scope;
+HTTP client transports remain disabled. Its new unconditional SHA-2 dependency
+reuses sha2 0.11.1 already in the lockfile. Only rmcp/rmcp-macros versions and
+checksums and that required edge change; package identities remain 341 total,
+340 external, and the grammers revision/nightly/package version are unchanged.
+
+The tables below preserve the dated migration snapshot; their rmcp 3.8.0 entries
+are historical. The security update supersedes those SDK version dispositions.
+
+## Direct dependencies (2026-10-31 snapshot)
+
+At the 2026-10-31 snapshot, all 25 distinct registry direct dependencies resolved to their then-current non-yanked stable release. The three direct grammers Git dependencies share the reviewed immutable Codeberg revision below. rmcp 3.8.0 was migrated in the preceding SDK work; this refresh preserves its runtime/protocol integration. Broad existing requirements that already admitted the latest lockfile release remain reviewed dispositions, not presumed stale versions.
 
 | Registry dependency | Scope | Manifest requirement(s) | Resolved = current stable | Disposition |
 | --- | --- | --- | --- | --- |

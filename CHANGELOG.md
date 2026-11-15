@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Update rmcp and rmcp-macros to reviewed 3.9.0, resolving RUSTSEC-2026-0462
+  while retaining the server/stdio feature scope and protocol compatibility.
 - Version bumps publish and verify an annotated GitHub version tag after validation,
   including missing-tag repair, with dry-run/local-only support and immutable tag checks.
 - Version bumps synchronize the README's current package version and changelog link

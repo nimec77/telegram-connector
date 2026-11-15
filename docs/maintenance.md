@@ -15,6 +15,13 @@ approved. Any future exception must identify the advisory, affected scope, reaso
 named owner, expiry and tracking issue. Offline compile checks do not replace fresh
 advisory data.
 
+rmcp and rmcp-macros are locked to reviewed 3.9.0 (manifest floor 3.9), retaining
+the server/async-I/O feature scope. This patches
+[RUSTSEC-2026-0462](https://rustsec.org/advisories/RUSTSEC-2026-0462), verified on
+2026-11-15; the affected HTTP client transports remain disabled. The SDK adds an
+unconditional SHA-2 edge that reuses the existing locked package. No advisory ignore
+is used. See [dependency status](dependency-status.md) for the scoped update.
+
 `cargo deny --locked check sources advisories` checks the entire graph. Sources
 are restricted to crates.io and immutable revisions of the official Codeberg
 grammers repository. All three direct grammers dependencies move together after
