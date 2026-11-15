@@ -1,19 +1,21 @@
 //! Album grouping: post-level limit counting and album collapsing (B5+A2).
 
-use crate::telegram::types::{AlbumInfo, Message};
+use crate::telegram::types::{AlbumInfo, Message, PeerNamespace};
 use std::collections::{HashMap, HashSet};
 
-/// Channel-scoped album key: `grouped_id` alone can collide across channels
-/// in global-search results (e.g. a forwarded album), so grouping always
-/// pairs it with the channel id.
-pub(crate) fn album_key(msg: &Message) -> Option<(i64, i64)> {
-    msg.grouped_id.map(|gid| (msg.channel_id.get(), gid))
+/// Source-scoped album identity. Unknown compatibility namespaces stay unknown.
+type AlbumKey = (Option<PeerNamespace>, i64, i64);
+
+/// Bare source and grouped IDs can collide across peer namespaces in global search.
+pub(crate) fn album_key(msg: &Message) -> Option<AlbumKey> {
+    msg.grouped_id
+        .map(|gid| (msg.peer_namespace, msg.channel_id.get(), gid))
 }
 
 /// Counts posts (albums count once) while a fetch loop admits messages.
 #[derive(Debug, Default)]
 pub(crate) struct PostCounter {
-    seen_groups: HashSet<(i64, i64)>,
+    seen_groups: HashSet<AlbumKey>,
     posts: usize,
     overflowed: bool,
 }
@@ -23,7 +25,7 @@ impl PostCounter {
     /// when the message would START a post beyond the limit — the caller
     /// stops fetching. Siblings of an already-admitted album are always
     /// admitted, so an album is never cut at the limit boundary (A2).
-    pub(crate) fn admit(&mut self, group_key: Option<(i64, i64)>, limit: usize) -> bool {
+    pub(crate) fn admit(&mut self, group_key: Option<AlbumKey>, limit: usize) -> bool {
         if let Some(key) = group_key
             && self.seen_groups.contains(&key)
         {
@@ -132,18 +134,18 @@ impl PageAccumulator {
     }
 }
 
-/// Collapse album siblings (same `grouped_id`) into one post-level `Message`
+/// Collapse album siblings (same source and `grouped_id`) into one post-level `Message`
 /// (B5). Order-preserving on each group's first occurrence. The representative
 /// is the lowest-id sibling (stable referencing); `text` comes from whichever
 /// sibling carries it. A group with a single member in the window stays plain.
 pub(crate) fn collapse_albums(messages: Vec<Message>) -> Vec<Message> {
     enum Slot {
         Single(Box<Message>),
-        Group((i64, i64)),
+        Group(AlbumKey),
     }
 
     let mut slots = Vec::new();
-    let mut buckets: HashMap<(i64, i64), Vec<Message>> = HashMap::new();
+    let mut buckets: HashMap<AlbumKey, Vec<Message>> = HashMap::new();
     for msg in messages {
         match album_key(&msg) {
             Some(key) => {
@@ -244,14 +246,17 @@ mod tests {
     #[test]
     fn post_counter_admits_siblings_beyond_limit() {
         let mut c = PostCounter::default();
-        assert!(c.admit(Some((100, 7)), 1), "first sibling starts post 1");
         assert!(
-            c.admit(Some((100, 7)), 1),
+            c.admit(Some((None, 100, 7)), 1),
+            "first sibling starts post 1"
+        );
+        assert!(
+            c.admit(Some((None, 100, 7)), 1),
             "sibling of an admitted album is free"
         );
         assert!(!c.admit(None, 1), "a single would start post 2 — stop");
         assert!(
-            !c.admit(Some((100, 8)), 1),
+            !c.admit(Some((None, 100, 8)), 1),
             "a new album would start post 2 — stop"
         );
     }
@@ -338,5 +343,72 @@ mod tests {
             messages.iter().all(|m| m.album.is_none()),
             "collapse=false leaves album metadata unset"
         );
+    }
+
+    #[test]
+    fn equal_bare_album_ids_in_peer_namespaces_collapse_independently() {
+        use crate::telegram::types::PeerNamespace::{Channel, Chat, User};
+
+        let mut messages = Vec::new();
+        // Interleave sources and put the caption on the higher-id sibling.
+        for (id, text) in [(12, "caption"), (11, "")] {
+            for namespace in [User, Chat, Channel] {
+                let mut message = album_member(id, 77, text);
+                message.peer_namespace = Some(namespace);
+                messages.push(message);
+            }
+        }
+        let collapsed = collapse_albums(messages);
+        assert_eq!(collapsed.len(), 3);
+        for (post, namespace) in collapsed.iter().zip([User, Chat, Channel]) {
+            assert_eq!(post.peer_namespace, Some(namespace));
+            assert_eq!(post.id.get(), 11);
+            assert_eq!(post.text, "caption");
+            let album = post.album.as_ref().expect("two siblings per source");
+            assert_eq!(album.media_count, 2);
+            assert_eq!(
+                album
+                    .message_ids
+                    .iter()
+                    .map(|id| id.get())
+                    .collect::<Vec<_>>(),
+                [11, 12]
+            );
+        }
+    }
+
+    #[test]
+    fn equal_bare_album_ids_in_peer_namespaces_each_spend_a_post() {
+        use crate::telegram::types::PeerNamespace::{Channel, Chat, User};
+
+        let mut page = PageAccumulator::new(AlbumMode::Collapse, 2);
+        for namespace in [User, Chat] {
+            let mut message = album_member(11, 77, "");
+            message.peer_namespace = Some(namespace);
+            assert!(page.push(message));
+        }
+        let mut overflow = album_member(11, 77, "");
+        overflow.peer_namespace = Some(Channel);
+        assert!(
+            !page.push(overflow),
+            "a third namespace starts a third post"
+        );
+        assert!(page.has_more());
+        assert_eq!(page.into_messages().len(), 2);
+    }
+
+    #[test]
+    fn unknown_album_namespace_stays_unknown_and_distinct_from_channel() {
+        use crate::telegram::types::PeerNamespace;
+
+        let mut unknown = album_member(11, 77, "unknown source");
+        unknown.peer_namespace = None;
+        let mut known = album_member(11, 77, "known source");
+        known.peer_namespace = Some(PeerNamespace::Channel);
+        let collapsed = collapse_albums(vec![unknown, known]);
+        assert_eq!(collapsed.len(), 2);
+        assert_eq!(collapsed[0].peer_namespace, None);
+        assert_eq!(collapsed[1].peer_namespace, Some(PeerNamespace::Channel));
+        assert!(collapsed.iter().all(|message| message.album.is_none()));
     }
 }

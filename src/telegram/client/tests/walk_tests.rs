@@ -347,3 +347,101 @@ fn equal_album_ids_in_two_channels_do_not_bypass_the_walk_limit() {
         2
     );
 }
+
+fn same_bare_id_peers(client: &Client) -> [Peer; 3] {
+    use crate::test_helpers::raw_tl_user;
+    use grammers_client::tl;
+
+    [
+        Peer::User(grammers_client::peer::User::from_raw(
+            client,
+            tl::enums::User::User(raw_tl_user(11, Some("User"), None, None)),
+        )),
+        Peer::from_raw(
+            client,
+            tl::enums::Chat::Forbidden(tl::types::ChatForbidden {
+                id: 11,
+                title: "Chat".into(),
+            }),
+        ),
+        channel_peer(client, 11),
+    ]
+}
+
+fn namespaced_album_member<'p>(id: i32, peer: &'p Peer) -> Fetched<'p> {
+    use crate::test_helpers::raw_tl_message_grouped;
+    use grammers_client::tl;
+
+    let mut raw = raw_tl_message_grouped(id, 2_000, 11, 77);
+    if let tl::enums::Message::Message(message) = &mut raw {
+        message.peer_id = peer.id().into();
+        message.message = if id == 12 {
+            "caption".into()
+        } else {
+            String::new()
+        };
+    }
+    Fetched {
+        raw,
+        entities: no_entities(),
+        peer: Some(peer),
+    }
+}
+
+#[test]
+fn namespaced_albums_admit_siblings_beyond_three_posts_in_the_walk() {
+    use crate::telegram::types::PeerNamespace::{Channel, Chat, User};
+
+    let client = inert_client();
+    let peers = same_bare_id_peers(&client);
+    let mut walk = MessageWalk::new(open_config(at(1_000)), AlbumMode::Collapse, 3, 0);
+    for id in [12, 11] {
+        for (index, peer) in peers.iter().enumerate() {
+            assert_eq!(
+                walk.step(
+                    Some(namespaced_album_member(id, peer)),
+                    (id == 12 && index == 0).then_some(6)
+                ),
+                Flow::Continue
+            );
+        }
+    }
+    assert_eq!(walk.kept(), 6, "six raw siblings spend three posts");
+    let (page, budget) = walk.into_parts();
+    assert!(!page.has_more());
+    assert_eq!(budget.messages_scanned(), 6);
+    let messages = page.into_messages();
+    assert_eq!(messages.len(), 3);
+    for (message, namespace) in messages.iter().zip([User, Chat, Channel]) {
+        assert_eq!(message.peer_namespace, Some(namespace));
+        assert_eq!(message.id.get(), 11);
+        assert_eq!(message.text, "caption");
+        assert_eq!(message.album.as_ref().expect("two siblings").media_count, 2);
+    }
+}
+
+#[test]
+fn equal_album_ids_in_three_namespaces_do_not_bypass_the_walk_limit() {
+    let client = inert_client();
+    let peers = same_bare_id_peers(&client);
+    let mut walk = MessageWalk::new(open_config(at(1_000)), AlbumMode::Collapse, 2, 0);
+    for (index, peer) in peers[..2].iter().enumerate() {
+        assert_eq!(
+            walk.step(
+                Some(namespaced_album_member(12, peer)),
+                (index == 0).then_some(3)
+            ),
+            Flow::Continue
+        );
+    }
+    assert_eq!(
+        walk.step(Some(namespaced_album_member(12, &peers[2])), None),
+        Flow::Stop
+    );
+    let (page, budget) = walk.into_parts();
+    assert!(page.has_more());
+    assert_eq!(budget.messages_scanned(), 3);
+    let messages = page.into_messages();
+    assert_eq!(messages.len(), 2);
+    assert!(messages.iter().all(|message| message.album.is_none()));
+}

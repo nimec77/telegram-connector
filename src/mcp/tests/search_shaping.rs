@@ -429,3 +429,149 @@ async fn global_search_keeps_user_group_and_channel_namespaces_without_a_cursor(
         }
     }
 }
+
+#[tokio::test]
+async fn global_search_renders_converted_namespaced_albums_in_both_modes() {
+    use crate::config::OutputFormat;
+    use crate::telegram::albums::{AlbumMode, PageAccumulator};
+    use crate::telegram::converters::convert_raw_message;
+    use crate::telegram::envelope::EntityLookup;
+    use crate::test_helpers::{raw_tl_channel, raw_tl_message_grouped, raw_tl_user};
+    use grammers_client::peer::{Peer, User};
+    use grammers_client::{Client, tl};
+    use grammers_mtsender::SenderPool;
+    use grammers_session::storages::MemorySession;
+
+    let SenderPool { handle, .. } = SenderPool::new(Arc::new(MemorySession::default()), 1);
+    let client = Client::new(handle);
+    let users = [
+        tl::enums::User::User(raw_tl_user(11, Some("User author"), None, None)),
+        tl::enums::User::User(raw_tl_user(44, None, None, None)),
+    ];
+    let chats = [
+        tl::enums::Chat::Forbidden(tl::types::ChatForbidden {
+            id: 11,
+            title: "Chat author".into(),
+        }),
+        tl::enums::Chat::Channel(raw_tl_channel(11, "Channel author", None)),
+    ];
+    let entities = EntityLookup::from_envelope(&chats, &users);
+    let peers = [
+        Peer::User(User::from_raw(&client, users[0].clone())),
+        Peer::from_raw(&client, chats[0].clone()),
+        Peer::from_raw(&client, chats[1].clone()),
+    ];
+    let mut page = PageAccumulator::new(AlbumMode::Collapse, 3);
+    for id in [12, 11] {
+        for peer in &peers {
+            let mut raw = raw_tl_message_grouped(id, 2_000, 11, 77);
+            if let tl::enums::Message::Message(message) = &mut raw {
+                message.peer_id = peer.id().into();
+                message.from_id = Some(peer.id().into());
+                message.message = if id == 12 {
+                    "caption".into()
+                } else {
+                    String::new()
+                };
+            }
+            assert!(
+                page.push(convert_raw_message(&raw, peer, &entities).expect("real TL conversion"))
+            );
+        }
+    }
+    let mut messages = page.into_messages();
+    // A missing entity and an entity with no names both preserve the user ID;
+    // absent from_id remains absent even when the source is a resolved user.
+    for (id, sender_id) in [(30, Some(43)), (31, Some(44)), (32, None)] {
+        let mut raw = raw_tl_message_grouped(id, 2_000, 11, 77);
+        if let tl::enums::Message::Message(message) = &mut raw {
+            message.peer_id = peers[0].id().into();
+            message.from_id =
+                sender_id.map(|user_id| tl::enums::Peer::User(tl::types::PeerUser { user_id }));
+            message.grouped_id = None;
+        }
+        messages
+            .push(convert_raw_message(&raw, &peers[0], &entities).expect("sender absence fixture"));
+    }
+    for mode in [OutputFormat::JsonV1, OutputFormat::Legacy] {
+        let upstream = create_test_search_result(messages.clone(), "q", 6);
+        let mut client = MockTelegramClientTrait::new();
+        client
+            .expect_search_messages()
+            .withf(|params| params.channel_id.is_none())
+            .returning(move |_| Ok(upstream.clone()));
+        let server = McpServer::new(Arc::new(client), Arc::new(permissive_limiter()));
+        let response = server
+            .search_messages_data(SearchRequest {
+                query: "q".into(),
+                ..Default::default()
+            })
+            .await;
+        let wire = serde_json::to_value(crate::mcp::tools::types::contract::render(mode, response))
+            .expect("wire result");
+        let data = if mode == OutputFormat::JsonV1 {
+            let text: serde_json::Value =
+                serde_json::from_str(wire["content"][0]["text"].as_str().expect("fallback text"))
+                    .expect("fallback JSON");
+            assert_eq!(text, wire["structuredContent"]);
+            wire["structuredContent"]["data"].clone()
+        } else {
+            serde_json::from_str(wire["content"][0]["text"].as_str().expect("legacy text"))
+                .expect("legacy JSON")
+        };
+        assert_eq!(data["returned"], 6);
+        assert_eq!(data["has_more"], false);
+        assert!(data.get("next_cursor").is_none());
+        let messages = data["messages"].as_array().expect("messages");
+        assert_eq!(messages.len(), 6);
+        for (index, (namespace, name)) in [
+            ("user", "User author"),
+            ("chat", "Chat author"),
+            ("channel", "Channel author"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let message = &messages[index];
+            assert_eq!(message["id"], 11);
+            assert_eq!(message["text"], "caption");
+            assert_eq!(message["album"]["media_count"], 2);
+            assert_eq!(message["album"]["message_ids"], serde_json::json!([11, 12]));
+            assert_eq!(message["sender_name"], name);
+            let sender = if index == 0 {
+                if mode == OutputFormat::JsonV1 {
+                    serde_json::json!("11")
+                } else {
+                    serde_json::json!(11)
+                }
+            } else {
+                serde_json::Value::Null
+            };
+            assert_eq!(message["sender_id"], sender);
+            if mode == OutputFormat::JsonV1 {
+                assert_eq!(message["peer_namespace"], namespace);
+            } else {
+                assert!(message.get("peer_namespace").is_none());
+            }
+        }
+        for (message, (id, sender)) in
+            messages[3..]
+                .iter()
+                .zip([(30, Some(43)), (31, Some(44)), (32, None)])
+        {
+            assert_eq!(message["id"], id);
+            assert!(
+                message
+                    .get("sender_name")
+                    .expect("nullable sender name")
+                    .is_null()
+            );
+            let expected = match sender {
+                Some(id) if mode == OutputFormat::JsonV1 => serde_json::json!(id.to_string()),
+                Some(id) => serde_json::json!(id),
+                None => serde_json::Value::Null,
+            };
+            assert_eq!(message["sender_id"], expected);
+        }
+    }
+}

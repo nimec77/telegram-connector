@@ -313,6 +313,86 @@ fn convert_raw_message_resolves_sender_from_envelope() {
     );
 }
 
+fn convert_sender_fixture(
+    from: Option<tl::enums::Peer>,
+    entities: &EntityLookup,
+) -> crate::telegram::types::Message {
+    let peer = public_channel_peer(11, "source_channel");
+    let mut raw = crate::test_helpers::raw_tl_message_grouped(9, 2_000, 11, 77);
+    if let tl::enums::Message::Message(message) = &mut raw {
+        message.from_id = from;
+    }
+    convert_raw_message(&raw, &peer, entities).expect("sender fixture converts")
+}
+
+#[test]
+fn channel_sender_has_a_name_without_a_user_id() {
+    let entities = EntityLookup::from_envelope(
+        &[tl::enums::Chat::Channel(raw_tl_channel(
+            42,
+            "Channel author",
+            None,
+        ))],
+        &[],
+    );
+    let message = convert_sender_fixture(channel_fwd_peer(42), &entities);
+    assert_eq!(message.sender_name.as_deref(), Some("Channel author"));
+    assert_eq!(message.sender_id, None);
+}
+
+#[test]
+fn chat_sender_has_a_name_without_a_user_id() {
+    let entities = EntityLookup::from_envelope(
+        &[tl::enums::Chat::Forbidden(tl::types::ChatForbidden {
+            id: 42,
+            title: "Chat author".into(),
+        })],
+        &[],
+    );
+    let message = convert_sender_fixture(
+        Some(tl::enums::Peer::Chat(tl::types::PeerChat { chat_id: 42 })),
+        &entities,
+    );
+    assert_eq!(message.sender_name.as_deref(), Some("Chat author"));
+    assert_eq!(message.sender_id, None);
+}
+
+#[test]
+fn sender_user_id_survives_missing_envelope_names() {
+    let from = tl::enums::Peer::User(tl::types::PeerUser { user_id: 42 });
+    for entities in [
+        EntityLookup::from_envelope(&[], &[]),
+        EntityLookup::from_envelope(
+            &[],
+            &[tl::enums::User::User(raw_tl_user(42, None, None, None))],
+        ),
+    ] {
+        let message = convert_sender_fixture(Some(from.clone()), &entities);
+        assert_eq!(message.sender_id.map(|id| id.get()), Some(42));
+        assert_eq!(message.sender_name, None);
+    }
+}
+
+#[test]
+fn absent_sender_on_a_user_source_stays_absent() {
+    let client = inert_client();
+    let user = tl::enums::User::User(raw_tl_user(11, Some("Source user"), None, None));
+    let peer = Peer::User(grammers_client::peer::User::from_raw(&client, user.clone()));
+    let entities = EntityLookup::from_envelope(&[], &[user]);
+    let mut raw = crate::test_helpers::raw_tl_message_grouped(9, 2_000, 11, 77);
+    if let tl::enums::Message::Message(message) = &mut raw {
+        message.peer_id = tl::enums::Peer::User(tl::types::PeerUser { user_id: 11 });
+    }
+    let message =
+        convert_raw_message(&raw, &peer, &entities).expect("private user result converts");
+    assert_eq!(
+        message.peer_namespace,
+        Some(crate::telegram::types::PeerNamespace::User)
+    );
+    assert_eq!(message.sender_id, None);
+    assert_eq!(message.sender_name, None);
+}
+
 #[test]
 fn convert_raw_message_refuses_empty_placeholder() {
     let peer = public_channel_peer(1144180066, "swodki");

@@ -243,15 +243,15 @@ pub(crate) fn convert_raw_message(
     let (channel_id, channel_name, channel_username) = peer_identity(peer)?;
     let message_id = MessageId::new(raw.id() as i64).ok()?;
 
-    // Sender from the raw from_id + envelope. grammers' private-DM fallback
-    // (peer-as-sender when from_id is absent) is unreachable here: every
-    // fetch path targets channel/group peers, where an absent from_id means
-    // an anonymous post — (None, None), as before.
+    // Sender comes only from raw from_id + envelope. Global search can also
+    // return user peers; absent from_id stays absent there too, without the
+    // SDK's private-DM peer-as-sender fallback.
     let (sender_id, sender_name) = match raw_from_id(raw) {
         Some(from) => (
-            grammers_session::types::PeerId::from(from.clone())
-                .bare_id()
-                .and_then(|i| UserId::new(i).ok()),
+            match from {
+                tl::enums::Peer::User(user) => UserId::new(user.user_id).ok(),
+                tl::enums::Peer::Chat(_) | tl::enums::Peer::Channel(_) => None,
+            },
             entities.get(from).and_then(|info| info.sender_name()),
         ),
         None => (None, None),
