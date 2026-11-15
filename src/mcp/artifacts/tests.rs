@@ -38,6 +38,325 @@ async fn job<T: Send + 'static>(
         .expect("artifact worker")
 }
 
+// Seed real owned inodes in one admitted worker, avoiding repeated insert verification.
+// Behavioral tests below still exercise the public store operations after seeding.
+async fn seeded_store(count: usize) -> (tempfile::TempDir, Arc<ArtifactStore>) {
+    let temp = tempfile::tempdir().expect("private scale fixture");
+    let mut config = config(temp.path().join("artifacts"));
+    config.max_entries = count;
+    config.max_bytes = (4 * count) as u64;
+    let store = ArtifactStore::try_new(config).await.expect("scale store");
+    job(&store, move |store| {
+        let mut guard = store.state().expect("healthy scale state");
+        let state = guard.as_mut().expect("initialized scale state");
+        assert!(state.entries.is_empty());
+        assert!(state.pending.is_none());
+        assert_eq!(state.bytes, 0);
+        for index in 0..count {
+            let id = format!("{index:048x}");
+            let (mut file, mut handle) =
+                OwnedFile::create(store.config.root.join(format!("{id}.jpg")), store.uid)
+                    .expect("genuine owned scale file");
+            handle.write_all(b"jpeg").expect("seed bytes");
+            handle.flush().expect("flush seed");
+            drop(handle);
+            file.size = 4;
+            state.entries.push_back(Entry {
+                uri: format!("{PREFIX}{id}"),
+                file,
+                expires: Instant::now() + store.config.ttl,
+                pin: Weak::new(),
+            });
+            state.bytes += 4;
+        }
+        store.verify_contents(state).expect("valid seeded files");
+        assert_eq!(state.entries.len(), count);
+        assert_eq!(state.bytes, (4 * count) as u64);
+    })
+    .await;
+    (temp, store)
+}
+
+#[tokio::test]
+#[ignore = "manual filesystem verification timing; no wall-clock pass threshold"]
+async fn artifact_verification_measurement() {
+    for count in [1, 100, 1000] {
+        let (_temp, store) = seeded_store(count).await;
+        job(&store, move |store| {
+            let mut guard = store.state().expect("measurement state");
+            let state = guard.as_mut().expect("measurement initialized");
+            store.verify_contents(state).expect("warmup");
+            let mut samples = Vec::with_capacity(7);
+            for _ in 0..7 {
+                let start = std::time::Instant::now();
+                store.verify_contents(state).expect("measured verification");
+                samples.push(start.elapsed());
+                assert_eq!(state.entries.len(), count);
+                assert_eq!(state.bytes, (4 * count) as u64);
+            }
+            samples.sort_unstable();
+            println!(
+                "artifact verification n={count}: median={:?}, range={:?}..={:?}",
+                samples[3], samples[0], samples[6]
+            );
+        })
+        .await;
+        job(&store, |store| store.close())
+            .await
+            .expect("close fixture");
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct VerificationWork {
+    pub(super) directory_items: usize,
+    pub(super) lock_comparisons: usize,
+    pub(super) entry_comparisons: usize,
+    pub(super) index_insertions: usize,
+    pub(super) index_queries: usize,
+    pub(super) validations: usize,
+}
+
+thread_local! {
+    static VERIFICATION_WORK: std::cell::Cell<Option<VerificationWork>> = const {
+        std::cell::Cell::new(None)
+    };
+}
+
+pub(super) fn record_verification(f: impl FnOnce(&mut VerificationWork)) {
+    VERIFICATION_WORK.with(|slot| {
+        if let Some(mut work) = slot.get() {
+            f(&mut work);
+            slot.set(Some(work));
+        }
+    });
+}
+
+struct VerificationObservation;
+
+impl Drop for VerificationObservation {
+    fn drop(&mut self) {
+        VERIFICATION_WORK.with(|slot| slot.set(None));
+    }
+}
+
+#[tokio::test]
+#[ignore = "manual work count on actual locked filesystem verification"]
+async fn artifact_verification_work_measurement() {
+    for count in [1, 100, 1000] {
+        let (_temp, store) = seeded_store(count).await;
+        job(&store, move |store| {
+            let mut guard = store.state().expect("work measurement state");
+            let state = guard.as_mut().expect("initialized measurement");
+            VERIFICATION_WORK
+                .with(|slot| assert!(slot.replace(Some(VerificationWork::default())).is_none()));
+            let _scope = VerificationObservation;
+            store.verify_contents(state).expect("counted verification");
+            let work = VERIFICATION_WORK
+                .with(|slot| slot.take())
+                .expect("scoped work");
+            println!("artifact verification n={count}: {work:?}");
+            assert_eq!(work.directory_items, count + 1);
+            assert_eq!(work.lock_comparisons, 0);
+            assert_eq!(work.entry_comparisons, 0);
+            assert_eq!(work.index_insertions, count + 1);
+            assert_eq!(work.index_queries, count + 1);
+            assert_eq!(work.validations, count + 2);
+        })
+        .await;
+        job(&store, |store| store.close())
+            .await
+            .expect("close work fixture");
+    }
+}
+
+#[tokio::test]
+async fn thousand_entry_missing_file_releases_only_its_reservation() {
+    let (_temp, store) = seeded_store(1000).await;
+    job(&store, |store| {
+        let uri = format!("{PREFIX}{:048x}", 0);
+        std::fs::remove_file(store.config.root.join(format!("{:048x}.jpg", 0)))
+            .expect("remove owned fixture");
+        assert_eq!(
+            store.read(&uri, 4).expect_err("missing file"),
+            StoreError::Missing
+        );
+        assert_eq!(
+            store
+                .read(&format!("{PREFIX}{:048x}", 999), 4)
+                .expect("unrelated file")
+                .bytes,
+            b"jpeg"
+        );
+        assert_eq!(
+            store.snapshot().expect("reservation retained"),
+            StoreSnapshot {
+                entries: 1000,
+                bytes: 4000
+            }
+        );
+        store.remove(&uri).expect("release missing reservation");
+        assert_eq!(
+            store.snapshot().expect("released reservation"),
+            StoreSnapshot {
+                entries: 999,
+                bytes: 3996
+            }
+        );
+        store.close().expect("close missing-file fixture");
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn thousand_entry_foreign_and_tampered_files_refuse_cleanup_without_freeing_quota() {
+    for foreign_entry in [true, false] {
+        let (_temp, store) = seeded_store(1000).await;
+        job(&store, move |store| {
+            let path = if foreign_entry {
+                let path = store.config.root.join("foreign");
+                std::fs::write(&path, b"foreign").expect("foreign file");
+                path
+            } else {
+                let path = store.config.root.join(format!("{:048x}.jpg", 0));
+                std::fs::remove_file(&path).expect("remove owned fixture");
+                std::fs::create_dir(&path).expect("foreign replacement");
+                path
+            };
+            assert_eq!(store.cleanup(), Err(StoreError::Unavailable));
+            assert_eq!(
+                store.remove(&format!("{PREFIX}{:048x}", 0)),
+                Err(StoreError::Unavailable)
+            );
+            assert_eq!(
+                store
+                    .insert(b"jpeg", 1, 1)
+                    .expect_err("closed to insertion"),
+                StoreError::Unavailable
+            );
+            let guard = store.state.lock().expect("unpoisoned failed state");
+            let state = guard.as_ref().expect("retained state");
+            assert_eq!(state.entries.len(), 1000);
+            assert_eq!(state.bytes, 4000);
+            assert!(!state.available.load(Ordering::Acquire));
+            drop(guard);
+            if foreign_entry {
+                assert_eq!(std::fs::read(&path).expect("foreign survives"), b"foreign");
+                store.close().expect("owned files close independently");
+                assert!(path.exists());
+            } else {
+                assert_eq!(store.close(), Err(StoreError::Unavailable));
+                assert!(path.is_dir());
+                // Only the fixture owner removes the foreign replacement, then retries close.
+                std::fs::remove_dir(&path).expect("dispose foreign replacement");
+                store.close().expect("finish fixture close");
+            }
+        })
+        .await;
+    }
+}
+
+#[tokio::test]
+async fn thousand_entry_expiry_remains_immediate_even_with_live_pins() {
+    let (_temp, store) = seeded_store(1000).await;
+    let pin = job(&store, |store| {
+        let mut guard = store.state().expect("expiry state");
+        let state = guard.as_mut().expect("expiry initialized");
+        let expires = Instant::now();
+        for entry in &mut state.entries {
+            entry.expires = expires;
+        }
+        let pin = Arc::new(ArtifactPin {
+            expires,
+            available: Arc::clone(&store.available),
+        });
+        state.entries[0].pin = Arc::downgrade(&pin);
+        pin
+    })
+    .await;
+    assert!(!pin.is_deliverable());
+    job(&store, |store| {
+        assert_eq!(
+            store
+                .read(&format!("{PREFIX}{:048x}", 0), 4)
+                .expect_err("logical expiry"),
+            StoreError::Missing
+        );
+        store.cleanup().expect("expired cleanup");
+        assert_eq!(
+            store.snapshot().expect("expired reservations removed"),
+            StoreSnapshot {
+                entries: 0,
+                bytes: 0
+            }
+        );
+        store.close().expect("close expired fixture");
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn thousand_entry_eviction_skips_live_response_pin_then_reclaims_it() {
+    let (_temp, store) = seeded_store(1000).await;
+    job(&store, |store| {
+        let pin = {
+            let mut guard = store.state().expect("pin state");
+            let state = guard.as_mut().expect("pin initialized");
+            let pin = Arc::new(ArtifactPin {
+                expires: state.entries[0].expires,
+                available: Arc::clone(&store.available),
+            });
+            state.entries[0].pin = Arc::downgrade(&pin);
+            pin
+        };
+        let (first, response_pin) = store
+            .insert_protected(b"next", 1, 1)
+            .expect("evict unpinned oldest");
+        assert!(pin.is_deliverable());
+        assert_eq!(
+            store
+                .read(&format!("{PREFIX}{:048x}", 0), 4)
+                .expect("oldest protected")
+                .bytes,
+            b"jpeg"
+        );
+        assert_eq!(
+            store
+                .read(&format!("{PREFIX}{:048x}", 1), 4)
+                .expect_err("next oldest evicted"),
+            StoreError::Missing
+        );
+        drop(pin);
+        store
+            .insert(b"more", 1, 1)
+            .expect("reclaim released oldest");
+        assert_eq!(
+            store
+                .read(&format!("{PREFIX}{:048x}", 0), 4)
+                .expect_err("released oldest evicted"),
+            StoreError::Missing
+        );
+        assert_eq!(
+            store
+                .read(&first.uri, 4)
+                .expect("current response protected")
+                .bytes,
+            b"next"
+        );
+        assert!(response_pin.is_deliverable());
+        assert_eq!(
+            store.snapshot().expect("bounded scale usage"),
+            StoreSnapshot {
+                entries: 1000,
+                bytes: 4000
+            }
+        );
+        store.close().expect("close pin fixture");
+        assert!(!response_pin.is_deliverable());
+    })
+    .await;
+}
+
 #[tokio::test]
 async fn inserts_complete_bytes_with_dimensions_and_opaque_ids() {
     let (_temp, store) = store().await;

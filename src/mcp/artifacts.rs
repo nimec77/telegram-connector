@@ -10,13 +10,13 @@
 mod files;
 mod privacy;
 use files::OwnedFile;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::io::{Read as _, Write as _};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard, Weak};
 use tokio::time::Instant;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -317,22 +317,38 @@ impl ArtifactStore {
     }
     fn verify_contents(&self, state: &mut State) -> Result<(), StoreError> {
         let result = (|| {
+            #[cfg(test)]
+            tests::record_verification(|work| work.validations += 1);
             state
                 .lock
                 .validate(self.uid)
                 .map_err(|_| StoreError::Unavailable)?;
+            let by_path: HashMap<&Path, &OwnedFile> = state
+                .entries
+                .iter()
+                .map(|entry| {
+                    #[cfg(test)]
+                    tests::record_verification(|work| work.index_insertions += 1);
+                    (entry.file.path.as_path(), &entry.file)
+                })
+                .chain(std::iter::once((state.lock.path.as_path(), &state.lock)))
+                .collect();
+            #[cfg(test)]
+            tests::record_verification(|work| work.index_insertions += 1);
             for item in std::fs::read_dir(&self.config.root).map_err(|_| StoreError::Unavailable)? {
                 let path = item.map_err(|_| StoreError::Unavailable)?.path();
-                let known = if state.lock.path == path {
-                    Some(&state.lock)
-                } else {
-                    state
-                        .entries
-                        .iter()
-                        .find(|entry| entry.file.path == path)
-                        .map(|entry| &entry.file)
-                };
-                known.ok_or(StoreError::Unavailable)?.validate(self.uid)?;
+                #[cfg(test)]
+                tests::record_verification(|work| {
+                    work.directory_items += 1;
+                    work.index_queries += 1;
+                });
+                let known = by_path
+                    .get(path.as_path())
+                    .copied()
+                    .ok_or(StoreError::Unavailable)?;
+                #[cfg(test)]
+                tests::record_verification(|work| work.validations += 1);
+                known.validate(self.uid)?;
             }
             Ok(())
         })();
