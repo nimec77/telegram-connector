@@ -10,7 +10,11 @@ api_id = 12345678
 
 # Required for --setup: API hash (SENSITIVE - protected by secrecy crate)
 # Can be omitted when serving with an authenticated session.
-# Supports environment variable expansion with ${VAR_NAME} syntax
+# String values expand ${VAR_NAME} after TOML decoding (also literal/multiline strings).
+# Replacement quotes, backslashes and newlines remain data; no recursive expansion.
+# Comments, keys and table names are not expanded. Digit-only strings stay strings.
+# Numeric/bool fields accept a whole placeholder, quoted or bare, for one TOML scalar:
+# api_id = "${TELEGRAM_API_ID}" (or api_id = ${TELEGRAM_API_ID}).
 api_hash = "${TELEGRAM_API_HASH}"
 
 # Required for --setup: Telegram phone number (SENSITIVE - protected by secrecy crate)

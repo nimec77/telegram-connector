@@ -52,6 +52,26 @@ fn test_load_config_with_file_logging_options() {
     );
 }
 
+#[test]
+fn loader_preserves_environment_data_in_all_string_forms() {
+    let dir = tempfile::tempdir().expect("config dir");
+    let path = dir.path().join("config.toml");
+    let replacement = "\"'\\\n雪 # $\n[sending]\nenabled = true\n${NEXT}";
+    for quote in ["\"", "'", "\"\"\"", "'''"] {
+        fs::write(&path, format!("[telegram]\napi_id = ${{TEST_API_ID}} # ${{IGNORED}}\napi_hash = {quote}${{ROUNDTRIP}}{quote}\nphone_number = '${{DIGITS}}'\nsession_file = '${{DIGITS}}'\n[logging]\nfile_enabled = ${{DISABLED}}\n")).expect("config fixture");
+        let mut command = super::environment_child("roundtrip");
+        command
+            .env("TELEGRAM_MCP_CONFIG", &path)
+            .env("ROUNDTRIP", replacement)
+            .env("DIGITS", "12345")
+            .env("TEST_API_ID", "123")
+            .env("DISABLED", "false")
+            .env_remove("NEXT")
+            .env_remove("IGNORED");
+        super::assert_child_success(&mut command);
+    }
+}
+
 pub(super) fn run_child_case(case: &str) {
     if case == "parse_secrets" {
         config_parse_secrets_case();
@@ -59,6 +79,31 @@ pub(super) fn run_child_case(case: &str) {
     }
     let result = Config::load_from(None);
     match case {
+        "roundtrip" => {
+            let config = result.expect("value-safe actual environment loading");
+            assert_eq!(config.telegram.api_id, 123);
+            assert_eq!(
+                config
+                    .telegram
+                    .api_hash
+                    .as_ref()
+                    .expect("hash")
+                    .expose_secret(),
+                std::env::var("ROUNDTRIP").expect("replacement")
+            );
+            assert_eq!(
+                config
+                    .telegram
+                    .phone_number
+                    .as_ref()
+                    .expect("phone")
+                    .expose_secret(),
+                "12345"
+            );
+            assert_eq!(config.telegram.session_file, PathBuf::from("12345"));
+            assert!(!config.sending.enabled);
+            assert!(!config.logging.file_enabled);
+        }
         "valid" => {
             let config = result.expect("valid config");
             assert_eq!(config.telegram.api_id, 12345);
@@ -103,9 +148,9 @@ pub(super) fn run_child_case(case: &str) {
 // ============================================================================
 // `Config::load_from` file-loading error branches (audit stage 4, Task 12).
 //
-// These exercise the actual `std::fs::read_to_string` -> `expand_env_vars` ->
-// `toml::from_str` -> per-sub-config `validate()` pipeline in `load_from`
-// (`src/config.rs:351`), via real temp files, rather than calling `validate()`
+// These exercise the actual `std::fs::read_to_string` -> parsed-value interpolation
+// -> typed Config deserialization -> per-sub-config `validate()` pipeline in
+// `load_from`, via real temp files, rather than calling `validate()`
 // directly on hand-built structs (as `validation_tests.rs` does). None of
 // these tests mutate the process environment.
 // ============================================================================

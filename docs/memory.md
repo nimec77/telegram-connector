@@ -162,12 +162,17 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   `get_info`/`list_tools` coexist with macro-generated `call_tool` — but a manual override
   silently drops the macro's gating (e.g. SEP-2549 `ttlMs`/`cacheScope` cache hints must be
   gated on negotiated protocol ≥ 2026-07-28 yourself).
-- **Config env-expansion runs on raw TOML before parsing**; a quoted value that is *only*
-  `"${VAR}"` whose expansion is pure digits gets unquoted so `api_id = "${VAR}"` parses as
-  integer, while `+phone`/hashes stay strings. `api_id` is always required (SenderPool needs
-  it); `api_hash`/`phone_number` only for `--setup`.
+- **Config interpolation is value-only:** parse a recursively spanned TOML `DeTable`,
+  expand decoded basic/literal single/multiline string values once, then deserialize
+  `Config` directly. Replacement bytes remain data; comments/keys/table names never
+  expand. Whole placeholders coerce only at explicit numeric/bool destinations;
+  credentials/paths remain strings, including digit-only values. A narrow lexer masks
+  bare whole scalar placeholders at equal byte width; all diagnostics use original
+  spans and physical placeholder locations, including TOML escapes/folding and CRLF.
+  Native u64 range and existing unknown-field policy remain intact. `api_id` is always
+  required (SenderPool needs it); `api_hash`/`phone_number` only for `--setup`.
 - **Config parse diagnostics discard TOML errors**, including source excerpts, parser
-  messages and keys, because all may contain credentials after environment expansion.
+  messages and keys, because all may contain literal or interpolated credentials.
   Retain only numeric line/column through the loader's anyhow boundary; wrapping the
   original error with a safe top-level message still leaks through debug/error chains.
 - **Rate limiter:** token bucket behind `Arc<Mutex>`, on-demand refill, non-blocking

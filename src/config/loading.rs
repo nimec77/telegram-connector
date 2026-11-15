@@ -1,14 +1,14 @@
 //! File/environment loading, path selection and in-memory CLI overrides.
 
 use super::Config;
-use super::env::expand_env_vars;
+use super::env::parse_config_with;
 use std::path::PathBuf;
 
 impl Config {
     /// Load configuration from a specific path or default location
     ///
     /// If `config_path` is Some, uses that path. Otherwise, resolves the default path.
-    /// Environment variables using `${VAR}` syntax are expanded before parsing.
+    /// Environment variables using `${VAR}` syntax are expanded in parsed TOML values.
     ///
     /// Selects the explicit path, otherwise `TELEGRAM_MCP_CONFIG`, otherwise the
     /// platform config directory. An unreadable selected path returns an error.
@@ -32,26 +32,7 @@ impl Config {
         let content = std::fs::read_to_string(&path)
             .context(format!("Failed to read config: {}", path.display()))?;
 
-        // Expand environment variables BEFORE parsing TOML
-        // This allows ${VAR} syntax in any field, including numeric fields like api_id
-        let expanded_content = expand_env_vars(&content)?;
-
-        let config: Config = toml::from_str(&expanded_content)
-            .map_err(|error: toml::de::Error| {
-                // Parser excerpts, messages, and keys may all contain credentials.
-                // Discard the original error entirely, including its Debug/source data.
-                if let Some(prefix) = error
-                    .span()
-                    .and_then(|span| expanded_content.get(..span.start))
-                {
-                    let line = prefix.bytes().filter(|&byte| byte == b'\n').count() + 1;
-                    let column = prefix.chars().rev().take_while(|&ch| ch != '\n').count() + 1;
-                    anyhow::anyhow!("Invalid TOML at line {line}, column {column}")
-                } else {
-                    anyhow::anyhow!("Invalid TOML (location unavailable)")
-                }
-            })
-            .context("Failed to parse config.toml")?;
+        let config = parse_config_with(&content, |name| std::env::var(name))?;
 
         // Validate sub-configs that have non-credential invariants. Credential
         // validation is deferred to `validate_for_setup()` because the daemon path

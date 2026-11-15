@@ -118,7 +118,21 @@ phone_number = "+1234567890"
 # max_in_flight_requests = 16     # Nonwaiting admission, including pending stdout writes.
 ```
 
-Sensitive values support env-var expansion: `api_hash = "${TELEGRAM_API_HASH}"`.
+Configuration string values support `${NAME}` environment expansion, including basic,
+literal and multiline TOML strings: `api_hash = "${TELEGRAM_API_HASH}"`. TOML escapes
+are decoded first; inserted quotes, backslashes, newlines and TOML-looking text remain
+exact string data. Replacement values are never expanded recursively. Comments, keys
+and table names are not expanded. Bare whole placeholders in string or unknown fields
+also remain string data: environment values supply final data, without extra TOML quotes.
+
+For numeric and boolean settings, a whole placeholder is converted to the destination
+type: `api_id = "${TELEGRAM_API_ID}"` and `api_id = ${TELEGRAM_API_ID}` both work.
+The replacement must be one valid TOML scalar of the right type and range, without
+comments or trailing assignments. Credentials and paths remain strings even when their
+values contain only digits; ordinary quoted numeric literals are not coerced. These rules
+correct earlier source-text substitution that could interpret replacement data as TOML,
+expand inline comments or keys, and unquote numeric-looking strings. Missing variables
+and invalid configuration report original source locations without exposing values.
 `api_id` is always required; `api_hash` and `phone_number` are required for `--setup`
 and can be omitted when serving with an authenticated session.
 
