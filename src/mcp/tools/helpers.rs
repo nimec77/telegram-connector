@@ -45,29 +45,43 @@ pub fn parse_channel_id(id_str: &str) -> Result<ChannelId, String> {
     ChannelId::new(id_num).map_err(|e| format!("Invalid channel_id: {}", error_detail(e)))
 }
 
-/// Classify a channel reference as the list tools receive it: an all-digit
-/// string is a numeric id (validated here), anything else is a username left
-/// verbatim for the resolve layer. Shared by `search_messages` and
-/// `get_recent_messages` so the two agree on what counts as numeric.
+/// Locally comparable references retain their identifier kind until resolution.
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub(crate) enum ChannelReferenceKey {
+    Id(ChannelId),
+    Username(String),
+}
+
+/// Validate and normalize only spellings that are equivalent without an RPC.
+pub(crate) fn channel_reference_key(reference: &str) -> Result<ChannelReferenceKey, String> {
+    match parse_channel_reference(reference.trim())? {
+        ChannelRef::Id(id) => Ok(ChannelReferenceKey::Id(id)),
+        ChannelRef::Username(username) => Ok(ChannelReferenceKey::Username(
+            username
+                .strip_prefix('@')
+                .unwrap_or(&username)
+                .to_ascii_lowercase(),
+        )),
+    }
+}
+
+/// Classify accepted numeric spellings consistently with local validation.
+/// Username spelling is retained for the resolver; fan-out normalizes separately.
 pub(crate) fn parse_channel_reference(reference: &str) -> Result<ChannelRef, String> {
-    if reference.chars().all(|c| c.is_ascii_digit()) {
-        parse_channel_id(reference).map(ChannelRef::Id)
-    } else {
+    if reference.parse::<i64>().is_ok() || reference.bytes().all(|b| b.is_ascii_digit()) {
+        return parse_channel_id(reference).map(ChannelRef::Id);
+    }
+    let username = reference.strip_prefix('@').unwrap_or(reference);
+    if Username::is_valid_shape(username) {
         Ok(ChannelRef::Username(reference.to_string()))
+    } else {
+        Err("Invalid channel reference: expected a username or positive numeric ID".to_string())
     }
 }
 
 /// Reject malformed username/numeric references before charging or resolving them.
 pub(crate) fn validate_channel_reference(reference: &str) -> Result<(), String> {
-    if reference.parse::<i64>().is_ok() || reference.bytes().all(|b| b.is_ascii_digit()) {
-        return parse_channel_id(reference).map(|_| ());
-    }
-    let username = reference.strip_prefix('@').unwrap_or(reference);
-    if Username::is_valid_shape(username) {
-        Ok(())
-    } else {
-        Err("Invalid channel reference: expected a username or positive numeric ID".to_string())
-    }
+    parse_channel_reference(reference).map(|_| ())
 }
 
 /// Parse a message ID to a type-safe MessageId.

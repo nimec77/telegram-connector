@@ -451,3 +451,198 @@ fn fanout_merge_sums_counters_and_ors_flags() {
     assert!(merged.query_metadata.timed_out);
     assert!(merged.query_metadata.partial);
 }
+
+// These cases exercise both tool paths against the real merge/shaping logic.
+#[tokio::test]
+async fn fanout_local_aliases_charge_once_per_kind_and_render_unique_results() {
+    use crate::telegram::types::{ChannelId, ChannelIdentity, PeerNamespace};
+    for search in [false, true] {
+        let mut telegram = MockTelegramClientTrait::new();
+        if search {
+            telegram
+                .expect_resolve_channel_identity()
+                .with(mockall::predicate::eq("news"))
+                .times(1)
+                .returning(|_| {
+                    Ok(ChannelIdentity {
+                        id: ChannelId::new(456).unwrap(),
+                        peer_namespace: PeerNamespace::Channel,
+                        username: Some("news".into()),
+                    })
+                });
+            telegram
+                .expect_search_messages()
+                .times(2)
+                .returning(|params| Ok(single_message_result(params.channel_id.unwrap().get())));
+        } else {
+            telegram
+                .expect_get_recent_messages()
+                .times(2)
+                .returning(|params| {
+                    let channel = match (params.channel_id, params.channel_identifier.as_deref()) {
+                        (Some(id), None) => {
+                            assert_eq!(id.get(), 123);
+                            123
+                        }
+                        (None, Some("news")) => 456,
+                        other => panic!("wrong normalized history target: {other:?}"),
+                    };
+                    Ok(single_message_result(channel))
+                });
+        }
+        let mut limiter = MockRateLimiterTrait::new();
+        limiter
+            .expect_acquire()
+            .with(mockall::predicate::eq(2))
+            .times(1)
+            .returning(|_| Ok(()));
+        let server = McpServer::new(Arc::new(telegram), Arc::new(limiter));
+        let aliases = vec![" @News ", "news", "NEWS", "123", "+123", "00123"];
+        let output = if search {
+            server
+                .search_messages_impl(multi_search_request(aliases))
+                .await
+        } else {
+            server
+                .get_recent_messages_impl(multi_request(aliases))
+                .await
+        }
+        .expect("normalized fanout");
+        let json: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(json["returned"], 2);
+        assert_eq!(json["query_metadata"]["channels_scanned"], 2);
+        let mut ids: Vec<_> = json["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["channel_id"].as_i64().unwrap())
+            .collect();
+        ids.sort();
+        assert_eq!(ids, vec![123, 456]);
+    }
+}
+
+#[tokio::test]
+async fn fanout_later_invalid_alias_rejects_everything_before_acquire() {
+    for search in [false, true] {
+        for invalid in ["@@news", "@123", "0", "-123", "bad name", " "] {
+            let server = McpServer::new(
+                Arc::new(MockTelegramClientTrait::new()),
+                Arc::new(MockRateLimiterTrait::new()),
+            );
+            let aliases = vec!["news", "NEWS", invalid];
+            let result = if search {
+                server
+                    .search_messages_impl(multi_search_request(aliases))
+                    .await
+            } else {
+                server
+                    .get_recent_messages_impl(multi_request(aliases))
+                    .await
+            };
+            assert!(result.is_err(), "accepted {invalid:?}");
+        }
+    }
+}
+
+#[tokio::test]
+async fn fanout_numeric_and_username_attempts_keep_first_album_and_original_errors() {
+    use crate::telegram::types::{
+        AlbumInfo, ChannelId, ChannelIdentity, MediaType, MessageId, PeerNamespace,
+    };
+    for search in [false, true] {
+        let make_result = |first: bool| {
+            let mut result = single_message_result(123);
+            let message = &mut result.messages[0];
+            message.text = if first {
+                "first caption"
+            } else {
+                "later caption"
+            }
+            .into();
+            message.album = Some(AlbumInfo {
+                media_count: if first { 2 } else { 3 },
+                media_types: vec![MediaType::Photo, MediaType::Video],
+                message_ids: vec![
+                    MessageId::new(123000).unwrap(),
+                    MessageId::new(123001).unwrap(),
+                ],
+            });
+            result.query_metadata.pages_fetched = if first { 2 } else { 3 };
+            result.query_metadata.messages_scanned = if first { 20 } else { 30 };
+            result.query_metadata.partial = !first;
+            result.query_metadata.timed_out = !first;
+            result
+        };
+        let first = make_result(true);
+        let later = make_result(false);
+        let mut telegram = MockTelegramClientTrait::new();
+        if search {
+            telegram
+                .expect_resolve_channel_identity()
+                .times(2)
+                .returning(|name| {
+                    if name == "alias" {
+                        Ok(ChannelIdentity {
+                            id: ChannelId::new(123).unwrap(),
+                            peer_namespace: PeerNamespace::Channel,
+                            username: Some("alias".into()),
+                        })
+                    } else {
+                        assert_eq!(name, "missing");
+                        Err(Error::InvalidInput("not found".into()))
+                    }
+                });
+            telegram
+                .expect_search_messages()
+                .times(2)
+                .returning(move |params| {
+                    Ok(if params.channel_namespace.is_none() {
+                        first.clone()
+                    } else {
+                        later.clone()
+                    })
+                });
+        } else {
+            telegram
+                .expect_get_recent_messages()
+                .times(3)
+                .returning(move |params| match params.channel_identifier.as_deref() {
+                    None => Ok(first.clone()),
+                    Some("alias") => Ok(later.clone()),
+                    Some("missing") => Err(Error::InvalidInput("not found".into())),
+                    other => panic!("unexpected target: {other:?}"),
+                });
+        }
+        let mut limiter = MockRateLimiterTrait::new();
+        limiter
+            .expect_acquire()
+            .with(mockall::predicate::eq(3))
+            .times(1)
+            .returning(|_| Ok(()));
+        let server = McpServer::new(Arc::new(telegram), Arc::new(limiter));
+        let output = if search {
+            let mut request = multi_search_request(vec!["123", "alias", " @Missing ", "MISSING"]);
+            request.limit = Some(1);
+            server.search_messages_impl(request).await
+        } else {
+            let mut request = multi_request(vec!["123", "alias", " @Missing ", "MISSING"]);
+            request.limit = Some(1);
+            server.get_recent_messages_impl(request).await
+        }
+        .unwrap();
+        let json: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(json["returned"], 1);
+        assert_eq!(json["has_more"], false);
+        assert_eq!(json["messages"][0]["text"], "first caption");
+        assert_eq!(json["messages"][0]["album"]["media_count"], 2);
+        assert_eq!(json["query_metadata"]["channels_scanned"], 3);
+        assert_eq!(json["query_metadata"]["pages_fetched"], 5);
+        assert_eq!(json["query_metadata"]["messages_scanned"], 50);
+        assert_eq!(json["query_metadata"]["partial"], true);
+        assert_eq!(json["query_metadata"]["timed_out"], true);
+        assert_eq!(json["channel_errors"].as_array().unwrap().len(), 1);
+        assert_eq!(json["channel_errors"][0]["channel"], " @Missing ");
+        assert!(json["next_cursor"].is_null());
+    }
+}

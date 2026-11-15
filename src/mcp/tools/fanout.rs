@@ -3,6 +3,7 @@
 //! response. Pure over wire/domain types so merging is unit-testable.
 
 use crate::error::Error;
+use crate::mcp::tools::helpers::{ChannelReferenceKey, channel_reference_key};
 use crate::mcp::tools::types::responses::{
     ChannelFetchError, MessageResponse, SearchResponse, unique_channel_count,
 };
@@ -18,6 +19,13 @@ pub(crate) const MAX_FANOUT_CHANNELS: usize = 20;
 /// Concurrent per-channel fetches in flight (roadmap: bounded concurrency 4).
 pub(crate) const FANOUT_CONCURRENCY: usize = 4;
 
+/// A locally normalized target and its first supplied spelling for error attribution.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct FanoutChannel {
+    pub reference: String,
+    pub original: String,
+}
+
 /// One channel's fetch outcome; retain its typed cause until mode-specific output.
 pub(crate) struct ChannelFetchOutcome {
     pub channel: String,
@@ -27,16 +35,16 @@ pub(crate) struct ChannelFetchOutcome {
 /// Fetch every channel in `list` through `fetch` with bounded concurrency
 /// (`FANOUT_CONCURRENCY`), pairing each reference with its outcome. Outcome
 /// order follows `list` (buffered preserves order).
-pub(crate) async fn run<F, Fut>(list: Vec<String>, fetch: F) -> Vec<ChannelFetchOutcome>
+pub(crate) async fn run<F, Fut>(list: Vec<FanoutChannel>, fetch: F) -> Vec<ChannelFetchOutcome>
 where
     F: Fn(String) -> Fut,
     Fut: Future<Output = Result<SearchResult, Error>>,
 {
-    futures::stream::iter(list.into_iter().map(|reference| {
-        let result = fetch(reference.clone());
+    futures::stream::iter(list.into_iter().map(|channel| {
+        let result = fetch(channel.reference);
         async move {
             ChannelFetchOutcome {
-                channel: reference,
+                channel: channel.original,
                 result: result.await,
             }
         }
@@ -59,6 +67,7 @@ pub(crate) fn merge_results(
     let attempted = outcomes.len() as u32;
     let mut messages: Vec<MessageResponse> = Vec::new();
     let mut errors: Vec<ChannelFetchError<Error>> = Vec::new();
+    let mut seen_messages = std::collections::HashSet::new();
     let mut has_more = false;
     let mut search_time_ms = 0u64;
     let mut pages_fetched = 0u32;
@@ -77,7 +86,20 @@ pub(crate) fn merge_results(
                     messages_scanned.saturating_add(result.query_metadata.messages_scanned);
                 timed_out |= result.query_metadata.timed_out;
                 partial |= result.query_metadata.partial;
-                messages.extend(result.messages.into_iter().map(MessageResponse::from));
+                // Ordered outcomes make the first complete observation authoritative.
+                messages.extend(
+                    result
+                        .messages
+                        .into_iter()
+                        .filter(|message| {
+                            seen_messages.insert((
+                                message.peer_namespace,
+                                message.channel_id,
+                                message.id,
+                            ))
+                        })
+                        .map(MessageResponse::from),
+                );
             }
             Err(error) => errors.push(ChannelFetchError {
                 channel: outcome.channel,
@@ -133,11 +155,11 @@ pub(crate) fn merge_results(
 
 /// Enforce the channel_id XOR channel_ids contract shared by both list tools.
 /// `Ok(None)` = single-channel/global path; `Ok(Some(list))` = fan-out with a
-/// deduped, trimmed, 1..=MAX_FANOUT_CHANNELS list.
+/// validated, locally normalized, 1..=MAX_FANOUT_CHANNELS list.
 pub(crate) fn validate_channel_scope(
     channel_id: &Option<String>,
     channel_ids: &Option<Vec<String>>,
-) -> Result<Option<Vec<String>>, String> {
+) -> Result<Option<Vec<FanoutChannel>>, String> {
     match (channel_id, channel_ids) {
         (Some(_), Some(_)) => Err("supply either channel_id or channel_ids, not both".to_string()),
         (_, None) => Ok(None),
@@ -146,11 +168,21 @@ pub(crate) fn validate_channel_scope(
                 return Err("channel_ids must not contain blank entries".to_string());
             }
             let mut seen = std::collections::HashSet::new();
-            let deduped: Vec<String> = list
-                .iter()
-                .map(|c| c.trim().to_string())
-                .filter(|c| seen.insert(c.clone()))
-                .collect();
+            let mut deduped = Vec::new();
+            for original in list {
+                // Validate every supplied entry, even a later alias, before acquisition.
+                let key = channel_reference_key(original)?;
+                let reference = match &key {
+                    ChannelReferenceKey::Id(id) => id.get().to_string(),
+                    ChannelReferenceKey::Username(username) => username.clone(),
+                };
+                if seen.insert(key) {
+                    deduped.push(FanoutChannel {
+                        reference,
+                        original: original.clone(),
+                    });
+                }
+            }
             if deduped.is_empty() {
                 return Err("channel_ids must contain at least one channel".to_string());
             }
@@ -329,7 +361,19 @@ mod tests {
         )
         .expect("ok")
         .expect("some");
-        assert_eq!(out, vec!["a".to_string(), "b".to_string()]);
+        assert_eq!(
+            out,
+            vec![
+                FanoutChannel {
+                    reference: "a".into(),
+                    original: " a ".into()
+                },
+                FanoutChannel {
+                    reference: "b".into(),
+                    original: "b".into()
+                },
+            ]
+        );
     }
 
     #[test]
@@ -341,28 +385,149 @@ mod tests {
 
     #[test]
     fn scope_rejects_more_than_max_channels() {
-        let list: Vec<String> = (0..21).map(|i| i.to_string()).collect();
+        let list: Vec<String> = (1..=21).map(|i| i.to_string()).collect();
         let err = validate_channel_scope(&None, &Some(list)).unwrap_err();
         assert!(err.to_string().contains("20"), "got: {err}");
     }
 
     #[tokio::test]
     async fn run_pairs_each_channel_with_its_outcome_in_list_order() {
-        let outcomes = run(vec!["a".into(), "b".into()], |reference| async move {
-            if reference == "a" {
-                Ok(result_with(&[(1, 5)], 1, false))
-            } else {
-                Err(Error::TelegramApi(format!("boom {reference}")))
-            }
-        })
+        let outcomes = run(
+            vec![
+                FanoutChannel {
+                    reference: "a".into(),
+                    original: " A ".into(),
+                },
+                FanoutChannel {
+                    reference: "b".into(),
+                    original: "@B".into(),
+                },
+            ],
+            |reference| async move {
+                if reference == "a" {
+                    Ok(result_with(&[(1, 5)], 1, false))
+                } else {
+                    Err(Error::TelegramApi(format!("boom {reference}")))
+                }
+            },
+        )
         .await;
         assert_eq!(outcomes.len(), 2);
-        assert_eq!(outcomes[0].channel, "a");
+        assert_eq!(outcomes[0].channel, " A ");
         assert!(outcomes[0].result.is_ok());
-        assert_eq!(outcomes[1].channel, "b");
+        assert_eq!(outcomes[1].channel, "@B");
         assert_eq!(
             outcomes[1].result.as_ref().unwrap_err().to_string(),
             "telegram API error: boom b"
         );
+    }
+
+    #[test]
+    fn merge_dedupes_before_limit_and_keeps_the_whole_first_album() {
+        use crate::telegram::types::{AlbumInfo, MediaType, MessageId};
+        let mut first = result_with(&[(10, 30)], 123, false);
+        let message = &mut first.messages[0];
+        message.text = "first caption".into();
+        message.views = Some(7);
+        message.album = Some(AlbumInfo {
+            media_count: 2,
+            media_types: vec![MediaType::Photo, MediaType::Video],
+            message_ids: vec![MessageId::new(10).unwrap(), MessageId::new(11).unwrap()],
+        });
+        let expected = serde_json::to_value(MessageResponse::from(message.clone())).unwrap();
+        let mut second = first.clone();
+        second.messages[0].text = "later caption".into();
+        second.messages[0].views = Some(99);
+        second.messages[0].album = None;
+        second.messages[0].timestamp = Utc::now();
+        second.query_metadata.pages_fetched = 3;
+        second.query_metadata.messages_scanned = 30;
+        second.query_metadata.partial = true;
+        second.query_metadata.timed_out = true;
+        let merged = merge_results(
+            vec![ok("123", first), ok("alias", second)],
+            1,
+            "q".into(),
+            Utc::now(),
+            None,
+        )
+        .unwrap();
+        assert_eq!(merged.returned, 1);
+        assert!(
+            !merged.has_more,
+            "duplicate-only overflow is not another result"
+        );
+        assert_eq!(serde_json::to_value(&merged.messages[0]).unwrap(), expected);
+        assert_eq!(merged.query_metadata.channels_scanned, Some(2));
+        assert_eq!(merged.query_metadata.pages_fetched, 3);
+        assert_eq!(merged.query_metadata.messages_scanned, 30);
+        assert!(merged.query_metadata.partial && merged.query_metadata.timed_out);
+    }
+
+    #[test]
+    fn merge_keeps_equal_ids_in_distinct_sources_and_unknown_namespaces() {
+        use crate::telegram::types::PeerNamespace;
+        let namespaces = [
+            None,
+            Some(PeerNamespace::User),
+            Some(PeerNamespace::Chat),
+            Some(PeerNamespace::Channel),
+        ];
+        let mut outcomes = Vec::new();
+        for namespace in namespaces {
+            let mut result = result_with(&[(10, 0)], 123, false);
+            result.messages[0].peer_namespace = namespace;
+            outcomes.push(ok("alias", result));
+        }
+        outcomes.push(ok("other", result_with(&[(10, 0)], 456, false)));
+        let merged = merge_results(outcomes, 5, String::new(), Utc::now(), None).unwrap();
+        assert_eq!(merged.returned, 5);
+        assert_eq!(merged.query_metadata.channels_in_results, 5);
+        assert!(!merged.has_more);
+        for namespace in namespaces {
+            assert!(
+                merged
+                    .messages
+                    .iter()
+                    .any(|message| message.peer_namespace == namespace
+                        && message.channel_id.unwrap().get() == 123)
+            );
+        }
+    }
+
+    #[test]
+    fn scope_normalizes_equivalent_usernames_and_numeric_spellings() {
+        let scope = validate_channel_scope(
+            &None,
+            &Some(vec![
+                " @News ".into(),
+                "news".into(),
+                "NEWS".into(),
+                "+123".into(),
+                "00123".into(),
+                "123".into(),
+            ]),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            scope,
+            vec![
+                FanoutChannel {
+                    reference: "news".into(),
+                    original: " @News ".into()
+                },
+                FanoutChannel {
+                    reference: "123".into(),
+                    original: "+123".into()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn shared_reference_parser_classifies_accepted_plus_numeric_as_id() {
+        let reference = crate::mcp::tools::validation::parse_channel_reference("+123").unwrap();
+        assert!(matches!(reference, crate::link::ChannelRef::Id(id) if id.get() == 123));
     }
 }

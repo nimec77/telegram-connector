@@ -272,3 +272,25 @@ fn unique_channel_count_dedupes_and_skips_missing_ids() {
     assert_eq!(unique_channel_count(&messages), 2);
     assert_eq!(unique_channel_count(&[]), 0);
 }
+
+#[test]
+fn unique_channel_count_preserves_namespaces_and_unknown_sources() {
+    use crate::telegram::types::PeerNamespace;
+    use crate::test_helpers::create_test_message;
+    let messages: Vec<_> = [
+        None,
+        Some(PeerNamespace::User),
+        Some(PeerNamespace::Chat),
+        Some(PeerNamespace::Channel),
+        None,
+        Some(PeerNamespace::Chat),
+    ]
+    .into_iter()
+    .map(|namespace| {
+        let mut message = MessageResponse::from(create_test_message(9, "source", 123));
+        message.peer_namespace = namespace;
+        message
+    })
+    .collect();
+    assert_eq!(unique_channel_count(&messages), 4);
+}

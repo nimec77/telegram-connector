@@ -584,14 +584,14 @@ impl<E> SearchResponse<E> {
     }
 }
 
-/// Distinct channel ids across a shaped message list. Multi-channel counts
+/// Distinct source peers by namespace and ID across a shaped message list. Counts
 /// recompute from the messages because compact hoisting may have cleared
 /// per-message channel fields (`channel_id: None` entries are skipped).
 pub(crate) fn unique_channel_count(messages: &[MessageResponse]) -> u32 {
     messages
         .iter()
-        .filter_map(|m| m.channel_id.as_ref().map(|c| c.get()))
-        .collect::<std::collections::HashSet<i64>>()
+        .filter_map(|m| m.channel_id.map(|id| (m.peer_namespace, id)))
+        .collect::<std::collections::HashSet<_>>()
         .len() as u32
 }
 

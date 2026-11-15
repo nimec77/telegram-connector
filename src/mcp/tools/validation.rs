@@ -6,7 +6,6 @@ use crate::telegram::types::MessageId;
 use chrono::{DateTime, Utc};
 
 pub(crate) fn parse_channel_reference(value: &str) -> Result<ChannelRef, Error> {
-    validate_channel_reference(value)?;
     helpers::parse_channel_reference(value).map_err(Error::InvalidInput)
 }
 pub(crate) fn validate_channel_reference(value: &str) -> Result<(), Error> {
@@ -47,15 +46,10 @@ pub(crate) fn validate_date_window(
 pub(crate) fn validate_channel_scope(
     one: &Option<String>,
     many: &Option<Vec<String>>,
-) -> Result<Option<Vec<String>>, Error> {
-    let scope = fanout::validate_channel_scope(one, many).map_err(Error::InvalidInput)?;
-    if let Some(references) = &scope {
-        for reference in references {
-            validate_channel_reference(reference)?;
-        }
-    }
-    Ok(scope)
+) -> Result<Option<Vec<fanout::FanoutChannel>>, Error> {
+    fanout::validate_channel_scope(one, many).map_err(Error::InvalidInput)
 }
+
 pub(crate) fn resolve_max_text_length(value: Option<u32>) -> Result<u32, Error> {
     shaping::resolve_max_text_length(value).map_err(Error::InvalidInput)
 }

@@ -6,7 +6,7 @@ use crate::telegram::types::{QueryMetadata, SearchResult};
 /// Build the `SearchResult` envelope shared by `search_messages_impl` and
 /// `get_recent_messages_impl`.
 ///
-/// `channels_in_results` is computed here as the count of distinct channels
+/// `channels_in_results` counts distinct source peers by namespace and ID
 /// among `messages`. For history — which fetches from exactly one peer —
 /// that count is always 0 or 1, which is exactly what the hand-rolled
 /// `if messages.is_empty() { 0 } else { 1 }` it replaces used to produce;
@@ -44,7 +44,7 @@ pub(super) fn assemble_search_result(
 ) -> SearchResult {
     let channels_in_results = messages
         .iter()
-        .map(|m| m.channel_id.get())
+        .map(|m| (m.peer_namespace, m.channel_id))
         .collect::<std::collections::HashSet<_>>()
         .len() as u32;
     SearchResult {

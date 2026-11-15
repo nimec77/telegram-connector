@@ -549,6 +549,10 @@ async fn canonical_contract_rejects_conflicting_compact_headers() {
         let mut client = MockTelegramClientTrait::new();
         client.expect_get_recent_messages().returning(|params| {
             let mut m = message();
+            // Distinct surviving messages must still reject conflicting headers.
+            if params.channel_identifier.as_deref() == Some("second") {
+                m.id = types::MessageId::new(10).expect("distinct message ID");
+            }
             m.channel_name =
                 types::ChannelName::new(params.channel_identifier.as_deref().unwrap_or("unknown"))
                     .expect("name");

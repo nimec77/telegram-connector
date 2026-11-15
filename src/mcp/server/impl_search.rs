@@ -243,7 +243,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     /// are not.
     async fn run_fanout<F, Fut>(
         &self,
-        list: Vec<String>,
+        list: Vec<fanout::FanoutChannel>,
         has_cursor: bool,
         page: FanoutPage,
         fetch: F,
@@ -343,7 +343,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             &request.channel_id,
             &request.channel_ids,
         )?;
-        // channels: Option<Vec<String>> — Some(list) means fan-out.
+        // A validated, locally deduplicated list means fan-out.
         if let Some(list) = channels {
             let fetch = |reference: String| {
                 let base = params_template.clone(); // HistoryParams minus target

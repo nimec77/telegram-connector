@@ -154,3 +154,38 @@ fn several_messages_from_one_channel_report_a_single_channel_in_results() {
     assert_eq!(result.returned, 3);
     assert_eq!(result.query_metadata.channels_in_results, 1);
 }
+
+#[test]
+fn assembled_result_counts_namespaced_sources_with_equal_bare_ids() {
+    use crate::telegram::types::PeerNamespace;
+    use crate::test_helpers::create_test_message;
+    let messages = [
+        PeerNamespace::User,
+        PeerNamespace::Chat,
+        PeerNamespace::Channel,
+        PeerNamespace::Chat,
+    ]
+    .into_iter()
+    .map(|namespace| {
+        let mut message = create_test_message(9, "same bare source ID", 123);
+        message.peer_namespace = Some(namespace);
+        message
+    })
+    .collect();
+    let result = assemble_search_result(
+        messages,
+        &SearchBudget::new(0),
+        false,
+        "q".into(),
+        at_secs(1_000),
+        None,
+        None,
+        42,
+    );
+    assert_eq!(result.returned, 4);
+    assert_eq!(result.query_metadata.channels_in_results, 3);
+    assert_eq!(result.query_metadata.channels_scanned, None);
+    assert_eq!(result.query_metadata.pages_fetched, 0);
+    assert_eq!(result.query_metadata.messages_scanned, 0);
+    assert_eq!(result.search_time_ms, 42);
+}

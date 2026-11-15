@@ -575,3 +575,111 @@ async fn global_search_renders_converted_namespaced_albums_in_both_modes() {
         }
     }
 }
+
+#[tokio::test]
+async fn fanout_search_renders_unique_namespaced_observations_in_both_modes() {
+    assert_fanout_namespaced_rendering(true).await;
+}
+
+#[tokio::test]
+async fn fanout_history_renders_unique_namespaced_observations_in_both_modes() {
+    assert_fanout_namespaced_rendering(false).await;
+}
+
+async fn assert_fanout_namespaced_rendering(search: bool) {
+    use crate::config::OutputFormat;
+    use crate::mcp::tools::GetRecentMessagesRequest;
+    use crate::telegram::types::PeerNamespace;
+    for mode in [OutputFormat::JsonV1, OutputFormat::Legacy] {
+        for upstream_has_more in [false, true] {
+            let mut first = create_test_message(9, "first observation", 123);
+            first.peer_namespace = Some(PeerNamespace::Chat);
+            let mut duplicate = first.clone();
+            duplicate.text = "discard later observation".into();
+            let mut distinct = first.clone();
+            distinct.peer_namespace = Some(PeerNamespace::Channel);
+            let make_result = move |second: bool| {
+                let mut result = create_test_search_result(
+                    if second {
+                        vec![duplicate.clone(), distinct.clone()]
+                    } else {
+                        vec![first.clone()]
+                    },
+                    "q",
+                    1,
+                );
+                result.has_more = second && upstream_has_more;
+                result
+            };
+            let mut client = MockTelegramClientTrait::new();
+            if search {
+                client
+                    .expect_search_messages()
+                    .times(2)
+                    .returning(move |params| {
+                        Ok(make_result(params.channel_id.unwrap().get() == 222))
+                    });
+            } else {
+                client
+                    .expect_get_recent_messages()
+                    .times(2)
+                    .returning(move |params| {
+                        Ok(make_result(params.channel_id.unwrap().get() == 222))
+                    });
+            }
+            let mut limiter = MockRateLimiterTrait::new();
+            limiter
+                .expect_acquire()
+                .with(mockall::predicate::eq(2))
+                .times(1)
+                .returning(|_| Ok(()));
+            let server = McpServer::new(Arc::new(client), Arc::new(limiter));
+            let response = if search {
+                server
+                    .search_messages_data(SearchRequest {
+                        query: "q".into(),
+                        channel_ids: Some(vec!["111".into(), "222".into()]),
+                        limit: Some(2),
+                        ..Default::default()
+                    })
+                    .await
+            } else {
+                server
+                    .get_recent_messages_data(GetRecentMessagesRequest {
+                        channel_id: None,
+                        channel_ids: Some(vec!["111".into(), "222".into()]),
+                        hours_back: None,
+                        limit: Some(2),
+                        media_filter: None,
+                        from_date: None,
+                        to_date: None,
+                        collapse_albums: None,
+                        before_id: None,
+                        after_id: None,
+                        max_text_length: None,
+                        format: None,
+                    })
+                    .await
+            };
+            let rendered = crate::mcp::tools::types::contract::render(mode, response);
+            let wire = serde_json::to_value(rendered).unwrap();
+            let data = if mode == OutputFormat::JsonV1 {
+                wire["structuredContent"]["data"].clone()
+            } else {
+                serde_json::from_str(wire["content"][0]["text"].as_str().unwrap()).unwrap()
+            };
+            assert_eq!(data["returned"], 2);
+            assert_eq!(data["has_more"], upstream_has_more);
+            assert_eq!(data["query_metadata"]["channels_scanned"], 2);
+            assert_eq!(data["query_metadata"]["channels_in_results"], 2);
+            assert!(data.get("next_cursor").is_none());
+            let messages = data["messages"].as_array().unwrap();
+            assert_eq!(messages.len(), 2);
+            assert!(messages.iter().all(|m| m["text"] == "first observation"));
+            if mode == OutputFormat::JsonV1 {
+                assert_eq!(messages[0]["peer_namespace"], "chat");
+                assert_eq!(messages[1]["peer_namespace"], "channel");
+            }
+        }
+    }
+}
