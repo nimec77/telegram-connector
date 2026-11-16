@@ -105,7 +105,7 @@ proptest = "1.12.0"
 mockall = "0.15.0"
 filetime = "0.2.29"
 # Validate real advertised 2020-12 output unions offline; no HTTP/file resolver defaults.
-jsonschema = { version = "0.60.2", default-features = false }
+jsonschema = { version = "0.61.2", default-features = false }
 
 # Targeted manual enforcement; keep advisory pedantic/restriction groups opt-in.
 [lints.rust]
