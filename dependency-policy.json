@@ -111,6 +111,18 @@
       "owner": "nimec77",
       "expires": "2027-01-31",
       "rationale": "Reviewed jsonschema/hashbrown dev dependency Zlib notice; retain origin, altered-source marking and source notice obligations; exact package/version only."
+    },
+    {
+      "name": "matchit",
+      "version": "0.8.4",
+      "expression": "MIT AND BSD-3-Clause",
+      "choice": [
+        "MIT",
+        "BSD-3-Clause"
+      ],
+      "owner": "nimec77",
+      "expires": "2027-01-31",
+      "rationale": "Axum pins this router version. Reviewed its LICENSE and LICENSE.httprouter; retain both notices and BSD-3-Clause non-endorsement. Exact package/version only."
     }
   ]
 }

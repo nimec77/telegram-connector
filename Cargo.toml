@@ -18,7 +18,7 @@ test = true
 
 [dependencies]
 # MCP
-rmcp = { version = "3.10.0", features = ["server"] }
+rmcp = { version = "3.11.0", features = ["server"] }
 
 # Telegram — upstream moved to Codeberg in Feb 2026; the GitHub repo is a
 # stale mirror slated for deletion. Do not point these back at github.com.
@@ -92,14 +92,16 @@ image = { version = "0.25", default-features = false, features = ["jpeg"] }
 base64 = "0.23.1"
 
 [dev-dependencies]
+# Exercise the modern binding over loopback without enabling HTTP for production stdio.
+axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio"] }
+rmcp = { version = "3.11.0", features = ["transport-streamable-http-server"] }
 # Recreate the previous SQLite session schema offline; same storage line/features as grammers.
 libsql = { version = "0.10.0", default-features = false, features = ["core"] }
 # PNG codec for tests: create_test_jpeg & non-JPEG re-encode test write_to PNG
 image = { version = "0.25", default-features = false, features = ["png"] }
-# `test-util` enables the pausable clock (`start_paused`, `time::advance`) used by
-# the timeout/transcription tests. It is intentionally excluded from `full`, so it
-# must be requested explicitly here (dev-only, never compiled into release builds).
-tokio = { version = "1.54.1", features = ["test-util"] }
+# `test-util` enables the pausable test clock; `net` enables the loopback HTTP fixture.
+# Neither feature needs to be requested on the production connector dependency.
+tokio = { version = "1.54.1", features = ["test-util", "net"] }
 tempfile = "3.27.0"
 proptest = "1.12.0"
 mockall = "0.15.0"
