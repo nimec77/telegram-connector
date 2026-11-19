@@ -48,6 +48,7 @@ fn raw_channel(id: i64, broadcast: bool) -> tl::types::Channel {
         broadcast_messages_allowed: false,
         monoforum: false,
         forum_tabs: false,
+        forum_sidebar: false,
         in_news: false,
         pinned_msg_id: None,
         id,

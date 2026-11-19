@@ -476,6 +476,7 @@ fn public_channel_peer(id: i64, username: &str) -> Peer {
         broadcast_messages_allowed: false,
         monoforum: false,
         forum_tabs: false,
+        forum_sidebar: false,
         in_news: false,
         pinned_msg_id: None,
         id,

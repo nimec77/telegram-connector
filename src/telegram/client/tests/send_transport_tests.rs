@@ -41,20 +41,21 @@ fn short(id: i32, date: i32) -> tl::enums::Updates {
 fn message(id: i32, date: i32, namespace: PeerNamespace) -> tl::enums::Message {
     // Hand-assembled minimal real TL message: out flag, no optional fields.
     let mut bytes = Vec::new();
-    tl::types::Message::CONSTRUCTOR_ID.serialize(&mut bytes);
-    2_u32.serialize(&mut bytes);
-    0_u32.serialize(&mut bytes);
-    id.serialize(&mut bytes);
+    let mut write = |part: &[u8]| bytes.extend_from_slice(part);
+    tl::types::Message::CONSTRUCTOR_ID.serialize(&mut write);
+    2_u32.serialize(&mut write);
+    0_u32.serialize(&mut write);
+    id.serialize(&mut write);
     let peer: tl::enums::Peer = match namespace {
         PeerNamespace::Channel => tl::types::PeerChannel { channel_id: 91 }.into(),
         PeerNamespace::Chat => tl::types::PeerChat { chat_id: 91 }.into(),
         PeerNamespace::User => tl::types::PeerUser { user_id: 91 }.into(),
     };
-    peer.serialize(&mut bytes);
-    date.serialize(&mut bytes);
+    peer.serialize(&mut write);
+    date.serialize(&mut write);
     "private content must not be echoed"
         .to_string()
-        .serialize(&mut bytes);
+        .serialize(&mut write);
     tl::enums::Message::from_bytes(&bytes).expect("valid hand-built TL message")
 }
 

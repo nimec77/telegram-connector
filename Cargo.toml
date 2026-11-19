@@ -25,9 +25,9 @@ rmcp = { version = "3.10.0", features = ["server"] }
 # Pinned by rev, not branch: Codeberg master is active and ships breaking
 # changes; bump the rev deliberately (all three together) and expect to
 # absorb API churn when you do.
-grammers-client = { git = "https://codeberg.org/Lonami/grammers", rev = "1e31e73cd9797790905bbea82cd75adcbe6f1242" }
-grammers-session = { git = "https://codeberg.org/Lonami/grammers", rev = "1e31e73cd9797790905bbea82cd75adcbe6f1242" }
-grammers-mtsender = { git = "https://codeberg.org/Lonami/grammers", rev = "1e31e73cd9797790905bbea82cd75adcbe6f1242" }
+grammers-client = { git = "https://codeberg.org/Lonami/grammers", rev = "e61cf8585e1e9969ab81eda9fb4725a1500e2d86" }
+grammers-session = { git = "https://codeberg.org/Lonami/grammers", rev = "e61cf8585e1e9969ab81eda9fb4725a1500e2d86" }
+grammers-mtsender = { git = "https://codeberg.org/Lonami/grammers", rev = "e61cf8585e1e9969ab81eda9fb4725a1500e2d86" }
 
 # Async
 # Explicit feature list rather than `full`: "net" and "fs" are unused here, and
