@@ -1,6 +1,6 @@
 //! Configuration representation, serde defaults and credential accessors.
 
-use super::defaults;
+use super::{RateLimitConfig, defaults};
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -20,7 +20,7 @@ pub struct Config {
     #[serde(default = "defaults::default_search_config")]
     pub search: SearchConfig,
     /// Account token bucket and weighted operation costs.
-    #[serde(default = "defaults::default_rate_limit_config")]
+    #[serde(default)]
     pub rate_limiting: RateLimitConfig,
     /// Tracing output and daily file retention settings.
     #[serde(default = "defaults::default_logging_config")]
@@ -172,32 +172,6 @@ pub struct SearchConfig {
     /// (default 120) to be reachable.
     #[serde(default = "defaults::default_search_deadline_seconds")]
     pub deadline_seconds: u64,
-}
-
-/// Account token-bucket capacity, refill speed and weighted operation costs.
-#[derive(Debug, Clone, Deserialize)]
-pub struct RateLimitConfig {
-    /// Charge for an admitted outgoing text operation; never refunded.
-    #[serde(default = "defaults::default_send_message_cost")]
-    pub send_message_cost: u32,
-    /// Charge for an admitted media operation, independent of upload part count.
-    #[serde(default = "defaults::default_send_media_cost")]
-    pub send_media_cost: u32,
-    /// Initial and maximum token capacity; validation requires at least one token.
-    /// Builders do not validate this automatically.
-    #[serde(default = "defaults::default_max_tokens")]
-    pub max_tokens: u32,
-    /// Tokens restored per elapsed second on acquisition or snapshot.
-    /// Validation requires a finite, positive value.
-    #[serde(default = "defaults::default_refill_rate")]
-    pub refill_rate: f64,
-    /// Tokens charged per get_message_media call (searches cost 1).
-    #[serde(default = "defaults::default_media_download_cost")]
-    pub media_download_cost: u32,
-    /// Tokens charged per transcribe_voice_message call (Telegram's weekly
-    /// transcription quota makes these calls precious; searches cost 1).
-    #[serde(default = "defaults::default_transcription_cost")]
-    pub transcription_cost: u32,
 }
 
 /// Opt-in outgoing file policy. Paths belong to the connector host.

@@ -32,6 +32,13 @@ is not evidence that downstream users do not exist. Every existing public path i
 | `mcp::runtime` / `runtime::process` | `Runtime`, `RuntimeError`, `SUPPORTED_VERSIONS`, process `run` and `shutdown_signal`; configurable protocol transport/lifecycle support, subject to the bounded product bootstrap contract. |
 | `mcp::observability` | `SessionMetrics`, `InFlightRequest`, `WriteObservation`, `ResponseBuffer`, `ResponseSnapshot`, `BufferedResponse`, `InstrumentedTransport`, `GET_LAST_RESPONSES_TOOL`, `OVERSIZED_PAYLOAD_STUB`; shared diagnostic handles with fallible storage access. |
 
+## Workspace type ownership
+
+`telegram-core` owns `Error`, `StateUnavailable`, `RateLimitConfig`, `RateLimiter`
+and `RateLimiterTrait`. The existing `telegram_connector` paths re-export the same
+Rust types. Integration fixtures compile an external read-only `TelegramClientTrait`
+implementation and exercise the existing direct status method.
+
 ## Transitional compatibility paths
 
 | Retained path | Reason and constraints |

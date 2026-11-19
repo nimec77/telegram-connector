@@ -16,6 +16,12 @@ from urllib.parse import parse_qs, urlsplit, urlunsplit
 ROOT_PACKAGE = "telegram-connector"
 STANDARD_CHOICES = {"MIT", "Apache-2.0", "BSD-3-Clause", "ISC", "Unicode-3.0"}
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+REVIEWED_WORKSPACE_MANIFESTS = {
+    ROOT_PACKAGE: "Cargo.toml",
+    "telegram-core": "crates/telegram-core/Cargo.toml",
+    "telegram-api": "crates/telegram-api/Cargo.toml",
+    "telegram-mcp-http": "crates/telegram-mcp-http/Cargo.toml",
+}
 
 
 class PolicyError(ValueError):
@@ -45,6 +51,36 @@ def allowed_source(source, policy):
         )
     except ValueError:
         return False
+
+
+def reviewed_workspace_members(metadata, by_id):
+    """Identify first-party packages by the checkout, manifest and Cargo membership."""
+    workspace_root = metadata.get("workspace_root")
+    if not isinstance(workspace_root, str) or Path(workspace_root).resolve() != PROJECT_ROOT:
+        raise PolicyError("metadata must describe this exact workspace checkout")
+    members = metadata.get("workspace_members")
+    if not isinstance(members, list) or any(not isinstance(item, str) or item not in by_id for item in members):
+        raise PolicyError("workspace member identities must be present in the package graph")
+    if len(set(members)) != len(members):
+        raise PolicyError("duplicate workspace member identity")
+
+    reviewed = set()
+    root_ids = []
+    for package_id in members:
+        package = by_id[package_id]
+        expected = REVIEWED_WORKSPACE_MANIFESTS.get(package["name"])
+        actual = package.get("manifest_path")
+        if expected is None or not isinstance(actual, str) or package.get("source") is not None:
+            continue
+        manifest_path = Path(actual)
+        if not manifest_path.is_absolute() or manifest_path.resolve() != PROJECT_ROOT / expected:
+            continue
+        reviewed.add(package_id)
+        if package["name"] == ROOT_PACKAGE:
+            root_ids.append(package_id)
+    if len(root_ids) != 1:
+        raise PolicyError("the exact local telegram-connector root must be a workspace member")
+    return reviewed
 
 
 def validate_metadata(metadata, policy, today=None):
@@ -78,9 +114,8 @@ def validate_metadata(metadata, policy, today=None):
     packages = metadata.get("packages")
     if metadata.get("version") != 1 or not isinstance(resolve, dict) or not isinstance(packages, list):
         raise PolicyError("complete Cargo metadata with a resolve graph is required")
-    root_id = resolve.get("root")
-    if not isinstance(root_id, str) or not root_id or not isinstance(resolve.get("nodes"), list):
-        raise PolicyError("a single resolved application root is required")
+    if not isinstance(resolve.get("nodes"), list):
+        raise PolicyError("resolved workspace nodes are required")
     by_id = {}
     for package in packages:
         if not isinstance(package, dict) or not isinstance(package.get("id"), str):
@@ -109,14 +144,15 @@ def validate_metadata(metadata, policy, today=None):
             raise PolicyError("named dependency edge references an absent package")
         if set(dependencies) != {edge["pkg"] for edge in named_edges}:
             raise PolicyError("dependency edge representations disagree")
-    root = by_id.get(root_id)
-    if root is None or root["name"] != ROOT_PACKAGE or root.get("source") is not None:
-        raise PolicyError("only the exact local telegram-connector root can be exempt")
+    first_party = reviewed_workspace_members(metadata, by_id)
+    resolve_root = resolve.get("root")
+    if resolve_root is not None and (not isinstance(resolve_root, str) or resolve_root not in first_party):
+        raise PolicyError("the resolved root must be a reviewed workspace member")
 
     issues = []
     git_revisions = {}
     for package_id, package in by_id.items():
-        if package_id == root_id:
+        if package_id in first_party:
             continue
         label = package["name"] + "@" + package["version"]
         if not allowed_source(package.get("source"), policy):
@@ -170,8 +206,10 @@ def main(argv=None):
         print(issue["package"] + ": " + issue["code"], file=sys.stderr)
     if issues:
         return 1
-    print("External dependency metadata policy passed for " + str(len(metadata["packages"]) - 1)
-          + " packages; root licensing remains unassigned.")
+    by_id = {package["id"]: package for package in metadata["packages"]}
+    external_count = len(by_id) - len(reviewed_workspace_members(metadata, by_id))
+    print(f"External dependency metadata policy passed for {external_count} packages; "
+          "first-party licensing remains unassigned.")
     return 0
 
 

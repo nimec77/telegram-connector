@@ -1,6 +1,6 @@
 //! Operational bounds and setup credential validation.
 
-use super::{Config, LimitsConfig, RateLimitConfig, SearchConfig, ServerConfig, TimeoutConfig};
+use super::{Config, LimitsConfig, SearchConfig, ServerConfig, TimeoutConfig};
 
 impl ServerConfig {
     /// Reject unbounded input/admission and unreasonable drain budgets.
@@ -99,21 +99,6 @@ impl super::SendingConfig {
     }
 }
 
-impl RateLimitConfig {
-    /// Validate new send costs when writes are enabled, preserving disabled read policies.
-    ///
-    /// # Errors
-    /// Rejects zero costs and costs larger than the account bucket.
-    pub fn validate_sending_costs(&self) -> anyhow::Result<()> {
-        anyhow::ensure!(
-            (1..=self.max_tokens).contains(&self.send_message_cost)
-                && (1..=self.max_tokens).contains(&self.send_media_cost),
-            "invalid sending account costs"
-        );
-        Ok(())
-    }
-}
-
 /// Upper bound accepted for `[search] deadline_seconds`.
 ///
 /// `SearchBudget::new` computes `Instant::now() + Duration::from_secs(deadline_secs)`,
@@ -145,47 +130,6 @@ impl SearchConfig {
                 "search.deadline_seconds must be between 1 and {MAX_SEARCH_DEADLINE_SECONDS}, \
                  got {}",
                 self.deadline_seconds
-            );
-        }
-        Ok(())
-    }
-}
-
-impl RateLimitConfig {
-    /// Require usable capacity and refill speed, and satisfiable read costs.
-    ///
-    /// Capacity must be at least one token because ordinary reads cost one.
-    /// Refill must be finite and positive. Media and transcription costs may
-    /// be zero, but cannot exceed capacity. Enabled-send costs are checked
-    /// separately by [`Self::validate_sending_costs`].
-    ///
-    /// # Errors
-    /// Returns an error for zero capacity, a nonfinite/nonpositive refill rate,
-    /// or a media/transcription cost exceeding bucket capacity.
-    pub fn validate(&self) -> anyhow::Result<()> {
-        if self.max_tokens == 0 {
-            anyhow::bail!("rate_limiting.max_tokens must be >= 1: ordinary reads cost one token");
-        }
-        if !self.refill_rate.is_finite() || self.refill_rate <= 0.0 {
-            anyhow::bail!(
-                "rate_limiting.refill_rate must be finite and > 0 (got {})",
-                self.refill_rate
-            );
-        }
-        if self.media_download_cost > self.max_tokens {
-            anyhow::bail!(
-                "rate_limiting.media_download_cost ({}) exceeds max_tokens ({}), \
-                 so every media call would fail even on a full bucket",
-                self.media_download_cost,
-                self.max_tokens
-            );
-        }
-        if self.transcription_cost > self.max_tokens {
-            anyhow::bail!(
-                "rate_limiting.transcription_cost ({}) exceeds max_tokens ({}), \
-                 so every transcription call would fail even on a full bucket",
-                self.transcription_cost,
-                self.max_tokens
             );
         }
         Ok(())

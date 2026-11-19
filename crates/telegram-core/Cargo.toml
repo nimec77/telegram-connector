@@ -1,0 +1,22 @@
+[package]
+name = "telegram-core"
+version = "0.26.1"
+edition = "2024"
+
+[features]
+test-support = ["dep:mockall"]
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+mockall = { workspace = true, optional = true }
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+mockall.workspace = true
+proptest.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+
+[lints]
+workspace = true

@@ -4,15 +4,15 @@ default:
 
 # Debug build
 build:
-    cargo build --locked
+    cargo build --workspace --locked
 
 # Release build
 release:
-    cargo build --locked --release
+    cargo build --workspace --locked --release
 
 # Run all tests
 test:
-    cargo test --locked
+    cargo test --workspace --locked
 
 # Format all code
 fmt:
@@ -24,7 +24,7 @@ fmt-check:
 
 # Clippy with warnings as errors
 lint:
-    cargo clippy --locked --all-targets -- -D warnings
+    cargo clippy --workspace --locked --all-targets -- -D warnings
 
 # Pre-commit gate: formatting, Clippy, all tests/doctests, and warning-free rustdoc
 check: fmt-check lint test doc
@@ -45,8 +45,8 @@ policy-test:
 
 # Warning-free public API documentation
 doc:
-    RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps
+    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --locked --no-deps
 
 # Public API documentation and executable examples
 check-docs: doc
-    cargo test --locked --doc
+    cargo test --workspace --locked --doc

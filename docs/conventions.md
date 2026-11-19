@@ -41,9 +41,9 @@ runs the same gate as CI:
 
 ```bash
 cargo fmt --all --check
-cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked
-RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps
+cargo clippy --workspace --locked --all-targets -- -D warnings
+cargo test --workspace --locked
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --locked --no-deps
 ```
 
 `cargo test` runs doctests too; `just check-docs` runs focused warning-free rustdoc and

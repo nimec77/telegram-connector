@@ -1,8 +1,7 @@
 use super::*;
 use crate::config::defaults::{
-    default_limits_config, default_max_download_bytes, default_media_download_cost,
-    default_observability_config, default_timeout_config, default_transcription_config,
-    default_transcription_cost,
+    default_limits_config, default_max_download_bytes, default_observability_config,
+    default_timeout_config, default_transcription_config,
 };
 use secrecy::SecretString;
 use std::path::PathBuf;
@@ -57,12 +56,8 @@ fn create_test_config(api_id: i32, api_hash: Option<&str>, phone_number: Option<
             deadline_seconds: 20,
         },
         rate_limiting: RateLimitConfig {
-            send_message_cost: 1,
-            send_media_cost: 3,
             max_tokens: 50,
-            refill_rate: 2.0,
-            media_download_cost: default_media_download_cost(),
-            transcription_cost: default_transcription_cost(),
+            ..RateLimitConfig::default()
         },
         logging: LoggingConfig {
             level: "info".to_string(),

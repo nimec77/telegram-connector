@@ -1,5 +1,6 @@
 //! Tests for MCP server core functionality (creation, ServerHandler)
 
+use crate::config::RateLimitConfig;
 use crate::mcp::server::McpServer;
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
@@ -124,8 +125,14 @@ fn server_defaults_match_the_shipped_config_defaults() {
         Arc::new(MockRateLimiterTrait::new()),
     );
 
-    assert_eq!(server.media_download_cost(), default_media_download_cost());
-    assert_eq!(server.transcription_cost(), default_transcription_cost());
+    assert_eq!(
+        server.media_download_cost(),
+        RateLimitConfig::default().media_download_cost
+    );
+    assert_eq!(
+        server.transcription_cost(),
+        RateLimitConfig::default().transcription_cost
+    );
     assert_eq!(
         server.response_byte_budget() as u64,
         default_response_byte_budget()

@@ -11,10 +11,10 @@ mod loading;
 mod types;
 mod validation;
 
+pub use telegram_core::config::RateLimitConfig;
 pub use types::{
     Config, LimitsConfig, LoggingConfig, MediaArtifactsConfig, ObservabilityConfig, OutputFormat,
-    RateLimitConfig, SearchConfig, SendingConfig, ServerConfig, TelegramConfig, TimeoutConfig,
-    TranscriptionConfig,
+    SearchConfig, SendingConfig, ServerConfig, TelegramConfig, TimeoutConfig, TranscriptionConfig,
 };
 pub(crate) use validation::MIN_IMAGE_BASE64_BYTES;
 

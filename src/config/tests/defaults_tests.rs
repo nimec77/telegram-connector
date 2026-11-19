@@ -1,8 +1,8 @@
 //! Defaults and in-memory TOML table parsing (no env, no files).
 use crate::config::defaults::{
     config_dir_join, default_file_enabled, default_limits_config, default_log_path,
-    default_logging_config, default_max_log_days, default_rate_limit_config,
-    default_search_deadline_seconds, default_timeout_config,
+    default_logging_config, default_max_log_days, default_search_deadline_seconds,
+    default_timeout_config,
 };
 use crate::config::*;
 use std::path::PathBuf;
@@ -204,7 +204,7 @@ fn test_media_download_cost_from_toml() {
 
 #[test]
 fn test_default_rate_limit_has_transcription_cost() {
-    let config = default_rate_limit_config();
+    let config = RateLimitConfig::default();
     assert_eq!(config.transcription_cost, 5);
 }
 
@@ -273,7 +273,7 @@ fn search_config_accepts_explicit_deadline() {
 
 #[test]
 fn retuned_media_rate_limit_defaults() {
-    let config = default_rate_limit_config();
+    let config = RateLimitConfig::default();
     assert_eq!(
         config.max_tokens, 60,
         "burst capacity raised for batch media"

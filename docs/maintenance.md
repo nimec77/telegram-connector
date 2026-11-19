@@ -27,11 +27,10 @@ grammers repository. All three direct grammers dependencies move together after
 review of upstream commits, TL changes, peer/session fixtures and wire tests.
 
 `python3 scripts/check_dependency_policy.py` reads complete locked Cargo metadata
-(including dev/build/platform packages). The metadata-declaration check exempts
-only the exact local resolve.root named telegram-connector: its own licensing is
-unassigned. No license grant or publish policy is invented. Every other package,
-including path/workspace dependencies, needs a reviewed full declaration in
-`dependency-policy.json`; unknown sources, missing or unreviewed licenses fail.
+(including dev/build/platform packages). The metadata-declaration check recognizes first-party packages by exact reviewed
+names and manifest paths in this checkout's Cargo workspace. Their own licensing
+remains unassigned. Every external package still needs a reviewed source and full
+license declaration in `dependency-policy.json`.
 This is a declaration policy, not a source-text license or distribution-compliance
 scanner. Full expressions are reviewed as a whole, including Unicode obligations;
 the helper does not split AND/OR expressions. Selected alternatives are recorded

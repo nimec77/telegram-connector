@@ -1,3 +1,7 @@
+[workspace]
+members = ["crates/telegram-core"]
+resolver = "3"
+
 [package]
 name = "telegram-connector"
 version = "0.26.1"
@@ -17,6 +21,7 @@ path = "examples/safe_send/main.rs"
 test = true
 
 [dependencies]
+telegram-core = { path = "crates/telegram-core", version = "0.26.1" }
 # MCP
 rmcp = { version = "3.11.0", features = ["server"] }
 
@@ -41,7 +46,7 @@ grammers-mtsender = { git = "https://codeberg.org/Lonami/grammers", rev = "e61cf
 # signal: SIGINT/SIGTERM shutdown handling;
 # sync: `oneshot`, `RwLock`;
 # time: timeout budgets, `sleep`, `Instant`.
-tokio = { version = "1.54.1", features = [
+tokio = { workspace = true, features = [
     "io-std",
     "io-util",
     "macros",
@@ -51,7 +56,7 @@ tokio = { version = "1.54.1", features = [
     "sync",
     "time",
 ] }
-async-trait = "0.1"
+async-trait.workspace = true
 futures = "0.3.34"
 
 # Interactive prompts
@@ -62,7 +67,7 @@ clap = { version = "4.6.8", features = ["derive"] }
 
 # Config & Serialization
 toml = "1.2.1"
-serde = { version = "1.0", features = ["derive"] }
+serde.workspace = true
 serde_json = "1.0.154"
 schemars = { version = "1.2.3", features = ["derive"] }
 directories = "6.0.0"
@@ -77,8 +82,8 @@ tracing-subscriber = { version = "0.3", features = [
 tracing-appender = "0.2.5"
 
 # Errors
-anyhow = "1.0.104"
-thiserror = "2.0.21"
+anyhow.workspace = true
+thiserror.workspace = true
 
 # Utilities
 chrono = { version = "0.4.45", features = ["serde"] }
@@ -92,6 +97,7 @@ image = { version = "0.25", default-features = false, features = ["jpeg"] }
 base64 = "0.23.1"
 
 [dev-dependencies]
+telegram-core = { path = "crates/telegram-core", version = "0.26.1", features = ["test-support"] }
 # Exercise the modern binding over loopback without enabling HTTP for production stdio.
 axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio"] }
 rmcp = { version = "3.11.0", features = ["transport-streamable-http-server"] }
@@ -101,18 +107,30 @@ libsql = { version = "0.10.0", default-features = false, features = ["core"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 # `test-util` enables the pausable test clock; `net` enables the loopback HTTP fixture.
 # Neither feature needs to be requested on the production connector dependency.
-tokio = { version = "1.54.1", features = ["test-util", "net"] }
+tokio = { workspace = true, features = ["test-util", "net"] }
 tempfile = "3.27.0"
-proptest = "1.12.0"
-mockall = "0.15.0"
+proptest.workspace = true
+mockall.workspace = true
 # Validate real advertised 2020-12 output unions offline; no HTTP/file resolver defaults.
 jsonschema = { version = "0.61.2", default-features = false }
 
 # Targeted manual enforcement; keep advisory pedantic/restriction groups opt-in.
-[lints.rust]
+[workspace.lints.rust]
 unsafe_code = "forbid"
 
-[lints.clippy]
+[workspace.lints.clippy]
 wildcard_imports = "warn"
 missing_errors_doc = "warn"
 return_self_not_must_use = "warn"
+
+[lints]
+workspace = true
+
+[workspace.dependencies]
+anyhow = "1.0.104"
+async-trait = "0.1"
+mockall = "0.15.0"
+proptest = "1.12.0"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "2.0.21"
+tokio = "1.54.1"

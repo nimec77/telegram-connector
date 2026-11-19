@@ -1,6 +1,6 @@
 //! Write admission stays above the client seam; failures preserve delivery truth.
 use super::McpServer;
-use crate::config::OutputFormat;
+use crate::config::{OutputFormat, RateLimitConfig};
 use crate::mcp::tools::send_budget;
 use crate::mcp::tools::types::sending::{SendMediaRequest, SendMessageRequest, SendReceipt};
 use crate::rate_limiter::RateLimiterTrait;
@@ -50,6 +50,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
     ) -> crate::mcp::tools::types::responses::SendingStatus {
         let defaults = crate::config::SendingConfig::default();
+        let rate_limits = RateLimitConfig::default();
         let policy = self.sending_config.as_deref();
         let settings = policy.map_or(&defaults, |c| &c.settings);
         crate::mcp::tools::types::responses::SendingStatus {
@@ -66,13 +67,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                     c.upload_send_secs
                 }),
             send_message_cost: policy
-                .map_or_else(crate::config::defaults::default_send_message_cost, |c| {
-                    c.send_message_cost
-                }),
-            send_media_cost: policy
-                .map_or_else(crate::config::defaults::default_send_media_cost, |c| {
-                    c.send_media_cost
-                }),
+                .map_or(rate_limits.send_message_cost, |c| c.send_message_cost),
+            send_media_cost: policy.map_or(rate_limits.send_media_cost, |c| c.send_media_cost),
         }
     }
     pub(super) fn validate_sending_mode(&self) -> Result<(), SendFailure> {

@@ -2664,6 +2664,7 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
+ "telegram-core",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
@@ -2671,6 +2672,19 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "telegram-core"
+version = "0.26.1"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "mockall",
+ "proptest",
+ "serde",
+ "thiserror 2.0.21",
+ "tokio",
 ]
 
 [[package]]

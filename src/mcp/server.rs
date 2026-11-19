@@ -5,11 +5,10 @@
 //! the protocol runtime. Prefer [`McpServer`] builders for embedding.
 
 use crate::config::defaults::{
-    default_media_batch_max_total_bytes, default_media_download_cost, default_response_byte_budget,
-    default_transcription_cost, default_transcription_default_timeout,
-    default_transcription_max_timeout,
+    default_media_batch_max_total_bytes, default_response_byte_budget,
+    default_transcription_default_timeout, default_transcription_max_timeout,
 };
-use crate::config::{ObservabilityConfig, ServerConfig};
+use crate::config::{ObservabilityConfig, RateLimitConfig, ServerConfig};
 use crate::mcp::observability::{ResponseBuffer, SessionMetrics};
 use crate::mcp::tools::{
     GenerateLinkRequest, GetChannelInfoRequest, GetChannelStatsRequest, GetChannelsRequest,
@@ -107,6 +106,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     /// Session ownership and network tasks belong to the supplied client.
     pub fn new(telegram_client: Arc<T>, rate_limiter: Arc<R>) -> Self {
         let observability = ObservabilityConfig::default();
+        let rate_limits = RateLimitConfig::default();
         let mut server = Self {
             sending_config: None,
             outgoing_store: None,
@@ -118,8 +118,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                 observability.max_buffered_payload_bytes,
             )),
             slow_write_threshold: Duration::from_millis(observability.slow_write_threshold_ms),
-            media_download_cost: default_media_download_cost(),
-            transcription_cost: default_transcription_cost(),
+            media_download_cost: rate_limits.media_download_cost,
+            transcription_cost: rate_limits.transcription_cost,
             transcription_default_timeout_secs: default_transcription_default_timeout(),
             transcription_max_timeout_secs: default_transcription_max_timeout(),
             response_byte_budget: default_response_byte_budget() as usize,

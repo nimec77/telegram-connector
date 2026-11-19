@@ -4,8 +4,8 @@
 //! attributes and ordinary calls via explicit `defaults::` paths in `config.rs`.
 
 use super::{
-    LimitsConfig, LoggingConfig, ObservabilityConfig, RateLimitConfig, SearchConfig, ServerConfig,
-    TimeoutConfig, TranscriptionConfig,
+    LimitsConfig, LoggingConfig, ObservabilityConfig, SearchConfig, ServerConfig, TimeoutConfig,
+    TranscriptionConfig,
 };
 use std::path::PathBuf;
 
@@ -35,14 +35,6 @@ pub(crate) fn default_session_file() -> PathBuf {
 
 pub(crate) fn default_search_deadline_seconds() -> u64 {
     20
-}
-
-pub(crate) fn default_max_tokens() -> u32 {
-    60
-}
-
-pub(crate) fn default_refill_rate() -> f64 {
-    2.0
 }
 
 pub(crate) fn default_log_level() -> String {
@@ -90,14 +82,6 @@ pub(crate) fn default_search_secs() -> u64 {
 
 pub(crate) fn default_download_secs() -> u64 {
     120
-}
-
-pub(crate) fn default_media_download_cost() -> u32 {
-    3
-}
-
-pub(crate) fn default_transcription_cost() -> u32 {
-    5
 }
 
 pub(crate) fn default_max_download_bytes() -> u64 {
@@ -149,30 +133,12 @@ pub(crate) fn default_search_config() -> SearchConfig {
     }
 }
 
-pub(crate) fn default_rate_limit_config() -> RateLimitConfig {
-    RateLimitConfig {
-        send_message_cost: default_send_message_cost(),
-        send_media_cost: default_send_media_cost(),
-        max_tokens: default_max_tokens(),
-        refill_rate: default_refill_rate(),
-        media_download_cost: default_media_download_cost(),
-        transcription_cost: default_transcription_cost(),
-    }
-}
-
 pub(crate) fn default_send_secs() -> u64 {
     30
 }
 pub(crate) fn default_upload_send_secs() -> u64 {
     120
 }
-pub(crate) fn default_send_message_cost() -> u32 {
-    1
-}
-pub(crate) fn default_send_media_cost() -> u32 {
-    3
-}
-
 pub(crate) fn default_logging_config() -> LoggingConfig {
     LoggingConfig {
         level: default_log_level(),

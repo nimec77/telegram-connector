@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import unittest
 
-from check_dependency_policy import PolicyError, validate_metadata
+from check_dependency_policy import PROJECT_ROOT, PolicyError, validate_metadata
 
 REGISTRY = "registry+https://github.com/rust-lang/crates.io-index"
 SHA = "1e31e73cd9797790905bbea82cd75adcbe6f1242"
@@ -15,8 +15,10 @@ TODAY = datetime.date(2026, 10, 31)
 def metadata():
     return {
         "version": 1,
+        "workspace_root": str(PROJECT_ROOT),
+        "workspace_members": ["root"],
         "packages": [
-            {"id": "root", "name": "telegram-connector", "version": "0.22.10", "source": None, "license": None},
+            {"id": "root", "name": "telegram-connector", "manifest_path": str(PROJECT_ROOT / "Cargo.toml"), "version": "0.22.10", "source": None, "license": None},
             {"id": "dep", "name": "example-dependency", "version": "1.0.0", "source": REGISTRY, "license": "MIT"},
         ],
         "resolve": {"root": "root", "nodes": [
@@ -39,6 +41,44 @@ class DependencyPolicyTests(unittest.TestCase):
 
     def test_exact_unlicensed_local_root_and_reviewed_external_are_accepted(self):
         self.assertEqual(self.check(), [])
+
+    def add_core(self, manifest="crates/telegram-core/Cargo.toml", *, member=True):
+        self.metadata["packages"].append({
+            "id": "core", "name": "telegram-core", "version": "0.26.1",
+            "source": None, "license": None, "manifest_path": str(PROJECT_ROOT / manifest),
+        })
+        root = self.metadata["resolve"]["nodes"][0]
+        root["dependencies"].append("core")
+        root["deps"].append({"name": "telegram_core", "pkg": "core", "dep_kinds": [{"kind": None, "target": None}]})
+        self.metadata["resolve"]["nodes"].append({"id": "core", "dependencies": [], "deps": []})
+        if member:
+            self.metadata["workspace_members"].append("core")
+
+    def test_exact_reviewed_workspace_member_is_accepted(self):
+        self.add_core()
+        self.assertEqual(self.check(), [])
+
+    def test_same_named_workspace_member_at_wrong_path_is_checked(self):
+        self.add_core("elsewhere/telegram-core/Cargo.toml")
+        self.assert_code("source_not_allowed")
+
+    def test_reviewed_path_without_workspace_membership_is_checked(self):
+        self.add_core(member=False)
+        self.assert_code("source_not_allowed")
+
+    def test_reviewed_workspace_membership_does_not_exempt_dependencies(self):
+        self.add_core()
+        root, external, core = self.metadata["resolve"]["nodes"]
+        root["dependencies"].remove(external["id"])
+        core["dependencies"].append(external["id"])
+        core["deps"].append(root["deps"].pop(0))
+        self.metadata["packages"][1]["license"] = None
+        self.assertEqual(self.check(), [{"code": "dependency_unlicensed", "package": "example-dependency@1.0.0"}])
+
+    def test_workspace_root_cannot_retarget_the_reviewed_manifests(self):
+        self.metadata["workspace_root"] = str(PROJECT_ROOT.parent)
+        with self.assertRaises(PolicyError):
+            self.check()
 
     def test_root_exemption_cannot_be_retargeted_by_policy(self):
         self.policy["root_package"] = "other-project"
