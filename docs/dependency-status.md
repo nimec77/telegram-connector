@@ -1,4 +1,50 @@
-# Dependency status — 2026-10-31
+# Dependency status
+
+## Workspace baseline refresh — 2026-11-19
+
+The UTC cutoff was **2026-11-19T15:46:01Z**, with connector 0.26.1 at
+`2768ded8`, `nightly-2026-10-31`, and a passing offline macOS baseline. Full
+Cargo metadata and target-inclusive trees covered normal, build, test and
+development declarations, features, all lockfile packages and duplicate lines.
+The graph went from **341 packages to 355**. The inventory covers **335 registry
+crate names** across both graphs. It records prior, resolved, and latest stable,
+non-yanked versions, cutoff publications, source origins, license declarations,
+and exact reverse dependencies. [Machine-readable inventory](validation/2026-11-19-dependency-inventory.json)
+
+- Updated rmcp and rmcp-macros to **3.11.0**, Clap to **4.6.8**, and the dev-only
+  schema validator to **0.61.2**. The logging fixtures use `std::fs::set_times`,
+  removing their `filetime` dependency. Axum **0.8.9** and the rmcp HTTP server
+  feature are dev-only for the loopback MCP 2026-07-28 fixture. The independent
+  production feature tree excludes them.
+- Updated all eight grammers Git packages to **`e61cf8585e1e9969ab81eda9fb4725a1500e2d86`**,
+  official Codeberg HEAD and grammers **0.12.0** at the cutoff. The TL parser moved
+  to **2.0.0**. Layer 233 adds channel/user forum-sidebars and a widget media
+  variant, which the SDK treats as unsupported media. The offline TL send receipt
+  fixtures use the revised sink-based serializer and the generated sidebar flags.
+  The upstream diff retains the public update-reader and SQLite session interfaces.
+  `SenderPool.updates` feeds `Client::stream_updates`, with `catch_up` disabled for
+  future live subscriptions. Internal overflow and long-difference behavior still
+  limit continuity. [Official Codeberg comparison](https://codeberg.org/Lonami/grammers/compare/1e31e73cd9797790905bbea82cd75adcbe6f1242...e61cf8585e1e9969ab81eda9fb4725a1500e2d86)
+- The latest direct parent releases leave **59 older transitive identities** in
+  their declared ranges. Cargo reverse trees verified every retained older line.
+  For example, grammers-client 0.12.0 selects `jiff ^0.2.40`, resolved as 0.2.46,
+  and Axum 0.8.9 pins `matchit =0.8.4`. Matchit retains an exact, time-limited
+  license review for its combined MIT and BSD-3-Clause declarations. Duplicate
+  versions and their parent constraints are in the inventory.
+- The macOS gate passed formatting, warning-denied Clippy, **1,188 library tests**,
+  two integration fixtures, nine example tests, three doctests, and warning-free
+  rustdoc. Twelve existing tests were ignored as before. The release build, the
+  restored legacy SQLite fixture, all four offline process/client probes and 25
+  dependency policy fixtures also passed.
+- The fresh RustSec database was `7133866a6b44d6d3e1994ae6a48a296553c3c3da`.
+  `cargo-audit` reported one unmaintained warning and the source gate passed.
+  `cargo-deny` rejected the same warning under the current advisory policy.
+  Chrono 0.4.45 is the newest stable version and has no patched release. The root
+  public type contract and rmcp 3.11.0's required dependency keep it in the graph.
+  The advisory gate remains open pending a supported migration or an approved
+  policy exception. [RUSTSEC-2026-0543](https://rustsec.org/advisories/RUSTSEC-2026-0543.html)
+
+## Historical migration — 2026-10-31
 
 Fresh crates.io inventory completed at 2026-10-31T08:39:39.597680+00:00. This records the resolved dependency migration on nightly-2026-10-31, not just manifest requirements. Cargo.lock was updated in groups and retained throughout; incompatible upstream lines were not forced.
 

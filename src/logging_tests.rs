@@ -1,4 +1,5 @@
 use super::*;
+use std::fs::{FileTimes, set_times};
 
 #[test]
 fn sending_privacy_worker_payloads_are_suppressed_even_with_explicit_trace_directives() {
@@ -353,7 +354,6 @@ fn cleanup_handles_missing_directory() {
 
 #[test]
 fn cleanup_removes_old_log_files() {
-    use filetime::{FileTime, set_file_mtime};
     use std::fs::File;
     use std::io::Write;
 
@@ -367,7 +367,7 @@ fn cleanup_removes_old_log_files() {
         .write_all(b"old log")
         .unwrap();
     let ten_days_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(10 * 86400);
-    set_file_mtime(&old_log, FileTime::from_system_time(ten_days_ago)).unwrap();
+    set_times(&old_log, FileTimes::new().set_modified(ten_days_ago)).unwrap();
 
     // Create a "recent" log file (now)
     let recent_log = log_dir.join("telegram-connector.2025-01-09.log");
@@ -395,7 +395,6 @@ fn cleanup_removes_old_log_files() {
 
 #[test]
 fn cleanup_ignores_non_log_files() {
-    use filetime::{FileTime, set_file_mtime};
     use std::fs::File;
     use std::io::Write;
 
@@ -406,7 +405,7 @@ fn cleanup_ignores_non_log_files() {
     let old_txt = log_dir.join("notes.txt");
     File::create(&old_txt).unwrap().write_all(b"notes").unwrap();
     let ten_days_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(10 * 86400);
-    set_file_mtime(&old_txt, FileTime::from_system_time(ten_days_ago)).unwrap();
+    set_times(&old_txt, FileTimes::new().set_modified(ten_days_ago)).unwrap();
 
     let config = LoggingConfig {
         level: "info".to_string(),
@@ -443,8 +442,6 @@ fn cleanup_handles_empty_directory() {
 
 #[test]
 fn cleanup_preserves_foreign_logs_and_backups() {
-    use filetime::{FileTime, set_file_mtime};
-
     let temp_dir = tempfile::tempdir().expect("log directory");
     let old_names = [
         "telegram-connector.2025-01-01.log",
@@ -461,19 +458,18 @@ fn cleanup_preserves_foreign_logs_and_backups() {
         "telegram-connector.2025-1-01.log",
         "telegram-connector.2025-01-01.log.extra.log",
     ];
-    let old_time = FileTime::from_system_time(
-        std::time::SystemTime::now() - std::time::Duration::from_secs(10 * 86400),
-    );
+    let old_time = FileTimes::new()
+        .set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(10 * 86400));
     for name in old_names.iter().chain(&preserved_names) {
         let path = temp_dir.path().join(name);
         std::fs::write(&path, b"log data").expect("fixture file");
-        set_file_mtime(&path, old_time).expect("old fixture mtime");
+        set_times(&path, old_time).expect("old fixture mtime");
     }
     let recent = temp_dir.path().join("telegram-connector.2025-01-03.log");
     std::fs::write(&recent, b"recent log").expect("recent file");
     let directory = temp_dir.path().join("telegram-connector.2025-01-04.log");
     std::fs::create_dir(&directory).expect("directory fixture");
-    set_file_mtime(&directory, old_time).expect("old directory mtime");
+    set_times(&directory, old_time).expect("old directory mtime");
     let config = LoggingConfig {
         file_enabled: true,
         file_path: temp_dir.path().to_path_buf(),
