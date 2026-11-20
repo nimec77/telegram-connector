@@ -18,7 +18,7 @@ tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread", "sig
 url = "2.5.8"
 
 [dev-dependencies]
-telegram-api = { path = "../telegram-api", default-features = false, features = ["test-support"] }
+telegram-api = { path = "../telegram-api", default-features = false, features = ["service", "test-support"] }
 axum = { version = "0.8.9", default-features = false, features = ["form", "query"] }
 jsonwebtoken = { version = "12.0.0", default-features = false, features = ["aws_lc_rs"] }
 sha2 = "0.11.1"

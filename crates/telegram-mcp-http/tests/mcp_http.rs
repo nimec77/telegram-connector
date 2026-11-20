@@ -331,13 +331,19 @@ fn http() -> Client {
 struct Fixture {
     issuer: Arc<Issuer>,
     api: Arc<Api>,
+    api_endpoint: String,
     gateway: String,
     http: Client,
     _process: Process,
+    _read_api: Option<telegram_api::service::test_support::ReadApi>,
 }
 
 impl Fixture {
     async fn start() -> Self {
+        Self::start_with_api(false).await
+    }
+
+    async fn start_with_api(real_api: bool) -> Self {
         let issuer_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let issuer = Arc::new(Issuer {
             url: format!("http://{}", issuer_listener.local_addr().unwrap()),
@@ -351,7 +357,7 @@ impl Fixture {
             .await
             .unwrap();
         let api = Arc::new(Api {
-            verifier,
+            verifier: verifier.clone(),
             reads: 0.into(),
             requests: Mutex::default(),
             capabilities: 0.into(),
@@ -361,14 +367,28 @@ impl Fixture {
         });
         let api_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let endpoint = format!("http://{}", api_listener.local_addr().unwrap());
-        let app = Router::new().fallback(self::api).with_state(api.clone());
-        tokio::spawn(async move { axum::serve(api_listener, app).await.unwrap() });
+        let read_api = if real_api {
+            let bearer = SecretString::from(signed(claims(&issuer, "reader", API)));
+            let owner = verifier
+                .verify(&bearer, &Audience::Api)
+                .await
+                .expect("fixture API identity");
+            Some(
+                telegram_api::service::test_support::start_read_api(api_listener, verifier, &owner)
+                    .await
+                    .expect("actual hosted read routes"),
+            )
+        } else {
+            let app = Router::new().fallback(self::api).with_state(api.clone());
+            tokio::spawn(async move { axum::serve(api_listener, app).await.unwrap() });
+            None
+        };
         let dir = tempfile::tempdir().unwrap();
         let ready = dir.path().join("ready");
         let process = Process(
             Command::new(std::env::current_exe().unwrap())
                 .args(["--exact", "gateway_child", "--ignored"])
-                .env("FIXTURE_API", endpoint)
+                .env("FIXTURE_API", &endpoint)
                 .env("FIXTURE_ISSUER", &issuer.url)
                 .env("FIXTURE_READY", &ready)
                 .spawn()
@@ -389,9 +409,11 @@ impl Fixture {
         Self {
             issuer,
             api,
+            api_endpoint: endpoint,
             gateway: format!("http://{addr}"),
             http: http(),
             _process: process,
+            _read_api: read_api,
         }
     }
 
@@ -860,4 +882,73 @@ async fn issuer_can_narrow_dual_scope_catalog() {
     let tools = r["result"]["tools"].as_array().expect("narrowed catalog");
     assert_eq!(tools.len(), 1);
     assert_eq!(tools[0]["name"], "search_messages");
+}
+
+#[tokio::test]
+async fn direct_and_gateway_requests_share_hosted_account_budget() {
+    let fixture = Fixture::start_with_api(true).await;
+    let remote = fixture.login("reader").await;
+    let direct = signed(claims(&fixture.issuer, "reader", API));
+    let request = json!({ "channel_ids": ["42"], "query": "same" });
+    let other = fixture.login("restricted").await;
+    let catalog: Value = fixture
+        .rpc(&other, "tools/list", json!({}))
+        .send()
+        .await
+        .expect("list restricted catalog")
+        .json()
+        .await
+        .expect("MCP catalog");
+    assert_eq!(catalog["result"]["tools"], json!([]));
+    let denied = fixture
+        .call(&other, "search_messages", request.clone())
+        .await;
+    assert_eq!(
+        denied["result"]["structuredContent"]["error"]["code"],
+        "forbidden"
+    );
+    let first = fixture
+        .call(&remote, "search_messages", request.clone())
+        .await;
+    let result = &first["result"];
+    let structured = &result["structuredContent"];
+    assert!(structured["error"].is_null());
+    assert_eq!(
+        structured["data"]["messages"][0]["text"],
+        "same account message"
+    );
+    let text: Value = serde_json::from_str(
+        result["content"][0]["text"]
+            .as_str()
+            .expect("JSON fallback"),
+    )
+    .expect("parse JSON fallback");
+    assert_eq!(text, *structured);
+
+    let (direct, remote) = tokio::join!(
+        fixture
+            .http
+            .post(format!("{}/v1/messages/search", fixture.api_endpoint))
+            .bearer_auth(direct)
+            .json(&request)
+            .send(),
+        fixture.call(&remote, "search_messages", request.clone()),
+    );
+    let direct = direct.expect("direct API response");
+    let remote = &remote["result"]["structuredContent"];
+    assert_eq!(
+        direct.status() == StatusCode::OK,
+        remote["error"]["code"] == "rate_limited",
+        "exactly one route can spend the account's token"
+    );
+    if direct.status() == StatusCode::OK {
+        let page: Value = direct.json().await.expect("direct search response");
+        assert_eq!(page["messages"][0]["text"], "same account message");
+    } else {
+        assert_eq!(direct.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            remote["data"]["messages"][0]["text"],
+            "same account message"
+        );
+    }
 }

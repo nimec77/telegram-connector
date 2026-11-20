@@ -30,7 +30,7 @@ use telegram_core::telegram::types::{
     SearchParams,
 };
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[path = "reads/fixture.rs"]
 pub(super) mod fixture;
 #[cfg(test)]
@@ -228,13 +228,13 @@ pub(super) async fn batch(
 
 enum ReadLease {
     Live(AccountLease<ActiveAccount>, OperationContext),
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     Fixture(fixture::FixtureLease),
 }
 
 impl ReadLease {
     async fn open(access: &ReadAccess) -> Result<Self, ApiError> {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if let Some(fixture) = access.hosted.reads_fixture.get() {
             return fixture.lease(access).await.map(Self::Fixture);
         }
@@ -252,7 +252,7 @@ impl ReadLease {
                     .search_joined_channels(operation, context)
                     .await
             }
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             Self::Fixture(lease) => lease.search(operation).await,
         }
     }
@@ -266,7 +266,7 @@ impl ReadLease {
                     .history_range(range, context)
                     .await
             }
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             Self::Fixture(lease) => lease.history(range).await,
         }
     }
@@ -284,7 +284,7 @@ impl ReadLease {
                     .batch_joined_channel(channel_id, ids, context)
                     .await
             }
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             Self::Fixture(lease) => lease.batch(channel_id, ids).await,
         }
     }

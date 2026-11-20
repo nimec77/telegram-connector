@@ -1,16 +1,26 @@
 //! Offline Telegram source for loopback tests using real grants and account admission.
 
-use super::*;
 use crate::service::AccountGeneration;
-use crate::service::registry::AccountRegistry;
+use crate::service::authorization::ReadAccess;
+use crate::service::http_error::ApiError;
+use crate::service::registry::{AccountLease, AccountRegistry};
 use crate::service::storage::StorageError;
 use std::cmp::Reverse;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
+use telegram_core::UtcTimestamp;
 use telegram_core::config::RateLimitConfig;
+use telegram_core::error::Error;
+use telegram_core::operations::{
+    HistoryIdPage, HistoryIdRange, OperationContext, SearchOperation, SearchPage, SearchScope,
+};
 use telegram_core::rate_limiter::RateLimiterTrait as _;
-use telegram_core::telegram::types::{QueryMetadata, SearchResult};
+use telegram_core::telegram::types::{
+    ChannelId, Message, MessageBatch, MessageId, PeerNamespace, QueryMetadata, SearchParams,
+    SearchResult,
+};
 
 pub(in crate::service) struct ReadFixture {
     registry: AccountRegistry<Arc<FixtureAccount>>,

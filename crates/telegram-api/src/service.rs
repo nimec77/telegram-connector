@@ -13,6 +13,9 @@ mod reads;
 mod registry;
 mod sends;
 mod storage;
+#[cfg(feature = "test-support")]
+#[doc(hidden)]
+pub mod test_support;
 mod uploads;
 
 pub use accounts::HostedConfig;

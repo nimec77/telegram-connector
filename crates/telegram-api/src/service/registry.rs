@@ -51,7 +51,7 @@ impl<C> AccountLease<C> {
             .expect("a lease requires initialized client")
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(super) fn limiter(&self) -> &Arc<RateLimiter> {
         &self.entry.limiter
     }
@@ -92,7 +92,7 @@ impl<C> AccountRegistry<C> {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(super) async fn lease(
         &self,
         key: AccountGeneration,

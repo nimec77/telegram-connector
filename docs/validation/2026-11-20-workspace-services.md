@@ -32,8 +32,19 @@ ran the installed `telegram-mcp` CLI.
 
 The API test suite checks direct and delegated credentials through the same
 hosted request path. The independently launched gateway process checks OAuth
-exchange, modern MCP, permissions and cancellation against a local API fixture.
-These runs establish the boundaries with mocked Telegram. Live Telegram,
+exchange, modern MCP, permissions and cancellation against a simulated API.
+A cross-service test also connects that gateway process to the real hosted
+HTTP routes, seeded with one Telegram channel and a shared account limiter.
+It completes discovery and exchange, returns a canonical MCP search result,
+and lets a direct API request and a gateway request contend for the last
+token. The second registered client has a separate grant, an empty tool list
+and a denied direct MCP invocation. This fixture is enabled by the gateway's
+development dependency. The isolated production gateway graph excludes the
+API service, Telegram core, grammers and SQLite. With this fixture, the
+workspace suite passes 1,269 tests and three doctests. Strict Clippy,
+warning-free rustdoc and isolated API and gateway release builds pass.
+
+These runs use mocked Telegram and a loopback identity provider. Live Telegram,
 a production identity provider, and the reverse-proxy example require separate
 integration evidence for an installation.
 

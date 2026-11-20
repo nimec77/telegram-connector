@@ -96,7 +96,7 @@ pub(super) struct Hosted {
         super::AccountGeneration,
         telegram_core::streams::AccountStreams,
     )>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(super) reads_fixture: std::sync::OnceLock<super::reads::fixture::ReadFixture>,
     maintenance: tokio::sync::Notify,
 }
@@ -165,7 +165,7 @@ impl Hosted {
             linking: Linking::default(),
             cancellation: CancellationToken::new(),
             transition: tokio::sync::Mutex::new(()),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             reads_fixture: std::sync::OnceLock::new(),
             #[cfg(test)]
             stream_fixture: std::sync::OnceLock::new(),
