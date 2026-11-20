@@ -6,6 +6,12 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Current state
 
+- **Hosted workspace services are integrated into local `master`.** The workspace
+  includes the compatible stdio connector, `telegram-core`, the stateful API and
+  the separate HTTP MCP gateway. The completed plan and design are archived in
+  Git at merge revision `4618221`. [Operator guide](hosted-services.md) ·
+  [Acceptance evidence](validation/2026-11-20-workspace-services.md)
+
 - **2026-11-15 review remediation is integrated into `master` as 0.26.1.**
   All 15 implementation slices have independent scoped review. Fresh whole-branch
   review approved all 19 dispositions with no Critical/Important findings; the test-clock
