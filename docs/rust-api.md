@@ -34,10 +34,12 @@ is not evidence that downstream users do not exist. Every existing public path i
 
 ## Workspace type ownership
 
-`telegram-core` owns `Error`, `StateUnavailable`, `RateLimitConfig`, `RateLimiter`
-and `RateLimiterTrait`. The existing `telegram_connector` paths re-export the same
-Rust types. Integration fixtures compile an external read-only `TelegramClientTrait`
-implementation and exercise the existing direct status method.
+`telegram-core` owns the Telegram client, configuration used to construct it,
+domain values, rates, attachment snapshots, and operation deadlines. The
+`telegram_connector` crate re-exports the same Rust types at its existing
+public paths. It also provides the interactive setup prompts and stdio tool
+transport. Libraries that want only the Telegram operations can depend on
+`telegram-core` directly.
 
 ## UTC timestamp migration
 

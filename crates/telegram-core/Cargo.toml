@@ -4,9 +4,20 @@ version = "0.26.1"
 edition = "2024"
 
 [features]
-test-support = ["dep:mockall"]
+test-support = ["dep:mockall", "dep:tempfile", "dep:image"]
 
 [dependencies]
+grammers-client.workspace = true
+grammers-session.workspace = true
+grammers-mtsender.workspace = true
+directories.workspace = true
+futures.workspace = true
+getrandom.workspace = true
+secrecy.workspace = true
+tracing.workspace = true
+tempfile = { workspace = true, optional = true }
+image = { version = "0.25", default-features = false, features = ["jpeg"], optional = true }
+tokio = { workspace = true, features = ["macros", "process", "rt", "sync", "time"] }
 jiff.workspace = true
 schemars.workspace = true
 anyhow.workspace = true
@@ -16,9 +27,16 @@ serde.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+serde_json = "1.0.154"
+toml = "1.2.1"
+tracing-subscriber = "0.3"
+# Recreate the previous SQLite session schema offline; same storage line/features as grammers.
+libsql = { version = "0.10.0", default-features = false, features = ["core"] }
+tempfile.workspace = true
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 mockall.workspace = true
 proptest.workspace = true
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+tokio = { workspace = true, features = ["io-util", "rt-multi-thread", "test-util"] }
 
 [lints]
 workspace = true

@@ -1,16 +1,122 @@
 //! Owned private snapshots, nonwaiting reservations and lease-retaining cleanup.
 use super::privacy::FileIdentity;
-use super::{SendingRuntimeConfig, privacy, probe};
-use crate::mcp::tools::types::sending::UploadSource;
+use super::{privacy, probe};
+use crate::deadline::DrainDeadline;
 use crate::telegram::sending::{SendDeadline, SendStage};
 use crate::telegram::types::sending::{SendFailure, SendFailureKind, SendMediaKind};
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{Seek as _, Write as _};
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::time::Instant;
+
+/// Local staging policy independent of how an upload was requested.
+#[derive(Clone)]
+pub struct StagingConfig {
+    /// Maximum image size in bytes.
+    pub max_image_bytes: u64,
+    /// Maximum non-image attachment size in bytes.
+    pub max_media_bytes: u64,
+    /// Number of concurrent preparations.
+    pub max_concurrent_media: usize,
+    /// Total reserved or occupied staging bytes.
+    pub max_staging_bytes: u64,
+    /// Fresh private directory used for snapshots.
+    pub staging_root: Option<PathBuf>,
+    /// Explicit aliases for prepared source directories.
+    pub upload_roots: BTreeMap<String, PathBuf>,
+}
+
+impl Default for StagingConfig {
+    fn default() -> Self {
+        Self {
+            max_image_bytes: 10_485_760,
+            max_media_bytes: 104_857_600,
+            max_concurrent_media: 2,
+            max_staging_bytes: 209_715_200,
+            staging_root: None,
+            upload_roots: BTreeMap::new(),
+        }
+    }
+}
+
+impl StagingConfig {
+    /// Check local caps and path settings before opening a store.
+    ///
+    /// # Errors
+    /// Returns an error if limits or configured roots are invalid.
+    pub fn validate(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            (1..=10_485_760).contains(&self.max_image_bytes)
+                && (1..=104_857_600).contains(&self.max_media_bytes),
+            "invalid sending file caps"
+        );
+        anyhow::ensure!(
+            (1..=2).contains(&self.max_concurrent_media),
+            "sending concurrency must be one or two"
+        );
+        anyhow::ensure!(
+            self.max_staging_bytes >= self.max_image_bytes.max(self.max_media_bytes),
+            "sending staging quota must fit the largest permitted file"
+        );
+        for (alias, root) in &self.upload_roots {
+            anyhow::ensure!(
+                !alias.is_empty()
+                    && alias.len() <= 64
+                    && alias
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-'),
+                "invalid upload root alias"
+            );
+            anyhow::ensure!(
+                root.is_absolute(),
+                "upload roots must be absolute directories"
+            );
+        }
+        if !self.upload_roots.is_empty() {
+            anyhow::ensure!(
+                self.staging_root.as_ref().is_some_and(|p| p.is_absolute()),
+                "configured upload roots require an absolute private staging root"
+            );
+        }
+        Ok(())
+    }
+}
+
+/// An alias and validated relative path to a prepared local attachment.
+#[derive(Clone, Debug)]
+pub struct StagingSource {
+    root: String,
+    relative_path: PathBuf,
+}
+
+impl StagingSource {
+    /// Validate the syntax before storage access or account charging.
+    ///
+    /// # Errors
+    /// Rejects invalid aliases, absolute paths and path traversal.
+    pub fn try_new(root: &str, relative_path: &Path) -> Result<Self, SendFailure> {
+        if root.is_empty()
+            || root.len() > 64
+            || !root
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+            || relative_path.as_os_str().is_empty()
+            || !relative_path
+                .components()
+                .all(|component| matches!(component, Component::Normal(_)))
+            || relative_path.to_string_lossy().contains('\0')
+        {
+            return Err(privacy::invalid());
+        }
+        Ok(Self {
+            root: root.to_owned(),
+            relative_path: relative_path.to_path_buf(),
+        })
+    }
+}
 
 const COPY_BYTES: usize = 524_288;
 
@@ -103,7 +209,7 @@ struct Root {
     identity: FileIdentity,
 }
 struct Owner {
-    runtime_deadline: Mutex<Option<crate::mcp::runtime::DrainDeadline>>,
+    runtime_deadline: Mutex<Option<DrainDeadline>>,
     root: PathBuf,
     root_identity: FileIdentity,
     uid: u32,
@@ -271,7 +377,8 @@ impl Drop for StagedUpload {
     }
 }
 
-pub(crate) struct StagingStore {
+/// Bounded private snapshot storage for one owning account.
+pub struct StagingStore {
     owner: Arc<Owner>,
 }
 impl std::fmt::Debug for StagingStore {
@@ -287,46 +394,42 @@ impl Drop for Cancel {
 }
 
 impl StagingStore {
-    pub(crate) async fn try_new(config: &SendingRuntimeConfig) -> Result<Arc<Self>, SendFailure> {
-        if !config.settings.enabled {
-            return Err(SendFailure::not_sent(
-                SendFailureKind::SendingDisabled,
-                None,
-            ));
-        }
-        config
-            .settings
-            .validate(config.output_format)
-            .map_err(|_| privacy::invalid())?;
+    /// Open a fresh private staging directory and validate the allowed roots.
+    ///
+    /// # Errors
+    /// Rejects invalid limits, insecure directories and insufficient staging access.
+    pub async fn try_new(
+        config: &StagingConfig,
+        protected_paths: &[PathBuf],
+    ) -> Result<Arc<Self>, SendFailure> {
+        config.validate().map_err(|_| privacy::invalid())?;
         let config = config.clone();
+        let protected_paths = protected_paths.to_vec();
         let cancelled = Cancel(Arc::new(AtomicBool::new(false)));
         let flag = Arc::clone(&cancelled.0);
-        let job = tokio::task::spawn_blocking(move || Self::initialize(config, &flag));
+        let job =
+            tokio::task::spawn_blocking(move || Self::initialize(config, protected_paths, &flag));
         tokio::time::timeout(std::time::Duration::from_secs(30), job)
             .await
             .map_err(|_| unavailable())?
             .map_err(|_| unavailable())?
     }
     fn initialize(
-        config: SendingRuntimeConfig,
+        config: StagingConfig,
+        protected_paths: Vec<PathBuf>,
         cancelled: &AtomicBool,
     ) -> Result<Arc<Self>, SendFailure> {
         let uid = privacy::uid()?;
-        let requested = config
-            .settings
-            .staging_root
-            .as_ref()
-            .ok_or_else(privacy::invalid)?;
+        let requested = config.staging_root.as_ref().ok_or_else(privacy::invalid)?;
         let root = privacy::directory(requested, uid, true)?;
         let root_identity =
             privacy::identity(&std::fs::metadata(&root).map_err(|_| privacy::invalid())?)?;
-        let protected = config
-            .protected_paths
+        let protected = protected_paths
             .iter()
             .map(|p| privacy::canonical_missing(p))
             .collect::<Result<Vec<_>, _>>()?;
         let mut roots = BTreeMap::new();
-        for (alias, path) in &config.settings.upload_roots {
+        for (alias, path) in &config.upload_roots {
             if cancelled.load(Ordering::Acquire) {
                 return Err(unavailable());
             }
@@ -368,8 +471,8 @@ impl StagingStore {
                 closed: false,
             }),
             changed: tokio::sync::Notify::new(),
-            max_active: config.settings.max_concurrent_media,
-            max_bytes: config.settings.max_staging_bytes,
+            max_active: config.max_concurrent_media,
+            max_bytes: config.max_staging_bytes,
         });
         Ok(Arc::new(Self {
             owner: Arc::new(Owner {
@@ -382,14 +485,18 @@ impl StagingStore {
                 failed: Mutex::new(Vec::new()),
                 lock: Mutex::new(Some((file, identity))),
                 drain: Mutex::new(None),
-                max_image: config.settings.max_image_bytes,
-                max_media: config.settings.max_media_bytes,
+                max_image: config.max_image_bytes,
+                max_media: config.max_media_bytes,
             }),
         }))
     }
-    pub(crate) async fn stage(
+    /// Copy a validated source into a private, lease-owned snapshot.
+    ///
+    /// # Errors
+    /// Returns a safe error if the source, media, deadline or storage admission fails.
+    pub async fn stage(
         self: &Arc<Self>,
-        source: &UploadSource,
+        source: &StagingSource,
         media: &SendMediaKind,
         deadline: SendDeadline,
     ) -> Result<Arc<StagedUpload>, SendFailure> {
@@ -398,7 +505,7 @@ impl StagingStore {
     }
     async fn stage_using<F>(
         self: &Arc<Self>,
-        source: &UploadSource,
+        source: &StagingSource,
         media: &SendMediaKind,
         deadline: SendDeadline,
         worker: F,
@@ -406,7 +513,6 @@ impl StagingStore {
     where
         F: FnOnce(CopyJob) -> Result<Arc<StagedUpload>, SendFailure> + Send + 'static,
     {
-        source.validate()?;
         media.validate()?;
         if deadline.expired() {
             return Err(SendFailure::not_sent(SendFailureKind::Timeout, None));
@@ -431,10 +537,7 @@ impl StagingStore {
         let cancelled = Cancel(Arc::new(AtomicBool::new(false)));
         let job = CopyJob {
             owner: Arc::clone(&self.owner),
-            source: UploadSource {
-                root: source.root.clone(),
-                relative_path: source.relative_path.clone(),
-            },
+            source: source.clone(),
             media: media.clone(),
             deadline,
             cancelled: Arc::clone(&cancelled.0),
@@ -448,7 +551,11 @@ impl StagingStore {
             })
             .await
     }
-    pub(crate) async fn close(&self, deadline: Instant) -> Result<(), SendFailure> {
+    /// Stop admission and release retained snapshot resources before the deadline.
+    ///
+    /// # Errors
+    /// Returns a safe error after timeout or if owned resources cannot be released.
+    pub async fn close(&self, deadline: Instant) -> Result<(), SendFailure> {
         let deadline = self.stop_admission(deadline)?;
         if Instant::now() >= deadline {
             return Err(unavailable());
@@ -517,10 +624,11 @@ impl StagingStore {
         .map_err(|_| unavailable())?
         .map_err(|_| unavailable())?
     }
-    pub(crate) fn bind_runtime_deadline(
-        &self,
-        deadline: crate::mcp::runtime::DrainDeadline,
-    ) -> Result<(), SendFailure> {
+    /// Bind cleanup to a transport owner’s first deadline.
+    ///
+    /// # Errors
+    /// Returns an unavailable error if the owner state is poisoned.
+    pub fn bind_runtime_deadline(&self, deadline: DrainDeadline) -> Result<(), SendFailure> {
         let mut current = self
             .owner
             .runtime_deadline
@@ -531,7 +639,11 @@ impl StagingStore {
         }
         Ok(())
     }
-    pub(crate) fn stop_admission(&self, deadline: Instant) -> Result<Instant, SendFailure> {
+    /// Stop accepting new snapshots and set the local cleanup bound.
+    ///
+    /// # Errors
+    /// Returns an unavailable error if the owner state is poisoned.
+    pub fn stop_admission(&self, deadline: Instant) -> Result<Instant, SendFailure> {
         self.owner
             .quota
             .state
@@ -547,7 +659,7 @@ impl StagingStore {
 
 struct CopyJob {
     owner: Arc<Owner>,
-    source: UploadSource,
+    source: StagingSource,
     media: SendMediaKind,
     deadline: SendDeadline,
     cancelled: Arc<AtomicBool>,

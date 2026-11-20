@@ -50,7 +50,8 @@ fn join_names(first: Option<&str>, last: Option<&str>) -> Option<String> {
 /// Keyed by [`PeerId`], which bit-packs the peer namespace — a user and a
 /// channel sharing a bare id never collide.
 #[derive(Debug)]
-pub(crate) struct EntityLookup {
+#[doc(hidden)]
+pub struct EntityLookup {
     map: HashMap<PeerId, EntityInfo>,
 }
 
@@ -76,7 +77,7 @@ impl EntityLookup {
     }
 
     /// Build from a response envelope's `chats` + `users` arrays.
-    pub(crate) fn from_envelope(chats: &[tl::enums::Chat], users: &[tl::enums::User]) -> Self {
+    pub fn from_envelope(chats: &[tl::enums::Chat], users: &[tl::enums::User]) -> Self {
         let mut map = HashMap::new();
         for chat in chats {
             // Titles come from whichever variant carries them; forbidden

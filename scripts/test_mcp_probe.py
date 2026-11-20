@@ -50,7 +50,7 @@ with tempfile.TemporaryDirectory() as directory:
         jpeg = base64.b64decode(preview["result"]["content"][index]["data"], validate=True)
         assert jpeg.startswith(b"\xff\xd8")
         jpeg = jpeg[:2] + b"\xff\xe1\xff\xff" + bytes(65533) + b"\xff\xfe\xff\xff" + bytes(65533) + jpeg[2:]
-        mp3 = (Path(__file__).resolve().parents[1] / "src/sending/tests/fixtures/tone.mp3").read_bytes()
+        mp3 = (Path(__file__).resolve().parents[1] / "crates/telegram-core/src/sending/tests/fixtures/tone.mp3").read_bytes()
         # 131072 padding bytes, encoded as the ID3 synchsafe size 00 08 00 00.
         mp3 = b"ID3\x04\0\0\0\x08\0\0" + bytes(131072) + mp3
         for rid, data, media, mime in [

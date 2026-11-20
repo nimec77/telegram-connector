@@ -13,7 +13,8 @@ pub struct SendDeadline {
 
 /// Stages after final dispatch cannot claim that expiry prevented delivery.
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum SendStage {
+#[doc(hidden)]
+pub enum SendStage {
     LocalPreparation,
     Resolve,
     ValidateTargets,
@@ -61,7 +62,12 @@ impl SendDeadline {
         Instant::now() >= self.at
     }
 
-    pub(crate) async fn run<T>(
+    /// Run one stage without renewing the absolute send deadline.
+    ///
+    /// # Errors
+    /// Propagates operation failures and classifies deadline expiry by dispatch stage.
+    #[doc(hidden)]
+    pub async fn run<T>(
         self,
         stage: SendStage,
         future: impl Future<Output = Result<T, SendFailure>>,

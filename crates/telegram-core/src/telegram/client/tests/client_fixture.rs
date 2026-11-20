@@ -1,8 +1,8 @@
 //! An actual grammers client whose runner is retained but never polled: no I/O.
-use super::*;
+use super::{AccountStatus, Arc, Client, SqliteSession, TelegramClient, TimeoutConfig};
 use grammers_mtsender::SenderPool;
 
-pub(crate) async fn stalled_client() -> (TelegramClient, impl Send, tempfile::TempDir) {
+pub async fn stalled_client() -> (TelegramClient, impl Send, tempfile::TempDir) {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("session.db");
     let session = Arc::new(SqliteSession::open(&path).await.expect("temporary session"));

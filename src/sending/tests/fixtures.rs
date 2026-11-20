@@ -1,10 +1,10 @@
-use crate::mcp::tools::types::sending::UploadSource;
 use crate::sending::SendingRuntimeConfig;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::PathBuf;
+use telegram_core::sending::StagingSource;
 
 pub(crate) struct Fixture {
-    pub dir: tempfile::TempDir,
+    _dir: tempfile::TempDir,
     pub source: PathBuf,
     pub staging: PathBuf,
     pub config: SendingRuntimeConfig,
@@ -35,17 +35,14 @@ impl Fixture {
         let bytes = crate::test_helpers::create_test_jpeg(16, 16);
         std::fs::write(source.join("image.jpg"), &bytes).expect("prepared JPEG");
         Self {
-            dir,
+            _dir: dir,
             source,
             staging,
             config,
             bytes,
         }
     }
-    pub fn source(&self, name: &str) -> UploadSource {
-        UploadSource {
-            root: "outgoing".into(),
-            relative_path: name.into(),
-        }
+    pub fn source(&self, name: &str) -> StagingSource {
+        StagingSource::try_new("outgoing", name.as_ref()).expect("valid fixture source")
     }
 }

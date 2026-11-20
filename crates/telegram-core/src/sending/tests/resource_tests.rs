@@ -33,7 +33,9 @@ fn sending_staging_copy_enforces_streamed_size_when_metadata_lies() {
 #[tokio::test]
 async fn sending_staging_cancelled_started_worker_keeps_slot_and_byte_reservation() {
     let fixture = Fixture::new();
-    let store = StagingStore::try_new(&fixture.config).await.expect("store");
+    let store = StagingStore::try_new(&fixture.config, &fixture.protected_paths)
+        .await
+        .expect("store");
     let source = fixture.source("image.jpg");
     let bytes = fixture.bytes.len() as u64;
     let (started_tx, started_rx) = tokio::sync::oneshot::channel();
@@ -95,7 +97,9 @@ async fn sending_staging_cancelled_started_worker_keeps_slot_and_byte_reservatio
 #[tokio::test]
 async fn sending_staging_failed_cleanup_keeps_quota_and_never_deletes_replacement() {
     let fixture = Fixture::new();
-    let store = StagingStore::try_new(&fixture.config).await.expect("store");
+    let store = StagingStore::try_new(&fixture.config, &fixture.protected_paths)
+        .await
+        .expect("store");
     let held = store
         .stage(
             &fixture.source("image.jpg"),

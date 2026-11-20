@@ -3,39 +3,18 @@
 //! Unit of `config` (LM-6). Referenced by `#[serde(default = "...")]`
 //! attributes and ordinary calls via explicit `defaults::` paths in `config.rs`.
 
-use super::{
-    LimitsConfig, LoggingConfig, ObservabilityConfig, SearchConfig, ServerConfig, TimeoutConfig,
-    TranscriptionConfig,
-};
+use super::{LimitsConfig, LoggingConfig, ObservabilityConfig, ServerConfig, TranscriptionConfig};
 use std::path::PathBuf;
 
-/// The user's config directory, or `None` when no home directory can be
-/// determined. Split out from [`config_dir_join`] so the join is pure.
-fn project_config_dir() -> Option<PathBuf> {
-    directories::ProjectDirs::from("", "", "telegram-connector")
-        .map(|dirs| dirs.config_dir().to_path_buf())
-}
-
-/// Append `relative` to the config directory, degrading to a bare relative
-/// path when there is none.
-///
-/// Serde `default = "..."` providers cannot return an error, so a missing
-/// home directory must not abort deserialization — `Config::load_from` and
-/// `logging::init` surface the resulting path in their own errors instead.
-pub(crate) fn config_dir_join(config_dir: Option<PathBuf>, relative: &str) -> PathBuf {
-    match config_dir {
-        Some(dir) => dir.join(relative),
-        None => PathBuf::from(relative),
-    }
-}
-
-pub(crate) fn default_session_file() -> PathBuf {
-    config_dir_join(project_config_dir(), "session.bin")
-}
-
-pub(crate) fn default_search_deadline_seconds() -> u64 {
-    20
-}
+use telegram_core::config::defaults::project_config_dir;
+pub(crate) use telegram_core::config::defaults::{
+    config_dir_join, default_search_config, default_send_secs, default_upload_send_secs,
+};
+#[cfg(test)]
+pub(crate) use telegram_core::config::defaults::{
+    default_download_secs, default_max_download_bytes, default_search_deadline_seconds,
+    default_timeout_config,
+};
 
 pub(crate) fn default_log_level() -> String {
     "info".to_string()
@@ -68,26 +47,6 @@ pub(crate) fn default_shutdown_timeout() -> u64 {
     5
 }
 
-pub(crate) fn default_resolve_secs() -> u64 {
-    30
-}
-
-pub(crate) fn default_history_secs() -> u64 {
-    60
-}
-
-pub(crate) fn default_search_secs() -> u64 {
-    120
-}
-
-pub(crate) fn default_download_secs() -> u64 {
-    120
-}
-
-pub(crate) fn default_max_download_bytes() -> u64 {
-    20 * 1024 * 1024
-}
-
 pub(crate) fn default_transcription_default_timeout() -> u32 {
     30
 }
@@ -107,17 +66,6 @@ pub(crate) fn default_max_buffered_payload_bytes() -> usize {
     262_144
 }
 
-pub(crate) fn default_timeout_config() -> TimeoutConfig {
-    TimeoutConfig {
-        send_secs: default_send_secs(),
-        upload_send_secs: default_upload_send_secs(),
-        resolve_secs: default_resolve_secs(),
-        history_secs: default_history_secs(),
-        search_secs: default_search_secs(),
-        download_secs: default_download_secs(),
-    }
-}
-
 pub(crate) fn default_server_config() -> ServerConfig {
     ServerConfig {
         output_format: super::OutputFormat::JsonV1,
@@ -127,18 +75,6 @@ pub(crate) fn default_server_config() -> ServerConfig {
     }
 }
 
-pub(crate) fn default_search_config() -> SearchConfig {
-    SearchConfig {
-        deadline_seconds: default_search_deadline_seconds(),
-    }
-}
-
-pub(crate) fn default_send_secs() -> u64 {
-    30
-}
-pub(crate) fn default_upload_send_secs() -> u64 {
-    120
-}
 pub(crate) fn default_logging_config() -> LoggingConfig {
     LoggingConfig {
         level: default_log_level(),

@@ -9,7 +9,9 @@ use tokio::time::Instant;
 #[tokio::test]
 async fn sending_staging_detached_read_job_and_completed_bytes_keep_the_snapshot_lease() {
     let fixture = Fixture::new();
-    let store = StagingStore::try_new(&fixture.config).await.expect("store");
+    let store = StagingStore::try_new(&fixture.config, &fixture.protected_paths)
+        .await
+        .expect("store");
     let snapshot = store
         .stage(
             &fixture.source("image.jpg"),
@@ -84,7 +86,9 @@ async fn sending_staging_detached_read_job_and_completed_bytes_keep_the_snapshot
 async fn sending_staging_reader_cannot_return_buffered_bytes_after_operation_expiry() {
     use tokio::io::AsyncReadExt as _;
     let fixture = Fixture::new();
-    let store = StagingStore::try_new(&fixture.config).await.expect("store");
+    let store = StagingStore::try_new(&fixture.config, &fixture.protected_paths)
+        .await
+        .expect("store");
     let snapshot = store
         .stage(
             &fixture.source("image.jpg"),
@@ -123,7 +127,9 @@ async fn sending_staging_reader_cannot_return_buffered_bytes_after_operation_exp
 async fn sending_staging_large_metadata_reader_starts_at_zero_and_preserves_all_bytes() {
     use tokio::io::AsyncReadExt as _;
     let fixture = Fixture::new();
-    let store = StagingStore::try_new(&fixture.config).await.expect("store");
+    let store = StagingStore::try_new(&fixture.config, &fixture.protected_paths)
+        .await
+        .expect("store");
     for (bytes, kind, mime) in [
         (
             crate::sending::media_fixtures::metadata_jpeg(),
@@ -188,9 +194,11 @@ async fn sending_staging_large_metadata_counts_against_the_entire_file_cap() {
         let mut fixture = Fixture::new();
         std::fs::write(fixture.source.join("metadata.bin"), &bytes).expect("source");
         let cap = bytes.len() as u64;
-        fixture.config.settings.max_image_bytes = cap;
-        fixture.config.settings.max_media_bytes = cap;
-        let store = StagingStore::try_new(&fixture.config).await.expect("store");
+        fixture.config.max_image_bytes = cap;
+        fixture.config.max_media_bytes = cap;
+        let store = StagingStore::try_new(&fixture.config, &fixture.protected_paths)
+            .await
+            .expect("store");
         let staged = store
             .stage(
                 &fixture.source("metadata.bin"),

@@ -4,25 +4,11 @@ use crate::config::{Config, OutputFormat, SendingConfig};
 use crate::telegram::types::sending::{SendFailure, SendFailureKind};
 use std::path::{Path, PathBuf};
 
-mod privacy;
-mod probe;
-mod reader;
-pub(crate) mod staging;
-pub use reader::StagedReader;
-pub use staging::StagedUpload;
+pub(crate) use telegram_core::sending::staging;
+pub use telegram_core::sending::{StagedReader, StagedUpload};
 
 #[cfg(test)]
-#[path = "sending/tests/media_fixtures.rs"]
-pub(crate) mod media_fixtures;
-#[cfg(all(test, unix))]
-#[path = "sending/tests/privacy_tests.rs"]
-mod privacy_tests;
-#[cfg(test)]
-#[path = "sending/tests/probe_tests.rs"]
-mod probe_tests;
-#[cfg(all(test, unix))]
-#[path = "sending/tests/staging_tests.rs"]
-mod staging_tests;
+pub(crate) use telegram_core::sending::media_fixtures;
 #[cfg(all(test, unix))]
 #[path = "sending/tests/fixtures.rs"]
 pub(crate) mod test_support;

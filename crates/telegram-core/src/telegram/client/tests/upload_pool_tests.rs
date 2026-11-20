@@ -23,8 +23,10 @@ struct Counting<R> {
 #[tokio::test]
 async fn sending_media_stalled_setup_cannot_hold_capacity_after_caller_cancellation() {
     let mut fixture = Fixture::new();
-    fixture.config.settings.max_concurrent_media = 1;
-    let store = StagingStore::try_new(&fixture.config).await.expect("store");
+    fixture.config.max_concurrent_media = 1;
+    let store = StagingStore::try_new(&fixture.config, &fixture.protected_paths)
+        .await
+        .expect("store");
     let snapshot = store
         .stage(
             &fixture.source("image.jpg"),
@@ -112,8 +114,10 @@ async fn reclaimed_snapshot(store: &Arc<StagingStore>, fixture: &Fixture) -> Arc
 #[tokio::test]
 async fn sending_media_owned_runtime_deadline_stops_stalled_driver_without_caller_drop() {
     let mut fixture = Fixture::new();
-    fixture.config.settings.max_concurrent_media = 1;
-    let store = StagingStore::try_new(&fixture.config).await.expect("store");
+    fixture.config.max_concurrent_media = 1;
+    let store = StagingStore::try_new(&fixture.config, &fixture.protected_paths)
+        .await
+        .expect("store");
     let snapshot = store
         .stage(
             &fixture.source("image.jpg"),
@@ -172,8 +176,10 @@ impl Drop for ChildBuffer {
 #[tokio::test]
 async fn sending_media_owned_runtime_destroys_child_buffers_before_releasing_snapshot_admission() {
     let mut fixture = Fixture::new();
-    fixture.config.settings.max_concurrent_media = 1;
-    let store = StagingStore::try_new(&fixture.config).await.expect("store");
+    fixture.config.max_concurrent_media = 1;
+    let store = StagingStore::try_new(&fixture.config, &fixture.protected_paths)
+        .await
+        .expect("store");
     let snapshot = store
         .stage(
             &fixture.source("image.jpg"),
@@ -274,7 +280,9 @@ async fn sending_media_two_near_cap_real_uploaders_keep_queued_parts_admitted_af
     file.set_len(104_857_600).expect("100 MiB");
     file.rewind().expect("position");
     drop(file);
-    let store = StagingStore::try_new(&fixture.config).await.expect("store");
+    let store = StagingStore::try_new(&fixture.config, &fixture.protected_paths)
+        .await
+        .expect("store");
     let (client, _original_runner, _dir) = super::super::stalled_client().await;
     let kind = SendMediaKind::Video {
         duration_seconds: 1.0,

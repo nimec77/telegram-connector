@@ -1,6 +1,6 @@
 //! Synthetic metadata-heavy media shared by portable probe and Unix staging tests.
 
-pub(crate) fn metadata_jpeg() -> Vec<u8> {
+pub fn metadata_jpeg() -> Vec<u8> {
     let jpeg = crate::test_helpers::create_test_jpeg(16, 16);
     let mut bytes = jpeg[..2].to_vec();
     for marker in [0xe1, 0xfe] {
@@ -11,7 +11,7 @@ pub(crate) fn metadata_jpeg() -> Vec<u8> {
     bytes
 }
 
-pub(crate) fn tagged_mp3(version: u8, flags: u8, body: &[u8]) -> Vec<u8> {
+pub fn tagged_mp3(version: u8, flags: u8, body: &[u8]) -> Vec<u8> {
     let size = body.len();
     assert!(size < (1 << 28));
     let header = [

@@ -9,7 +9,7 @@ use std::time::Duration;
 async fn sending_privacy_adjacent_sources_are_allowed_but_sensitive_roots_and_overlap_are_rejected()
 {
     let fixture = Fixture::new();
-    let store = StagingStore::try_new(&fixture.config)
+    let store = StagingStore::try_new(&fixture.config, &fixture.protected_paths)
         .await
         .expect("source is adjacent to logs, not inside them");
     store
@@ -29,13 +29,11 @@ async fn sending_privacy_adjacent_sources_are_allowed_but_sensitive_roots_and_ov
             std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700))
                 .expect("private");
         }
-        fixture
-            .config
-            .settings
-            .upload_roots
-            .insert("outgoing".into(), root);
+        fixture.config.upload_roots.insert("outgoing".into(), root);
         assert!(
-            StagingStore::try_new(&fixture.config).await.is_err(),
+            StagingStore::try_new(&fixture.config, &fixture.protected_paths)
+                .await
+                .is_err(),
             "protected case {case}"
         );
     }
@@ -56,16 +54,16 @@ async fn sending_privacy_path_escapes_symlinks_hardlinks_and_nonregular_sources_
     .expect("fixture hardlink");
     std::fs::create_dir(fixture.source.join("directory")).expect("directory");
     symlink(&fixture.source, fixture.source.join("alias")).expect("intermediate symlink");
-    let store = StagingStore::try_new(&fixture.config).await.expect("store");
-    for name in [
-        "../image.jpg",
-        "/etc/passwd",
-        "link.jpg",
-        "hard.jpg",
-        "directory",
-        "alias/image.jpg",
-        "",
-    ] {
+    let store = StagingStore::try_new(&fixture.config, &fixture.protected_paths)
+        .await
+        .expect("store");
+    for path in ["../image.jpg", "/etc/passwd", ""] {
+        assert!(
+            crate::sending::StagingSource::try_new("outgoing", path.as_ref()).is_err(),
+            "{path}"
+        );
+    }
+    for name in ["link.jpg", "hard.jpg", "directory", "alias/image.jpg"] {
         assert!(
             store
                 .stage(
@@ -99,7 +97,11 @@ async fn sending_privacy_requires_fresh_private_root_and_protected_ancestry() {
                     .expect("sticky is not a private parent")
             }
         }
-        assert!(StagingStore::try_new(&fixture.config).await.is_err());
+        assert!(
+            StagingStore::try_new(&fixture.config, &fixture.protected_paths)
+                .await
+                .is_err()
+        );
     }
 }
 
@@ -116,7 +118,9 @@ async fn sending_privacy_hostile_filename_is_sanitized_and_fifo_is_not_opened() 
             .expect("disposable FIFO")
             .success()
     );
-    let store = StagingStore::try_new(&fixture.config).await.expect("store");
+    let store = StagingStore::try_new(&fixture.config, &fixture.protected_paths)
+        .await
+        .expect("store");
     let held = store
         .stage(
             &fixture.source(name),
@@ -189,5 +193,9 @@ async fn sending_privacy_rejects_granting_acl_on_disposable_source_root() {
             .expect("fixture ACL")
             .success()
     );
-    assert!(StagingStore::try_new(&fixture.config).await.is_err());
+    assert!(
+        StagingStore::try_new(&fixture.config, &fixture.protected_paths)
+            .await
+            .is_err()
+    );
 }

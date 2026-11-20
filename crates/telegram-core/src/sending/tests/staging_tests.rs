@@ -13,7 +13,9 @@ fn deadline() -> SendDeadline {
 #[tokio::test]
 async fn sending_staging_snapshot_is_private_immutable_and_streamed_from_the_snapshot() {
     let fixture = Fixture::new();
-    let store = StagingStore::try_new(&fixture.config).await.expect("store");
+    let store = StagingStore::try_new(&fixture.config, &fixture.protected_paths)
+        .await
+        .expect("store");
     let staged = store
         .stage(
             &fixture.source("image.jpg"),
@@ -71,7 +73,9 @@ async fn sending_staging_snapshot_is_private_immutable_and_streamed_from_the_sna
 #[tokio::test]
 async fn sending_staging_slots_and_byte_quota_refuse_promptly_without_overcommit() {
     let fixture = Fixture::new();
-    let store = StagingStore::try_new(&fixture.config).await.expect("store");
+    let store = StagingStore::try_new(&fixture.config, &fixture.protected_paths)
+        .await
+        .expect("store");
     let a = store
         .stage(
             &fixture.source("image.jpg"),
@@ -108,10 +112,10 @@ async fn sending_staging_slots_and_byte_quota_refuse_promptly_without_overcommit
         .expect("cleanup");
     let mut fixture = Fixture::new();
     let cap = fixture.bytes.len() as u64;
-    fixture.config.settings.max_image_bytes = cap;
-    fixture.config.settings.max_media_bytes = cap;
-    fixture.config.settings.max_staging_bytes = cap;
-    let store = StagingStore::try_new(&fixture.config)
+    fixture.config.max_image_bytes = cap;
+    fixture.config.max_media_bytes = cap;
+    fixture.config.max_staging_bytes = cap;
+    let store = StagingStore::try_new(&fixture.config, &fixture.protected_paths)
         .await
         .expect("bounded store");
     let held = store
@@ -144,8 +148,10 @@ async fn sending_staging_slots_and_byte_quota_refuse_promptly_without_overcommit
 #[tokio::test]
 async fn sending_staging_cap_plus_one_and_type_mismatch_fail_without_source_changes() {
     let mut fixture = Fixture::new();
-    fixture.config.settings.max_image_bytes = fixture.bytes.len() as u64 - 1;
-    let store = StagingStore::try_new(&fixture.config).await.expect("store");
+    fixture.config.max_image_bytes = fixture.bytes.len() as u64 - 1;
+    let store = StagingStore::try_new(&fixture.config, &fixture.protected_paths)
+        .await
+        .expect("store");
     assert_eq!(
         store
             .stage(

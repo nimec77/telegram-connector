@@ -3,9 +3,10 @@ use crate::config::ServerConfig;
 use crate::mcp::observability::SessionMetrics;
 use rmcp::model::{ErrorCode, ErrorData, ProgressToken, RequestId};
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, OnceLock};
 use std::time::Duration;
+use telegram_core::deadline::DrainDeadline;
 use tokio::sync::{Mutex, Notify, watch};
 use tokio::time::Instant;
 
@@ -38,7 +39,7 @@ pub(super) struct State {
     next_id: AtomicU64,
     pub operations: Mutex<HashMap<RequestId, Arc<Operation>>>,
     pub phase: watch::Sender<Phase>,
-    pub first_drain_deadline: Arc<OnceLock<Instant>>,
+    pub first_drain_deadline: DrainDeadline,
     admission_closed: AtomicBool,
     pub changed: Notify,
     pub write_gate: Mutex<()>,
@@ -55,7 +56,7 @@ impl State {
             next_id: AtomicU64::new(0),
             operations: Mutex::new(HashMap::new()),
             phase: watch::channel(Phase::Running).0,
-            first_drain_deadline: Arc::new(OnceLock::new()),
+            first_drain_deadline: DrainDeadline::default(),
             admission_closed: AtomicBool::new(false),
             changed: Notify::new(),
             write_gate: Mutex::new(()),
@@ -75,7 +76,7 @@ impl State {
             if matches!(phase, Phase::Running) {
                 let deadline =
                     Instant::now() + Duration::from_secs(self.config.shutdown_timeout_seconds);
-                let deadline = *self.first_drain_deadline.get_or_init(|| deadline);
+                let deadline = self.first_drain_deadline.start(deadline);
                 *phase = Phase::Draining(deadline);
                 true
             } else {

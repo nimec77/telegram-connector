@@ -31,7 +31,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         }
         self.outgoing_store = if config.settings.enabled && !config.settings.upload_roots.is_empty()
         {
-            Some(crate::sending::staging::StagingStore::try_new(&config).await?)
+            Some(
+                crate::sending::staging::StagingStore::try_new(
+                    &config.settings.staging_config(),
+                    &config.protected_paths,
+                )
+                .await?,
+            )
         } else {
             None
         };

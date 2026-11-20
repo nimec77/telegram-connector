@@ -8,7 +8,8 @@ use crate::telegram::types::sending::{
 use crate::telegram::types::{MessageId, PeerNamespace, Username};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::path::{Component, PathBuf};
+use std::path::PathBuf;
+use telegram_core::sending::StagingSource;
 
 fn invalid() -> SendFailure {
     SendFailure::not_sent(SendFailureKind::InvalidInput, None)
@@ -130,26 +131,8 @@ pub struct UploadSource {
 }
 
 impl UploadSource {
-    pub(crate) fn validate(&self) -> Result<(), SendFailure> {
-        if self.root.is_empty()
-            || self.root.len() > 64
-            || !self
-                .root
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
-            || self.relative_path.as_os_str().is_empty()
-            || !self
-                .relative_path
-                .components()
-                .all(|c| matches!(c, Component::Normal(_)))
-            || self.relative_path.to_string_lossy().contains('\0')
-        {
-            return Err(SendFailure::not_sent(
-                SendFailureKind::UploadSourceInvalid,
-                None,
-            ));
-        }
-        Ok(())
+    fn into_staging_source(self) -> Result<StagingSource, SendFailure> {
+        StagingSource::try_new(&self.root, &self.relative_path)
     }
 }
 
@@ -225,7 +208,7 @@ pub struct SendMediaRequest {
 
 pub(crate) struct ValidatedMediaSend {
     pub options: SendOptions,
-    pub source: UploadSource,
+    pub source: StagingSource,
     pub media: SendMediaKind,
     pub caption: String,
 }
@@ -238,7 +221,7 @@ impl SendMediaRequest {
             self.topic_id,
             self.silent,
         )?;
-        self.source.validate()?;
+        let source = self.source.into_staging_source()?;
         let media: SendMediaKind = self.media.into();
         media.validate()?;
         if self.caption.encode_utf16().count() > 1024 {
@@ -246,7 +229,7 @@ impl SendMediaRequest {
         }
         Ok(ValidatedMediaSend {
             options,
-            source: self.source,
+            source,
             media,
             caption: self.caption,
         })

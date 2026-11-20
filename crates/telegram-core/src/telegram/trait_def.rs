@@ -27,7 +27,7 @@ use crate::telegram::types::{
 /// Common failures are [`Error::InvalidInput`] (bad/missing references),
 /// [`Error::TelegramApi`] (upstream failure), and [`Error::Timeout`] (dropped stage).
 /// There are no automatic retries at this seam.
-#[cfg_attr(test, mockall::automock)]
+#[cfg_attr(any(test, feature = "test-support"), mockall::automock)]
 #[async_trait::async_trait]
 pub trait TelegramClientTrait: Send + Sync {
     /// Upload a validated snapshot and create one media message under the shared deadline.

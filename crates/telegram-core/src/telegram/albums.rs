@@ -55,7 +55,8 @@ impl PostCounter {
 
 /// Whether a result page counts album siblings as one post or separate messages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AlbumMode {
+#[doc(hidden)]
+pub enum AlbumMode {
     Collapse,
     Separate,
 }
@@ -79,7 +80,8 @@ impl AlbumMode {
 /// a qualifying message exists beyond the page (A8). A refusal latches
 /// `has_more`.
 #[derive(Debug)]
-pub(crate) struct PageAccumulator {
+#[doc(hidden)]
+pub struct PageAccumulator {
     messages: Vec<Message>,
     counter: PostCounter,
     album_mode: AlbumMode,
@@ -88,7 +90,7 @@ pub(crate) struct PageAccumulator {
 }
 
 impl PageAccumulator {
-    pub(crate) fn new(album_mode: AlbumMode, limit: usize) -> Self {
+    pub fn new(album_mode: AlbumMode, limit: usize) -> Self {
         Self {
             messages: Vec::new(),
             counter: PostCounter::default(),
@@ -101,7 +103,7 @@ impl PageAccumulator {
     /// Admit `message` into the page. Returns `false` when the page is full —
     /// the caller stops fetching.
     #[must_use = "a false return means the page is full and the caller must stop fetching"]
-    pub(crate) fn push(&mut self, message: Message) -> bool {
+    pub fn push(&mut self, message: Message) -> bool {
         let admitted = if self.album_mode == AlbumMode::Collapse {
             self.counter.admit(album_key(&message), self.limit)
         } else {
@@ -125,7 +127,7 @@ impl PageAccumulator {
     }
 
     /// Finish the page: collapse album siblings when enabled.
-    pub(crate) fn into_messages(self) -> Vec<Message> {
+    pub fn into_messages(self) -> Vec<Message> {
         if self.album_mode == AlbumMode::Collapse {
             collapse_albums(self.messages)
         } else {

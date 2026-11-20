@@ -26,7 +26,9 @@ pub use media::{
     extract_document_info, extract_poll_info, extract_video_info, select_size_candidate,
     size_candidates,
 };
-pub(crate) use message::{convert_raw_message, message_timestamp, timestamp_from_raw};
+#[doc(hidden)]
+pub use message::convert_raw_message;
+pub(crate) use message::{message_timestamp, timestamp_from_raw};
 
 #[cfg(test)]
 #[path = "tests/converters_av_tests.rs"]

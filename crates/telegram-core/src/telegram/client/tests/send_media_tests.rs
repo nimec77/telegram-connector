@@ -60,7 +60,7 @@ async fn sending_media_requests_have_exact_kind_attributes_and_no_unrequested_mu
             },
         ),
     ] {
-        let store = StagingStore::try_new(&fixture.config)
+        let store = StagingStore::try_new(&fixture.config, &fixture.protected_paths)
             .await
             .expect("fresh store");
         let staged = store

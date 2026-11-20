@@ -56,3 +56,6 @@ mod transcription;
 
 #[path = "tests/media_artifacts.rs"]
 mod media_artifacts;
+
+#[path = "tests/media_pipeline_boundary.rs"]
+mod media_pipeline_boundary;

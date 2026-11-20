@@ -1,6 +1,6 @@
 //! Operational bounds and setup credential validation.
 
-use super::{Config, LimitsConfig, SearchConfig, ServerConfig, TimeoutConfig};
+use super::{Config, LimitsConfig, ServerConfig};
 
 impl ServerConfig {
     /// Reject unbounded input/admission and unreasonable drain budgets.
@@ -25,33 +25,6 @@ impl ServerConfig {
     }
 }
 
-impl TimeoutConfig {
-    /// Reject zero values — a zero budget would cancel every call instantly.
-    ///
-    /// # Errors
-    /// Returns an error when any resolution, history, search, or download budget is zero.
-    pub fn validate(&self) -> anyhow::Result<()> {
-        if self.resolve_secs == 0 {
-            anyhow::bail!("telegram.timeouts.resolve_secs must be > 0");
-        }
-        if self.history_secs == 0 {
-            anyhow::bail!("telegram.timeouts.history_secs must be > 0");
-        }
-        if self.search_secs == 0 {
-            anyhow::bail!("telegram.timeouts.search_secs must be > 0");
-        }
-        if self.download_secs == 0 {
-            anyhow::bail!("telegram.timeouts.download_secs must be > 0");
-        }
-        for seconds in [self.send_secs, self.upload_send_secs] {
-            crate::telegram::sending::SendDeadline::new(seconds).map_err(|_| {
-                anyhow::anyhow!("sending timeouts must be nonzero and fit the clock")
-            })?;
-        }
-        Ok(())
-    }
-}
-
 impl super::SendingConfig {
     /// Check local settings; filesystem ownership/ACL checks occur at media startup.
     ///
@@ -62,79 +35,15 @@ impl super::SendingConfig {
             !self.enabled || format == super::OutputFormat::JsonV1,
             "sending requires canonical json_v1 output"
         );
-        anyhow::ensure!(
-            (1..=10_485_760).contains(&self.max_image_bytes)
-                && (1..=104_857_600).contains(&self.max_media_bytes),
-            "invalid sending file caps"
-        );
-        anyhow::ensure!(
-            (1..=2).contains(&self.max_concurrent_media),
-            "sending concurrency must be one or two"
-        );
-        anyhow::ensure!(
-            self.max_staging_bytes >= self.max_image_bytes.max(self.max_media_bytes),
-            "sending staging quota must fit the largest permitted file"
-        );
-        for (alias, root) in &self.upload_roots {
-            anyhow::ensure!(
-                !alias.is_empty()
-                    && alias.len() <= 64
-                    && alias
-                        .bytes()
-                        .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-'),
-                "invalid upload root alias"
-            );
-            anyhow::ensure!(
-                root.is_absolute(),
-                "upload roots must be absolute directories"
-            );
-        }
-        if !self.upload_roots.is_empty() {
-            anyhow::ensure!(
-                self.staging_root.as_ref().is_some_and(|p| p.is_absolute()),
-                "configured upload roots require an absolute private staging root"
-            );
-        }
-        Ok(())
+        self.staging_config().validate()
     }
 }
-
-/// Upper bound accepted for `[search] deadline_seconds`.
-///
-/// `SearchBudget::new` computes `Instant::now() + Duration::from_secs(deadline_secs)`,
-/// which panics on overflow in every build profile. This cap keeps a pathological
-/// TOML value from turning every search into a panic. It is deliberately permissive:
-/// a useful value sits well below `[telegram.timeouts] search_secs` (default 120),
-/// which is the actual practical ceiling.
-const MAX_SEARCH_DEADLINE_SECONDS: u64 = 3600;
 
 /// Floor below which an image would be downscaled past usefulness. Once a
 /// batch's remaining budget drops under this, `Base64Budget::allowance`
 /// returns `None` rather than emitting an unreadable thumbnail — which is why
 /// `limits.media_batch_max_total_bytes` is validated against it here.
 pub(crate) const MIN_IMAGE_BASE64_BYTES: usize = 32_768;
-
-impl SearchConfig {
-    /// Reject a zero deadline (would end every search before its first page) or a
-    /// deadline above `MAX_SEARCH_DEADLINE_SECONDS` (would overflow the `Instant`
-    /// arithmetic in `SearchBudget::new`).
-    ///
-    /// # Errors
-    /// Returns an error when the search deadline is outside 1..=3600 seconds.
-    pub fn validate(&self) -> anyhow::Result<()> {
-        if self.deadline_seconds == 0 {
-            anyhow::bail!("search.deadline_seconds must be > 0");
-        }
-        if self.deadline_seconds > MAX_SEARCH_DEADLINE_SECONDS {
-            anyhow::bail!(
-                "search.deadline_seconds must be between 1 and {MAX_SEARCH_DEADLINE_SECONDS}, \
-                 got {}",
-                self.deadline_seconds
-            );
-        }
-        Ok(())
-    }
-}
 
 impl LimitsConfig {
     /// Reject a zero budget — it would make every response over-cap. Also
@@ -183,21 +92,6 @@ impl Config {
                 Get your API credentials from: https://my.telegram.org"
             );
         }
-        Ok(())
-    }
-}
-
-impl super::TelegramConfig {
-    /// Require one permitted download to fit the process-wide raw-input allowance.
-    ///
-    /// # Errors
-    /// Rejects zero bytes or a cap above 80 MiB; input reservations share that allowance.
-    pub fn validate_media_limits(&self) -> anyhow::Result<()> {
-        anyhow::ensure!(
-            (1..=crate::telegram::media_pipeline::RAW_MEDIA_MEMORY_BYTES as u64)
-                .contains(&self.max_download_bytes),
-            "telegram.max_download_bytes must be 1..=83886080 to fit global raw-memory admission"
-        );
         Ok(())
     }
 }

@@ -52,7 +52,11 @@ impl TelegramClient {
 
     /// `Some` carries the 2FA challenge, `None` means authentication succeeded.
     /// This deadline starts after interactive code entry has completed.
-    pub(crate) async fn sign_in(
+    /// Complete code-based sign-in, returning a password challenge when required.
+    ///
+    /// # Errors
+    /// Returns a bounded, redacted sign-in failure if Telegram rejects the code or is unavailable.
+    pub async fn sign_in(
         &self,
         token: &LoginToken,
         code: &str,

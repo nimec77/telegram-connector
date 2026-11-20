@@ -58,7 +58,8 @@ impl MediaDeadline {
     }
 }
 
-struct RawMediaPool {
+#[doc(hidden)]
+pub struct RawMediaPool {
     slots: Arc<Semaphore>,
     bytes: Arc<Semaphore>,
     byte_limit: usize,
@@ -66,7 +67,7 @@ struct RawMediaPool {
     peak_retained: AtomicUsize,
 }
 impl RawMediaPool {
-    fn new(slots: usize, bytes: usize) -> Arc<Self> {
+    pub fn new(slots: usize, bytes: usize) -> Arc<Self> {
         Arc::new(Self {
             slots: Arc::new(Semaphore::new(slots)),
             bytes: Arc::new(Semaphore::new(bytes)),
@@ -75,7 +76,19 @@ impl RawMediaPool {
             peak_retained: AtomicUsize::new(0),
         })
     }
-    async fn acquire(
+    #[cfg(feature = "test-support")]
+    pub fn usage(&self) -> (usize, usize) {
+        (
+            self.retained.load(Ordering::Relaxed),
+            self.peak_retained.load(Ordering::Relaxed),
+        )
+    }
+
+    /// Reserve raw bytes under the operation deadline.
+    ///
+    /// # Errors
+    /// Returns a typed deadline or capacity error.
+    pub async fn acquire(
         self: &Arc<Self>,
         max_bytes: u64,
         deadline: MediaDeadline,
@@ -201,7 +214,8 @@ where
         download,
     )
 }
-fn media_stream_with_pool<J, D, F>(
+#[doc(hidden)]
+pub fn media_stream_with_pool<J, D, F>(
     pool: Arc<RawMediaPool>,
     jobs: Vec<(i32, J)>,
     deadline: MediaDeadline,

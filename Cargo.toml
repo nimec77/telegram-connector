@@ -25,15 +25,6 @@ telegram-core = { path = "crates/telegram-core", version = "0.26.1" }
 # MCP
 rmcp = { version = "3.11.0", features = ["server"] }
 
-# Telegram — upstream moved to Codeberg in Feb 2026; the GitHub repo is a
-# stale mirror slated for deletion. Do not point these back at github.com.
-# Pinned by rev, not branch: Codeberg master is active and ships breaking
-# changes; bump the rev deliberately (all three together) and expect to
-# absorb API churn when you do.
-grammers-client = { git = "https://codeberg.org/Lonami/grammers", rev = "e61cf8585e1e9969ab81eda9fb4725a1500e2d86" }
-grammers-session = { git = "https://codeberg.org/Lonami/grammers", rev = "e61cf8585e1e9969ab81eda9fb4725a1500e2d86" }
-grammers-mtsender = { git = "https://codeberg.org/Lonami/grammers", rev = "e61cf8585e1e9969ab81eda9fb4725a1500e2d86" }
-
 # Async
 # Explicit feature list rather than `full`: "net" and "fs" are unused here, and
 # `full` also pulls "parking_lot". Each entry below backs a real call site —
@@ -57,7 +48,7 @@ tokio = { workspace = true, features = [
     "time",
 ] }
 async-trait.workspace = true
-futures = "0.3.34"
+futures.workspace = true
 
 # Interactive prompts
 dialoguer = "0.12.0"
@@ -70,10 +61,10 @@ toml = "1.2.1"
 serde.workspace = true
 serde_json = "1.0.154"
 schemars.workspace = true
-directories = "6.0.0"
+directories.workspace = true
 
 # Logging
-tracing = "0.1.44"
+tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = [
     "env-filter",
     "fmt",
@@ -89,26 +80,28 @@ thiserror.workspace = true
 jiff.workspace = true
 
 # Security
-getrandom = "0.4.3"
-secrecy = { version = "0.10", features = ["serde"] }
+getrandom.workspace = true
+secrecy.workspace = true
 
 # Media processing
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
 base64 = "0.23.1"
 
 [dev-dependencies]
+grammers-client.workspace = true
+grammers-session.workspace = true
+grammers-mtsender.workspace = true
+
 telegram-core = { path = "crates/telegram-core", version = "0.26.1", features = ["test-support"] }
 # Exercise the modern binding over loopback without enabling HTTP for production stdio.
 axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio"] }
 rmcp = { version = "3.11.0", features = ["transport-streamable-http-server"] }
-# Recreate the previous SQLite session schema offline; same storage line/features as grammers.
-libsql = { version = "0.10.0", default-features = false, features = ["core"] }
 # PNG codec for tests: create_test_jpeg & non-JPEG re-encode test write_to PNG
 image = { version = "0.25", default-features = false, features = ["png"] }
 # `test-util` enables the pausable test clock; `net` enables the loopback HTTP fixture.
 # Neither feature needs to be requested on the production connector dependency.
 tokio = { workspace = true, features = ["test-util", "net"] }
-tempfile = "3.27.0"
+tempfile.workspace = true
 proptest.workspace = true
 mockall.workspace = true
 # Validate real advertised 2020-12 output unions offline; no HTTP/file resolver defaults.
@@ -127,6 +120,15 @@ return_self_not_must_use = "warn"
 workspace = true
 
 [workspace.dependencies]
+# Telegram — upstream moved to Codeberg in Feb 2026; the GitHub repo is a
+# stale mirror slated for deletion. Do not point these back at github.com.
+# Pinned by rev, not branch: Codeberg master is active and ships breaking
+# changes; bump the rev deliberately (all three together) and expect to
+# absorb API churn when you do.
+grammers-client = { git = "https://codeberg.org/Lonami/grammers", rev = "e61cf8585e1e9969ab81eda9fb4725a1500e2d86" }
+grammers-session = { git = "https://codeberg.org/Lonami/grammers", rev = "e61cf8585e1e9969ab81eda9fb4725a1500e2d86" }
+grammers-mtsender = { git = "https://codeberg.org/Lonami/grammers", rev = "e61cf8585e1e9969ab81eda9fb4725a1500e2d86" }
+
 jiff = { version = "1.0.1", default-features = false, features = ["std"] }
 schemars = { version = "1.2.3", features = ["derive"] }
 anyhow = "1.0.104"
@@ -136,3 +138,9 @@ proptest = "1.12.0"
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "2.0.21"
 tokio = "1.54.1"
+directories = "6.0.0"
+futures = "0.3.34"
+getrandom = "0.4.3"
+secrecy = { version = "0.10", features = ["serde"] }
+tracing = "0.1.44"
+tempfile = "3.27.0"

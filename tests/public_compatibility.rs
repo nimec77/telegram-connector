@@ -164,3 +164,35 @@ fn core_account_primitives_keep_the_facade_type_identity() -> anyhow::Result<()>
     );
     Ok(())
 }
+
+#[test]
+fn telegram_facade_reexports_the_core_client_and_domain_types() -> anyhow::Result<()> {
+    fn client(
+        value: &telegram_connector::TelegramClient,
+    ) -> &telegram_core::telegram::TelegramClient {
+        value
+    }
+    fn trait_client(value: &impl telegram_connector::TelegramClientTrait) {
+        fn uses_core_trait(_: &impl telegram_core::telegram::TelegramClientTrait) {}
+        uses_core_trait(value);
+    }
+    fn attachment(
+        value: telegram_connector::sending::StagedUpload,
+    ) -> telegram_core::sending::StagedUpload {
+        value
+    }
+    let _ = client;
+    trait_client(&ReadOnlyClient);
+    let _ = attachment;
+    let id: telegram_core::telegram::ChannelId = telegram_connector::telegram::ChannelId::new(42)?;
+    let link: telegram_core::link::MessageLink = telegram_connector::MessageLink::new(
+        id,
+        telegram_connector::telegram::MessageId::new(7)?,
+        None,
+    );
+    assert_eq!(link.https_link, "https://t.me/c/42/7");
+    let config: telegram_connector::Config = toml::from_str("[telegram]\napi_id = 1")?;
+    let _: telegram_core::config::TelegramConfig = config.telegram;
+    let _: telegram_core::config::SearchConfig = config.search;
+    Ok(())
+}

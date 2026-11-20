@@ -230,7 +230,8 @@ fn raw_grouped_id(raw: &tl::enums::Message) -> Option<i64> {
 /// production constructor other than `from_envelope`. Pure function of its
 /// inputs — no client, no network (the zero-extra-call invariant is
 /// structural).
-pub(crate) fn convert_raw_message(
+#[doc(hidden)]
+pub fn convert_raw_message(
     raw: &tl::enums::Message,
     peer: &grammers_client::peer::Peer,
     entities: &EntityLookup,

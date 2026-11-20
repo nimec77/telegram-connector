@@ -56,10 +56,11 @@ impl TranscriptionDeadline {
 
     /// Cancel a stage at the shared deadline; completion at expiry is too late.
     /// Existing per-RPC timeout wrappers remain inside this outer bound.
-    pub(crate) async fn run<T>(
-        self,
-        future: impl Future<Output = Result<T, Error>>,
-    ) -> Result<T, Error> {
+    /// Run one operation under the existing transcription deadline.
+    ///
+    /// # Errors
+    /// Returns the operation error or a timeout.
+    pub async fn run<T>(self, future: impl Future<Output = Result<T, Error>>) -> Result<T, Error> {
         let mut future = std::pin::pin!(future);
         let guarded = std::future::poll_fn(|cx| {
             // Check every resumption, before a compound future can advance to

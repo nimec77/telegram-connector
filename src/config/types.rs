@@ -1,7 +1,6 @@
 //! Configuration representation, serde defaults and credential accessors.
 
-use super::{RateLimitConfig, defaults};
-use secrecy::{ExposeSecret, SecretString};
+use super::{RateLimitConfig, SearchConfig, TelegramConfig, defaults};
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -73,107 +72,6 @@ impl Default for ServerConfig {
     }
 }
 
-/// MTProto connection/session settings; credentials are required only for setup.
-#[derive(Debug, Clone, Deserialize)]
-pub struct TelegramConfig {
-    /// API ID from <https://my.telegram.org> (always required for connection)
-    pub api_id: i32,
-    /// API hash from <https://my.telegram.org> (required only for --setup)
-    #[serde(default, deserialize_with = "deserialize_optional_secret_string")]
-    pub api_hash: Option<SecretString>,
-    /// Phone number for authentication (required only for --setup)
-    #[serde(default, deserialize_with = "deserialize_optional_secret_string")]
-    pub phone_number: Option<SecretString>,
-    /// Session file path (always used)
-    #[serde(default = "defaults::default_session_file")]
-    pub session_file: PathBuf,
-    /// Per-call-type timeout budgets for grammers network operations.
-    #[serde(default = "defaults::default_timeout_config")]
-    pub timeouts: TimeoutConfig,
-    /// Hard cap (bytes) on a single media download; transfers exceeding it are
-    /// rejected before and during streaming. Default 20 MiB. Pairs with
-    /// `[rate_limiting] media_download_cost`, which prices the download (AD-6).
-    #[serde(default = "defaults::default_max_download_bytes")]
-    /// Accepted range is 1..=80 MiB; four process-wide raw slots share 80 MiB.
-    pub max_download_bytes: u64,
-}
-
-/// Timeout budgets (seconds) applied to grammers calls in [`crate::telegram::client`].
-///
-/// Call categories have separate budgets. Multi-iteration walks
-/// (`iter_messages.next()`, `search_iter.next()`) measure *total* elapsed time across all
-/// iterations, not per-iteration.
-#[derive(Debug, Clone, Deserialize)]
-pub struct TimeoutConfig {
-    /// Total text-send budget, starting before local admission.
-    #[serde(default = "defaults::default_send_secs")]
-    pub send_secs: u64,
-    /// Total media-send budget including staging, upload and final acknowledgement.
-    #[serde(default = "defaults::default_upload_send_secs")]
-    pub upload_send_secs: u64,
-    /// Resolve/dialog lookups, account checks and authentication RPCs. Interactive
-    /// code/password entry is not timed; each login RPC gets this budget.
-    #[serde(default = "defaults::default_resolve_secs")]
-    pub resolve_secs: u64,
-    /// History/message fetches, subscribed-channel enumeration and transcription RPCs.
-    #[serde(default = "defaults::default_history_secs")]
-    pub history_secs: u64,
-    /// Search walks (single-channel `search_iter`, global `search_all_messages`).
-    #[serde(default = "defaults::default_search_secs")]
-    pub search_secs: u64,
-    /// Wall-clock budget for a full in-memory media download.
-    #[serde(default = "defaults::default_download_secs")]
-    pub download_secs: u64,
-}
-
-impl TelegramConfig {
-    /// Check whether nonempty authentication credentials are present (api_hash, phone_number).
-    /// Note: api_id is always required for connection, not just setup
-    pub fn has_auth_credentials(&self) -> bool {
-        self.auth_credentials().is_some()
-    }
-
-    /// Authentication credentials as `(api_hash, phone_number)`, or `None`
-    /// when either is absent or empty.
-    ///
-    /// This is the single definition of "credentials are present";
-    /// [`Self::has_auth_credentials`] is its predicate form. The returned strings
-    /// expose secret material to the caller; do not log or include them in errors.
-    pub fn auth_credentials(&self) -> Option<(&str, &str)> {
-        fn non_empty(secret: &SecretString) -> Option<&str> {
-            Some(secret.expose_secret()).filter(|value| !value.is_empty())
-        }
-        Some((
-            self.api_hash.as_ref().and_then(non_empty)?,
-            self.phone_number.as_ref().and_then(non_empty)?,
-        ))
-    }
-}
-
-// Helper function for deserializing optional SecretString
-fn deserialize_optional_secret_string<'de, D>(
-    deserializer: D,
-) -> Result<Option<SecretString>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let opt: Option<String> = Option::deserialize(deserializer)?;
-    Ok(opt
-        .filter(|s| !s.is_empty())
-        .map(|s| SecretString::new(s.into_boxed_str())))
-}
-
-/// Cooperative search accumulation deadline, in addition to network timeouts.
-#[derive(Debug, Clone, Deserialize)]
-pub struct SearchConfig {
-    /// Wall-clock budget for a search's accumulation loop. On expiry the
-    /// search returns the results gathered so far with `timed_out`/`partial`
-    /// set — never an error. Must stay below `[telegram.timeouts] search_secs`
-    /// (default 120) to be reachable.
-    #[serde(default = "defaults::default_search_deadline_seconds")]
-    pub deadline_seconds: u64,
-}
-
 /// Opt-in outgoing file policy. Paths belong to the connector host.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -194,16 +92,30 @@ pub struct SendingConfig {
     pub upload_roots: std::collections::BTreeMap<String, PathBuf>,
 }
 
+impl SendingConfig {
+    pub(crate) fn staging_config(&self) -> telegram_core::sending::StagingConfig {
+        telegram_core::sending::StagingConfig {
+            max_image_bytes: self.max_image_bytes,
+            max_media_bytes: self.max_media_bytes,
+            max_concurrent_media: self.max_concurrent_media,
+            max_staging_bytes: self.max_staging_bytes,
+            staging_root: self.staging_root.clone(),
+            upload_roots: self.upload_roots.clone(),
+        }
+    }
+}
+
 impl Default for SendingConfig {
     fn default() -> Self {
+        let staging = telegram_core::sending::StagingConfig::default();
         Self {
             enabled: false,
-            max_image_bytes: 10_485_760,
-            max_media_bytes: 104_857_600,
-            max_concurrent_media: 2,
-            max_staging_bytes: 209_715_200,
-            staging_root: None,
-            upload_roots: Default::default(),
+            max_image_bytes: staging.max_image_bytes,
+            max_media_bytes: staging.max_media_bytes,
+            max_concurrent_media: staging.max_concurrent_media,
+            max_staging_bytes: staging.max_staging_bytes,
+            staging_root: staging.staging_root,
+            upload_roots: staging.upload_roots,
         }
     }
 }

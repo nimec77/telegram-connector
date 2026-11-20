@@ -68,11 +68,13 @@ mod send_transport_tests;
 #[path = "client/tests/helpers_tests.rs"]
 mod helpers_tests;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[path = "client/tests/client_fixture.rs"]
-pub(crate) mod client_fixture;
-#[cfg(test)]
-pub(crate) use client_fixture::stalled_client;
+#[doc(hidden)]
+pub mod client_fixture;
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub use client_fixture::stalled_client;
 
 #[cfg(test)]
 #[path = "client/tests/session_upgrade_tests.rs"]

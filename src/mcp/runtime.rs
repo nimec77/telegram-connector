@@ -22,9 +22,10 @@ use rmcp::{Peer, ServiceExt};
 use state::{Operation, State};
 use std::borrow::Cow;
 use std::io;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, OnceLock};
 use std::time::Duration;
+use telegram_core::deadline::DrainDeadline;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 const INPUT_BUFFER_BYTES: usize = 8192;
@@ -48,15 +49,6 @@ pub enum RuntimeError {
     /// Owned SDK task failed to join normally.
     #[error("MCP service task failed: {0}")]
     Join(#[from] tokio::task::JoinError),
-}
-
-/// Retains the first absolute drain budget even after the runtime stops.
-#[derive(Clone)]
-pub(crate) struct DrainDeadline(Arc<OnceLock<tokio::time::Instant>>);
-impl DrainDeadline {
-    pub(crate) fn get(&self) -> Option<tokio::time::Instant> {
-        self.0.get().copied()
-    }
 }
 
 /// One transport session's configuration and shared observability handles.
@@ -86,7 +78,7 @@ impl Runtime {
     }
 
     pub(crate) fn drain_deadline(&self) -> DrainDeadline {
-        DrainDeadline(Arc::clone(&self.state.first_drain_deadline))
+        self.state.first_drain_deadline.clone()
     }
 
     /// Serve one NDJSON connection, draining accepted work on EOF or shutdown.
