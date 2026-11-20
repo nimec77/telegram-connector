@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/telegram-core"]
+members = ["crates/telegram-core", "crates/telegram-api"]
 resolver = "3"
 
 [package]

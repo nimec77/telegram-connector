@@ -1,0 +1,238 @@
+openapi: 3.1.0
+info:
+  title: Telegram hosted API
+  version: v1
+servers:
+  - url: https://service.example
+paths:
+  /readyz:
+    get:
+      operationId: readiness
+      summary: Check that the configured HTTP service has initialized
+      responses:
+        "204":
+          description: Ready
+        "429":
+          $ref: "#/components/responses/Throttled"
+  /.well-known/oauth-protected-resource/v1:
+    get:
+      operationId: protectedResource
+      summary: Discover the authorization server for an API resource at /v1
+      description: The suffix follows the path of the configured API resource URL.
+      responses:
+        "200":
+          description: Protected resource metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [resource, authorization_servers, scopes_supported]
+                properties:
+                  resource:
+                    type: string
+                    format: uri
+                  authorization_servers:
+                    type: array
+                    items:
+                      type: string
+                      format: uri
+                  scopes_supported:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Scope"
+        "429":
+          $ref: "#/components/responses/Throttled"
+  /auth/start:
+    get:
+      operationId: startBrowserSignIn
+      summary: Start first-party sign-in with a one-time browser cookie and PKCE
+      responses:
+        "303":
+          description: Redirect to the configured issuer
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+            Set-Cookie:
+              schema:
+                type: string
+        "429":
+          $ref: "#/components/responses/Throttled"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /auth/callback:
+    get:
+      operationId: completeBrowserSignIn
+      summary: Redeem the code bound to the current browser login attempt
+      parameters:
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 43
+        - name: code
+          in: query
+          schema:
+            type: string
+            maxLength: 4096
+        - name: iss
+          in: query
+          schema:
+            type: string
+            format: uri
+      responses:
+        "303":
+          description: Owner session created and redirected to /v1/session
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Throttled"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /v1/session:
+    get:
+      operationId: currentSession
+      summary: Inspect the authenticated client and its granted scopes
+      security:
+        - AccessToken: []
+        - BrowserSession: []
+      responses:
+        "200":
+          description: Session data, including the CSRF token for a browser owner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionInfo"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Throttled"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+    delete:
+      operationId: closeBrowserSession
+      summary: Close the first-party browser session using telegram.link and valid CSRF
+      security:
+        - BrowserSession: []
+      parameters:
+        - name: Origin
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uri
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema:
+            type: string
+            maxLength: 43
+      responses:
+        "204":
+          description: Browser session closed
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Throttled"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+components:
+  securitySchemes:
+    AccessToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    BrowserSession:
+      type: apiKey
+      in: cookie
+      name: __Host-tg_session
+  responses:
+    Error:
+      description: Invalid request or access forbidden
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthenticated:
+      description: Missing or invalid credential
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: unauthenticated
+    Throttled:
+      description: Admission or browser session capacity reached
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unavailable:
+      description: Identity service or issuer unavailable
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    Scope:
+      type: string
+      enum: [telegram.read, telegram.send, telegram.link]
+    SessionInfo:
+      type: object
+      additionalProperties: false
+      required: [client_id, scopes, kind, expires_at_unix]
+      properties:
+        client_id:
+          type: string
+        scopes:
+          type: array
+          items:
+            $ref: "#/components/schemas/Scope"
+        kind:
+          type: string
+          enum: [direct, delegated, browser_owner]
+        expires_at_unix:
+          type: integer
+          minimum: 0
+        csrf_token:
+          type: string
+          maxLength: 43
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code]
+          properties:
+            code:
+              type: string
+              enum: [invalid_request, unauthenticated, forbidden, unavailable_resource, conflict, payload_too_large, rate_limited, unavailable, timeout]
+            retry_after_seconds:
+              type: integer
+              minimum: 0

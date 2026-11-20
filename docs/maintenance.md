@@ -41,6 +41,11 @@ with the same owner/expiry and retained origin/notice obligations. This does not
 approve Zlib for arbitrary packages. The jsonschema development validator adds exact
 borrow-or-share 0.2.4 MIT-0 and foldhash 0.2.0 Zlib exceptions with the same owner/expiry;
 their published notices were reviewed and do not broaden global license choices.
+Hosted HTTPS verifies certificates with the reviewed Rustls dependency chain.
+The pinned aws-lc-sys 0.47.0 and webpki-root-certs 1.0.12 declarations have exact
+exceptions expiring 2027-01-31. Retain the bundled crypto source notices and
+make the CDLA agreement text available with shared trust-anchor data.
+
 All packages from an allowed Git repository must use one full revision.
 
 Run policy fixtures with `python3 -m unittest discover -s scripts -p

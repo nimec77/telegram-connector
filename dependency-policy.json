@@ -65,6 +65,28 @@
     ],
     "Zlib OR Apache-2.0 OR MIT": [
       "MIT"
+    ],
+    "Apache-2.0 AND ISC": [
+      "Apache-2.0",
+      "ISC"
+    ],
+    "Apache-2.0 OR BSL-1.0": [
+      "Apache-2.0"
+    ],
+    "Apache-2.0 OR ISC OR MIT": [
+      "Apache-2.0"
+    ],
+    "CC0-1.0 OR MIT-0 OR Apache-2.0": [
+      "Apache-2.0"
+    ],
+    "ISC AND (Apache-2.0 OR ISC)": [
+      "ISC"
+    ],
+    "Unicode-3.0": [
+      "Unicode-3.0"
+    ],
+    "Unlicense/MIT": [
+      "MIT"
     ]
   },
   "license_exceptions": [
@@ -123,6 +145,31 @@
       "owner": "nimec77",
       "expires": "2027-01-31",
       "rationale": "Axum pins this router version. Reviewed its LICENSE and LICENSE.httprouter; retain both notices and BSD-3-Clause non-endorsement. Exact package/version only."
+    },
+    {
+      "name": "aws-lc-sys",
+      "version": "0.47.0",
+      "expression": "ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)",
+      "choice": [
+        "ISC",
+        "Apache-2.0",
+        "MIT",
+        "BSD-3-Clause"
+      ],
+      "owner": "nimec77",
+      "expires": "2027-01-31",
+      "rationale": "Reviewed the pinned hosted TLS and JWT backend's bundled source notices. Retain the applicable permission, attribution and non-endorsement notices."
+    },
+    {
+      "name": "webpki-root-certs",
+      "version": "1.0.12",
+      "expression": "CDLA-Permissive-2.0",
+      "choice": [
+        "CDLA-Permissive-2.0"
+      ],
+      "owner": "nimec77",
+      "expires": "2027-01-31",
+      "rationale": "Reviewed the pinned TLS trust-anchor data's bundled agreement. Make the agreement text available with shared certificate data."
     }
   ]
 }
