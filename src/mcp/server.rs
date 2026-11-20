@@ -65,6 +65,7 @@ pub struct McpServer<T: TelegramClientTrait, R: RateLimiterTrait> {
     response_buffer: Arc<ResponseBuffer>,
     slow_write_threshold: Duration,
     media_download_cost: u32,
+    download_timeout_seconds: u64,
     transcription_cost: u32,
     transcription_default_timeout_secs: u32,
     transcription_max_timeout_secs: u32,
@@ -89,6 +90,7 @@ impl<T: TelegramClientTrait, R: RateLimiterTrait> Clone for McpServer<T, R> {
             response_buffer: Arc::clone(&self.response_buffer),
             slow_write_threshold: self.slow_write_threshold,
             media_download_cost: self.media_download_cost,
+            download_timeout_seconds: self.download_timeout_seconds,
             transcription_cost: self.transcription_cost,
             transcription_default_timeout_secs: self.transcription_default_timeout_secs,
             transcription_max_timeout_secs: self.transcription_max_timeout_secs,
@@ -122,6 +124,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             )),
             slow_write_threshold: Duration::from_millis(observability.slow_write_threshold_ms),
             media_download_cost: rate_limits.media_download_cost,
+            download_timeout_seconds: telegram_core::config::defaults::default_download_secs(),
             transcription_cost: rate_limits.transcription_cost,
             transcription_default_timeout_secs: default_transcription_default_timeout(),
             transcription_max_timeout_secs: default_transcription_max_timeout(),
@@ -149,6 +152,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     #[must_use]
     pub fn with_history_timeout(mut self, timeout: Duration) -> Self {
         self.account_limits.history_timeout = timeout;
+        self
+    }
+
+    /// Set the shared deadline for media admission, download and rendering.
+    #[must_use]
+    pub fn with_download_timeout_seconds(mut self, seconds: u64) -> Self {
+        self.download_timeout_seconds = seconds;
         self
     }
 

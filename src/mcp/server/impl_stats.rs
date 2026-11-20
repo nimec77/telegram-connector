@@ -12,25 +12,14 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         request: GetChannelStatsRequest,
     ) -> Result<ChannelStats, Error> {
-        if request.channel_id.trim().is_empty() {
-            return Err(Error::InvalidInput("channel_id is required".to_string()));
-        }
         let days_back = request
             .days_back
             .unwrap_or(ChannelStats::DEFAULT_DAYS_BACK)
             .min(ChannelStats::MAX_DAYS_BACK);
-        if days_back == 0 {
-            return Err(Error::InvalidInput(
-                "days_back must be greater than 0".to_string(),
-            ));
-        }
-
-        crate::mcp::tools::validation::validate_channel_reference(&request.channel_id)?;
-        self.rate_limiter.acquire(1).await?;
-
-        let stats = self
-            .telegram_client
-            .get_channel_stats(&request.channel_id, days_back)
+        let operations = self.account_operations();
+        let context = operations.history_context(crate::mcp::runtime::operation_cancellation())?;
+        let stats = operations
+            .channel_stats_by_reference(&request.channel_id, days_back, &context)
             .await?;
 
         tracing::info!(

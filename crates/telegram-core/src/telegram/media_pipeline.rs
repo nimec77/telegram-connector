@@ -34,6 +34,17 @@ impl MediaDeadline {
             .ok_or_else(|| Error::InvalidInput("media timeout is too large".into()))?;
         Ok(Self { at, seconds })
     }
+    /// Absolute instant shared with the operation and response renderer.
+    pub fn instant(self) -> Instant {
+        self.at
+    }
+
+    /// Use the earlier deadline without restarting either budget.
+    #[must_use]
+    pub fn earlier(self, other: Self) -> Self {
+        if self.at <= other.at { self } else { other }
+    }
+
     /// Bound a future without restarting the operation budget.
     ///
     /// # Errors

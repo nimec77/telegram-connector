@@ -21,8 +21,8 @@ mod media;
 pub mod preview;
 #[cfg(feature = "image-preview")]
 pub use media::{
-    JoinedMediaSource, MAX_PREVIEW_JPEG_BYTES, MediaPreview, MediaPreviewBatch, MediaPreviewItem,
-    MediaPreviewRequest,
+    JoinedMediaSource, MAX_PREVIEW_JPEG_BYTES, MediaBatchReservation, MediaPreview,
+    MediaPreviewBatch, MediaPreviewItem, MediaPreviewRequest,
 };
 mod search;
 mod sending;
@@ -196,3 +196,7 @@ mod tests;
 #[cfg(test)]
 #[path = "operations/tests/history_batch.rs"]
 mod history_batch_tests;
+
+#[cfg(test)]
+#[path = "operations/tests/local_operations.rs"]
+mod local_operations_tests;

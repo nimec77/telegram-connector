@@ -5,7 +5,6 @@
 
 use super::McpServer;
 use crate::error::Error;
-use crate::link::MessageLink;
 use crate::mcp::tools::validation::parse_message_id;
 use crate::mcp::tools::{GenerateLinkRequest, MessageLinkResponse, OpenMessageRequest};
 // The desktop result is shared by production launching and the injected offline seam.
@@ -20,18 +19,11 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     ) -> Result<MessageLinkResponse, Error> {
         let message_id = parse_message_id(request.message_id)?;
 
-        // One rate-limited peer resolution: the username is required to emit
-        // the shareable t.me/<username> form for public channels (B2), and
-        // it lets channel_id be a username too (D9).
-        crate::mcp::tools::validation::validate_channel_reference(&request.channel_id)?;
-        self.rate_limiter.acquire(1).await?;
-
-        let identity = self
-            .telegram_client
-            .resolve_channel_identity(&request.channel_id)
+        let operations = self.account_operations();
+        let context = operations.history_context(crate::mcp::runtime::operation_cancellation())?;
+        let (identity, link) = operations
+            .message_link_by_reference(&request.channel_id, message_id, &context)
             .await?;
-
-        let link = MessageLink::new(identity.id, message_id, identity.username.as_deref());
         let include_tg = request.include_tg_protocol.unwrap_or(true);
 
         let response = MessageLinkResponse {
@@ -60,13 +52,11 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         if !self.desktop_launcher.supported() {
             return Err(Error::UnsupportedPlatform);
         }
-        crate::mcp::tools::validation::validate_channel_reference(&request.channel_id)?;
-        self.rate_limiter.acquire(1).await?;
-        let identity = self
-            .telegram_client
-            .resolve_channel_identity(&request.channel_id)
+        let operations = self.account_operations();
+        let context = operations.history_context(crate::mcp::runtime::operation_cancellation())?;
+        let (_, link) = operations
+            .message_link_by_reference(&request.channel_id, message_id, &context)
             .await?;
-        let link = MessageLink::new(identity.id, message_id, identity.username.as_deref());
         let link_to_open = if request.use_tg_protocol.unwrap_or(true) {
             link.tg_protocol_link
         } else {

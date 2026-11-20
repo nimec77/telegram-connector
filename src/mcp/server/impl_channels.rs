@@ -5,7 +5,6 @@
 
 use super::McpServer;
 use crate::error::Error;
-use crate::mcp::tools::validation::validate_channel_reference;
 use crate::mcp::tools::{ChannelsResponse, GetChannelInfoRequest, GetChannelsRequest};
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
@@ -17,16 +16,10 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     ) -> Result<ChannelsResponse, Error> {
         let limit = request.limit.unwrap_or(20);
         let offset = request.offset.unwrap_or(0);
-        if !(1..=500).contains(&limit) {
-            return Err(Error::InvalidInput(
-                "limit must be between 1 and 500".to_string(),
-            ));
-        }
-        self.rate_limiter.acquire(1).await?;
-
-        let page = self
-            .telegram_client
-            .get_subscribed_channels(limit, offset)
+        let operations = self.account_operations();
+        let context = operations.history_context(crate::mcp::runtime::operation_cancellation())?;
+        let page = operations
+            .subscribed_channels(limit, offset, &context)
             .await?;
 
         let returned = page.channels.len();
@@ -44,19 +37,14 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         request: GetChannelInfoRequest,
     ) -> Result<crate::telegram::types::Channel, Error> {
-        validate_channel_reference(&request.channel_identifier)?;
-        // One operation charge covers resolution and optional full enrichment.
-        self.rate_limiter.acquire(1).await?;
-        let channel = if request.include_full.unwrap_or(false) {
-            self.telegram_client
-                .get_full_channel_info(&request.channel_identifier)
-                .await
-        } else {
-            self.telegram_client
-                .get_channel_info(&request.channel_identifier)
-                .await
-        }?;
-
-        Ok(channel)
+        let operations = self.account_operations();
+        let context = operations.history_context(crate::mcp::runtime::operation_cancellation())?;
+        operations
+            .channel_info_by_reference(
+                &request.channel_identifier,
+                request.include_full.unwrap_or(false),
+                &context,
+            )
+            .await
     }
 }

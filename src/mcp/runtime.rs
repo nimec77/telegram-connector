@@ -217,6 +217,7 @@ impl<S: Service<RoleServer>> Service<RoleServer> for RuntimeService<S> {
             && !matches!(request, ClientRequest::InitializeRequest(_));
         let ct = context.ct.clone();
         let progress = OperationContext {
+            cancellation: ct.clone(),
             response_id: operation.external_id.clone(),
             modern,
             identity: self.service.get_info().server_info,
@@ -288,6 +289,7 @@ fn add_identity(result: &mut ServerResult, identity: Implementation) -> Result<(
 }
 
 struct OperationContext {
+    cancellation: telegram_core::operations::CancellationToken,
     response_id: rmcp::model::RequestId,
     modern: bool,
     identity: Implementation,
@@ -296,6 +298,12 @@ struct OperationContext {
     next: AtomicU64,
 }
 tokio::task_local! { static OPERATION: OperationContext; }
+
+pub(crate) fn operation_cancellation() -> telegram_core::operations::CancellationToken {
+    OPERATION
+        .try_with(|operation| operation.cancellation.clone())
+        .unwrap_or_default()
+}
 
 struct ResponseContext {
     id: rmcp::model::RequestId,

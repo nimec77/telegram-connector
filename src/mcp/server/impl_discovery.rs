@@ -11,19 +11,11 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         request: SearchPublicChannelsRequest,
     ) -> Result<ChannelsResponse, Error> {
-        if request.query.trim().is_empty() {
-            return Err(Error::InvalidInput(
-                "Search query cannot be empty".to_string(),
-            ));
-        }
-
         let limit = request.limit.unwrap_or(10).clamp(1, 50);
-
-        self.rate_limiter.acquire(1).await?;
-
-        let mut channels = self
-            .telegram_client
-            .search_public_channels(&request.query, limit)
+        let operations = self.account_operations();
+        let context = operations.search_context(crate::mcp::runtime::operation_cancellation())?;
+        let mut channels = operations
+            .public_channels(&request.query, limit, &context)
             .await?;
 
         // `contacts.search`'s `limit` bounds only its global `results` set, while

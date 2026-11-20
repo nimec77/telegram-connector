@@ -21,9 +21,11 @@ use crate::mcp::tools::{
 };
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
+use crate::telegram::media_pipeline::MediaDeadline;
 use crate::telegram::transcription::TranscriptionDeadline;
 use crate::telegram::types::{MediaDownload, MediaFetchError, MediaFetchOutcome};
 use std::sync::Arc;
+use telegram_core::operations::OperationContext;
 
 /// Longest-side pixel limit applied when a request omits `max_dimension`.
 pub(super) const DEFAULT_MAX_DIMENSION: u32 = 1280;
@@ -116,18 +118,24 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         crate::mcp::tools::validation::validate_channel_reference(&request.channel_id)?;
         crate::mcp::runtime::report_progress("Media request validated").await;
 
-        // Media downloads are heavier than searches; charge the configured cost.
-        self.rate_limiter.acquire(self.media_download_cost).await?;
-
+        let (request_deadline, context) = self.media_context()?;
         let mut download = self
-            .telegram_client
-            .download_message_media(&request.channel_id, wire_id, max_dimension)
+            .account_operations()
+            .download_media_by_reference(
+                &request.channel_id,
+                wire_id,
+                max_dimension,
+                self.media_download_cost,
+                &context,
+            )
             .await?;
 
         crate::mcp::runtime::report_progress("Media downloaded").await;
         let channel_id = download.channel_id;
         let peer_namespace = download.peer_namespace;
-        let deadline = download.lease.as_ref().map(|lease| lease.deadline());
+        let deadline = Some(download.lease.as_ref().map_or(request_deadline, |lease| {
+            request_deadline.earlier(lease.deadline())
+        }));
         let (processed, artifact, artifact_uri, artifact_pin) = process_download(
             &mut download,
             max_dimension,
@@ -205,38 +213,24 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         crate::mcp::tools::validation::validate_channel_reference(&request.channel_id)?;
         crate::mcp::runtime::report_progress("Media request validated").await;
 
-        // Acquire pessimistically for every requested id BEFORE any network
-        // work: charging only for what succeeds would mean the limiter could
-        // never refuse a batch, since the downloads would already have happened.
-        // One atomic acquire keeps the D5 deficit message accurate.
-        let charged = self.media_download_cost.saturating_mul(unique.len() as u32);
-        self.rate_limiter.acquire(charged).await?;
-
-        let outcomes = match self
-            .telegram_client
-            .download_messages_media_pipeline(&request.channel_id, &wire_ids, max_dimension)
-            .await
-        {
-            Ok(outcomes) => outcomes,
-            Err(e) => {
-                // The call still performed a channel resolution and a fetch RPC
-                // against Telegram before failing (channel resolution failure,
-                // network error, or a Telegram-side FLOOD_WAIT) — that work
-                // happened and should not be free, or a caller could hammer an
-                // unresolvable channel at zero cost, which is exactly the flood
-                // behaviour the limiter exists to prevent. Refund everything
-                // except one token: the same cost get_messages_batch already
-                // charges (acquire(1)) for that identical resolve+fetch shape
-                // of work. saturating_sub guards a hypothetical charged of 0.
-                self.rate_limiter.refund(charged.saturating_sub(1));
-                return Err(e);
-            }
-        };
+        let (request_deadline, context) = self.media_context()?;
+        let (outcomes, charge) = self
+            .account_operations()
+            .download_media_batch_by_reference(
+                &request.channel_id,
+                &wire_ids,
+                max_dimension,
+                self.media_download_cost,
+                &context,
+            )
+            .await?;
 
         crate::mcp::runtime::report_progress("Media downloaded").await;
         let channel_id = outcomes.channel_id;
         let peer_namespace = outcomes.peer_namespace;
-        let deadline = outcomes.deadline;
+        let deadline = Some(outcomes.deadline.map_or(request_deadline, |deadline| {
+            request_deadline.earlier(deadline)
+        }));
         let mut outcomes = outcomes.into_stream();
         let mut items = Vec::new();
         let mut failed = 0usize;
@@ -302,18 +296,10 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         };
         if let Err(error) = output.check_overhead(self.output_format) {
             self.rollback_artifacts(&output, deadline).await;
-            self.rate_limiter.refund(charged);
             return Err(error);
         }
 
-        // Ids that produced no image cost nothing — hand their tokens back.
-        // The bucket clamps at capacity, so this can never inflate it.
-        // unique.len() >= returned always holds (`returned` counts a subset
-        // of the requested ids), so this subtraction cannot underflow.
-        let refunded = self
-            .media_download_cost
-            .saturating_mul(unique.len().saturating_sub(returned) as u32);
-        self.rate_limiter.refund(refunded);
+        charge.finish(returned);
 
         tracing::info!(
             channel = %output.channel_reference,
@@ -327,13 +313,24 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         Ok(output)
     }
 
+    fn media_context(&self) -> Result<(MediaDeadline, OperationContext), Error> {
+        let deadline = MediaDeadline::try_new(self.download_timeout_seconds)?;
+        Ok((
+            deadline,
+            OperationContext::new(
+                deadline.instant(),
+                crate::mcp::runtime::operation_cancellation(),
+            ),
+        ))
+    }
+
     pub(super) async fn transcribe_voice_message_data(
         &self,
         request: TranscribeVoiceMessageRequest,
     ) -> Result<TranscribeVoiceMessageResponse, Error> {
         validate_channel_reference(&request.channel_id)?;
         let message_id = parse_message_id(request.message_id)?;
-        let wire_id = wire_message_id(message_id)?;
+        wire_message_id(message_id)?;
         // Bounds come from [transcription] config (AD-6). Floor at 1 and cap at the
         // configured max via min/max rather than clamp(1, max) so a misconfigured
         // max of 0 can't panic clamp's min<=max invariant.
@@ -345,33 +342,21 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
 
         crate::mcp::runtime::report_progress("Transcription request validated").await;
 
-        // Cached non-Premium observations can reject for free; a cache miss
-        // must not start account RPCs before acquiring the operation charge.
-        let cached = self.telegram_client.cached_account_status().await;
-        if cached.premium == Some(false) {
-            return Err(Error::PremiumRequired);
-        }
-
-        // Transcription is precious (Telegram weekly quota); charge more than a search.
-        self.rate_limiter.acquire(self.transcription_cost).await?;
-
         let deadline = TranscriptionDeadline::new(timeout_secs);
-        if cached.premium.is_none() {
-            let refreshed = deadline
-                .run(self.telegram_client.refresh_account_status())
-                .await?;
-            if !refreshed.authorized {
-                return Err(Error::Auth("Telegram account is not authenticated".into()));
-            }
-            if refreshed.premium == Some(false) {
-                return Err(Error::PremiumRequired);
-            }
-        }
-
-        crate::mcp::runtime::report_progress("Transcription prepared").await;
+        let context = telegram_core::operations::OperationContext::new(
+            deadline.instant(),
+            crate::mcp::runtime::operation_cancellation(),
+        );
         let outcome = self
-            .telegram_client
-            .transcribe_audio(&request.channel_id, wire_id, deadline)
+            .account_operations()
+            .transcribe_by_reference(
+                &request.channel_id,
+                message_id,
+                deadline,
+                self.transcription_cost,
+                &context,
+                crate::mcp::runtime::report_progress("Transcription prepared"),
+            )
             .await?;
 
         crate::mcp::runtime::report_progress("Transcription received").await;

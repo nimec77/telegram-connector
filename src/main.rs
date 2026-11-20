@@ -126,6 +126,7 @@ async fn run_mcp_server(
         .with_output_format(config.server.output_format)
         .with_observability(&config.observability)
         .with_media_download_cost(config.rate_limiting.media_download_cost)
+        .with_download_timeout_seconds(config.telegram.timeouts.download_secs)
         .with_transcription_cost(config.rate_limiting.transcription_cost)
         .with_transcription_timeouts(
             config.transcription.default_timeout_seconds,

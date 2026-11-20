@@ -3,11 +3,11 @@
 use super::{AccountOperations, OperationContext};
 use crate::error::Error;
 use crate::rate_limiter::RateLimiterTrait;
-use crate::telegram::TelegramClient;
 use crate::telegram::sending::{DispatchGate, SendDeadline, SendStage};
 use crate::telegram::types::sending::{
     PreparedMediaSend, SendFailure, SendFailureKind, SendText, SentMessage,
 };
+use crate::telegram::{TelegramClient, TelegramClientTrait};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 impl<R: RateLimiterTrait> AccountOperations<TelegramClient, R> {
@@ -62,6 +62,38 @@ impl<R: RateLimiterTrait> AccountOperations<TelegramClient, R> {
                 .await
         };
         until_cancelled(context, &gate, operation).await
+    }
+}
+
+impl<T: TelegramClientTrait, R: RateLimiterTrait> AccountOperations<T, R> {
+    /// Validate, charge and submit a local text send through the low-level client.
+    ///
+    /// # Errors
+    /// Returns a safe failure carrying known or unknown delivery state.
+    pub async fn send_local_text(
+        &self,
+        request: &SendText,
+        deadline: SendDeadline,
+        cost: u32,
+    ) -> Result<SentMessage, SendFailure> {
+        request.validate()?;
+        self.charge_send(cost, deadline).await?;
+        self.client.send_message(request, deadline).await
+    }
+
+    /// Validate, charge and submit a local send from an owned staged snapshot.
+    ///
+    /// # Errors
+    /// Returns a safe failure carrying known or unknown delivery state.
+    pub async fn send_local_media(
+        &self,
+        request: &PreparedMediaSend,
+        deadline: SendDeadline,
+        cost: u32,
+    ) -> Result<SentMessage, SendFailure> {
+        request.validate()?;
+        self.charge_send(cost, deadline).await?;
+        self.client.send_media(request, deadline).await
     }
 
     async fn charge_send(&self, cost: u32, deadline: SendDeadline) -> Result<(), SendFailure> {

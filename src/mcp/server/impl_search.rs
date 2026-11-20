@@ -6,7 +6,7 @@
 use super::McpServer;
 use crate::error::Error;
 use crate::link::{ChannelRef, parse_telegram_link};
-use crate::mcp::tools::validation::{parse_cursor_bounds, parse_optional_utc, wire_message_id};
+use crate::mcp::tools::validation::{parse_cursor_bounds, parse_optional_utc};
 use crate::mcp::tools::{
     GetMessageByLinkRequest, GetRecentMessagesRequest, MessageResponse, ResponseFormat,
     SearchRequest, SearchResponse, fanout, shaping,
@@ -161,15 +161,10 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             ChannelRef::Id(id) => id.get().to_string(),
         };
 
-        let wire_id = wire_message_id(message_id)?;
-
-        // Acquire rate limiter token
-        self.rate_limiter.acquire(1).await?;
-
-        // Fetch the message
-        let message = self
-            .telegram_client
-            .get_message_by_id(&channel_identifier, wire_id)
+        let operations = self.account_operations();
+        let context = operations.history_context(crate::mcp::runtime::operation_cancellation())?;
+        let message = operations
+            .message_by_reference(&channel_identifier, message_id, &context)
             .await?;
 
         tracing::info!(

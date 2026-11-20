@@ -1,9 +1,10 @@
 //! Account charging, deadlines and ordered preview shaping for joined channels.
 
 use super::preview::shape_jpeg;
-use super::{AccountOperations, OperationContext};
+use super::{AccountOperations, BoundedOperation, OperationContext};
 use crate::error::Error;
 use crate::rate_limiter::RateLimiterTrait;
+use crate::telegram::TelegramClientTrait;
 use crate::telegram::types::{
     ChannelId, MediaBatch, MediaDownload, MediaFetchError, MediaType, MessageId, PeerNamespace,
 };
@@ -143,6 +144,119 @@ impl<R: RateLimiterTrait> Drop for Charge<R> {
     }
 }
 
+/// A stdio media charge pending transport shaping. Dropping the reservation
+/// refunds the uncommitted items, including when the renderer is cancelled.
+pub struct MediaBatchReservation<R: RateLimiterTrait> {
+    charge: Charge<R>,
+    item_cost: u32,
+    items: usize,
+}
+
+impl<R: RateLimiterTrait> MediaBatchReservation<R> {
+    /// Settle the original charge for the images that survived shaping.
+    pub fn finish(mut self, returned: usize) {
+        let retained = self
+            .item_cost
+            .saturating_mul(returned.min(self.items) as u32);
+        let refund = self.charge.reserved.saturating_sub(retained);
+        self.charge.retained = self.charge.reserved;
+        self.charge.limiter.refund(refund);
+    }
+}
+
+impl<T, R: RateLimiterTrait> AccountOperations<T, R> {
+    async fn reserve_media(
+        &self,
+        amount: u32,
+        timing: &BoundedOperation<'_>,
+    ) -> Result<Charge<R>, Error> {
+        timing.run(self.limiter.acquire(amount)).await?;
+        Ok(Charge {
+            limiter: Arc::clone(&self.limiter),
+            reserved: amount,
+            retained: 0,
+        })
+    }
+}
+
+impl<T: TelegramClientTrait, R: RateLimiterTrait> AccountOperations<T, R> {
+    /// Resolve and download one local media preview under the caller deadline.
+    ///
+    /// # Errors
+    /// Returns validation, account admission, deadline or upstream failures.
+    pub async fn download_media_by_reference(
+        &self,
+        channel: &str,
+        id: i32,
+        max_dimension: u32,
+        cost: u32,
+        context: &OperationContext,
+    ) -> Result<MediaDownload, Error> {
+        validate_local_media(channel, &[id], max_dimension)?;
+        let timing = context.bound(Duration::MAX, "download_media");
+        let mut charge = self.reserve_media(cost, &timing).await?;
+        timing
+            .run(async {
+                charge.retained = cost;
+                self.client
+                    .download_message_media(channel, id, max_dimension)
+                    .await
+            })
+            .await
+    }
+
+    /// Fetch a raw media batch with one admission for its distinct requested IDs.
+    ///
+    /// A failed shared lookup retains one token. The caller settles successful
+    /// images after applying its output budget and transport format.
+    ///
+    /// # Errors
+    /// Returns validation, account admission, deadline or shared lookup failures.
+    pub async fn download_media_batch_by_reference(
+        &self,
+        channel: &str,
+        ids: &[i32],
+        max_dimension: u32,
+        cost: u32,
+        context: &OperationContext,
+    ) -> Result<(MediaBatch, MediaBatchReservation<R>), Error> {
+        validate_local_media(channel, ids, max_dimension)?;
+        let timing = context.bound(Duration::MAX, "download_media");
+        let mut charge = self
+            .reserve_media(cost.saturating_mul(ids.len() as u32), &timing)
+            .await?;
+        let batch = timing
+            .run(async {
+                charge.retained = 1;
+                self.client
+                    .download_messages_media_pipeline(channel, ids, max_dimension)
+                    .await
+            })
+            .await?;
+        charge.retained = 0;
+        Ok((
+            batch,
+            MediaBatchReservation {
+                charge,
+                item_cost: cost,
+                items: ids.len(),
+            },
+        ))
+    }
+}
+
+fn validate_local_media(channel: &str, ids: &[i32], max_dimension: u32) -> Result<(), Error> {
+    super::validation::parse_channel_reference(channel).map_err(Error::InvalidInput)?;
+    if !(1..=MAX_IDS).contains(&ids.len())
+        || ids.iter().any(|id| *id <= 0)
+        || ids.iter().copied().collect::<HashSet<_>>().len() != ids.len()
+        || !(64..=2048).contains(&max_dimension)
+    {
+        return Err(Error::InvalidInput("invalid media selection".into()));
+    }
+    Ok(())
+}
+
 impl<T: JoinedMediaSource, R: RateLimiterTrait> AccountOperations<T, R> {
     /// Recheck qualified channel membership before returning a stored hosted preview.
     ///
@@ -177,17 +291,14 @@ impl<T: JoinedMediaSource, R: RateLimiterTrait> AccountOperations<T, R> {
     ) -> Result<MediaPreviewBatch<R>, Error> {
         let timing = context.bound(timeout, "media_previews");
         let reserved = cost.saturating_mul(request.ids.len() as u32);
-        timing.run(self.limiter.acquire(reserved)).await?;
-        let mut charge = Charge {
-            limiter: Arc::clone(&self.limiter),
-            reserved,
-            retained: 1,
-        };
+        let mut charge = self.reserve_media(reserved, &timing).await?;
         let batch = timing
-            .run(
+            .run(async {
+                charge.retained = 1;
                 self.client
-                    .joined_media(request.channel_id, &request.ids, request.max_dimension),
-            )
+                    .joined_media(request.channel_id, &request.ids, request.max_dimension)
+                    .await
+            })
             .await?;
         if batch.channel_id != request.channel_id || batch.peer_namespace != PeerNamespace::Channel
         {

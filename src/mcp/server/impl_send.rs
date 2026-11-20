@@ -6,7 +6,7 @@ use crate::mcp::tools::types::sending::{SendMediaRequest, SendMessageRequest, Se
 use crate::rate_limiter::RateLimiterTrait;
 use crate::sending::SendingRuntimeConfig;
 use crate::telegram::TelegramClientTrait;
-use crate::telegram::sending::{SendDeadline, SendStage};
+use crate::telegram::sending::SendDeadline;
 use crate::telegram::types::sending::{
     PreparedMediaSend, RecipientSpec, SendFailure, SendFailureKind, SendOptions, SentMessage,
     UsernameNamespace,
@@ -114,17 +114,9 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         let deadline = SendDeadline::new(policy.send_secs)?;
         let request = request.try_into_domain()?;
         send_budget::preflight(self.response_byte_budget)?;
-        deadline
-            .run(SendStage::LocalPreparation, async {
-                self.rate_limiter
-                    .acquire(policy.send_message_cost)
-                    .await
-                    .map_err(admission_failure)
-            })
-            .await?;
         let receipt = self
-            .telegram_client
-            .send_message(&request, deadline)
+            .account_operations()
+            .send_local_text(&request, deadline, policy.send_message_cost)
             .await?;
         if deadline.expired() {
             return Err(SendFailure::unknown());
@@ -182,21 +174,16 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             size_bytes = staged.size_bytes(),
             "Outgoing snapshot prepared"
         );
-        deadline
-            .run(SendStage::LocalPreparation, async {
-                self.rate_limiter
-                    .acquire(policy.send_media_cost)
-                    .await
-                    .map_err(admission_failure)
-            })
-            .await?;
         let request = PreparedMediaSend {
             options: request.options,
             caption: request.caption,
             media: request.media,
             staged,
         };
-        let receipt = self.telegram_client.send_media(&request, deadline).await?;
+        let receipt = self
+            .account_operations()
+            .send_local_media(&request, deadline, policy.send_media_cost)
+            .await?;
         if deadline.expired()
             || receipt.content_kind != request.media.content_kind()
             || !receipt_options_match(&request.options, &receipt)
@@ -232,15 +219,6 @@ fn receipt_options_match(options: &SendOptions, receipt: &SentMessage) -> bool {
                         UsernameNamespace::Channel => PeerNamespace::Channel,
                     }
         }
-    }
-}
-pub(super) fn admission_failure(error: crate::error::Error) -> SendFailure {
-    match error {
-        crate::error::Error::RateLimit {
-            retry_after_seconds,
-            ..
-        } => SendFailure::not_sent(SendFailureKind::RateLimited, Some(retry_after_seconds)),
-        _ => SendFailure::not_sent(SendFailureKind::Unavailable, None),
     }
 }
 pub(super) fn log_outcome<T>(

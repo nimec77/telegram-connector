@@ -50,6 +50,12 @@ and batches return domain rows with pagination and partial metadata. A concrete
 Telegram account supports `history_range` for exclusive `after_id`, inclusive
 `through_id` and descending `before_id` continuation.
 
+The core also owns charged channel metadata, directory queries, links,
+transcription, media admission and sends. Local operations preserve
+numeric and username references. Hosted reads use the verified joined
+channel identity and hosted sends supply a final dispatch gate. Transport
+adapters handle response framing, image delivery and private upload staging.
+
 Open a streaming client with `TelegramClient::new_with_streams`, then construct
 `AccountStreams` using the account's same client and limiter. Share a
 `StreamBudget` across managers to cap queued bytes. Subscriptions return
