@@ -76,7 +76,11 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         request: tools::SearchRequest,
     ) -> Result<String, String> {
         let value = self
-            .search_messages_data(request, crate::mcp::tools::shaping::BudgetMode::Direct)
+            .search_messages_data(
+                request,
+                crate::mcp::tools::shaping::BudgetMode::Direct,
+                telegram_core::operations::CancellationToken::new(),
+            )
             .await
             .map_err(|error| error.to_string())?;
         tools::json_response(&value)

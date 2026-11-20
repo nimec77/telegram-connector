@@ -99,6 +99,9 @@ pub enum Error {
     /// Invalid arguments or a referenced entity that cannot be found/represented.
     #[error("invalid input: {0}")]
     InvalidInput(String),
+    /// The caller cancelled an admitted operation.
+    #[error("operation cancelled")]
+    Cancelled,
     /// An async operation exceeded its configured budget; its future was dropped.
     #[error("operation '{operation}' timed out after {secs}s")]
     Timeout {

@@ -4,59 +4,25 @@
 
 use crate::UtcTimestamp;
 use crate::error::Error;
-use crate::mcp::tools::helpers::{ChannelReferenceKey, channel_reference_key};
-use crate::mcp::tools::types::responses::{
-    ChannelFetchError, MessageResponse, SearchResponse, unique_channel_count,
-};
-use crate::telegram::types::{QueryMetadata, SearchResult};
-use futures::StreamExt;
-use std::future::Future;
+use crate::mcp::tools::types::responses::{ChannelFetchError, SearchResponse};
+use telegram_core::operations::SearchPage;
+pub(crate) use telegram_core::operations::fanout::ChannelFetchOutcome;
 
-/// Hard cap on channels per fan-out call (rate cost is 1 token/channel
-/// against a default 30-token bucket).
-pub(crate) const MAX_FANOUT_CHANNELS: usize = 20;
+pub(crate) use telegram_core::operations::fanout::{FanoutChannel, run, validate_channel_scope};
 
-/// Concurrent per-channel fetches in flight (roadmap: bounded concurrency 4).
-pub(crate) const FANOUT_CONCURRENCY: usize = 4;
-
-/// A locally normalized target and its first supplied spelling for error attribution.
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) struct FanoutChannel {
-    pub reference: String,
-    pub original: String,
+pub(crate) fn wire_page(page: SearchPage) -> SearchResponse<Error> {
+    let mut response = SearchResponse::from_result(page.result);
+    if !page.failures.is_empty() {
+        response.channel_errors = Some(
+            page.failures
+                .into_iter()
+                .map(|(channel, error)| ChannelFetchError { channel, error })
+                .collect(),
+        );
+    }
+    response
 }
 
-/// One channel's fetch outcome; retain its typed cause until mode-specific output.
-pub(crate) struct ChannelFetchOutcome {
-    pub channel: String,
-    pub result: Result<SearchResult, Error>,
-}
-
-/// Fetch every channel in `list` through `fetch` with bounded concurrency
-/// (`FANOUT_CONCURRENCY`), pairing each reference with its outcome. Outcome
-/// order follows `list` (buffered preserves order).
-pub(crate) async fn run<F, Fut>(list: Vec<FanoutChannel>, fetch: F) -> Vec<ChannelFetchOutcome>
-where
-    F: Fn(String) -> Fut,
-    Fut: Future<Output = Result<SearchResult, Error>>,
-{
-    futures::stream::iter(list.into_iter().map(|channel| {
-        let result = fetch(channel.reference);
-        async move {
-            ChannelFetchOutcome {
-                channel: channel.original,
-                result: result.await,
-            }
-        }
-    }))
-    .buffered(FANOUT_CONCURRENCY)
-    .collect()
-    .await
-}
-
-/// Merge per-channel results into one newest-first page of at most `limit`
-/// messages. Errors become `channel_errors` entries; the merge itself fails
-/// only when every channel failed.
 pub(crate) fn merge_results(
     outcomes: Vec<ChannelFetchOutcome>,
     limit: usize,
@@ -64,143 +30,15 @@ pub(crate) fn merge_results(
     window_from: UtcTimestamp,
     window_to: Option<UtcTimestamp>,
 ) -> Result<SearchResponse<Error>, Error> {
-    let attempted = outcomes.len() as u32;
-    let mut messages: Vec<MessageResponse> = Vec::new();
-    let mut errors: Vec<ChannelFetchError<Error>> = Vec::new();
-    let mut seen_messages = std::collections::HashSet::new();
-    let mut has_more = false;
-    let mut search_time_ms = 0u64;
-    let mut pages_fetched = 0u32;
-    let mut messages_scanned = 0u64;
-    let mut timed_out = false;
-    let mut partial = false;
-
-    for outcome in outcomes {
-        match outcome.result {
-            Ok(result) => {
-                has_more |= result.has_more;
-                search_time_ms = search_time_ms.max(result.search_time_ms);
-                // Summed, not maxed: these are the fan-out's total cost.
-                pages_fetched = pages_fetched.saturating_add(result.query_metadata.pages_fetched);
-                messages_scanned =
-                    messages_scanned.saturating_add(result.query_metadata.messages_scanned);
-                timed_out |= result.query_metadata.timed_out;
-                partial |= result.query_metadata.partial;
-                // Ordered outcomes make the first complete observation authoritative.
-                messages.extend(
-                    result
-                        .messages
-                        .into_iter()
-                        .filter(|message| {
-                            seen_messages.insert((
-                                message.peer_namespace,
-                                message.channel_id,
-                                message.id,
-                            ))
-                        })
-                        .map(MessageResponse::from),
-                );
-            }
-            Err(error) => errors.push(ChannelFetchError {
-                channel: outcome.channel,
-                error,
-            }),
-        }
-    }
-
-    if messages.is_empty() && !errors.is_empty() && errors.len() as u32 == attempted {
-        return Err(Error::AllChannelsFailed(
-            errors.into_iter().map(|e| (e.channel, e.error)).collect(),
-        ));
-    }
-
-    messages.sort_by(|a, b| {
-        b.timestamp
-            .cmp(&a.timestamp)
-            .then(b.id.get().cmp(&a.id.get()))
-    });
-    if messages.len() > limit {
-        messages.truncate(limit);
-        has_more = true;
-    }
-
-    let channels_in_results = unique_channel_count(&messages);
-
-    Ok(SearchResponse {
-        channel: None,
-        channels: None,
-        returned: messages.len() as u64,
-        has_more,
-        next_cursor: None,
-        search_time_ms,
-        query_metadata: QueryMetadata {
-            query,
-            window_from,
-            window_to,
-            channels_scanned: Some(attempted),
-            channels_in_results,
-            timed_out,
-            partial,
-            pages_fetched,
-            messages_scanned,
-        },
-        channel_errors: if errors.is_empty() {
-            None
-        } else {
-            Some(errors)
-        },
-        messages,
-    })
-}
-
-/// Enforce the channel_id XOR channel_ids contract shared by both list tools.
-/// `Ok(None)` = single-channel/global path; `Ok(Some(list))` = fan-out with a
-/// validated, locally normalized, 1..=MAX_FANOUT_CHANNELS list.
-pub(crate) fn validate_channel_scope(
-    channel_id: &Option<String>,
-    channel_ids: &Option<Vec<String>>,
-) -> Result<Option<Vec<FanoutChannel>>, String> {
-    match (channel_id, channel_ids) {
-        (Some(_), Some(_)) => Err("supply either channel_id or channel_ids, not both".to_string()),
-        (_, None) => Ok(None),
-        (None, Some(list)) => {
-            if list.iter().any(|c| c.trim().is_empty()) {
-                return Err("channel_ids must not contain blank entries".to_string());
-            }
-            let mut seen = std::collections::HashSet::new();
-            let mut deduped = Vec::new();
-            for original in list {
-                // Validate every supplied entry, even a later alias, before acquisition.
-                let key = channel_reference_key(original)?;
-                let reference = match &key {
-                    ChannelReferenceKey::Id(id) => id.get().to_string(),
-                    ChannelReferenceKey::Username(username) => username.clone(),
-                };
-                if seen.insert(key) {
-                    deduped.push(FanoutChannel {
-                        reference,
-                        original: original.clone(),
-                    });
-                }
-            }
-            if deduped.is_empty() {
-                return Err("channel_ids must contain at least one channel".to_string());
-            }
-            if deduped.len() > MAX_FANOUT_CHANNELS {
-                return Err(format!(
-                    "channel_ids accepts at most {MAX_FANOUT_CHANNELS} channels per call, got {}",
-                    deduped.len()
-                ));
-            }
-            Ok(Some(deduped))
-        }
-    }
+    telegram_core::operations::fanout::merge_results(outcomes, limit, query, window_from, window_to)
+        .map(wire_page)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::UtcTimestamp;
+    use crate::mcp::tools::types::responses::MessageResponse;
     use crate::telegram::types::{QueryMetadata, SearchResult};
     use crate::test_helpers::create_test_message;
     use jiff::SignedDuration;

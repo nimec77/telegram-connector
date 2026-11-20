@@ -19,6 +19,9 @@ use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
 use crate::telegram::types::{ChannelId, HistoryParams, SearchParams, SearchResult};
 use std::future::Future;
+use telegram_core::operations::{
+    AccountOperations, CancellationToken, SearchOperation, SearchScope,
+};
 
 /// The per-call inputs of a fan-out beyond the per-channel fetch itself:
 /// what to merge to and how to shape the merged page.
@@ -36,202 +39,70 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         request: SearchRequest,
         budget_mode: shaping::BudgetMode,
+        cancellation: CancellationToken,
     ) -> Result<SearchResponse<Error>, Error> {
-        // Validate: query required unless media_filter is set
-        if request.query.trim().is_empty() && request.media_filter.is_none() {
-            return Err(Error::InvalidInput(
-                "Search query cannot be empty (unless media_filter is set to filter by media type)"
-                    .to_string(),
-            ));
-        }
-
-        // `Some(list)` = fan-out; `None` covers both the single-channel_id path
-        // and, when channel_id is also absent, the global-search path (A6).
-        let scope = crate::mcp::tools::validation::validate_channel_scope(
-            &request.channel_id,
-            &request.channel_ids,
-        )?;
-        let channel_scoped = request.channel_id.is_some() || scope.is_some();
-
-        if !channel_scoped && (request.before_id.is_some() || request.after_id.is_some()) {
-            return Err(Error::InvalidInput(
-                "before_id/after_id require channel_id: cursor pagination is per-channel; \
-                 global search cannot page by message id"
-                    .to_string(),
-            ));
-        }
-
+        let scope = match (request.channel_id, request.channel_ids) {
+            (Some(_), Some(_)) => {
+                return Err(Error::InvalidInput(
+                    "supply either channel_id or channel_ids, not both".into(),
+                ));
+            }
+            (Some(channel), None) => SearchScope::Channel(channel),
+            (None, Some(channels)) => SearchScope::Channels(channels),
+            (None, None) => SearchScope::Global,
+        };
         let format = request.format.unwrap_or_default();
-        if !channel_scoped && format == ResponseFormat::Compact {
+        if matches!(scope, SearchScope::Global) && format == ResponseFormat::Compact {
             return Err(Error::InvalidInput(
                 "format=compact requires channel_id or channel_ids: the compact header \
                  describes channel scope; use full format for global search"
-                    .to_string(),
+                    .into(),
             ));
         }
-
-        // Apply defaults and limits
-        let hours_back = request
-            .hours_back
-            .unwrap_or(SearchParams::DEFAULT_HOURS_BACK)
-            .min(SearchParams::MAX_HOURS_BACK);
-
-        let limit = request
-            .limit
-            .unwrap_or(SearchParams::DEFAULT_LIMIT)
-            .min(SearchParams::MAX_LIMIT);
-
-        // Validate limit is greater than 0
-        if limit == 0 {
-            return Err(Error::InvalidInput(
-                "Search limit must be greater than 0".to_string(),
-            ));
-        }
-
-        // Parse the optional date range
-        let from_date = parse_optional_utc("from_date", &request.from_date)?;
-        let to_date = parse_optional_utc("to_date", &request.to_date)?;
-
-        let (before_id, after_id) = parse_cursor_bounds(request.before_id, request.after_id)?;
-        let max_text_length =
-            crate::mcp::tools::validation::resolve_max_text_length(request.max_text_length)?;
-
-        // Shared parameter template; the channel target (channel_id) is filled
-        // in per-path below: once for the single-channel/global path, once per
-        // entry for the fan-out path.
-        let params_template = SearchParams {
-            channel_namespace: None,
-            query: request.query.clone(),
-            channel_id: None,
-            hours_back,
-            limit,
-            media_filter: request.media_filter,
-            from_date,
-            to_date,
-            collapse_albums: request.collapse_albums.unwrap_or(true),
-            before_id,
-            after_id,
-        };
-
-        // Reject an empty window before spending a token or a network round-trip.
-        let window_from = params_template.window_start();
-        validate_date_window(
-            params_template.from_date,
-            params_template.to_date,
-            window_from,
-            params_template.hours_back,
-        )?;
-
-        if let Some(list) = scope {
-            let fetch = |reference: String| {
-                let base = params_template.clone(); // SearchParams minus channel_id
-                async move {
-                    let (channel_id, channel_namespace) = self
-                        .resolve_channel_ref(parse_channel_reference(&reference)?)
-                        .await?;
-                    let params = SearchParams {
-                        channel_namespace,
-                        channel_id: Some(channel_id),
-                        ..base
-                    };
-                    self.telegram_client.search_messages(&params).await
-                }
-            };
-            let page = FanoutPage {
-                limit,
-                query: request.query.clone(),
-                window_from,
-                window_to: to_date,
-                format,
-                max_text_length,
-            };
-            return self
-                .run_fanout(
-                    list,
-                    before_id.is_some() || after_id.is_some(),
-                    page,
-                    fetch,
-                    budget_mode,
-                )
-                .await;
-        }
-
-        // Single-channel/global path. Classify the reference first so a
-        // malformed numeric id is rejected before any token is spent (local
-        // validation precedes acquire on every tool); then take the 1 token
-        // per search *before* the username resolve, so that RPC is metered
-        // like the fan-out path's per-channel resolve — never free work.
-        let reference = request
-            .channel_id
-            .as_deref()
-            .map(parse_channel_reference)
-            .transpose()?;
-
-        self.rate_limiter.acquire(1).await?;
-
-        let resolved = match reference {
-            Some(reference) => Some(self.resolve_channel_ref(reference).await?),
-            None => None,
-        };
-
-        // Build search params
-        let params = SearchParams {
-            channel_id: resolved.map(|(id, _)| id),
-            channel_namespace: resolved.and_then(|(_, namespace)| namespace),
-            ..params_template
-        };
-
-        // Execute search
-        let result = self.telegram_client.search_messages(&params).await?;
-
-        // Log search results (IDs only, not message text - for privacy and log size)
-        let message_ids: Vec<i64> = result.messages.iter().map(|m| m.id.get()).collect();
-        tracing::info!(
-            query = %params.query,
-            channel_id = ?params.channel_id.map(|c| c.get()),
-            media_filter = ?params.media_filter,
-            hours_back = params.hours_back,
-            limit = params.limit,
-            returned = result.returned,
-            messages_returned = message_ids.len(),
-            message_ids = ?message_ids,
-            search_time_ms = result.search_time_ms,
-            channels_in_results = result.query_metadata.channels_in_results,
-            "Search results"
-        );
-
-        let cursor_policy = if params.channel_id.is_some() {
+        let cursor_policy = if matches!(scope, SearchScope::Channel(_)) {
             shaping::CursorPolicy::SingleChannel
         } else {
             shaping::CursorPolicy::Unavailable
         };
-        let mut response = SearchResponse::<Error>::from_result(result);
+        let compact_scope = if matches!(scope, SearchScope::Channels(_)) {
+            shaping::CompactScope::Multi
+        } else {
+            shaping::CompactScope::Single
+        };
+        let (before_id, after_id) = parse_cursor_bounds(request.before_id, request.after_id)?;
+        let max_text_length =
+            crate::mcp::tools::validation::resolve_max_text_length(request.max_text_length)?;
+        let operation = SearchOperation {
+            scope,
+            query: request.query,
+            hours_back: request
+                .hours_back
+                .unwrap_or(SearchParams::DEFAULT_HOURS_BACK),
+            limit: request.limit.unwrap_or(SearchParams::DEFAULT_LIMIT),
+            media_filter: request.media_filter,
+            from_date: parse_optional_utc("from_date", &request.from_date)?,
+            to_date: parse_optional_utc("to_date", &request.to_date)?,
+            collapse_albums: request.collapse_albums.unwrap_or(true),
+            before_id,
+            after_id,
+        };
+        let operations = AccountOperations::new(
+            std::sync::Arc::clone(&self.telegram_client),
+            std::sync::Arc::clone(&self.rate_limiter),
+            self.account_limits,
+        );
+        let context = operations.search_context(cancellation)?;
+        let mut response = fanout::wire_page(operations.search(operation, &context).await?);
         shaping::shape_response(
             &mut response,
             format,
             max_text_length,
             cursor_policy,
             self.response_byte_budget,
-            shaping::CompactScope::Single,
+            compact_scope,
             budget_mode,
         )?;
         Ok(response)
-    }
-
-    /// Numeric refs are already parsed; a username ref spends one resolve
-    /// RPC (§1.3). Callers acquire before calling this, never after.
-    async fn resolve_channel_ref(
-        &self,
-        reference: ChannelRef,
-    ) -> Result<(ChannelId, Option<crate::telegram::types::PeerNamespace>), Error> {
-        match reference {
-            ChannelRef::Id(channel_id) => Ok((channel_id, None)),
-            ChannelRef::Username(username) => self
-                .telegram_client
-                .resolve_channel_identity(&username)
-                .await
-                .map(|identity| (identity.id, Some(identity.peer_namespace))),
-        }
     }
 
     /// Fan-out tail shared by `search_messages` and `get_recent_messages`:

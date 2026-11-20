@@ -172,6 +172,7 @@ impl From<Error> for ToolError {
                 false,
                 None,
             ),
+            Error::Cancelled => (ErrorCode::Unavailable, "Operation cancelled", false, None),
             Error::Unavailable(_) => (
                 ErrorCode::Unavailable,
                 "Required server state is unavailable",

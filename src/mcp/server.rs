@@ -30,6 +30,7 @@ use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use telegram_core::operations::AccountLimits;
 
 mod impl_send;
 
@@ -68,6 +69,7 @@ pub struct McpServer<T: TelegramClientTrait, R: RateLimiterTrait> {
     transcription_default_timeout_secs: u32,
     transcription_max_timeout_secs: u32,
     response_byte_budget: usize,
+    account_limits: AccountLimits,
     media_batch_max_total_bytes: usize,
     output_format: crate::config::OutputFormat,
     desktop_launcher: Arc<dyn desktop::DesktopLauncher>,
@@ -91,6 +93,7 @@ impl<T: TelegramClientTrait, R: RateLimiterTrait> Clone for McpServer<T, R> {
             transcription_default_timeout_secs: self.transcription_default_timeout_secs,
             transcription_max_timeout_secs: self.transcription_max_timeout_secs,
             response_byte_budget: self.response_byte_budget,
+            account_limits: self.account_limits,
             media_batch_max_total_bytes: self.media_batch_max_total_bytes,
             output_format: self.output_format,
             desktop_launcher: Arc::clone(&self.desktop_launcher),
@@ -123,6 +126,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             transcription_default_timeout_secs: default_transcription_default_timeout(),
             transcription_max_timeout_secs: default_transcription_max_timeout(),
             response_byte_budget: default_response_byte_budget() as usize,
+            account_limits: AccountLimits::default(),
             media_batch_max_total_bytes: default_media_batch_max_total_bytes() as usize,
             output_format: crate::config::OutputFormat::JsonV1,
             desktop_launcher: Arc::new(desktop::SystemLauncher),
@@ -132,6 +136,13 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         };
         server.refresh_tool_router();
         server
+    }
+
+    /// Set the overall search budget, including limiter admission and resolution.
+    #[must_use]
+    pub fn with_search_timeout(mut self, timeout: Duration) -> Self {
+        self.account_limits.search_timeout = timeout;
+        self
     }
 
     /// Initialize optional private preview storage without Telegram RPCs.
@@ -924,6 +935,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         arguments: rmcp::model::JsonObject,
         id: RequestId,
+        context: RequestContext<RoleServer>,
     ) -> CallToolResult {
         let cursor = if arguments
             .get("channel_id")
@@ -942,8 +954,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             crate::error::Error,
         > = async {
             let request: SearchRequest = crate::mcp::tools::types::contract::decode(arguments)?;
-            self.search_messages_data(request, crate::mcp::tools::shaping::BudgetMode::Wire)
-                .await
+            self.search_messages_data(
+                request,
+                crate::mcp::tools::shaping::BudgetMode::Wire,
+                context.ct,
+            )
+            .await
         }
         .await;
         crate::mcp::tools::wire_budget::search(

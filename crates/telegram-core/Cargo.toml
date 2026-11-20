@@ -7,6 +7,7 @@ edition = "2024"
 test-support = ["dep:mockall", "dep:tempfile", "dep:image"]
 
 [dependencies]
+tokio-util = { version = "0.7.20", features = ["rt"] }
 grammers-client.workspace = true
 grammers-session.workspace = true
 grammers-mtsender.workspace = true

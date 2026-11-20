@@ -396,6 +396,7 @@ async fn global_search_keeps_user_group_and_channel_namespaces_without_a_cursor(
                     ..Default::default()
                 },
                 crate::mcp::tools::shaping::BudgetMode::Direct,
+                telegram_core::operations::CancellationToken::new(),
             )
             .await;
         let rendered = crate::mcp::tools::types::contract::render(mode, response);
@@ -511,6 +512,7 @@ async fn global_search_renders_converted_namespaced_albums_in_both_modes() {
                     ..Default::default()
                 },
                 crate::mcp::tools::shaping::BudgetMode::Direct,
+                telegram_core::operations::CancellationToken::new(),
             )
             .await;
         let wire = serde_json::to_value(crate::mcp::tools::types::contract::render(mode, response))
@@ -650,6 +652,7 @@ async fn assert_fanout_namespaced_rendering(search: bool) {
                             ..Default::default()
                         },
                         crate::mcp::tools::shaping::BudgetMode::Direct,
+                        telegram_core::operations::CancellationToken::new(),
                     )
                     .await
             } else {

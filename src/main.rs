@@ -131,6 +131,9 @@ async fn run_mcp_server(
             config.transcription.default_timeout_seconds,
             config.transcription.max_timeout_seconds,
         )
+        .with_search_timeout(std::time::Duration::from_secs(
+            config.telegram.timeouts.search_secs,
+        ))
         .with_response_byte_budget(config.limits.response_byte_budget)
         .with_media_batch_max_total_bytes(config.limits.media_batch_max_total_bytes)
         .with_media_artifacts(&config.media_artifacts)
