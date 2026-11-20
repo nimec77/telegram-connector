@@ -33,6 +33,11 @@ impl TranscriptionDeadline {
         }
     }
 
+    pub(crate) fn bounded_by(mut self, instant: Instant) -> Self {
+        self.at = self.at.min(instant);
+        self
+    }
+
     /// Absolute Tokio instant shared across all stages.
     pub fn instant(self) -> Instant {
         self.at

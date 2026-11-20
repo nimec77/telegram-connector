@@ -72,6 +72,13 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Open items
 
+- **Hosted workspace advisory:** the workspace's stable `rmcp 3.11.0` requires
+  Chrono 0.4.45 directly and through Schemars. The unmaintained advisory
+  RUSTSEC-2026-0543 remains open under cargo-deny. First-party timestamp types
+  use Jiff. See the [dependency inventory](dependency-status.md) and
+  [hosted verification](validation/2026-11-20-workspace-services.md).
+
+
 - **Operational limits:** chosen live model/desktop UI and Telegram/account behavior
   remain unverified; offline Rust/Python payloads and installed DeepSeek adapter
   rendering/attachment checks passed.

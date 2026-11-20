@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Hosted Telegram accounts with OAuth identity, isolated sessions, per-client grants,
+  HTTP reads, previews and opt-in sending.
+- Independently deployable HTTP MCP gateway with delegated tool authorization.
+- Native live channel posts through the Rust core and authenticated SSE, with
+  explicit history recovery through a captured channel head.
+
 ### Changed
 
 - Replace the connector's Chrono timestamp types with `UtcTimestamp` backed by

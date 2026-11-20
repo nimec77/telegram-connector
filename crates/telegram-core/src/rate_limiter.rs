@@ -83,6 +83,17 @@ impl RateLimiter {
         }
     }
 
+    /// Start with no spendable tokens so a restart cannot reset a spent budget.
+    pub fn new_cold(config: &RateLimitConfig) -> Self {
+        let mut bucket = TokenBucket::new(config.max_tokens, config.refill_rate);
+        bucket.available_tokens = 0.0;
+        Self {
+            bucket: Arc::new(Mutex::new(bucket)),
+            capacity: config.max_tokens as f64,
+            refill_rate: config.refill_rate,
+        }
+    }
+
     /// Compatibility snapshot: returns zero if the bucket is unavailable.
     ///
     /// This conservatively advertises no spendable tokens, but loses the distinction

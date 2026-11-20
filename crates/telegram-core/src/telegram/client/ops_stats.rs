@@ -3,14 +3,18 @@
 //! Unit of `client` (LM-2).
 
 use super::TelegramClient;
+use super::raw_page::raw_peer_id;
 use super::raw_pager::RawHistoryPager;
 use super::resolve::{peer_to_ref, validate_channel_identifier};
+use super::stream_source::{JoinedChannel, stream_rpc_error};
 use crate::error::Error;
 use crate::telegram::albums::collapse_albums;
 use crate::telegram::converters::{convert_raw_message, timestamp_from_raw};
 use crate::telegram::timeout::with_timeout;
 use crate::telegram::types::ChannelId;
 use crate::telegram::types::stats::{ChannelStats, compute_stats};
+use grammers_client::peer::Peer;
+use grammers_session::types::{PeerId, PeerRef};
 
 impl TelegramClient {
     pub(super) async fn get_channel_stats_impl(
@@ -26,10 +30,39 @@ impl TelegramClient {
         }
 
         let window_to = crate::UtcTimestamp::now();
-        let cutoff = window_to - jiff::SignedDuration::from_hours(24 * (days_back as i64));
-
         let peer = self.resolve_peer(channel_ref).await?;
         let peer_ref = peer_to_ref(&peer).await?;
+        self.stats_from_peer(&peer, peer_ref, days_back, window_to, None, channel_ref)
+            .await
+    }
+
+    pub(crate) async fn read_joined_channel_stats(
+        &self,
+        joined: &JoinedChannel,
+        days_back: u32,
+    ) -> Result<ChannelStats, Error> {
+        let identity = joined.identity()?;
+        self.stats_from_peer(
+            &joined.peer,
+            joined.reference,
+            days_back,
+            crate::UtcTimestamp::now(),
+            Some(joined.reference.id),
+            &identity.id.to_string(),
+        )
+        .await
+    }
+
+    async fn stats_from_peer(
+        &self,
+        peer: &Peer,
+        peer_ref: PeerRef,
+        days_back: u32,
+        window_to: crate::UtcTimestamp,
+        require_peer: Option<PeerId>,
+        channel_ref: &str,
+    ) -> Result<ChannelStats, Error> {
+        let cutoff = window_to - jiff::SignedDuration::from_hours(24 * i64::from(days_back));
 
         let (messages, scanned, oldest, complete) =
             with_timeout("iter_messages", self.timeouts.history_secs, async {
@@ -41,11 +74,19 @@ impl TelegramClient {
                 // same request, but it keeps the response envelope, which is
                 // what lets the envelope-less converter be deleted entirely.
                 let mut pager = RawHistoryPager::new(&self.client, peer_ref);
-                while let Some((raw_msg, entities)) = pager
-                    .next()
-                    .await
-                    .map_err(|e| Error::TelegramApi(format!("Failed to iterate messages: {}", e)))?
-                {
+                while let Some((raw_msg, entities)) = pager.next().await.map_err(|e| {
+                    if require_peer.is_some() {
+                        stream_rpc_error(e)
+                    } else {
+                        Error::TelegramApi(format!("Failed to iterate messages: {}", e))
+                    }
+                })? {
+                    if let Some(expected) = require_peer
+                        && raw_peer_id(&raw_msg)
+                            .is_some_and(|raw| PeerId::from(raw.clone()) != expected)
+                    {
+                        return Err(Error::UnsupportedPeer);
+                    }
                     if timestamp_from_raw(&raw_msg).is_none_or(|t| t < cutoff) {
                         break; // reached the window edge: sweep is complete
                     }
@@ -57,7 +98,7 @@ impl TelegramClient {
                     if let Some(t) = timestamp_from_raw(&raw_msg) {
                         oldest = Some(oldest.map_or(t, |o: crate::UtcTimestamp| o.min(t)));
                     }
-                    if let Some(converted) = convert_raw_message(&raw_msg, &peer, &entities) {
+                    if let Some(converted) = convert_raw_message(&raw_msg, peer, &entities) {
                         messages.push(converted);
                     }
                 }

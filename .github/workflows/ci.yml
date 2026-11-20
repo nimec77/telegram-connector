@@ -47,6 +47,16 @@ jobs:
         run: cargo doc --workspace --offline --locked --no-deps
       - name: Release build
         run: cargo build --workspace --offline --locked --release
+      - name: Isolated release members and gateway dependency boundary
+        run: |
+          cargo build --offline --locked --release -p telegram-core
+          cargo build --offline --locked --release -p telegram-connector
+          cargo build --offline --locked --release -p telegram-api --features service
+          cargo build --offline --locked --release -p telegram-mcp-http
+          cargo tree --offline --locked -p telegram-mcp-http -e normal,build,features --prefix none > "$RUNNER_TEMP/gateway-tree"
+          if grep -Eq '^(grammers-|telegram-core |telegram-connector |libsql )' "$RUNNER_TEMP/gateway-tree"; then
+            exit 1
+          fi
       - name: Offline process and second-client checks
         run: |
           cargo build --offline --locked -p telegram-connector --example offline_mcp_fixture

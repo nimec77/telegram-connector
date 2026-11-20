@@ -91,3 +91,21 @@ impl SendDeadline {
         result.unwrap_or_else(|_| Err(failure()))
     }
 }
+
+/// Joins a final authorization decision to one synchronous sender submission.
+#[async_trait::async_trait]
+pub trait DispatchGate: Send + Sync {
+    /// Check current authorization and invoke the enqueue callback while the
+    /// check is linearized against revocation. Do not await network I/O here.
+    ///
+    /// # Errors
+    /// Returns a safe pre-dispatch refusal if the caller may no longer send.
+    async fn submit(&self, enqueue: &mut (dyn FnMut() + Send)) -> Result<(), SendFailure>;
+}
+
+impl SendDeadline {
+    /// Reuse a deadline that an enclosing request has already established.
+    pub fn at(at: Instant) -> Self {
+        Self { at }
+    }
+}

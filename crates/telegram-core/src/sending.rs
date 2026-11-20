@@ -23,3 +23,17 @@ mod staging_tests;
 #[cfg(all(test, unix))]
 #[path = "sending/tests/fixtures.rs"]
 pub(crate) mod test_support;
+
+/// Inspect a bounded, private hosted upload using the same container checks as
+/// local staging. This exposes no path or file name to a remote caller.
+///
+/// # Errors
+/// Returns a safe failure when bytes do not match the advertised media kind.
+pub fn check_upload_type(
+    file: &mut std::fs::File,
+    media: &crate::telegram::types::sending::SendMediaKind,
+    size: u64,
+    deadline: crate::telegram::sending::SendDeadline,
+) -> Result<&'static str, crate::telegram::types::sending::SendFailure> {
+    probe::probe(file, media, size, deadline).map(|result| result.mime_type)
+}

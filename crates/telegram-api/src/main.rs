@@ -8,7 +8,7 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::path::Path;
 use std::process::ExitCode;
 use telegram_api::identity::{AuthorityConfig, CredentialVerifier};
-use telegram_api::service::{BrowserConfig, router};
+use telegram_api::service::{BrowserConfig, HostedConfig, hosted_router};
 use tokio::net::TcpListener;
 use url::Url;
 
@@ -23,6 +23,7 @@ struct Config {
     authority: AuthorityConfig,
     browser_client_id: String,
     browser_callback: Url,
+    hosted: HostedConfig,
 }
 
 fn default_listen() -> SocketAddr {
@@ -72,22 +73,27 @@ async fn run() -> Result<(), &'static str> {
     let verifier = CredentialVerifier::discover(config.authority)
         .await
         .map_err(|_| "Could not initialize hosted API identity")?;
-    let app = router(
+    let write_timeout = std::time::Duration::from_secs(config.hosted.events.stalled_write_seconds);
+    let (app, shutdown) = hosted_router(
         verifier,
         BrowserConfig {
             client_id: config.browser_client_id,
             client_secret,
             callback_url: config.browser_callback,
         },
+        config.hosted,
     )
-    .map_err(|_| "Invalid hosted browser registration")?;
+    .await
+    .map_err(|_| "Could not initialize the hosted account service")?;
     let listener = TcpListener::bind(config.listen)
         .await
         .map_err(|_| "Could not bind the hosted API listener")?;
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .map_err(|_| "Hosted API listener failed")
+    telegram_api::service::serve(listener, app, write_timeout, async move {
+        shutdown_signal().await;
+        shutdown.cancel();
+    })
+    .await
+    .map_err(|_| "Hosted API listener failed")
 }
 
 async fn shutdown_signal() {

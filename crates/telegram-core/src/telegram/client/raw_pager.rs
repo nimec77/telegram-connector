@@ -98,9 +98,32 @@ fn apply_window(
     request.max_date = max_date;
 }
 
-/// Raw `messages.GetHistory` pager (get_recent_messages path).
-pub(super) struct RawHistoryPager {
-    client: Client,
+/// The network boundary for the production history pager and offline page scripts.
+pub(super) trait HistoryFetch {
+    fn fetch(
+        &mut self,
+        request: &tl::functions::messages::GetHistory,
+    ) -> impl std::future::Future<Output = Result<tl::enums::messages::Messages, InvocationError>> + Send;
+}
+
+impl HistoryFetch for Client {
+    async fn fetch(
+        &mut self,
+        request: &tl::functions::messages::GetHistory,
+    ) -> Result<tl::enums::messages::Messages, InvocationError> {
+        self.invoke(request).await
+    }
+}
+
+enum HistoryOffsets {
+    IdAndDate,
+    IdOnly,
+}
+
+/// Raw `messages.GetHistory` pager for recent reads and explicit ID ranges.
+pub(super) struct RawHistoryPager<F = Client> {
+    fetch: F,
+    offsets: HistoryOffsets,
     request: tl::functions::messages::GetHistory,
     buffer: VecDeque<(tl::enums::Message, Arc<EntityLookup>)>,
     last_chunk: bool,
@@ -111,13 +134,29 @@ pub(super) struct RawHistoryPager {
 
 impl RawHistoryPager {
     pub(super) fn new(client: &Client, peer: PeerRef) -> Self {
+        Self::with_offsets(client.clone(), peer.into(), 0, HistoryOffsets::IdAndDate)
+    }
+}
+
+impl<F: HistoryFetch> RawHistoryPager<F> {
+    fn with_offsets(
+        fetch: F,
+        peer: tl::enums::InputPeer,
+        offset: i32,
+        offsets: HistoryOffsets,
+    ) -> Self {
         Self {
-            client: client.clone(),
-            request: history_request(peer.into(), 0),
+            fetch,
+            offsets,
+            request: history_request(peer, offset),
             buffer: VecDeque::new(),
             last_chunk: false,
             last_page_size: None,
         }
+    }
+
+    pub(super) fn for_id_range(fetch: F, peer: tl::enums::InputPeer, upper_offset: i32) -> Self {
+        Self::with_offsets(fetch, peer, upper_offset, HistoryOffsets::IdOnly)
     }
 
     pub(super) fn offset_id(mut self, offset: i32) -> Self {
@@ -138,13 +177,29 @@ impl RawHistoryPager {
         if self.last_chunk {
             return Ok(None);
         }
-        let page = unpack_page(self.client.invoke(&self.request).await?);
-        self.last_chunk = page.single_peer_exhausted(self.request.limit);
-        // Measured on the page, not the buffer: the field reports raw messages
-        // walked, which only coincides with the buffer length while the buffer
-        // is provably empty here and nothing filters on the way in.
+        let page = unpack_page(self.fetch.fetch(&self.request).await?);
+        self.last_chunk = match self.offsets {
+            HistoryOffsets::IdAndDate => {
+                advance_history_offsets(&mut self.request, &page);
+                page.single_peer_exhausted(self.request.limit)
+            }
+            HistoryOffsets::IdOnly => {
+                // Match recovery by ID alone. A short Telegram slice may still
+                // have older rows, even at low IDs.
+                let previous = self.request.offset_id;
+                let advance = page
+                    .messages
+                    .last()
+                    .map(|last| last.id())
+                    .filter(|&id| id > 0 && (previous == 0 || id < previous));
+                if let Some(id) = advance {
+                    self.request.offset_id = id;
+                }
+                page.global_exhausted() || advance.is_none()
+            }
+        };
+        // Measured before buffering so the caller counts each raw page once.
         let page_size = page.messages.len();
-        advance_history_offsets(&mut self.request, &page);
         fill_buffer(&mut self.buffer, page);
         self.last_page_size = Some(page_size);
         Ok(self.buffer.pop_front())

@@ -29,6 +29,28 @@ impl TelegramClient {
     /// Returns [`Error::Auth`] for session directory/open/migration failures.
     /// Does not prompt or perform interactive login.
     pub async fn new(config: &TelegramConfig, search: &SearchConfig) -> Result<Self, Error> {
+        Self::open(config, search, false).await
+    }
+
+    /// Open a client whose single native update receiver is available for account streams.
+    ///
+    /// Finish authentication before starting an account reader. The sender is shared
+    /// by reads, writes, and the update reader.
+    ///
+    /// # Errors
+    /// Returns the same configuration and storage errors as [Self::new].
+    pub async fn new_with_streams(
+        config: &TelegramConfig,
+        search: &SearchConfig,
+    ) -> Result<Self, Error> {
+        Self::open(config, search, true).await
+    }
+
+    async fn open(
+        config: &TelegramConfig,
+        search: &SearchConfig,
+        stream_enabled: bool,
+    ) -> Result<Self, Error> {
         config.validate_media_limits().map_err(|_| {
             Error::InvalidInput(
                 "telegram.max_download_bytes must fit the 80 MiB raw-memory allowance".into(),
@@ -45,6 +67,8 @@ impl TelegramClient {
 
         // Create client before spawning runner (Client::new takes SenderPoolFatHandle)
         let client = Client::new(pool.handle);
+
+        let stream_updates = stream_enabled.then(|| std::sync::Mutex::new(Some(pool.updates)));
 
         // Spawn the runner in the background
         let runner_handle = tokio::spawn(async move {
@@ -63,8 +87,25 @@ impl TelegramClient {
             max_download_bytes: config.max_download_bytes,
             search_deadline_secs: search.deadline_seconds,
             account_status: tokio::sync::RwLock::new(AccountStatus::default()),
-            _runner_handle: runner_handle,
+            runner_handle: tokio::sync::Mutex::new(runner_handle),
+            stream_updates,
         })
+    }
+
+    /// Stop the sender and await its exit before opening a replacement session client.
+    ///
+    /// Requests on every SDK clone sharing this sender end. Host-managed stream
+    /// readers should be closed before the sender.
+    pub async fn close(&self) {
+        self.client.disconnect();
+        let mut handle = self.runner_handle.lock().await;
+        if !handle.is_finished() {
+            let grace = std::time::Duration::from_secs(self.timeouts.resolve_secs);
+            if tokio::time::timeout(grace, &mut *handle).await.is_err() {
+                handle.abort();
+                let _ = (&mut *handle).await;
+            }
+        }
     }
 
     /// Borrow the upstream grammers client for compatibility/integration.
@@ -110,6 +151,14 @@ impl TelegramClient {
             },
         )
         .await
+    }
+}
+
+impl Drop for TelegramClient {
+    fn drop(&mut self) {
+        if self.stream_updates.is_some() {
+            self.runner_handle.get_mut().abort();
+        }
     }
 }
 

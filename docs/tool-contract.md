@@ -7,6 +7,12 @@ existing clients that parse the historical text can explicitly select `output_fo
 "legacy"` while migrating. See the [0.23.0 changelog](../CHANGELOG.md#0230---2026-10-31)
 for the default-output and Rust API migration.
 
+The hosted gateway uses the modern binding and derives its catalog from the
+originating OAuth client's current grant. It returns canonical structured JSON
+with matching text fallback. Hosted media may include caller-scoped resource
+links, and live posts use the API's event stream. See the
+[hosted service contract](hosted-services.md).
+
 ## Envelope and errors
 
 The sixteen default tools and the two optional sending tools return one versioned JSON object in `structuredContent` and

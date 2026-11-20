@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/telegram-core", "crates/telegram-api"]
+members = ["crates/telegram-core", "crates/telegram-api", "crates/telegram-mcp-http"]
 resolver = "3"
 
 [package]
@@ -21,7 +21,7 @@ path = "examples/safe_send/main.rs"
 test = true
 
 [dependencies]
-telegram-core = { path = "crates/telegram-core", version = "0.26.1" }
+telegram-core = { path = "crates/telegram-core", version = "0.26.1", features = ["image-preview"] }
 # MCP
 rmcp = { version = "3.11.0", features = ["server"] }
 
@@ -54,7 +54,7 @@ futures.workspace = true
 dialoguer = "0.12.0"
 
 # CLI parsing
-clap = { version = "4.6.8", features = ["derive"] }
+clap = { version = "4.6.9", features = ["derive"] }
 
 # Config & Serialization
 toml = "1.2.1"
@@ -84,7 +84,6 @@ getrandom.workspace = true
 secrecy.workspace = true
 
 # Media processing
-image = { version = "0.25", default-features = false, features = ["jpeg"] }
 base64 = "0.23.1"
 
 [dev-dependencies]
@@ -97,7 +96,7 @@ telegram-core = { path = "crates/telegram-core", version = "0.26.1", features = 
 axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio"] }
 rmcp = { version = "3.11.0", features = ["transport-streamable-http-server"] }
 # PNG codec for tests: create_test_jpeg & non-JPEG re-encode test write_to PNG
-image = { version = "0.25", default-features = false, features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 # `test-util` enables the pausable test clock; `net` enables the loopback HTTP fixture.
 # Neither feature needs to be requested on the production connector dependency.
 tokio = { workspace = true, features = ["test-util", "net"] }

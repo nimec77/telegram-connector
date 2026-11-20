@@ -14,7 +14,7 @@ pub mod converters;
 pub mod envelope;
 pub mod media_pipeline;
 pub mod sending;
-pub(crate) mod session_storage;
+pub mod session_storage;
 pub mod timeout;
 pub mod trait_def;
 pub mod transcription;

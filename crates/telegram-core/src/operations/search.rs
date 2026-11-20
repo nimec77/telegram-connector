@@ -6,8 +6,10 @@ use crate::UtcTimestamp;
 use crate::error::Error;
 use crate::link::ChannelRef;
 use crate::rate_limiter::RateLimiterTrait;
-use crate::telegram::TelegramClientTrait;
 use crate::telegram::types::{MediaFilter, MessageId, SearchParams, SearchResult};
+use crate::telegram::{TelegramClient, TelegramClientTrait};
+use std::future::Future;
+use std::pin::Pin;
 
 /// Which dialogs a search may visit.
 #[derive(Debug, Clone)]
@@ -53,6 +55,9 @@ pub struct SearchPage {
     pub failures: Vec<(String, Error)>,
 }
 
+type SearchFuture<'a> = Pin<Box<dyn Future<Output = Result<SearchResult, Error>> + Send + 'a>>;
+type SearchFetch<T> = for<'a> fn(&'a T, &'a SearchParams) -> SearchFuture<'a>;
+
 impl<T: TelegramClientTrait, R: RateLimiterTrait> AccountOperations<T, R> {
     /// Validate inputs, charge once for each distinct attempt and run the search.
     ///
@@ -63,6 +68,18 @@ impl<T: TelegramClientTrait, R: RateLimiterTrait> AccountOperations<T, R> {
         &self,
         operation: SearchOperation,
         context: &OperationContext,
+    ) -> Result<SearchPage, Error> {
+        self.search_with(operation, context, |client, params| {
+            client.search_messages(params)
+        })
+        .await
+    }
+
+    async fn search_with(
+        &self,
+        operation: SearchOperation,
+        context: &OperationContext,
+        fetch: SearchFetch<T>,
     ) -> Result<SearchPage, Error> {
         let timing = context.bound(self.limits.search_timeout, "search_messages");
         if operation.query.trim().is_empty() && operation.media_filter.is_none() {
@@ -130,7 +147,8 @@ impl<T: TelegramClientTrait, R: RateLimiterTrait> AccountOperations<T, R> {
                     async move {
                         let reference =
                             parse_channel_reference(&reference).map_err(Error::InvalidInput)?;
-                        self.search_target(Some(reference), params, timing).await
+                        self.search_target(Some(reference), params, timing, fetch)
+                            .await
                     }
                 })
                 .await;
@@ -145,7 +163,9 @@ impl<T: TelegramClientTrait, R: RateLimiterTrait> AccountOperations<T, R> {
             }
         };
         timing.run(self.limiter.acquire(1)).await?;
-        let result = self.search_target(reference, params, &timing).await?;
+        let result = self
+            .search_target(reference, params, &timing, fetch)
+            .await?;
         Ok(SearchPage {
             result,
             failures: Vec::new(),
@@ -157,6 +177,7 @@ impl<T: TelegramClientTrait, R: RateLimiterTrait> AccountOperations<T, R> {
         reference: Option<ChannelRef>,
         mut params: SearchParams,
         timing: &BoundedOperation<'_>,
+        fetch: SearchFetch<T>,
     ) -> Result<SearchResult, Error> {
         match reference {
             Some(ChannelRef::Id(id)) => params.channel_id = Some(id),
@@ -169,6 +190,35 @@ impl<T: TelegramClientTrait, R: RateLimiterTrait> AccountOperations<T, R> {
             }
             None => {}
         }
-        timing.run(self.client.search_messages(&params)).await
+        timing.run(fetch(&self.client, &params)).await
+    }
+}
+
+impl<R: RateLimiterTrait> AccountOperations<TelegramClient, R> {
+    /// Search currently joined broadcast channels and supergroups by numeric ID.
+    ///
+    /// # Errors
+    /// Returns invalid scope, admission failure, cancellation or an upstream failure.
+    pub async fn search_joined_channels(
+        &self,
+        operation: SearchOperation,
+        context: &OperationContext,
+    ) -> Result<SearchPage, Error> {
+        let channels = match &operation.scope {
+            SearchScope::Global => {
+                return Err(Error::InvalidInput(
+                    "Joined-channel search requires explicit channel IDs".into(),
+                ));
+            }
+            SearchScope::Channel(channel) => std::slice::from_ref(channel),
+            SearchScope::Channels(channels) => channels,
+        };
+        for channel in channels {
+            super::validation::parse_channel_id(channel).map_err(Error::InvalidInput)?;
+        }
+        self.search_with(operation, context, |client, params| {
+            Box::pin(client.search_joined_channel(params))
+        })
+        .await
     }
 }

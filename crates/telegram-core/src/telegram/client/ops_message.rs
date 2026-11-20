@@ -6,10 +6,12 @@ use super::TelegramClient;
 use super::guard::{is_empty_variant, require_found_raw};
 use super::raw_fetch::fetch_messages_by_id;
 use super::resolve::{peer_to_ref, validate_channel_identifier};
+use super::stream_source::{JoinedChannelKind, stream_rpc_error};
 use crate::error::Error;
 use crate::telegram::converters::convert_raw_message;
 use crate::telegram::envelope::EntityLookup;
 use crate::telegram::timeout::with_timeout;
+use crate::telegram::types::{ChannelId, MessageBatch};
 use grammers_client::tl;
 
 impl TelegramClient {
@@ -94,6 +96,28 @@ impl TelegramClient {
             .await?;
 
         partition_batch(message_ids, &mut by_id, &peer, &entities, channel_ref)
+    }
+    pub(crate) async fn read_joined_channel_batch(
+        &self,
+        channel_id: ChannelId,
+        message_ids: &[i32],
+    ) -> Result<MessageBatch, Error> {
+        let channel = self
+            .joined_channel_peers(&[channel_id], JoinedChannelKind::BroadcastOrSupergroup)
+            .await?
+            .remove(&channel_id)
+            .ok_or_else(|| Error::ChannelNotFound(channel_id.to_string()))?;
+        let (mut by_id, entities) =
+            fetch_messages_by_id(&self.client, channel.reference, message_ids)
+                .await
+                .map_err(stream_rpc_error)?;
+        partition_batch(
+            message_ids,
+            &mut by_id,
+            &channel.peer,
+            &entities,
+            &channel_id.to_string(),
+        )
     }
 }
 

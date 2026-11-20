@@ -119,7 +119,7 @@ impl BrowserAuth {
             memory.attempts.remove(&previous);
         }
         if memory.attempts.len() >= MAX_ATTEMPTS {
-            return Err(ApiError(ErrorCode::RateLimited));
+            return Err(ApiError::new(ErrorCode::RateLimited));
         }
         let id = random_value()?;
         let state = random_value()?;
@@ -181,7 +181,7 @@ impl BrowserAuth {
             memory.sessions.remove(&old);
         }
         if memory.sessions.len() >= MAX_SESSIONS {
-            return Err(ApiError(ErrorCode::RateLimited));
+            return Err(ApiError::new(ErrorCode::RateLimited));
         }
         let id = random_value()?;
         memory.sessions.insert(
@@ -222,6 +222,20 @@ impl BrowserAuth {
             },
         ))
     }
+    pub(super) fn owner_read(
+        &self,
+        headers: &HeaderMap,
+    ) -> Result<(String, OwnerSession), ApiError> {
+        let origin = super::single_header(headers, header::ORIGIN);
+        let site = super::single_header(headers, header::HeaderName::from_static("sec-fetch-site"));
+        if origin.is_some_and(|origin| origin != self.origin)
+            || (origin != Some(self.origin.as_str()) && site != Some("same-origin"))
+        {
+            return Err(AuthError::Forbidden.into());
+        }
+        self.owner(headers)
+    }
+
     pub(super) fn owner_mutation(
         &self,
         headers: &HeaderMap,
@@ -265,7 +279,14 @@ pub(super) async fn start(
         ("response_type", "code"),
         ("client_id", state.browser.config.client_id.as_str()),
         ("redirect_uri", state.browser.config.callback_url.as_str()),
-        ("scope", "openid telegram.link"),
+        (
+            "scope",
+            if state.hosted.is_some() {
+                "openid telegram.link telegram.read"
+            } else {
+                "openid telegram.link"
+            },
+        ),
         ("resource", state.verifier.audience(Audience::Api)),
         ("state", login.state.as_str()),
         ("nonce", login.nonce.as_str()),
@@ -289,10 +310,10 @@ pub(super) async fn callback(
     uri: Uri,
 ) -> Result<Response, ApiError> {
     if uri.query().is_none_or(|raw| raw.len() > MAX_CALLBACK_BYTES) {
-        return Err(ApiError(ErrorCode::InvalidRequest));
+        return Err(ApiError::new(ErrorCode::InvalidRequest));
     }
     let Query(query) = Query::<CallbackQuery>::try_from_uri(&uri)
-        .map_err(|_| ApiError(ErrorCode::InvalidRequest))?;
+        .map_err(|_| ApiError::new(ErrorCode::InvalidRequest))?;
     if query
         .iss
         .as_deref()
@@ -349,7 +370,12 @@ pub(super) async fn callback(
     let (session, lifetime) = state.browser.open_session(&headers, identity, expiry)?;
     let mut response = StatusCode::SEE_OTHER.into_response();
     let outgoing = response.headers_mut();
-    outgoing.insert(header::LOCATION, HeaderValue::from_static("/v1/session"));
+    let destination = if state.hosted.is_some() {
+        "/account"
+    } else {
+        "/v1/session"
+    };
+    outgoing.insert(header::LOCATION, HeaderValue::from_static(destination));
     outgoing.append(header::SET_COOKIE, set_cookie(LOGIN_COOKIE, "", 0)?);
     outgoing.append(
         header::SET_COOKIE,

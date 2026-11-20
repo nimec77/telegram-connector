@@ -4,7 +4,7 @@ use super::resolve_recipient::ResolvedRecipient;
 use super::send_diagnostics::{private_rpc, stage_result};
 use super::send_receipt::ExpectedSend;
 use super::send_targets::ValidatedTargets;
-use super::send_transport::{PreparedFinalSend, random_id, submit_final_with};
+use super::send_transport::{PreparedFinalSend, random_id, submit_maybe_gated};
 use crate::telegram::sending::{SendDeadline, SendStage};
 use crate::telegram::types::sending::{
     ContentKind, SendFailure, SendFailureKind, SendText, SentMessage,
@@ -50,6 +50,17 @@ impl TelegramClient {
         request: &SendText,
         deadline: SendDeadline,
     ) -> Result<SentMessage, SendFailure> {
+        self.send_message_gated(request, deadline, None).await
+    }
+
+    // Only the charged facade uses a hosted gate. Local callers keep the public
+    // read/write trait API and its established dispatch behavior.
+    pub(crate) async fn send_message_gated(
+        &self,
+        request: &SendText,
+        deadline: SendDeadline,
+        gate: Option<&dyn crate::telegram::sending::DispatchGate>,
+    ) -> Result<SentMessage, SendFailure> {
         request.validate()?;
         let recipient = stage_result(
             "resolve",
@@ -75,9 +86,10 @@ impl TelegramClient {
             .session
             .home_dc_id()
             .map_err(|_| SendFailure::not_sent(SendFailureKind::Unavailable, None))?;
-        let sent = private_rpc(submit_final_with(
+        let sent = private_rpc(submit_maybe_gated(
             PreparedFinalSend { body, expected },
             deadline,
+            gate,
             |body| self.send_adapter.submit(dc, body),
         ))
         .await;

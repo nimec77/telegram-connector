@@ -55,6 +55,22 @@ forbid unsafe code. See manual §9 for exact scope and legitimate compatibility 
 All must pass before commit. Use `--offline` for Cargo dependency resolution when
 cached; tests use mocks and need no Telegram credentials or live session.
 
+## Hosted verification
+
+Run member builds separately to check production feature isolation.
+
+```bash
+cargo build --locked --offline --release -p telegram-connector
+cargo build --locked --offline --release -p telegram-core
+cargo build --locked --offline --release -p telegram-api --features service
+cargo build --locked --offline --release -p telegram-mcp-http
+cargo tree --locked --offline -p telegram-mcp-http -e normal,build,features
+```
+
+The API and gateway tests bind numeric loopback sockets for the issuer, HTTP,
+SSE and MCP fixtures. Use disposable roots for SQLite and session tests. The
+[operator guide](hosted-services.md) describes production configuration.
+
 ## Git commits
 
 Branch, commit, and open PRs within the authorized task without routine approval gates.

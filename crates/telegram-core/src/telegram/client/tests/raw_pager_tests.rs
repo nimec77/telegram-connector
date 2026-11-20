@@ -480,3 +480,153 @@ async fn global_next_uses_one_walk_deadline_and_preserves_partial_results() {
     assert_eq!(budget.messages_scanned(), 2);
     assert_eq!(pager.fetch.requests.lock().expect("requests").len(), 2);
 }
+
+struct ScriptedHistory(VecDeque<(i32, Option<Vec<tl::enums::Message>>)>);
+
+impl HistoryFetch for ScriptedHistory {
+    async fn fetch(
+        &mut self,
+        request: &tl::functions::messages::GetHistory,
+    ) -> Result<tl::enums::messages::Messages, InvocationError> {
+        let (offset, page) = self.0.pop_front().expect("unexpected history request");
+        assert_eq!(request.offset_id, offset);
+        assert_eq!(request.offset_date, 0);
+        match page {
+            Some(rows) => Ok(raw_tl_messages_slice(rows, None)),
+            None => std::future::pending().await,
+        }
+    }
+}
+
+fn history_range_peer() -> grammers_client::peer::Peer {
+    let grammers_mtsender::SenderPool { handle, .. } = grammers_mtsender::SenderPool::new(
+        Arc::new(grammers_session::storages::MemorySession::default()),
+        1,
+    );
+    grammers_client::peer::Peer::from_raw(
+        &Client::new(handle),
+        tl::enums::Chat::Channel(raw_tl_channel(11, "Channel", None)),
+    )
+}
+
+fn history_range(
+    after_id: i64,
+    through_id: i64,
+    before_id: Option<i64>,
+    limit: u32,
+) -> crate::operations::HistoryIdRange {
+    use crate::telegram::types::{ChannelId, MessageId};
+    crate::operations::HistoryIdRange {
+        channel_id: ChannelId::new(11).expect("channel"),
+        after_id: Some(MessageId::new(after_id).expect("after")),
+        through_id: MessageId::new(through_id).expect("through"),
+        before_id: before_id.map(|id| MessageId::new(id).expect("before")),
+        limit,
+    }
+}
+
+#[tokio::test]
+async fn history_range_includes_largest_id_once_and_keeps_individual_old_rows() {
+    use super::super::ops_history_range::collect_history_range;
+    use crate::operations::{CancellationToken, OperationContext};
+    use std::time::Duration;
+
+    let peer = history_range_peer();
+    let max = i32::MAX;
+    let bounds = history_range(11, i64::from(max), None, 1)
+        .wire_bounds()
+        .expect("valid range");
+    let duration = Duration::from_secs(10);
+    let context = OperationContext::new(
+        tokio::time::Instant::now() + duration,
+        CancellationToken::new(),
+    );
+    let timing = context.bound(duration, "history_range");
+    let album_row = |id| raw_tl_message_grouped(id, 1_700_000_000, 11, 77);
+    let first = collect_history_range(
+        RawHistoryPager::for_id_range(
+            ScriptedHistory([(0, Some(vec![album_row(max), album_row(max - 1)]))].into()),
+            tl::enums::InputPeer::Empty,
+            bounds.upper_offset,
+        ),
+        &peer,
+        bounds,
+        &timing,
+    )
+    .await
+    .expect("first range page");
+    assert_eq!(first.messages.len(), 1);
+    assert_eq!(first.messages[0].id.get(), i64::from(max));
+    assert_eq!(first.messages[0].grouped_id, Some(77));
+    let cursor = first.next_before_id.expect("older page").get();
+    assert_eq!(cursor, i64::from(max));
+
+    let bounds = history_range(11, i64::from(max), Some(cursor), 3)
+        .wire_bounds()
+        .expect("valid continuation");
+    let older = collect_history_range(
+        RawHistoryPager::for_id_range(
+            ScriptedHistory(
+                [
+                    (max, Some(vec![album_row(max), album_row(max - 1)])),
+                    (max - 1, Some(vec![raw_tl_message(13, 50, 11)])),
+                    (13, Some(vec![raw_tl_message(11, 49, 11)])),
+                ]
+                .into(),
+            ),
+            tl::enums::InputPeer::Empty,
+            bounds.upper_offset,
+        ),
+        &peer,
+        bounds,
+        &timing,
+    )
+    .await
+    .expect("continuation page");
+    assert_eq!(
+        older
+            .messages
+            .iter()
+            .map(|row| row.id.get())
+            .collect::<Vec<_>>(),
+        [i64::from(max - 1), 13]
+    );
+    assert_eq!(older.messages[0].grouped_id, Some(77));
+    assert_eq!(older.messages[1].timestamp.unix_seconds(), 50);
+    assert_eq!(older.next_before_id, None);
+}
+
+#[tokio::test(start_paused = true)]
+async fn history_range_deadline_preserves_rows_and_the_resume_cursor() {
+    use super::super::ops_history_range::collect_history_range;
+    use crate::operations::{CancellationToken, OperationContext};
+    use std::time::Duration;
+
+    let peer = history_range_peer();
+    let duration = Duration::from_secs(2);
+    let context = OperationContext::new(
+        tokio::time::Instant::now() + duration,
+        CancellationToken::new(),
+    );
+    let timing = context.bound(Duration::from_secs(20), "history_range");
+    let bounds = history_range(10, 91, Some(95), 4)
+        .wire_bounds()
+        .expect("valid range");
+    let page = collect_history_range(
+        RawHistoryPager::for_id_range(
+            ScriptedHistory([(92, Some(vec![raw_tl_message(91, 50, 11)])), (91, None)].into()),
+            tl::enums::InputPeer::Empty,
+            bounds.upper_offset,
+        ),
+        &peer,
+        bounds,
+        &timing,
+    )
+    .await
+    .expect("partial range page");
+    assert_eq!(page.messages.len(), 1);
+    assert_eq!(page.messages[0].id.get(), 91);
+    assert_eq!(page.next_before_id.map(|id| id.get()), Some(91));
+    assert!(page.partial);
+    assert!(page.timed_out);
+}

@@ -331,11 +331,18 @@ and safe recovery after uncertain delivery.
 - **Tool not found** — verify the tool name, restart the MCP client after config changes,
   and check `/mcp` in Codex.
 
+## Hosted services
+
+The workspace also builds `telegram-api` for linked accounts, scoped HTTP
+operations and live channel posts, and `telegram-mcp-http` for authorized remote
+MCP clients. The [operator guide](docs/hosted-services.md) covers OAuth provider
+registration, private account storage, reverse proxy settings and stream recovery.
+
 ## Development
 
 ```bash
 just check          # formatting, all-target Clippy, tests/doctests and warning-free docs
-cargo test --locked # offline fixtures and mocks; no Telegram credentials required
+cargo test --workspace --locked # offline fixtures and mocks
 ```
 
 Use `just` to list recipes. With cached dependencies, add `--offline` to Cargo commands.

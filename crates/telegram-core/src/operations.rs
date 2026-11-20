@@ -10,13 +10,26 @@ use tokio::time::{Instant, sleep_until};
 pub use tokio_util::sync::CancellationToken;
 
 mod batch;
+mod channels;
 #[doc(hidden)]
 pub mod fanout;
 mod history;
+#[cfg(feature = "image-preview")]
+mod media;
+#[cfg(feature = "image-preview")]
+#[doc(hidden)]
+pub mod preview;
+#[cfg(feature = "image-preview")]
+pub use media::{
+    JoinedMediaSource, MAX_PREVIEW_JPEG_BYTES, MediaPreview, MediaPreviewBatch, MediaPreviewItem,
+    MediaPreviewRequest,
+};
 mod search;
+mod sending;
 mod validation;
 pub use batch::BatchOperation;
-pub use history::{HistoryOperation, HistoryScope};
+pub(crate) use history::HistoryIdBounds;
+pub use history::{HistoryIdPage, HistoryIdRange, HistoryOperation, HistoryScope};
 pub use search::{SearchOperation, SearchPage, SearchScope};
 #[doc(hidden)]
 pub use validation::{parse_channel_id, parse_channel_reference, validate_date_window};
@@ -36,7 +49,17 @@ impl OperationContext {
         }
     }
 
-    fn bound(&self, limit: Duration, name: &'static str) -> BoundedOperation<'_> {
+    /// Absolute local deadline supplied by the transport.
+    pub fn deadline(&self) -> Instant {
+        self.deadline
+    }
+
+    /// Cancels the operation without changing the linked account.
+    pub fn cancellation(&self) -> &CancellationToken {
+        &self.cancellation
+    }
+
+    pub(crate) fn bound(&self, limit: Duration, name: &'static str) -> BoundedOperation<'_> {
         let started = Instant::now();
         let deadline = started
             .checked_add(limit)
@@ -55,7 +78,7 @@ impl OperationContext {
     }
 }
 
-struct BoundedOperation<'a> {
+pub(crate) struct BoundedOperation<'a> {
     deadline: Instant,
     cancellation: &'a CancellationToken,
     name: &'static str,
@@ -74,13 +97,21 @@ impl BoundedOperation<'_> {
         Instant::now() >= self.deadline
     }
 
-    async fn run<T>(&self, work: impl Future<Output = Result<T, Error>>) -> Result<T, Error> {
+    pub(crate) fn check(&self) -> Result<(), Error> {
         if self.cancellation.is_cancelled() {
             return Err(Error::Cancelled);
         }
         if self.expired() {
             return Err(self.timeout());
         }
+        Ok(())
+    }
+
+    pub(crate) async fn run<T>(
+        &self,
+        work: impl Future<Output = Result<T, Error>>,
+    ) -> Result<T, Error> {
+        self.check()?;
         tokio::select! {
             biased;
             _ = self.cancellation.cancelled() => Err(Error::Cancelled),

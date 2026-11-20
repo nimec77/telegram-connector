@@ -4,10 +4,12 @@
 
 use super::TelegramClient;
 use super::cursor::cursor_wire_bounds;
+use super::raw_page::raw_peer_id;
 use super::raw_pager::{RawChannelSearchPager, RawGlobalSearchPager};
 use super::resolve::{NumericSelection, peer_to_ref};
 use super::results::assemble_search_result;
 use super::search_budget::SearchBudget;
+use super::stream_source::{JoinedChannelKind, stream_rpc_error};
 use super::walk::{BelowCutoff, Fetched, Flow, MessageWalk, WalkConfig};
 use crate::UtcTimestamp;
 use crate::error::Error;
@@ -15,13 +17,42 @@ use crate::telegram::albums::{AlbumMode, PageAccumulator};
 use crate::telegram::converters::convert_media_filter;
 use crate::telegram::timeout::with_timeout;
 use crate::telegram::types::{ChannelId, SearchParams, SearchResult};
+use grammers_session::types::PeerId;
 use std::time::Instant;
 use tracing::Instrument;
+
+#[derive(Clone, Copy)]
+enum ChannelSearchAccess {
+    Dialog,
+    Joined,
+}
 
 impl TelegramClient {
     pub(super) async fn search_messages_impl(
         &self,
         params: &SearchParams,
+    ) -> Result<SearchResult, Error> {
+        self.search_messages_with_access(params, ChannelSearchAccess::Dialog)
+            .await
+    }
+
+    pub(crate) async fn search_joined_channel(
+        &self,
+        params: &SearchParams,
+    ) -> Result<SearchResult, Error> {
+        if params.channel_id.is_none() {
+            return Err(Error::InvalidInput(
+                "Joined-channel search requires a channel ID".into(),
+            ));
+        }
+        self.search_messages_with_access(params, ChannelSearchAccess::Joined)
+            .await
+    }
+
+    async fn search_messages_with_access(
+        &self,
+        params: &SearchParams,
+        access: ChannelSearchAccess,
     ) -> Result<SearchResult, Error> {
         // Validate parameters
         // Empty query is allowed when media_filter is set (search for media type only)
@@ -47,7 +78,14 @@ impl TelegramClient {
         // If channel_id is specified, search only that channel
         let (page, channels_scanned, budget) = if let Some(channel_id) = params.channel_id {
             let (page, scanned, budget) = self
-                .search_in_channel(params, channel_id, cutoff_time, before_offset, after_bound)
+                .search_in_channel(
+                    params,
+                    channel_id,
+                    cutoff_time,
+                    before_offset,
+                    after_bound,
+                    access,
+                )
                 .await?;
             (page, Some(scanned), budget)
         } else {
@@ -116,6 +154,7 @@ impl TelegramClient {
         cutoff_time: UtcTimestamp,
         before_offset: Option<i32>,
         after_bound: Option<i32>,
+        access: ChannelSearchAccess,
     ) -> Result<(PageAccumulator, u32, SearchBudget), Error> {
         let album_mode = AlbumMode::from_collapse_albums(params.collapse_albums);
         with_timeout(
@@ -137,35 +176,55 @@ impl TelegramClient {
                     self.search_deadline_secs,
                 );
                 let mut channels_scanned = 0u32;
-                // Complete this existing dialog traversal before trusting a numeric match.
-                // A namespace retained from username resolution narrows the same pass;
-                // a bare numeric input remains fail-closed across eligible namespaces.
-                let mut dialogs = self.client.iter_dialogs();
-                let mut selected =
-                    NumericSelection::with_namespace(channel_id.get(), params.channel_namespace);
-                while let Some(dialog) = dialogs
-                    .next()
-                    .await
-                    .map_err(|e| Error::TelegramApi(format!("Failed to iterate dialogs: {e}")))?
-                {
-                    if walk.expired() {
-                        break;
+                let resolved = match access {
+                    ChannelSearchAccess::Joined => {
+                        let channel = self
+                            .joined_channel_peers(
+                                &[channel_id],
+                                JoinedChannelKind::BroadcastOrSupergroup,
+                            )
+                            .await?
+                            .remove(&channel_id)
+                            .ok_or_else(|| Error::ChannelNotFound(channel_id.to_string()))?;
+                        Some((channel.peer, channel.reference))
                     }
-                    let peer = dialog.peer();
-                    selected.consider(
-                        crate::telegram::converters::peer_namespace(peer),
-                        peer.id().bare_id(),
-                        || peer.clone(),
-                    )?;
-                }
-                // An incomplete traversal cannot establish unambiguous identity. Keep
-                // the existing deadline's successful empty partial instead of fetching
-                // from a provisional match, or starting a new deadline/resolution pass.
+                    ChannelSearchAccess::Dialog => {
+                        // Complete this existing dialog traversal before trusting a numeric match.
+                        // A namespace retained from username resolution narrows the same pass;
+                        // a bare numeric input remains fail-closed across eligible namespaces.
+                        let mut dialogs = self.client.iter_dialogs();
+                        let mut selected = NumericSelection::with_namespace(
+                            channel_id.get(),
+                            params.channel_namespace,
+                        );
+                        while let Some(dialog) = dialogs.next().await.map_err(|e| {
+                            Error::TelegramApi(format!("Failed to iterate dialogs: {e}"))
+                        })? {
+                            if walk.expired() {
+                                break;
+                            }
+                            let peer = dialog.peer();
+                            selected.consider(
+                                crate::telegram::converters::peer_namespace(peer),
+                                peer.id().bare_id(),
+                                || peer.clone(),
+                            )?;
+                        }
+                        // Expiry makes a provisional match unusable.
+                        if !walk.expired()
+                            && let Some(peer) = selected.finish()
+                        {
+                            let reference = peer_to_ref(&peer).await?;
+                            Some((peer, reference))
+                        } else {
+                            None
+                        }
+                    }
+                };
                 if !walk.expired()
-                    && let Some(peer) = selected.finish()
+                    && let Some((peer, peer_ref)) = resolved
                 {
                     channels_scanned += 1;
-                    let peer_ref = peer_to_ref(&peer).await?;
                     let mut pager =
                         RawChannelSearchPager::new(&self.client, peer_ref).query(&params.query);
                     if let Some(before) = before_offset {
@@ -178,10 +237,20 @@ impl TelegramClient {
                         if walk.expired() {
                             break;
                         }
-                        let next = pager
-                            .next()
-                            .await
-                            .map_err(|e| Error::TelegramApi(format!("Search failed: {e}")))?;
+                        let next = pager.next().await.map_err(|e| match access {
+                            ChannelSearchAccess::Joined => stream_rpc_error(e),
+                            ChannelSearchAccess::Dialog => {
+                                Error::TelegramApi(format!("Search failed: {e}"))
+                            }
+                        })?;
+                        if matches!(access, ChannelSearchAccess::Joined)
+                            && next
+                                .as_ref()
+                                .and_then(|(raw, _)| raw_peer_id(raw))
+                                .is_some_and(|source| PeerId::from(source.clone()) != peer.id())
+                        {
+                            return Err(Error::UnsupportedPeer);
+                        }
                         let page_size = pager.take_last_page_size();
                         let fetched = next.map(|(raw, entities)| Fetched {
                             raw,

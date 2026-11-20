@@ -14,6 +14,7 @@ use crate::telegram::types::{
 };
 use grammers_client::Client;
 use grammers_session::storages::SqliteSession;
+use grammers_session::updates::UpdatesLike;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
@@ -24,6 +25,7 @@ mod cursor;
 mod guard;
 mod lifecycle;
 mod ops_history;
+mod ops_history_range;
 mod ops_media;
 mod ops_message;
 mod ops_resolve;
@@ -47,6 +49,7 @@ mod send_media_tests;
 mod send_receipt;
 mod send_targets;
 mod send_transport;
+mod stream_source;
 mod upload_pool;
 
 #[cfg(test)]
@@ -96,7 +99,8 @@ pub struct TelegramClient {
     search_deadline_secs: u64,
     /// Local observations; refreshes never hold this lock across network work.
     account_status: tokio::sync::RwLock<AccountStatus>,
-    _runner_handle: JoinHandle<()>,
+    runner_handle: tokio::sync::Mutex<JoinHandle<()>>,
+    stream_updates: Option<std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<UpdatesLike>>>>,
 }
 
 #[async_trait::async_trait]

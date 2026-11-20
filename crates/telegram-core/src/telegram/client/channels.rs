@@ -4,12 +4,23 @@
 
 use super::TelegramClient;
 use super::resolve::{peer_to_ref, validate_channel_identifier};
+use super::stream_source::{JoinedChannel, JoinedChannelKind, stream_rpc_error};
 use crate::error::Error;
 use crate::telegram::converters::{
-    convert_discovered_peer, convert_peer_to_channel, message_timestamp,
+    SubscriptionEvidence, convert_discovered_peer, convert_peer_to_channel,
+    convert_peer_with_evidence, message_timestamp,
 };
 use crate::telegram::timeout::with_timeout;
+use grammers_client::peer::Peer;
 use grammers_client::tl;
+use grammers_session::types::{PeerKind, PeerRef};
+
+const JOINED_LOOKUP_BATCH: usize = 100;
+
+enum Listing {
+    Dialogs,
+    ConfirmedChannels,
+}
 
 impl TelegramClient {
     pub(super) async fn get_subscribed_channels_impl(
@@ -17,28 +28,71 @@ impl TelegramClient {
         limit: u32,
         offset: u32,
     ) -> Result<crate::telegram::ChannelPage, Error> {
+        self.channels_page(limit, offset, |_| true, Listing::Dialogs)
+            .await
+    }
+
+    pub(crate) async fn get_joined_channels_filtered(
+        &self,
+        limit: u32,
+        offset: u32,
+        permitted: impl Fn(&crate::telegram::Channel) -> bool + Send,
+    ) -> Result<crate::telegram::ChannelPage, Error> {
+        self.channels_page(limit, offset, permitted, Listing::ConfirmedChannels)
+            .await
+    }
+
+    async fn channels_page(
+        &self,
+        limit: u32,
+        offset: u32,
+        permitted: impl Fn(&crate::telegram::Channel) -> bool + Send,
+        listing: Listing,
+    ) -> Result<crate::telegram::ChannelPage, Error> {
         with_timeout(
             "get_subscribed_channels",
             self.timeouts.history_secs,
             async {
                 let mut builder = ChannelPageBuilder::new(offset, limit);
                 let mut dialogs = self.client.iter_dialogs();
+                let mut pending = Vec::new();
+                let require_membership = matches!(listing, Listing::ConfirmedChannels);
 
                 while let Some(dialog) = dialogs.next().await.map_err(|e| {
-                tracing::error!(error = %e, "Failed to iterate dialogs in get_subscribed_channels");
-                Error::TelegramApi(format!("Failed to iterate dialogs: {}", e))
-            })? {
-                if let Some(mut channel) = convert_peer_to_channel(dialog.peer()) {
-                    // Free enrichment: the dialog already carries its top message (B8).
-                    // This runs for every converted dialog in the walk, not only the
-                    // ones that end up on the returned page — `admit` below decides
-                    // page membership (offset/limit) afterwards. The cost is a pure
-                    // timestamp conversion, so enriching before that decision is fine.
-                    channel.last_message_date =
-                        dialog.last_message.as_ref().and_then(message_timestamp);
-                    builder.admit(channel);
+                    if require_membership {
+                        return stream_rpc_error(e);
+                    }
+                    tracing::error!(error = %e, "Failed to iterate dialogs in get_subscribed_channels");
+                    Error::TelegramApi(format!("Failed to iterate dialogs: {e}"))
+                })? {
+                    let peer = dialog.peer();
+                    if require_membership && peer.id().kind() != PeerKind::Channel {
+                        continue;
+                    }
+                    let Some(mut channel) = convert_peer_to_channel(peer).filter(&permitted) else {
+                        continue;
+                    };
+                    channel.last_message_date = dialog.last_message.as_ref()
+                        .filter(|message| !require_membership || message.peer_id() == peer.id())
+                        .and_then(message_timestamp);
+                    if require_membership {
+                        if let Some(reference) = peer.to_ref().await.map_err(|_| {
+                            Error::TelegramApi("Could not read the channel reference".into())
+                        })?
+                            && reference.id == peer.id()
+                        {
+                            pending.push((reference, channel));
+                        }
+                        if pending.len() == JOINED_LOOKUP_BATCH {
+                            self.admit_confirmed_channels(&mut pending, &mut builder).await?;
+                        }
+                    } else {
+                        builder.admit(channel);
+                    }
                 }
-            }
+                if !pending.is_empty() {
+                    self.admit_confirmed_channels(&mut pending, &mut builder).await?;
+                }
 
                 let page = builder.finish();
                 tracing::debug!(
@@ -52,6 +106,25 @@ impl TelegramClient {
             },
         )
         .await
+    }
+
+    async fn admit_confirmed_channels(
+        &self,
+        pending: &mut Vec<(PeerRef, crate::telegram::Channel)>,
+        builder: &mut ChannelPageBuilder,
+    ) -> Result<(), Error> {
+        let confirmed = self
+            .current_joined_channel_ids(
+                pending.iter().map(|(reference, _)| *reference).collect(),
+                JoinedChannelKind::BroadcastOrSupergroup,
+            )
+            .await?;
+        for (_, channel) in pending.drain(..) {
+            if confirmed.contains(&channel.id) {
+                builder.admit(channel);
+            }
+        }
+        Ok(())
     }
 
     pub(super) async fn get_channel_info_impl(
@@ -89,19 +162,40 @@ impl TelegramClient {
         &self,
         resolved: super::resolve_subscription::ResolvedChannelPeer,
     ) -> Result<crate::telegram::Channel, Error> {
-        let mut channel = resolved
+        let channel = resolved
             .channel()
             .ok_or_else(|| Error::InvalidInput("Not a channel or group".to_string()))?;
+        Ok(self.enrich_channel(channel, &resolved.peer, None).await)
+    }
 
-        let peer = resolved.peer;
+    pub(crate) async fn read_joined_channel_info(
+        &self,
+        joined: &JoinedChannel,
+        full: bool,
+    ) -> Result<crate::telegram::Channel, Error> {
+        let channel = convert_peer_with_evidence(&joined.peer, SubscriptionEvidence::Joined)
+            .ok_or(Error::UnsupportedPeer)?;
+        if full {
+            return Ok(self
+                .enrich_channel(channel, &joined.peer, Some(joined.reference))
+                .await);
+        }
+        Ok(channel)
+    }
 
+    async fn enrich_channel(
+        &self,
+        mut channel: crate::telegram::Channel,
+        peer: &Peer,
+        reference: Option<PeerRef>,
+    ) -> crate::telegram::Channel {
         // channels.GetFullChannel only exists for channel-kind peers
         // (broadcasts + megagroups). Others keep basic info.
-        if supports_full_channel_rpc(&peer) {
+        if supports_full_channel_rpc(peer) {
             // Enrichment is strictly opt-in-for-more: a failure here (private or
             // forbidden channel, timeout, transport error) must never turn the
             // basic info the caller would otherwise have got into an error.
-            match self.fetch_channel_full(&peer).await {
+            match self.fetch_channel_full(peer, reference).await {
                 Ok((description, member_count)) => {
                     if let Some(about) = description {
                         channel.description = Some(about);
@@ -121,7 +215,7 @@ impl TelegramClient {
         // include_full already means "extra RPC accepted": peek the newest
         // message for last_message_date. Degrade, never fail (same policy as
         // the GetFullChannel enrichment above).
-        match self.fetch_last_message_date(&peer).await {
+        match self.fetch_last_message_date(peer, reference).await {
             Ok(date) => channel.last_message_date = date,
             Err(e) => {
                 tracing::warn!(error = %e, channel_id = channel.id.get(),
@@ -129,7 +223,7 @@ impl TelegramClient {
             }
         }
 
-        Ok(channel)
+        channel
     }
 
     /// Invoke `channels.GetFullChannel` and pull out the two enrichment fields.
@@ -139,9 +233,13 @@ impl TelegramClient {
     /// discards the already-built basic `Channel`.
     async fn fetch_channel_full(
         &self,
-        peer: &grammers_client::peer::Peer,
+        peer: &Peer,
+        reference: Option<PeerRef>,
     ) -> Result<(Option<String>, Option<u64>), Error> {
-        let peer_ref = peer_to_ref(peer).await?;
+        let peer_ref = match reference {
+            Some(reference) => reference,
+            None => peer_to_ref(peer).await?,
+        };
         let request = tl::functions::channels::GetFullChannel {
             channel: (&peer_ref).into(),
         };
@@ -155,6 +253,9 @@ impl TelegramClient {
 
         let tl::enums::messages::ChatFull::Full(chat_full) = full;
         if let tl::enums::ChatFull::ChannelFull(cf) = chat_full.full_chat {
+            if reference.is_some_and(|expected| expected.id.bare_id() != Some(cf.id)) {
+                return Err(Error::UnsupportedPeer);
+            }
             let description = (!cf.about.is_empty()).then_some(cf.about);
             let member_count = cf.participants_count.and_then(|c| u64::try_from(c).ok());
             Ok((description, member_count))
@@ -166,13 +267,20 @@ impl TelegramClient {
     /// Newest message's timestamp, via a single-message history peek.
     async fn fetch_last_message_date(
         &self,
-        peer: &grammers_client::peer::Peer,
+        peer: &Peer,
+        reference: Option<PeerRef>,
     ) -> Result<Option<crate::UtcTimestamp>, Error> {
-        let peer_ref = peer_to_ref(peer).await?;
+        let peer_ref = match reference {
+            Some(reference) => reference,
+            None => peer_to_ref(peer).await?,
+        };
         with_timeout("last_message_peek", self.timeouts.history_secs, async {
             let mut iter = self.client.iter_messages(peer_ref);
             match iter.next().await {
-                Ok(Some(msg)) => Ok(message_timestamp(&msg)),
+                Ok(Some(msg)) if reference.is_none_or(|expected| msg.peer_id() == expected.id) => {
+                    Ok(message_timestamp(&msg))
+                }
+                Ok(Some(_)) => Err(Error::UnsupportedPeer),
                 Ok(None) => Ok(None),
                 Err(e) => Err(Error::TelegramApi(format!("last-message peek failed: {e}"))),
             }

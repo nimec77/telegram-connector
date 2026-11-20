@@ -1,5 +1,40 @@
 # Dependency status
 
+## Workspace service integration — 2026-11-20
+
+The final registry inventory used the official crates.io sparse index at
+**2026-11-20T02:45:05Z**. It compared all **413 registry names**, with **443
+external resolved identities** across the four workspace members. The inventory
+retains normal, build, development, optional and target-specific declarations,
+default and all-feature resolution, exact registry and Git identities, licenses,
+and reverse edges with each parent's declared requirements. The two dated
+inventories preserve the previous and current resolved lines.
+[Final inventory](validation/2026-11-20-workspace-dependency-inventory.json) ·
+[Baseline inventory](validation/2026-11-19-dependency-inventory.json)
+
+- Clap and its derive crate advanced from **4.6.8** to **4.6.9**.
+  `pin-project-lite` advanced from **0.2.17** to **0.2.18**. The final
+  `cargo update --offline --dry-run` selected zero updates. No direct workspace
+  declaration is behind the stable release observed at the cutoff.
+- **65 transitive identities** are older than their names' newest stable
+  releases. For example, `matchit 0.8.4` is exactly pinned by Axum, and the
+  pinned grammers client requires `jiff ^0.2.40` while the connector uses
+  Jiff 1.x. The final inventory records the resolved reverse edges, including
+  duplicate lines and target-conditional requirements.
+- The official grammers `HEAD` remained
+  `e61cf8585e1e9969ab81eda9fb4725a1500e2d86`. The three declared Git packages
+  and all eight resolved grammers packages use that revision. The gateway's
+  production graph includes the API's identity/contracts features and excludes
+  grammers, the core, the root connector and SQLite.
+- Fresh RustSec database `074ea9a7ed619f511b5b7374c7a97e98d1e98be4`
+  reported no vulnerability, unsound or yanked dependency under the
+  `cargo audit --deny unsound --deny yanked` gate. The source and declaration
+  checks passed. `cargo deny` continues to reject the unmaintained advisory
+  for **Chrono 0.4.45**, which stable **rmcp 3.11.0** requires directly and
+  through its Schemars `chrono04` feature. The advisory has no patched version.
+  The existing advisory policy remains in force.
+  [RustSec advisory](https://rustsec.org/advisories/RUSTSEC-2026-0543.html)
+
 ## Connector timestamp migration — 2026-11-20
 
 The connector's public timestamp fields use `UtcTimestamp` and the connector has

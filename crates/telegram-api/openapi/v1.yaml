@@ -2,6 +2,13 @@ openapi: 3.1.0
 info:
   title: Telegram hosted API
   version: v1
+  description: |
+    Authenticate against the registered HTTPS API resource. Hosted channel reads, previews and event
+    subscriptions require telegram.read, deployment eligibility and an active account/client grant.
+    An owner cookie used to read Telegram content requires the registered browser client grant and
+    same-origin browser context. Owner administration requires telegram.link. Uploads and sends
+    require a bearer with telegram.send and enabled deployment and account-generation grants.
+    Message IDs are scoped to a channel within the caller's account.
 servers:
   - url: https://service.example
 paths:
@@ -150,6 +157,1210 @@ paths:
           $ref: "#/components/responses/Throttled"
         "503":
           $ref: "#/components/responses/Unavailable"
+  /v1/account/channels:
+    get:
+      operationId: listOwnerChannels
+      summary: List the owner's joined channels for grant management
+      description: Requires a same-origin owner session with telegram.link.
+      security:
+        - BrowserSession: []
+      parameters:
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 100}
+        - name: offset
+          in: query
+          schema: {type: integer, minimum: 0, default: 0}
+      responses:
+        "200":
+          description: Joined channels and total for the owner
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [channels, total]
+                properties:
+                  channels:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Channel"
+                  total: {type: integer, minimum: 0}
+        default:
+          $ref: "#/components/responses/Error"
+  /v1/messages/search:
+    post:
+      operationId: searchMessages
+      summary: Search permitted joined channels
+      description: Explicit channels only. Inspect partial, timed_out and failed_channels before interpreting coverage.
+      security:
+        - AccessToken: []
+        - BrowserSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchRequest"
+            example: {channel_ids: ["42", "73"], query: "launch", limit: 20}
+      responses:
+        "200":
+          description: Search matches and coverage metadata within the 40,000-byte response budget
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Throttled"
+        default:
+          $ref: "#/components/responses/Error"
+  /v1/channels/{id}/messages:
+    get:
+      operationId: getChannelMessages
+      summary: Page through a permitted channel's history in descending message ID order
+      description: The inclusive through_id bounds recovery at a captured channel head. Each album member is returned individually. An empty range yields an empty page once local channel authorization succeeds.
+      security:
+        - AccessToken: []
+        - BrowserSession: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/ReadChannelId"
+        - name: after_id
+          in: query
+          description: Exclusive lower bound. Missing or zero leaves it open.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 2147483647
+        - name: through_id
+          in: query
+          description: Inclusive upper bound. Missing leaves it open.
+          schema:
+            $ref: "#/components/schemas/ReadMessageId"
+        - name: before_id
+          in: query
+          description: Exclusive older-page cursor.
+          schema:
+            $ref: "#/components/schemas/ReadMessageId"
+        - name: limit
+          in: query
+          description: Requested size, capped at 100 messages.
+          schema:
+            type: integer
+            minimum: 1
+            default: 20
+      responses:
+        "200":
+          description: History page within the 40,000-byte response budget
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoryResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Throttled"
+        default:
+          $ref: "#/components/responses/Error"
+  /v1/messages/batch:
+    post:
+      operationId: getMessagesBatch
+      summary: Fetch individual messages in one permitted channel
+      security:
+        - AccessToken: []
+        - BrowserSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchRequest"
+            example: {channel_id: "42", message_ids: [103, 104]}
+      responses:
+        "200":
+          description: Available, missing and omitted messages within the 40,000-byte response budget
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Throttled"
+        default:
+          $ref: "#/components/responses/Error"
+  "/":
+    get:
+      operationId: accountHome
+      summary: Open the first-party Telegram account page
+      security: []
+      responses:
+        '200':
+          description: HTML page for sign-in, linking and grant management
+          content:
+            text/html:
+              schema:
+                type: string
+        default:
+          "$ref": "#/components/responses/Error"
+  "/account":
+    get:
+      operationId: accountPage
+      summary: Open the first-party Telegram account page
+      security: []
+      responses:
+        '200':
+          description: HTML page for sign-in, linking and grant management
+          content:
+            text/html:
+              schema:
+                type: string
+        default:
+          "$ref": "#/components/responses/Error"
+  "/v1/account":
+    get:
+      operationId: accountStatus
+      summary: Inspect the owner's link and remote revocation state
+      security:
+      - BrowserSession: []
+      responses:
+        '200':
+          description: Only the current owner's state
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/AccountStatus"
+        '401':
+          "$ref": "#/components/responses/Unauthenticated"
+        '403':
+          "$ref": "#/components/responses/Error"
+        '429':
+          "$ref": "#/components/responses/Throttled"
+        default:
+          "$ref": "#/components/responses/Error"
+  "/v1/account/link":
+    post:
+      operationId: startLink
+      summary: Start Telegram sign-in for the signed-in owner
+      security:
+      - BrowserSession: []
+      parameters:
+      - name: Origin
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uri
+      - name: X-CSRF-Token
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - phone_number
+              properties:
+                phone_number:
+                  type: string
+                  writeOnly: true
+      responses:
+        '200':
+          description: Next sign-in step or linked account
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/LinkReply"
+        '401':
+          "$ref": "#/components/responses/Unauthenticated"
+        '403':
+          "$ref": "#/components/responses/Error"
+        '429':
+          "$ref": "#/components/responses/Throttled"
+        default:
+          "$ref": "#/components/responses/Error"
+    delete:
+      operationId: unlinkAccount
+      summary: Revoke the current local generation and schedule remote logout
+      security:
+      - BrowserSession: []
+      parameters:
+      - name: Origin
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uri
+      - name: X-CSRF-Token
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Current link and retirement state
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/AccountStatus"
+        '401':
+          "$ref": "#/components/responses/Unauthenticated"
+        '403':
+          "$ref": "#/components/responses/Error"
+        '429':
+          "$ref": "#/components/responses/Throttled"
+        default:
+          "$ref": "#/components/responses/Error"
+  "/v1/account/link/{challenge}/code":
+    post:
+      operationId: submitCode
+      summary: Submit a Telegram sign-in code
+      security:
+      - BrowserSession: []
+      parameters:
+      - name: challenge
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: Origin
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uri
+      - name: X-CSRF-Token
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - code
+              properties:
+                code:
+                  type: string
+                  writeOnly: true
+      responses:
+        '200':
+          description: Next sign-in step or linked account
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/LinkReply"
+        '401':
+          "$ref": "#/components/responses/Unauthenticated"
+        '403':
+          "$ref": "#/components/responses/Error"
+        '429':
+          "$ref": "#/components/responses/Throttled"
+        default:
+          "$ref": "#/components/responses/Error"
+  "/v1/account/link/{challenge}/password":
+    post:
+      operationId: submitPassword
+      summary: Submit a Telegram two-step verification password
+      security:
+      - BrowserSession: []
+      parameters:
+      - name: challenge
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: Origin
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uri
+      - name: X-CSRF-Token
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - password
+              properties:
+                password:
+                  type: string
+                  writeOnly: true
+      responses:
+        '200':
+          description: Next sign-in step or linked account
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/LinkReply"
+        '401':
+          "$ref": "#/components/responses/Unauthenticated"
+        '403':
+          "$ref": "#/components/responses/Error"
+        '429':
+          "$ref": "#/components/responses/Throttled"
+        default:
+          "$ref": "#/components/responses/Error"
+  "/v1/account/grants/{client}":
+    get:
+      operationId: readGrant
+      summary: Inspect a registered client's current grant
+      security:
+      - BrowserSession: []
+      parameters:
+      - name: client
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Current revision and permissions
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Grant"
+        '401':
+          "$ref": "#/components/responses/Unauthenticated"
+        '403':
+          "$ref": "#/components/responses/Error"
+        '429':
+          "$ref": "#/components/responses/Throttled"
+        default:
+          "$ref": "#/components/responses/Error"
+    put:
+      operationId: replaceGrant
+      summary: Replace a grant at its expected revision
+      security:
+      - BrowserSession: []
+      description: A concurrent grant update returns 409.
+      parameters:
+      - name: client
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: Origin
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uri
+      - name: X-CSRF-Token
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/GrantUpdate"
+      responses:
+        '200':
+          description: New grant and revision
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Grant"
+        '401':
+          "$ref": "#/components/responses/Unauthenticated"
+        '403':
+          "$ref": "#/components/responses/Error"
+        '429':
+          "$ref": "#/components/responses/Throttled"
+        default:
+          "$ref": "#/components/responses/Error"
+  "/v1/capabilities":
+    get:
+      operationId: gatewayCapabilities
+      summary: List presently authorized gateway tools
+      security:
+      - AccessToken: []
+      description: >-
+        Requires a verified delegated API token. The list depends on token scopes, account generation, client grants
+        and deployment settings.
+      responses:
+        '200':
+          description: Current names for the originating client
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - tools
+                properties:
+                  tools:
+                    type: array
+                    items:
+                      type: string
+        '401':
+          "$ref": "#/components/responses/Unauthenticated"
+        '403':
+          "$ref": "#/components/responses/Error"
+        '429':
+          "$ref": "#/components/responses/Throttled"
+        default:
+          "$ref": "#/components/responses/Error"
+  "/v1/events":
+    get:
+      operationId: channelPostEvents
+      summary: Subscribe to new posts in selected joined broadcast channels
+      security:
+      - AccessToken: []
+      - BrowserSession: []
+      description: >-
+        Requires telegram.read. Setup authorizes every distinct channel before sending HTTP 200. Event data for ready,
+        post and best-effort interrupted are described under x-sse-events. EOF ends continuity. Use
+        a new ready boundary and history for recovery.
+      parameters:
+      - name: channel_id
+        in: query
+        required: true
+        schema:
+          type: array
+          minItems: 1
+          items:
+            "$ref": "#/components/schemas/ReadChannelId"
+        style: form
+        explode: true
+      responses:
+        '200':
+          description: A fresh live subscription beginning with ready
+          content:
+            text/event-stream:
+              x-sse-events:
+                ready:
+                  type: object
+                  required:
+                  - channels
+                  properties:
+                    channels:
+                      type: array
+                      items:
+                        type: object
+                        required:
+                        - channel_id
+                        - head_message_id
+                        properties:
+                          channel_id:
+                            "$ref": "#/components/schemas/ReadChannelId"
+                          head_message_id:
+                            anyOf:
+                            - "$ref": "#/components/schemas/ReadMessageId"
+                            - type: 'null'
+                post:
+                  type: object
+                  required:
+                  - channel_id
+                  - message_id
+                  - published_at
+                  - text
+                  - media
+                  properties:
+                    channel_id:
+                      "$ref": "#/components/schemas/ReadChannelId"
+                    message_id:
+                      "$ref": "#/components/schemas/ReadMessageId"
+                    published_at:
+                      type: string
+                      format: date-time
+                    text:
+                      type: string
+                    media:
+                      anyOf:
+                      - type: object
+                        required:
+                        - kind
+                        properties:
+                          kind:
+                            type: string
+                          file_size_bytes:
+                            type: integer
+                            minimum: 0
+                          duration_seconds:
+                            type: integer
+                            minimum: 0
+                          width:
+                            type: integer
+                            minimum: 0
+                          height:
+                            type: integer
+                            minimum: 0
+                      - type: 'null'
+                    album_id:
+                      type: string
+                interrupted:
+                  type: object
+                  required:
+                  - reason
+                  properties:
+                    reason:
+                      type: string
+                      enum:
+                      - slow_consumer
+                      - upstream_disconnected
+                      - membership_lost
+                      - service_draining
+              schema:
+                type: string
+              example: |+
+                event: ready
+                data: {"channels":[{"channel_id":"42","head_message_id":104}]}
+
+        '401':
+          "$ref": "#/components/responses/Unauthenticated"
+        '403':
+          "$ref": "#/components/responses/Error"
+        '429':
+          "$ref": "#/components/responses/Throttled"
+        default:
+          "$ref": "#/components/responses/Error"
+  "/v1/channels":
+    get:
+      operationId: listChannels
+      summary: List eligible channels in this client's grant
+      security:
+      - AccessToken: []
+      - BrowserSession: []
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+      responses:
+        '200':
+          description: Page and total for this client
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - channels
+                - total
+                properties:
+                  channels:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/Channel"
+                  total:
+                    type: integer
+                    minimum: 0
+        '401':
+          "$ref": "#/components/responses/Unauthenticated"
+        '403':
+          "$ref": "#/components/responses/Error"
+        '429':
+          "$ref": "#/components/responses/Throttled"
+        default:
+          "$ref": "#/components/responses/Error"
+  "/v1/channels/{id}":
+    get:
+      operationId: channelInfo
+      summary: Read one permitted channel's information
+      security:
+      - AccessToken: []
+      - BrowserSession: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          "$ref": "#/components/schemas/ReadChannelId"
+      - name: include_full
+        in: query
+        required: false
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: Channel information
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Channel"
+        '401':
+          "$ref": "#/components/responses/Unauthenticated"
+        '403':
+          "$ref": "#/components/responses/Error"
+        '429':
+          "$ref": "#/components/responses/Throttled"
+        default:
+          "$ref": "#/components/responses/Error"
+  "/v1/channels/resolve":
+    post:
+      operationId: resolveChannels
+      summary: Resolve identifiers against eligible joined channels
+      security:
+      - AccessToken: []
+      - BrowserSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - identifiers
+              properties:
+                identifiers:
+                  type: array
+                  minItems: 1
+                  maxItems: 50
+                  items:
+                    type: string
+                    maxLength: 256
+      responses:
+        '200':
+          description: Ordered per-identifier outcomes
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - items
+                properties:
+                  items:
+                    type: array
+                    items:
+                      oneOf:
+                      - type: object
+                        required:
+                        - identifier
+                        - channel
+                        properties:
+                          identifier:
+                            type: string
+                          channel:
+                            "$ref": "#/components/schemas/Channel"
+                      - type: object
+                        required:
+                        - identifier
+                        - error
+                        properties:
+                          identifier:
+                            type: string
+                          error:
+                            type: object
+                            required:
+                            - code
+                            properties:
+                              code:
+                                type: string
+        '401':
+          "$ref": "#/components/responses/Unauthenticated"
+        '403':
+          "$ref": "#/components/responses/Error"
+        '429':
+          "$ref": "#/components/responses/Throttled"
+        default:
+          "$ref": "#/components/responses/Error"
+  "/v1/channels/discover":
+    post:
+      operationId: discoverChannels
+      summary: Search public channels under the explicit discovery permission
+      security:
+      - AccessToken: []
+      - BrowserSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - query
+              properties:
+                query:
+                  type: string
+                limit:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+      responses:
+        '200':
+          description: Results filtered to permitted channels
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - channels
+                properties:
+                  channels:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/Channel"
+        '401':
+          "$ref": "#/components/responses/Unauthenticated"
+        '403':
+          "$ref": "#/components/responses/Error"
+        '429':
+          "$ref": "#/components/responses/Throttled"
+        default:
+          "$ref": "#/components/responses/Error"
+  "/v1/channels/{id}/stats":
+    get:
+      operationId: channelStats
+      summary: Read activity and engagement statistics
+      security:
+      - AccessToken: []
+      - BrowserSession: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          "$ref": "#/components/schemas/ReadChannelId"
+      - name: days_back
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 7
+      responses:
+        '200':
+          description: Statistics for the sampled period
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - channel_id
+                - post_count
+                - posts_per_day
+                - median_views
+                - media_share
+                - album_share
+                - sample
+                properties:
+                  channel_id:
+                    "$ref": "#/components/schemas/ReadChannelId"
+                  post_count:
+                    type: integer
+                    minimum: 0
+                  posts_per_day:
+                    type: number
+                  median_views:
+                    anyOf:
+                    - type: integer
+                      minimum: 0
+                    - type: 'null'
+                  media_share:
+                    type: number
+                  album_share:
+                    type: number
+                  sample:
+                    type: object
+                    required:
+                    - messages_scanned
+                    - window_from
+                    - window_to
+                    - complete
+                    properties:
+                      messages_scanned:
+                        type: integer
+                        minimum: 0
+                      window_from:
+                        type: string
+                        format: date-time
+                      window_to:
+                        type: string
+                        format: date-time
+                      complete:
+                        type: boolean
+        '401':
+          "$ref": "#/components/responses/Unauthenticated"
+        '403':
+          "$ref": "#/components/responses/Error"
+        '429':
+          "$ref": "#/components/responses/Throttled"
+        default:
+          "$ref": "#/components/responses/Error"
+  "/v1/channels/{id}/messages/{message_id}/link":
+    get:
+      operationId: messageLink
+      summary: Generate a Telegram message link
+      security:
+      - AccessToken: []
+      - BrowserSession: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          "$ref": "#/components/schemas/ReadChannelId"
+      - name: message_id
+        in: path
+        required: true
+        schema:
+          "$ref": "#/components/schemas/ReadMessageId"
+      - name: include_tg_protocol
+        in: query
+        required: false
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: HTTPS link and optional Telegram protocol link
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - channel_id
+                - message_id
+                - https_link
+                properties:
+                  channel_id:
+                    "$ref": "#/components/schemas/ReadChannelId"
+                  message_id:
+                    "$ref": "#/components/schemas/ReadMessageId"
+                  https_link:
+                    type: string
+                  tg_link:
+                    type: string
+        '401':
+          "$ref": "#/components/responses/Unauthenticated"
+        '403':
+          "$ref": "#/components/responses/Error"
+        '429':
+          "$ref": "#/components/responses/Throttled"
+        default:
+          "$ref": "#/components/responses/Error"
+  "/v1/channels/{id}/messages/{message_id}/transcription":
+    post:
+      operationId: transcribe
+      summary: Transcribe a voice message or video note
+      security:
+      - AccessToken: []
+      - BrowserSession: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          "$ref": "#/components/schemas/ReadChannelId"
+      - name: message_id
+        in: path
+        required: true
+        schema:
+          "$ref": "#/components/schemas/ReadMessageId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: []
+              properties:
+                timeout_seconds:
+                  type: integer
+                  minimum: 1
+                  maximum: 120
+                  default: 30
+      responses:
+        '200':
+          description: Provider transcription and completion state
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - channel_id
+                - peer_namespace
+                - message_id
+                - text
+                - partial
+                - media_type
+                - duration_seconds
+                properties:
+                  channel_id:
+                    "$ref": "#/components/schemas/ReadChannelId"
+                  peer_namespace:
+                    anyOf:
+                    - type: string
+                    - type: 'null'
+                  message_id:
+                    "$ref": "#/components/schemas/ReadMessageId"
+                  text:
+                    type: string
+                  partial:
+                    type: boolean
+                  media_type:
+                    type: string
+                  duration_seconds:
+                    anyOf:
+                    - type: integer
+                      minimum: 0
+                    - type: 'null'
+        '401':
+          "$ref": "#/components/responses/Unauthenticated"
+        '403':
+          "$ref": "#/components/responses/Error"
+        '429':
+          "$ref": "#/components/responses/Throttled"
+        default:
+          "$ref": "#/components/responses/Error"
+  "/v1/media/previews":
+    post:
+      operationId: createPreviews
+      summary: Prepare short-lived JPEGs for permitted channel messages
+      security:
+      - AccessToken: []
+      - BrowserSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/PreviewRequest"
+      responses:
+        '200':
+          description: Per-message preview handles or safe errors
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - channel_id
+                - items
+                properties:
+                  channel_id:
+                    "$ref": "#/components/schemas/ReadChannelId"
+                  items:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/PreviewItem"
+        '401':
+          "$ref": "#/components/responses/Unauthenticated"
+        '403':
+          "$ref": "#/components/responses/Error"
+        '429':
+          "$ref": "#/components/responses/Throttled"
+        default:
+          "$ref": "#/components/responses/Error"
+  "/v1/media/{handle}":
+    get:
+      operationId: downloadPreview
+      summary: Download a caller-bound preview after a new authorization check
+      security:
+      - AccessToken: []
+      - BrowserSession: []
+      parameters:
+      - name: handle
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{32}$"
+      responses:
+        '200':
+          description: A private JPEG preview
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        '401':
+          "$ref": "#/components/responses/Unauthenticated"
+        '403':
+          "$ref": "#/components/responses/Error"
+        '429':
+          "$ref": "#/components/responses/Throttled"
+        default:
+          "$ref": "#/components/responses/Error"
+  "/v1/messages/send":
+    post:
+      operationId: sendMessage
+      summary: Send once to the selected Telegram recipient
+      security:
+      - AccessToken: []
+      description: >-
+        Requires telegram.send, enabled deployment and an active account-generation send grant. An unknown delivery
+        result is nonretryable.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/SendMessage"
+      responses:
+        '200':
+          description: Receipt for the submitted message
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/SentMessage"
+        '401':
+          $ref: "#/components/responses/SendFailure"
+        '403':
+          $ref: "#/components/responses/SendFailure"
+        '429':
+          $ref: "#/components/responses/SendFailure"
+        '400':
+          $ref: "#/components/responses/SendFailure"
+        '404':
+          $ref: "#/components/responses/SendFailure"
+        '409':
+          $ref: "#/components/responses/SendFailure"
+        '413':
+          $ref: "#/components/responses/SendFailure"
+        '503':
+          $ref: "#/components/responses/SendFailure"
+        '504':
+          $ref: "#/components/responses/SendFailure"
+        default:
+          "$ref": "#/components/responses/Error"
+  "/v1/messages/send-media":
+    post:
+      operationId: sendMedia
+      summary: Send once to the selected Telegram recipient
+      security:
+      - AccessToken: []
+      description: >-
+        Requires telegram.send, enabled deployment and an active account-generation send grant. An unknown delivery
+        result is nonretryable.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/SendMedia"
+      responses:
+        '200':
+          description: Receipt for the submitted message
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/SentMessage"
+        '401':
+          $ref: "#/components/responses/SendFailure"
+        '403':
+          $ref: "#/components/responses/SendFailure"
+        '429':
+          $ref: "#/components/responses/SendFailure"
+        '400':
+          $ref: "#/components/responses/SendFailure"
+        '404':
+          $ref: "#/components/responses/SendFailure"
+        '409':
+          $ref: "#/components/responses/SendFailure"
+        '413':
+          $ref: "#/components/responses/SendFailure"
+        '503':
+          $ref: "#/components/responses/SendFailure"
+        '504':
+          $ref: "#/components/responses/SendFailure"
+        default:
+          "$ref": "#/components/responses/Error"
+  "/v1/uploads":
+    post:
+      operationId: stageUpload
+      summary: Stream an upload for a later send-media operation
+      security:
+      - AccessToken: []
+      description: >-
+        Use raw binary bytes with the matching Content-Type. Images are bounded to 10 MiB; other supported formats are
+        bounded to 100 MiB. A request with Content-Length must match the observed size.
+      requestBody:
+        required: true
+        content:
+          image/jpeg:
+            schema:
+              type: string
+              format: binary
+          image/png:
+            schema:
+              type: string
+              format: binary
+          audio/mpeg:
+            schema:
+              type: string
+              format: binary
+          audio/mp4:
+            schema:
+              type: string
+              format: binary
+          audio/aac:
+            schema:
+              type: string
+              format: binary
+          audio/ogg:
+            schema:
+              type: string
+              format: binary
+          video/mp4:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Short-lived caller-bound upload handle
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - upload_handle
+                - mime_type
+                - size_bytes
+                - expires_in_seconds
+                properties:
+                  upload_handle:
+                    type: string
+                    pattern: "^[A-Za-z0-9_-]{32}$"
+                  mime_type:
+                    type: string
+                  size_bytes:
+                    type: integer
+                    minimum: 0
+                  expires_in_seconds:
+                    type: integer
+                    minimum: 0
+        '401':
+          "$ref": "#/components/responses/Unauthenticated"
+        '403':
+          "$ref": "#/components/responses/Error"
+        '429':
+          "$ref": "#/components/responses/Throttled"
+        default:
+          "$ref": "#/components/responses/Error"
 components:
   securitySchemes:
     AccessToken:
@@ -161,6 +1372,14 @@ components:
       in: cookie
       name: __Host-tg_session
   responses:
+    SendFailure:
+      description: Inspect error.delivery for send results. Unknown delivery is nonretryable.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: "#/components/schemas/ErrorResponse"
+              - $ref: "#/components/schemas/SendError"
     Error:
       description: Invalid request or access forbidden
       content:
@@ -232,7 +1451,624 @@ components:
           properties:
             code:
               type: string
-              enum: [invalid_request, unauthenticated, forbidden, unavailable_resource, conflict, payload_too_large, rate_limited, unavailable, timeout]
+              enum: [invalid_request, unauthenticated, forbidden, unavailable_resource, conflict, payload_too_large, rate_limited, unavailable, premium_required, not_transcribable, voice_too_long, timeout]
             retry_after_seconds:
               type: integer
               minimum: 0
+    ReadChannelId:
+      type: string
+      pattern: "^[1-9][0-9]{0,18}$"
+      description: Positive decimal Telegram channel ID representable as a signed 64-bit integer.
+    ReadMessageId:
+      type: integer
+      minimum: 1
+      maximum: 2147483647
+    ReadMessage:
+      type: object
+      required: [id, channel_id, peer_namespace, channel_name, channel_username, text, timestamp, sender_id, sender_name, has_media, media_type, link]
+      properties:
+        id:
+          $ref: "#/components/schemas/ReadMessageId"
+        channel_id:
+          $ref: "#/components/schemas/ReadChannelId"
+        peer_namespace:
+          type: string
+          enum: [channel]
+        channel_name:
+          type: string
+        channel_username:
+          type: [string, "null"]
+        text:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        sender_id:
+          type: [string, "null"]
+          pattern: "^[1-9][0-9]{0,18}$"
+        sender_name:
+          type: [string, "null"]
+        has_media:
+          type: boolean
+        media_type:
+          type: string
+          enum: [none, photo, video, document, audio, voice, video_note, animation, sticker, contact, location, venue, poll, dice]
+        grouped_id:
+          type: integer
+          format: int64
+        album:
+          type: object
+          required: [media_count, media_types, message_ids]
+          properties:
+            media_count:
+              type: integer
+              minimum: 1
+            media_types:
+              type: array
+              items:
+                $ref: "#/components/schemas/ReadMessage/properties/media_type"
+            message_ids:
+              type: array
+              items:
+                $ref: "#/components/schemas/ReadMessageId"
+        link:
+          type: string
+    SearchRequest:
+      type: object
+      additionalProperties: false
+      required: [channel_ids, query]
+      properties:
+        channel_ids:
+          type: array
+          description: At most 20 distinct permitted channels.
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/ReadChannelId"
+        query:
+          type: string
+          description: Text query. Empty is accepted with a media filter.
+        limit:
+          type: integer
+          minimum: 1
+          default: 20
+          description: Requested size, capped at 100 messages.
+        hours_back:
+          type: integer
+          minimum: 0
+          default: 48
+          description: Relative window, capped at 72 hours. Superseded by from_date.
+        from_date:
+          type: string
+          format: date-time
+        to_date:
+          type: string
+          format: date-time
+        media_filter:
+          type: string
+          enum: [photo, video, photo_video, document, audio, voice, video_note, gif, url, pinned]
+        before_id:
+          description: Exclusive upper bound, available for a single channel.
+          $ref: "#/components/schemas/ReadMessageId"
+        after_id:
+          description: Exclusive lower bound, available for a single channel.
+          $ref: "#/components/schemas/ReadMessageId"
+        collapse_albums:
+          type: boolean
+          default: false
+    SearchResponse:
+      type: object
+      required: [messages, has_more, partial, timed_out, failed_channels]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReadMessage"
+        has_more:
+          type: boolean
+        next_before_id:
+          $ref: "#/components/schemas/ReadMessageId"
+        partial:
+          type: boolean
+        timed_out:
+          type: boolean
+        failed_channels:
+          type: array
+          items:
+            type: object
+            required: [channel_id, code]
+            properties:
+              channel_id:
+                $ref: "#/components/schemas/ReadChannelId"
+              code:
+                $ref: "#/components/schemas/ErrorResponse/properties/error/properties/code"
+    HistoryResponse:
+      type: object
+      required: [messages, partial, timed_out]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReadMessage"
+        next_before_id:
+          description: Exclusive cursor from the last message in the response, when more may remain.
+          $ref: "#/components/schemas/ReadMessageId"
+        partial:
+          type: boolean
+        timed_out:
+          type: boolean
+    BatchRequest:
+      type: object
+      additionalProperties: false
+      required: [channel_id, message_ids]
+      properties:
+        channel_id:
+          $ref: "#/components/schemas/ReadChannelId"
+        message_ids:
+          type: array
+          description: At most 50 distinct message IDs.
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/ReadMessageId"
+    BatchResponse:
+      type: object
+      required: [channel_id, messages, missing_ids, omitted_ids]
+      properties:
+        channel_id:
+          $ref: "#/components/schemas/ReadChannelId"
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReadMessage"
+        missing_ids:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReadMessageId"
+        omitted_ids:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReadMessageId"
+    AccountStatus:
+      type: object
+      required:
+      - state
+      properties:
+        state:
+          type: string
+          enum:
+          - unlinked
+          - linking
+          - linked
+          - revocation_pending
+          - manual_revocation
+          - linked_with_revocation_pending
+          - linked_with_manual_revocation
+    LinkReply:
+      type: object
+      required:
+      - step
+      properties:
+        step:
+          type: string
+          enum:
+          - code
+          - password
+          - linked
+        challenge:
+          type: string
+    ReadGrant:
+      oneOf:
+      - type: object
+        required:
+        - kind
+        properties:
+          kind:
+            type: string
+            enum:
+            - none
+            - all_joined
+      - type: object
+        required:
+        - kind
+        - channel_ids
+        properties:
+          kind:
+            type: string
+            enum:
+            - channels
+          channel_ids:
+            type: array
+            items:
+              "$ref": "#/components/schemas/ReadChannelId"
+    Grant:
+      type: object
+      required:
+      - revision
+      - read
+      - send_enabled
+      properties:
+        revision:
+          type: integer
+          minimum: 0
+        read:
+          "$ref": "#/components/schemas/ReadGrant"
+        send_enabled:
+          type: boolean
+    GrantUpdate:
+      type: object
+      required:
+      - expected_revision
+      - read
+      - send_enabled
+      properties:
+        expected_revision:
+          type: integer
+          minimum: 0
+        read:
+          "$ref": "#/components/schemas/ReadGrant"
+        send_enabled:
+          type: boolean
+    Channel:
+      type: object
+      required:
+      - channel_id
+      - peer_namespace
+      - name
+      - username
+      - chat_type
+      - description
+      - member_count
+      - is_verified
+      - is_public
+      - is_subscribed
+      - last_message_date
+      properties:
+        channel_id:
+          "$ref": "#/components/schemas/ReadChannelId"
+        peer_namespace:
+          anyOf:
+          - type: string
+            enum:
+            - user
+            - chat
+            - channel
+          - type: 'null'
+        name:
+          type: string
+        username:
+          anyOf:
+          - type: string
+          - type: 'null'
+        chat_type:
+          type: string
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+        member_count:
+          anyOf:
+          - type: integer
+            minimum: 0
+          - type: 'null'
+        is_verified:
+          type: boolean
+        is_public:
+          type: boolean
+        is_subscribed:
+          type: boolean
+        last_message_date:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+    PreviewRequest:
+      type: object
+      required:
+      - channel_id
+      - message_ids
+      properties:
+        channel_id:
+          "$ref": "#/components/schemas/ReadChannelId"
+        message_ids:
+          type: array
+          minItems: 1
+          items:
+            "$ref": "#/components/schemas/ReadMessageId"
+          description: Up to ten distinct message IDs
+        max_dimension:
+          type: integer
+          default: 1280
+    PreviewItem:
+      oneOf:
+      - type: object
+        required:
+        - message_id
+        - handle
+        - mime_type
+        - width
+        - height
+        - size_bytes
+        - media_type
+        - is_thumbnail
+        - source_size_bytes
+        properties:
+          message_id:
+            "$ref": "#/components/schemas/ReadMessageId"
+          handle:
+            type: string
+            pattern: "^[A-Za-z0-9_-]{32}$"
+          mime_type:
+            type: string
+            enum:
+            - image/jpeg
+          width:
+            type: integer
+            minimum: 0
+          height:
+            type: integer
+            minimum: 0
+          size_bytes:
+            type: integer
+            minimum: 0
+          media_type:
+            type: string
+          is_thumbnail:
+            type: boolean
+          source_size_bytes:
+            type: integer
+            minimum: 0
+      - type: object
+        required:
+        - message_id
+        - error
+        properties:
+          message_id:
+            "$ref": "#/components/schemas/ReadMessageId"
+          error:
+            type: object
+            required:
+            - code
+            properties:
+              code:
+                type: string
+    SendRecipient:
+      oneOf:
+      - type: object
+        required:
+        - kind
+        properties:
+          kind:
+            type: string
+            enum:
+            - saved_messages
+      - type: object
+        required:
+        - kind
+        - namespace
+        - id
+        properties:
+          kind:
+            type: string
+            enum:
+            - peer
+          namespace:
+            type: string
+            enum:
+            - user
+            - chat
+            - channel
+          id:
+            "$ref": "#/components/schemas/ReadChannelId"
+      - type: object
+        required:
+        - kind
+        - username
+        - expected_namespace
+        properties:
+          kind:
+            type: string
+            enum:
+            - username
+          username:
+            type: string
+          expected_namespace:
+            type: string
+            enum:
+            - user
+            - channel
+    SendMediaKind:
+      oneOf:
+      - type: object
+        required:
+        - kind
+        properties:
+          kind:
+            type: string
+            enum:
+            - image
+      - type: object
+        required:
+        - kind
+        - duration_seconds
+        properties:
+          kind:
+            type: string
+            enum:
+            - voice
+          duration_seconds:
+            type: integer
+            minimum: 0
+      - type: object
+        required:
+        - kind
+        - duration_seconds
+        properties:
+          kind:
+            type: string
+            enum:
+            - audio
+          duration_seconds:
+            type: integer
+            minimum: 0
+          title:
+            anyOf:
+            - type: string
+            - type: 'null'
+          performer:
+            anyOf:
+            - type: string
+            - type: 'null'
+      - type: object
+        required:
+        - kind
+        - duration_seconds
+        - width
+        - height
+        properties:
+          kind:
+            type: string
+            enum:
+            - video
+          duration_seconds:
+            type: number
+            exclusiveMinimum: 0
+          width:
+            type: integer
+            minimum: 0
+          height:
+            type: integer
+            minimum: 0
+    SendMessage:
+      type: object
+      required:
+      - recipient
+      - text
+      properties:
+        recipient:
+          "$ref": "#/components/schemas/SendRecipient"
+        silent:
+          type: boolean
+        reply_to_message_id:
+          anyOf:
+          - "$ref": "#/components/schemas/ReadMessageId"
+          - type: 'null'
+        topic_id:
+          anyOf:
+          - "$ref": "#/components/schemas/ReadMessageId"
+          - type: 'null'
+        text:
+          type: string
+        link_preview:
+          type: boolean
+    SendMedia:
+      type: object
+      required:
+      - recipient
+      - upload_handle
+      - media
+      properties:
+        recipient:
+          "$ref": "#/components/schemas/SendRecipient"
+        silent:
+          type: boolean
+        reply_to_message_id:
+          anyOf:
+          - "$ref": "#/components/schemas/ReadMessageId"
+          - type: 'null'
+        topic_id:
+          anyOf:
+          - "$ref": "#/components/schemas/ReadMessageId"
+          - type: 'null'
+        upload_handle:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{32}$"
+        media:
+          "$ref": "#/components/schemas/SendMediaKind"
+        caption:
+          type: string
+    SentMessage:
+      type: object
+      required:
+      - recipient
+      - saved_messages
+      - message_id
+      - date
+      - content_kind
+      - reply_to_message_id
+      - topic_id
+      - message_link
+      - media
+      properties:
+        recipient:
+          type: object
+          required:
+          - namespace
+          - id
+          properties:
+            namespace:
+              type: string
+              enum:
+              - user
+              - chat
+              - channel
+            id:
+              "$ref": "#/components/schemas/ReadChannelId"
+        saved_messages:
+          type: boolean
+        message_id:
+          "$ref": "#/components/schemas/ReadMessageId"
+        date:
+          type: string
+          format: date-time
+        content_kind:
+          type: string
+        reply_to_message_id:
+          anyOf:
+          - "$ref": "#/components/schemas/ReadMessageId"
+          - type: 'null'
+        topic_id:
+          anyOf:
+          - "$ref": "#/components/schemas/ReadMessageId"
+          - type: 'null'
+        message_link:
+          anyOf:
+          - type: string
+          - type: 'null'
+        media:
+          anyOf:
+          - type: object
+            required:
+            - mime_type
+            - size_bytes
+            properties:
+              mime_type:
+                type: string
+              size_bytes:
+                type: integer
+                minimum: 0
+          - type: 'null'
+    SendError:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - delivery
+          - retryable
+          properties:
+            code:
+              type: string
+            delivery:
+              type: string
+              enum:
+              - not_sent
+              - unknown
+            retryable:
+              type: boolean
+            retry_after_seconds:
+              anyOf:
+              - type: integer
+                minimum: 0
+              - type: 'null'

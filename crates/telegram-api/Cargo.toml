@@ -6,8 +6,10 @@ publish = false
 
 [features]
 default = ["service"]
+test-support = ["identity"]
+schemas = ["dep:schemars"]
 identity = ["dep:jsonwebtoken", "dep:reqwest", "dep:secrecy", "dep:serde_json", "dep:thiserror", "dep:tokio", "dep:url"]
-service = ["identity", "dep:axum", "dep:base64", "dep:getrandom", "dep:sha2", "dep:subtle"]
+service = ["identity", "dep:axum", "dep:base64", "dep:getrandom", "dep:sha2", "dep:subtle", "dep:libsql", "dep:telegram-core", "dep:grammers-client", "dep:futures", "dep:tempfile", "dep:async-trait"]
 
 [[bin]]
 name = "telegram-api"
@@ -15,6 +17,13 @@ path = "src/main.rs"
 required-features = ["service"]
 
 [dependencies]
+async-trait = { workspace = true, optional = true }
+tempfile = { workspace = true, optional = true }
+schemars = { workspace = true, optional = true }
+futures = { workspace = true, optional = true }
+grammers-client = { workspace = true, optional = true }
+libsql = { version = "0.10.0", default-features = false, features = ["core"], optional = true }
+telegram-core = { path = "../telegram-core", version = "0.26.1", optional = true, features = ["image-preview"] }
 serde.workspace = true
 serde_json = { version = "1.0.154", optional = true }
 thiserror = { workspace = true, optional = true }
@@ -22,14 +31,17 @@ axum = { version = "0.8.9", default-features = false, features = ["http1", "json
 base64 = { version = "0.23.1", optional = true }
 getrandom = { workspace = true, optional = true }
 jsonwebtoken = { version = "12.0.0", default-features = false, features = ["aws_lc_rs"], optional = true }
-reqwest = { version = "0.13.5", default-features = false, features = ["form", "json", "rustls"], optional = true }
+reqwest = { version = "0.13.5", default-features = false, features = ["form", "json", "rustls", "stream"], optional = true }
 secrecy = { workspace = true, optional = true }
 sha2 = { version = "0.11.1", optional = true }
 subtle = { version = "2.6.1", optional = true }
-tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"], optional = true }
+tokio = { workspace = true, features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"], optional = true }
 url = { version = "2.5.8", optional = true, features = ["serde"] }
 
 [dev-dependencies]
+telegram-core = { path = "../telegram-core", features = ["test-support"] }
+tokio = { workspace = true, features = ["test-util"] }
+tempfile.workspace = true
 axum = { version = "0.8.9", default-features = false, features = ["form"] }
 
 [lints]

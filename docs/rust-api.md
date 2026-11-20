@@ -41,6 +41,24 @@ public paths. It also provides the interactive setup prompts and stdio tool
 transport. Libraries that want only the Telegram operations can depend on
 `telegram-core` directly.
 
+## Charged operations and channel posts
+
+`telegram_core::operations::AccountOperations` binds a client and limiter.
+Reuse one facade and limiter for an account. Pass an `OperationContext` with
+one absolute Tokio deadline and a cancellation token. Search, recent history
+and batches return domain rows with pagination and partial metadata. A concrete
+Telegram account supports `history_range` for exclusive `after_id`, inclusive
+`through_id` and descending `before_id` continuation.
+
+Open a streaming client with `TelegramClient::new_with_streams`, then construct
+`AccountStreams` using the account's same client and limiter. Share a
+`StreamBudget` across managers to cap queued bytes. Subscriptions return
+`Ready` with per-channel heads, followed by individual `Post` events or an
+`Interrupted` event. Drop the receiver to unregister. After interruption,
+subscribe again for fresh heads and use the bounded history range to bridge the
+gap. Close the reader before closing or replacing its Telegram sender.
+[Live and history recovery](hosted-services.md)
+
 ## UTC timestamp migration
 
 Telegram message dates, search bounds, account observations, send results, and

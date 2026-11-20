@@ -7,6 +7,7 @@ pub mod link;
 pub mod operations;
 pub mod rate_limiter;
 pub mod sending;
+pub mod streams;
 pub mod telegram;
 pub mod timestamp;
 

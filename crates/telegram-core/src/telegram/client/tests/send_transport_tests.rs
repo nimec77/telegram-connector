@@ -649,3 +649,44 @@ async fn sending_transport_preparation_diagnostics_discard_raw_errors_across_pol
     assert!(text.contains("preparation"));
     assert!(text.contains("unavailable"));
 }
+
+#[tokio::test]
+async fn final_dispatch_gate_serializes_acceptance_and_revocation() {
+    use crate::telegram::sending::DispatchGate;
+    use crate::telegram::types::sending::SendFailure;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+    struct Policy(AtomicBool);
+    #[async_trait::async_trait]
+    impl DispatchGate for Policy {
+        async fn submit(&self, enqueue: &mut (dyn FnMut() + Send)) -> Result<(), SendFailure> {
+            if self.0.load(Ordering::Acquire) {
+                enqueue();
+                Ok(())
+            } else {
+                Err(SendFailure::not_sent(SendFailureKind::SendForbidden, None))
+            }
+        }
+    }
+
+    let submitted = AtomicUsize::new(0);
+    let policy = Policy(AtomicBool::new(false));
+    let dispatch = || async {
+        submitted.fetch_add(1, Ordering::Relaxed);
+        std::future::pending::<Result<Vec<u8>, InvocationError>>().await
+    };
+    let deadline = SendDeadline::new(2).expect("deadline");
+    let mut rejected = std::pin::pin!(dispatch());
+    let error = super::send_transport::poll_gated(rejected.as_mut(), deadline, &policy)
+        .await
+        .expect_err("revoked before dispatch");
+    assert_eq!(error.kind(), SendFailureKind::SendForbidden);
+    assert_eq!(submitted.load(Ordering::Relaxed), 0);
+    policy.0.store(true, Ordering::Release);
+    let mut response = std::pin::pin!(dispatch());
+    let _first = super::send_transport::poll_gated(response.as_mut(), deadline, &policy)
+        .await
+        .expect("admitted dispatch");
+    policy.0.store(false, Ordering::Release);
+    assert_eq!(submitted.load(Ordering::Relaxed), 1);
+}

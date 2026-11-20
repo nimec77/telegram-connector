@@ -5,12 +5,15 @@
 use super::TelegramClient;
 use super::guard::require_found;
 use super::resolve::{peer_to_ref, validate_channel_identifier};
+use super::stream_source::JoinedChannel;
 use crate::error::Error;
 use crate::telegram::converters::{convert_media_to_type, extract_audio_duration};
 use crate::telegram::timeout::with_timeout;
 use crate::telegram::transcription::TranscriptionDeadline;
 use crate::telegram::types::{TranscriptionOutcome, TranscriptionState};
+use grammers_client::peer::Peer;
 use grammers_client::tl;
+use grammers_session::types::PeerRef;
 use std::time::Duration as StdDuration;
 
 impl TelegramClient {
@@ -20,15 +23,44 @@ impl TelegramClient {
         message_id: i32,
         deadline: TranscriptionDeadline,
     ) -> Result<TranscriptionOutcome, Error> {
-        use crate::telegram::transcription::{
-            POLL_INTERVAL_SECS, ensure_transcribable, poll_until_complete,
-        };
-
         validate_channel_identifier(channel_ref)?;
 
         // Resolve once; reuse the InputPeer for every poll (no repeated dialog walk).
         let peer = deadline.run(self.resolve_peer(channel_ref)).await?;
         let peer_ref = deadline.run(peer_to_ref(&peer)).await?;
+        self.transcribe_for_peer(&peer, peer_ref, channel_ref, message_id, deadline)
+            .await
+    }
+
+    pub(crate) async fn transcribe_joined_channel(
+        &self,
+        joined: &JoinedChannel,
+        message_id: i32,
+        deadline: TranscriptionDeadline,
+    ) -> Result<TranscriptionOutcome, Error> {
+        let reference = joined.identity()?.id.to_string();
+        self.transcribe_for_peer(
+            &joined.peer,
+            joined.reference,
+            &reference,
+            message_id,
+            deadline,
+        )
+        .await
+    }
+
+    async fn transcribe_for_peer(
+        &self,
+        peer: &Peer,
+        peer_ref: PeerRef,
+        channel_ref: &str,
+        message_id: i32,
+        deadline: TranscriptionDeadline,
+    ) -> Result<TranscriptionOutcome, Error> {
+        use crate::telegram::transcription::{
+            POLL_INTERVAL_SECS, ensure_transcribable, poll_until_complete,
+        };
+
         let input_peer: tl::enums::InputPeer = peer_ref.into();
 
         // Fetch the message to validate media type and read duration.
@@ -74,10 +106,10 @@ impl TelegramClient {
         .await;
 
         Ok(TranscriptionOutcome {
-            channel_id: crate::telegram::converters::channel_identity(&peer)
+            channel_id: crate::telegram::converters::channel_identity(peer)
                 .ok_or(Error::UnsupportedPeer)?
                 .id,
-            peer_namespace: crate::telegram::converters::peer_namespace(&peer),
+            peer_namespace: crate::telegram::converters::peer_namespace(peer),
             message_id: crate::telegram::types::MessageId::new(i64::from(message_id))?,
             text: final_state.text,
             partial,

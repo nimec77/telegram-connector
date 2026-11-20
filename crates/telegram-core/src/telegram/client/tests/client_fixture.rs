@@ -25,7 +25,8 @@ pub async fn stalled_client() -> (TelegramClient, impl Send, tempfile::TempDir) 
         max_download_bytes: 1024,
         search_deadline_secs: 20,
         account_status: tokio::sync::RwLock::new(AccountStatus::default()),
-        _runner_handle: tokio::spawn(async {}),
+        runner_handle: tokio::sync::Mutex::new(tokio::spawn(async {})),
+        stream_updates: None,
     };
     (client, pool.runner, dir)
 }

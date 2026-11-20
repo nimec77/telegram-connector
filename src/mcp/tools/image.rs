@@ -1,71 +1,18 @@
-//! Pure image processing pipeline for get_message_media.
-//!
-//! Decode → downscale (longest side <= max_dimension) → JPEG q80 → base64,
-//! shrinking iteratively until the base64 payload fits the cap. No I/O.
-//!
-//! Compatibility API for MCP image policy, not a general image codec facade.
-//! Processing is synchronous CPU work; async embedders should offload it with
-//! their own bounded blocking-work policy.
+//! Bounded JPEG and base64 previews for the existing stdio MCP image contract.
 
 use crate::error::Error;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use image::codecs::jpeg::JpegEncoder;
-use image::{DynamicImage, ImageDecoder as _, ImageReader, Limits};
-use std::io::Cursor;
+use telegram_core::operations::preview::shape_jpeg;
+pub use telegram_core::operations::preview::{
+    MAX_DECODED_BYTES, MAX_DECODED_DIMENSION, MAX_DECODED_PIXELS,
+};
 
 /// Maximum allowed base64 payload length, in characters (~1.5 MB).
 pub const MAX_BASE64_LEN: usize = 1_572_864;
-/// Maximum source side length, checked before decoding pixels.
-pub const MAX_DECODED_DIMENSION: u32 = 8192;
-/// Maximum decoded source area (8 megapixels, including 4K frames).
-pub const MAX_DECODED_PIXELS: u64 = 8_388_608;
-/// Decoder allocation allowance, including its output image, excluding allocator overhead.
-pub const MAX_DECODED_BYTES: u64 = 64 * 1024 * 1024;
 
 pub(crate) fn base64_len(bytes: usize) -> Option<usize> {
     bytes.checked_add(2)?.checked_div(3)?.checked_mul(4)
-}
-
-fn decode_error(error: image::ImageError) -> Error {
-    match error {
-        image::ImageError::Limits(_) => Error::ImageLimitExceeded,
-        other => Error::DownloadFailed(format!("failed to decode image: {other}")),
-    }
-}
-
-fn decode_bounded(bytes: &[u8]) -> Result<DynamicImage, Error> {
-    let mut limits = Limits::default();
-    limits.max_image_width = Some(MAX_DECODED_DIMENSION);
-    limits.max_image_height = Some(MAX_DECODED_DIMENSION);
-    limits.max_alloc = Some(MAX_DECODED_BYTES);
-    let mut reader = ImageReader::new(Cursor::new(bytes))
-        .with_guessed_format()
-        .map_err(|_| Error::DownloadFailed("failed to detect image format".into()))?;
-    reader.limits(limits.clone());
-    let mut decoder = reader.into_decoder().map_err(decode_error)?;
-    let (width, height) = decoder.dimensions();
-    if u64::from(width) * u64::from(height) > MAX_DECODED_PIXELS
-        || decoder.total_bytes() > MAX_DECODED_BYTES
-    {
-        return Err(Error::ImageLimitExceeded);
-    }
-    limits
-        .reserve(decoder.total_bytes())
-        .map_err(decode_error)?;
-    decoder.set_limits(limits).map_err(decode_error)?;
-    DynamicImage::from_decoder(decoder).map_err(decode_error)
-}
-
-/// JPEG re-encode quality.
-const JPEG_QUALITY: u8 = 80;
-/// Cap-fitting iterations before giving up (each shrinks >= 10%, so this is
-/// a >40% total reduction — far beyond what any real photo needs).
-const MAX_CAP_ITERATIONS: usize = 5;
-
-/// JPEG SOI magic — cheap already-JPEG sniff for the passthrough branch.
-fn is_jpeg(bytes: &[u8]) -> bool {
-    bytes.starts_with(&[0xff, 0xd8])
 }
 
 /// A processed image ready to be returned as an MCP image content block.
@@ -100,74 +47,13 @@ pub(crate) fn process_image_with_cap(
     max_dimension: u32,
     max_base64_len: usize,
 ) -> Result<ProcessedImage, Error> {
-    let decoded = decode_bounded(bytes)?;
-
-    // Already-JPEG sources that need no downscale pass through untouched —
-    // re-encoding at identical dimensions degrades quality and can grow the
-    // payload (work-order D4 measured +29%).
-    let passthrough_base64_len = base64_len(bytes.len()).ok_or(Error::PayloadCapExceeded {
-        limit: max_base64_len,
-    })?;
-    if is_jpeg(bytes)
-        && decoded.width().max(decoded.height()) <= max_dimension
-        && passthrough_base64_len <= max_base64_len
-    {
-        return Ok(ProcessedImage {
-            width: decoded.width(),
-            height: decoded.height(),
-            encoded_size_bytes: bytes.len(),
-            base64_jpeg: BASE64.encode(bytes),
-        });
-    }
-
-    let mut target = max_dimension;
-    for _ in 0..MAX_CAP_ITERATIONS {
-        let resized = downscale(&decoded, target);
-        let jpeg = encode_jpeg(&resized)?;
-        let encoded_len = base64_len(jpeg.len()).ok_or(Error::PayloadCapExceeded {
-            limit: max_base64_len,
-        })?;
-        if encoded_len <= max_base64_len {
-            return Ok(ProcessedImage {
-                width: resized.width(),
-                height: resized.height(),
-                encoded_size_bytes: jpeg.len(),
-                base64_jpeg: BASE64.encode(&jpeg),
-            });
-        }
-        // Area scales with the square of the side, so sqrt of the byte ratio
-        // estimates the needed shrink; never shrink less than 10% per round
-        // so the loop provably converges.
-        let ratio = (max_base64_len as f64 / encoded_len as f64).sqrt().min(0.9);
-        target = (f64::from(target) * ratio).floor().max(1.0) as u32;
-    }
-
-    Err(Error::PayloadCapExceeded {
-        limit: max_base64_len,
+    let result = shape_jpeg(bytes, max_dimension, max_base64_len, base64_len)?;
+    Ok(ProcessedImage {
+        width: result.width,
+        height: result.height,
+        encoded_size_bytes: result.jpeg.len(),
+        base64_jpeg: BASE64.encode(&result.jpeg),
     })
-}
-
-fn downscale(img: &DynamicImage, max_dimension: u32) -> DynamicImage {
-    if img.width().max(img.height()) <= max_dimension {
-        img.clone()
-    } else {
-        // resize() preserves aspect ratio within the bounding box. Lanczos3
-        // keeps text and chart lines legible — the primary use case.
-        img.resize(
-            max_dimension,
-            max_dimension,
-            image::imageops::FilterType::Lanczos3,
-        )
-    }
-}
-
-fn encode_jpeg(img: &DynamicImage) -> Result<Vec<u8>, Error> {
-    // JPEG has no alpha; convert unconditionally so RGBA sources cannot fail.
-    let rgb = DynamicImage::ImageRgb8(img.to_rgb8());
-    let mut buf = Cursor::new(Vec::new());
-    rgb.write_with_encoder(JpegEncoder::new_with_quality(&mut buf, JPEG_QUALITY))
-        .map_err(|e| Error::DownloadFailed(format!("failed to encode JPEG: {e}")))?;
-    Ok(buf.into_inner())
 }
 
 #[cfg(test)]
@@ -269,6 +155,8 @@ mod tests {
 #[cfg(test)]
 mod allocation_tests {
     use super::*;
+    use image::DynamicImage;
+    use std::io::Cursor;
 
     #[test]
     fn task8_base64_length_handles_quantum_boundaries_and_overflow() {

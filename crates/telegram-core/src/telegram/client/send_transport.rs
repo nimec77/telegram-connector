@@ -192,3 +192,71 @@ pub(super) fn classify_final_error(error: InvocationError) -> SendFailure {
     };
     SendFailure::not_sent(kind, None)
 }
+
+/// The pinned SenderPoolHandle future enqueues exactly once on its first poll
+/// before awaiting its receipt channel. A synchronous first poll therefore
+/// keeps enqueue inside the authorization decision without holding its lock
+/// during an RPC. The receipt future immediately receives its real waker.
+pub(super) async fn poll_gated<F>(
+    mut future: std::pin::Pin<&mut F>,
+    deadline: SendDeadline,
+    gate: &dyn crate::telegram::sending::DispatchGate,
+) -> Result<std::task::Poll<Result<Vec<u8>, InvocationError>>, SendFailure>
+where
+    F: Future<Output = Result<Vec<u8>, InvocationError>> + Send,
+{
+    let mut submitted = None;
+    let result = deadline
+        .run(SendStage::LocalPreparation, async {
+            gate.submit(&mut || {
+                if submitted.is_none() && !deadline.expired() {
+                    let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+                    submitted = Some(future.as_mut().poll(&mut cx));
+                }
+            })
+            .await
+        })
+        .await;
+    match (result, submitted) {
+        (Ok(()), Some(first)) => Ok(first),
+        (Err(_), Some(_)) => Err(SendFailure::unknown()),
+        (Err(error), None) => Err(error),
+        (Ok(()), None) if deadline.expired() => {
+            Err(SendFailure::not_sent(SendFailureKind::Timeout, None))
+        }
+        (Ok(()), None) => Err(SendFailure::not_sent(SendFailureKind::SendForbidden, None)),
+    }
+}
+
+pub(super) async fn submit_maybe_gated<F, Fut>(
+    prepared: PreparedFinalSend,
+    deadline: SendDeadline,
+    gate: Option<&dyn crate::telegram::sending::DispatchGate>,
+    submit: F,
+) -> Result<SentMessage, SendFailure>
+where
+    F: FnOnce(Vec<u8>) -> Fut,
+    Fut: Future<Output = Result<Vec<u8>, InvocationError>> + Send,
+{
+    let Some(gate) = gate else {
+        return submit_final_with(prepared, deadline, submit).await;
+    };
+    let mut request = std::pin::pin!(submit(prepared.body));
+    let first = poll_gated(request.as_mut(), deadline, gate).await?;
+    let response = deadline
+        .run(SendStage::FinalSend, async {
+            let response = match first {
+                std::task::Poll::Ready(result) => result,
+                std::task::Poll::Pending => request.await,
+            };
+            response.map_err(classify_final_error)
+        })
+        .await?;
+    deadline
+        .run(SendStage::Receipt, async {
+            let updates =
+                tl::enums::Updates::from_bytes(&response).map_err(|_| SendFailure::unknown())?;
+            map_ack(updates, &prepared.expected)
+        })
+        .await
+}

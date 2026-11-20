@@ -63,7 +63,7 @@ struct Issuer {
     bad_nonce: AtomicBool,
 }
 
-struct Fixture {
+pub(crate) struct Fixture {
     http: Client,
     issuer: Arc<Issuer>,
     verifier: CredentialVerifier,
@@ -72,7 +72,7 @@ struct Fixture {
 }
 
 impl Fixture {
-    async fn start() -> Self {
+    pub(crate) async fn start() -> Self {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("issuer socket");
@@ -133,6 +133,25 @@ impl Fixture {
 
     fn claims(&self, audience: &str, client_id: &str, scope: &str) -> Value {
         access_claims(&self.issuer.base, audience, client_id, scope)
+    }
+
+    pub(crate) fn read_verifier(&self) -> CredentialVerifier {
+        self.verifier.clone()
+    }
+
+    pub(crate) fn read_token(&self, subject: &str, delegated: bool) -> String {
+        let mut claims = self.claims(API, "read-client", "telegram.read");
+        claims["stable_sub"] = json!(subject);
+        if delegated {
+            claims["act"] = json!({"sub": GATEWAY, "iss": self.issuer.base});
+        }
+        token(1, "1", "at+jwt", &claims)
+    }
+
+    pub(crate) fn send_token(&self, subject: &str, client: &str) -> String {
+        let mut claims = self.claims(API, client, "telegram.send");
+        claims["stable_sub"] = json!(subject);
+        token(1, "1", "at+jwt", &claims)
     }
 
     async fn bearer(&self, token: &str) -> reqwest::Response {

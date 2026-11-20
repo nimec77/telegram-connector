@@ -187,7 +187,7 @@ struct TrustedKey {
 #[derive(Clone, Copy)]
 enum Transport {
     Https,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     Loopback,
 }
 
@@ -203,7 +203,7 @@ impl Transport {
         }
         match self {
             Self::Https => url.scheme() == "https",
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             Self::Loopback => {
                 url.scheme() == "http"
                     && match url.host() {
@@ -288,8 +288,12 @@ impl CredentialVerifier {
         Self::discover_with_transport(config, Transport::Https).await
     }
 
-    #[cfg(test)]
-    pub(crate) async fn discover_loopback(config: AuthorityConfig) -> Result<Self, AuthError> {
+    #[cfg(any(test, feature = "test-support"))]
+    /// Discover an ephemeral issuer with numeric loopback-only HTTP endpoints.
+    ///
+    /// # Errors
+    /// Returns a configuration or availability error if the fixture fails validation.
+    pub async fn discover_loopback(config: AuthorityConfig) -> Result<Self, AuthError> {
         Self::discover_with_transport(config, Transport::Loopback).await
     }
 
@@ -391,18 +395,23 @@ impl CredentialVerifier {
             .client_id
             .filter(|id| valid_label(id))
             .ok_or(AuthError::Credential)?;
-        let scopes: BTreeSet<_> = claims
+        let mut scopes = BTreeSet::new();
+        for name in claims
             .scope
             .as_deref()
             .unwrap_or_default()
             .split_ascii_whitespace()
-            .filter_map(|scope| match scope {
-                "telegram.read" => Some(Scope::Read),
-                "telegram.send" => Some(Scope::Send),
-                "telegram.link" => Some(Scope::Link),
-                _ => None,
-            })
-            .collect();
+        {
+            let scope = match name {
+                "telegram.read" => Scope::Read,
+                "telegram.send" => Scope::Send,
+                "telegram.link" => Scope::Link,
+                // A gateway may only exchange scopes it can verify and narrow.
+                _ if claims.act.is_some() => return Err(AuthError::Forbidden),
+                _ => continue,
+            };
+            scopes.insert(scope);
+        }
         let kind = if let Some(actor) = claims.act {
             if !matches!(audience, Audience::Api)
                 || actor.sub != self.0.config.gateway_actor
@@ -456,8 +465,8 @@ impl CredentialVerifier {
     pub(crate) fn authorization_endpoint(&self) -> &Url {
         &self.0.metadata.authorization_endpoint
     }
-    #[cfg(feature = "service")]
-    pub(crate) fn token_endpoint(&self) -> &Url {
+    /// Verified issuer endpoint for credential exchange.
+    pub fn token_endpoint(&self) -> &Url {
         &self.0.metadata.token_endpoint
     }
     #[cfg(feature = "service")]

@@ -110,65 +110,132 @@ impl TelegramClient {
                 // One resolution and one shared fetch; the lazy stream never repeats them.
                 let peer = self.resolve_peer(channel_ref).await?;
                 let peer_ref = peer_to_ref(&peer).await?;
-                let messages =
-                    with_timeout("get_messages_by_id", self.timeouts.history_secs, async {
-                        self.client
-                            .get_messages_by_id(peer_ref, message_ids)
-                            .await
-                            .map_err(|error| {
-                                Error::TelegramApi(format!("Failed to get media messages: {error}"))
-                            })
-                    })
-                    .await?;
-                debug_assert_eq!(
-                    messages.len(),
-                    message_ids.len(),
-                    "grammers must return one slot per requested id"
-                );
-                let jobs = message_ids
-                    .iter()
-                    .copied()
-                    .zip(messages.into_iter().chain(std::iter::repeat_with(|| None)))
-                    .map(|(id, message)| (id, (id, message)))
-                    .collect();
-                let client = self.client.clone();
-                let channel_reference = channel_ref.to_owned();
-                let download_secs = self.timeouts.download_secs;
-                let max_bytes = self.max_download_bytes;
-                let stream =
-                    media_pipeline::media_stream(jobs, deadline, max_bytes, move |(id, slot)| {
-                        let client = client.clone();
-                        let channel_reference = channel_reference.clone();
-                        async move {
-                            let message = require_found(slot, &channel_reference, id)
-                                .map_err(|_| MediaFetchError::NotFound)?;
-                            download_visual_media(
-                                &client,
-                                download_secs,
-                                max_bytes,
-                                message,
-                                &channel_reference,
-                                id,
-                                max_dimension,
-                            )
-                            .await
-                            .map_err(|error| match error {
-                                Error::NoVisualMedia { media_type } => {
-                                    MediaFetchError::NoVisualMedia { media_type }
-                                }
-                                other => MediaFetchError::Failed(other),
-                            })
-                        }
-                    });
-                Ok(MediaBatch {
-                    channel_id: crate::telegram::converters::channel_identity(&peer)
-                        .ok_or(Error::UnsupportedPeer)?
-                        .id,
-                    peer_namespace: crate::telegram::converters::peer_namespace(&peer),
-                    outcomes: Vec::new(),
-                    stream: Some(stream),
-                    deadline: Some(deadline),
+                self.download_media_for_peer(
+                    channel_ref,
+                    message_ids,
+                    max_dimension,
+                    deadline,
+                    &peer,
+                    peer_ref,
+                )
+                .await
+            })
+            .await?
+    }
+
+    async fn download_media_for_peer(
+        &self,
+        channel_ref: &str,
+        message_ids: &[i32],
+        max_dimension: u32,
+        deadline: MediaDeadline,
+        peer: &grammers_client::peer::Peer,
+        peer_ref: grammers_session::types::PeerRef,
+    ) -> Result<MediaBatch, Error> {
+        let messages = with_timeout("get_messages_by_id", self.timeouts.history_secs, async {
+            self.client
+                .get_messages_by_id(peer_ref, message_ids)
+                .await
+                .map_err(|error| {
+                    Error::TelegramApi(format!("Failed to get media messages: {error}"))
                 })
+        })
+        .await?;
+        debug_assert_eq!(
+            messages.len(),
+            message_ids.len(),
+            "grammers must return one slot per requested id"
+        );
+        let jobs = message_ids
+            .iter()
+            .copied()
+            .zip(messages.into_iter().chain(std::iter::repeat_with(|| None)))
+            .map(|(id, message)| (id, (id, message)))
+            .collect();
+        let client = self.client.clone();
+        let channel_reference = channel_ref.to_owned();
+        let download_secs = self.timeouts.download_secs;
+        let max_bytes = self.max_download_bytes;
+        let stream = media_pipeline::media_stream(jobs, deadline, max_bytes, move |(id, slot)| {
+            let client = client.clone();
+            let channel_reference = channel_reference.clone();
+            async move {
+                let message = require_found(slot, &channel_reference, id)
+                    .map_err(|_| MediaFetchError::NotFound)?;
+                if message.peer_id() != peer_ref.id {
+                    return Err(MediaFetchError::Failed(Error::UnsupportedPeer));
+                }
+                download_visual_media(
+                    &client,
+                    download_secs,
+                    max_bytes,
+                    message,
+                    &channel_reference,
+                    id,
+                    max_dimension,
+                )
+                .await
+                .map_err(|error| match error {
+                    Error::NoVisualMedia { media_type } => {
+                        MediaFetchError::NoVisualMedia { media_type }
+                    }
+                    other => MediaFetchError::Failed(other),
+                })
+            }
+        });
+        Ok(MediaBatch {
+            channel_id: crate::telegram::converters::channel_identity(peer)
+                .ok_or(Error::UnsupportedPeer)?
+                .id,
+            peer_namespace: crate::telegram::converters::peer_namespace(peer),
+            outcomes: Vec::new(),
+            stream: Some(stream),
+            deadline: Some(deadline),
+        })
+    }
+}
+
+#[cfg(feature = "image-preview")]
+#[async_trait::async_trait]
+impl crate::operations::JoinedMediaSource for TelegramClient {
+    async fn verify_media_channel(
+        &self,
+        channel_id: crate::telegram::types::ChannelId,
+    ) -> Result<(), Error> {
+        self.joined_channel_peers(
+            &[channel_id],
+            super::stream_source::JoinedChannelKind::BroadcastOrSupergroup,
+        )
+        .await
+        .map(|_| ())
+    }
+
+    async fn joined_media(
+        &self,
+        channel_id: crate::telegram::types::ChannelId,
+        message_ids: &[i32],
+        max_dimension: u32,
+    ) -> Result<MediaBatch, Error> {
+        let deadline = MediaDeadline::try_new(self.timeouts.download_secs)?;
+        deadline
+            .run(async {
+                let peer = self
+                    .joined_channel_peers(
+                        &[channel_id],
+                        super::stream_source::JoinedChannelKind::BroadcastOrSupergroup,
+                    )
+                    .await?
+                    .remove(&channel_id)
+                    .ok_or_else(|| Error::ChannelNotFound(channel_id.to_string()))?;
+                self.download_media_for_peer(
+                    &channel_id.to_string(),
+                    message_ids,
+                    max_dimension,
+                    deadline,
+                    &peer.peer,
+                    peer.reference,
+                )
+                .await
             })
             .await?
     }

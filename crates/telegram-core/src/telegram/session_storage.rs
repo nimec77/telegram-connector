@@ -176,6 +176,14 @@ async fn prepare(path: &Path) -> Result<PathBuf, Error> {
     Ok(path.to_path_buf())
 }
 
+/// Prepare a private SQLite data file and its sidecars under trusted ancestry.
+///
+/// # Errors
+/// Returns a redacted storage error if the path cannot be secured.
+pub async fn prepare_private_database(path: &Path) -> Result<PathBuf, Error> {
+    prepare(path).await
+}
+
 pub(crate) async fn open_private_session(path: &Path) -> Result<Arc<SqliteSession>, Error> {
     let path = prepare(path).await?;
     let session = SqliteSession::open(&path)
