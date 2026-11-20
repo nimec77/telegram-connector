@@ -89,26 +89,7 @@ impl<T: TelegramClientTrait, R: RateLimiterTrait> AccountOperations<T, R> {
                 SearchScope::Channel(_) => {}
             }
         }
-        for cursor in [operation.before_id, operation.after_id]
-            .into_iter()
-            .flatten()
-        {
-            cursor.as_i32().ok_or_else(|| {
-                Error::InvalidInput(format!(
-                    "message_id {} exceeds Telegram's message id range",
-                    cursor.get()
-                ))
-            })?;
-        }
-        if let (Some(before), Some(after)) = (operation.before_id, operation.after_id)
-            && before.get() <= after.get()
-        {
-            return Err(Error::InvalidInput(format!(
-                "before_id ({}) must be greater than after_id ({}): the page covers after_id < id < before_id",
-                before.get(),
-                after.get()
-            )));
-        }
+        super::validation::validate_cursors(operation.before_id, operation.after_id)?;
 
         let params = SearchParams {
             channel_namespace: None,
@@ -153,28 +134,14 @@ impl<T: TelegramClientTrait, R: RateLimiterTrait> AccountOperations<T, R> {
                     }
                 })
                 .await;
-                if timing.cancellation.is_cancelled() {
-                    return Err(Error::Cancelled);
-                }
-                let deadline_hit = timing.expired();
-                let result = fanout::merge_results(
+                return fanout::finish(
+                    &timing,
                     outcomes,
                     params.limit as usize,
                     params.query,
                     window_from,
                     params.to_date,
                 );
-                return match result {
-                    Ok(mut page) => {
-                        if deadline_hit {
-                            page.result.query_metadata.timed_out = true;
-                            page.result.query_metadata.partial = true;
-                        }
-                        Ok(page)
-                    }
-                    Err(Error::AllChannelsFailed(_)) if deadline_hit => Err(timing.timeout()),
-                    Err(error) => Err(error),
-                };
             }
         };
         timing.run(self.limiter.acquire(1)).await?;

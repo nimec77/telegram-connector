@@ -673,6 +673,7 @@ async fn assert_fanout_namespaced_rendering(search: bool) {
                             format: None,
                         },
                         crate::mcp::tools::shaping::BudgetMode::Direct,
+                        telegram_core::operations::CancellationToken::new(),
                     )
                     .await
             };

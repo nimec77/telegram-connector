@@ -30,7 +30,7 @@ use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use telegram_core::operations::AccountLimits;
+use telegram_core::operations::{AccountLimits, AccountOperations};
 
 mod impl_send;
 
@@ -143,6 +143,21 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
     pub fn with_search_timeout(mut self, timeout: Duration) -> Self {
         self.account_limits.search_timeout = timeout;
         self
+    }
+
+    /// Set the overall budget for a history or batch request.
+    #[must_use]
+    pub fn with_history_timeout(mut self, timeout: Duration) -> Self {
+        self.account_limits.history_timeout = timeout;
+        self
+    }
+
+    fn account_operations(&self) -> AccountOperations<T, R> {
+        AccountOperations::new(
+            Arc::clone(&self.telegram_client),
+            Arc::clone(&self.rate_limiter),
+            self.account_limits,
+        )
     }
 
     /// Initialize optional private preview storage without Telegram RPCs.
@@ -977,6 +992,7 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         arguments: rmcp::model::JsonObject,
         id: RequestId,
+        context: RequestContext<RoleServer>,
     ) -> CallToolResult {
         let cursor = if arguments
             .get("channel_id")
@@ -996,8 +1012,12 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         > = async {
             let request: GetRecentMessagesRequest =
                 crate::mcp::tools::types::contract::decode(arguments)?;
-            self.get_recent_messages_data(request, crate::mcp::tools::shaping::BudgetMode::Wire)
-                .await
+            self.get_recent_messages_data(
+                request,
+                crate::mcp::tools::shaping::BudgetMode::Wire,
+                context.ct,
+            )
+            .await
         }
         .await;
         crate::mcp::tools::wire_budget::search(
@@ -1116,13 +1136,18 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         &self,
         arguments: rmcp::model::JsonObject,
         id: RequestId,
+        context: RequestContext<RoleServer>,
     ) -> CallToolResult {
         let invocation = ToolInvocation::start("get_messages_batch", id);
         let result: Result<crate::mcp::tools::MessagesBatchResponse, crate::error::Error> = async {
             let request: GetMessagesBatchRequest =
                 crate::mcp::tools::types::contract::decode(arguments)?;
-            self.get_messages_batch_data(request, crate::mcp::tools::shaping::BudgetMode::Wire)
-                .await
+            self.get_messages_batch_data(
+                request,
+                crate::mcp::tools::shaping::BudgetMode::Wire,
+                context.ct,
+            )
+            .await
         }
         .await;
         crate::mcp::tools::wire_budget::batch(

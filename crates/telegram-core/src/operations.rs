@@ -9,10 +9,14 @@ use std::time::Duration;
 use tokio::time::{Instant, sleep_until};
 pub use tokio_util::sync::CancellationToken;
 
+mod batch;
 #[doc(hidden)]
 pub mod fanout;
+mod history;
 mod search;
 mod validation;
+pub use batch::BatchOperation;
+pub use history::{HistoryOperation, HistoryScope};
 pub use search::{SearchOperation, SearchPage, SearchScope};
 #[doc(hidden)]
 pub use validation::{parse_channel_id, parse_channel_reference, validate_date_window};
@@ -91,12 +95,15 @@ impl BoundedOperation<'_> {
 pub struct AccountLimits {
     /// Maximum total time for an admitted search, including channel resolution.
     pub search_timeout: Duration,
+    /// Maximum total time for recent history and batch lookups.
+    pub history_timeout: Duration,
 }
 
 impl Default for AccountLimits {
     fn default() -> Self {
         Self {
             search_timeout: Duration::from_secs(crate::config::defaults::default_search_secs()),
+            history_timeout: Duration::from_secs(crate::config::defaults::default_history_secs()),
         }
     }
 }
@@ -126,15 +133,35 @@ impl<T: TelegramClientTrait, R: RateLimiterTrait> AccountOperations<T, R> {
         &self,
         cancellation: CancellationToken,
     ) -> Result<OperationContext, Error> {
-        let deadline = Instant::now()
-            .checked_add(self.limits.search_timeout)
-            .ok_or_else(|| {
-                Error::InvalidInput("search timeout exceeds the local clock range".into())
-            })?;
-        Ok(OperationContext::new(deadline, cancellation))
+        with_timeout(self.limits.search_timeout, cancellation)
     }
+
+    /// Create a context bounded by the configured history and batch timeout.
+    ///
+    /// # Errors
+    /// Returns an invalid-input error if the configured timeout cannot be represented.
+    pub fn history_context(
+        &self,
+        cancellation: CancellationToken,
+    ) -> Result<OperationContext, Error> {
+        with_timeout(self.limits.history_timeout, cancellation)
+    }
+}
+
+fn with_timeout(
+    timeout: Duration,
+    cancellation: CancellationToken,
+) -> Result<OperationContext, Error> {
+    let deadline = Instant::now().checked_add(timeout).ok_or_else(|| {
+        Error::InvalidInput("operation timeout exceeds the local clock range".into())
+    })?;
+    Ok(OperationContext::new(deadline, cancellation))
 }
 
 #[cfg(test)]
 #[path = "operations/tests/search.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "operations/tests/history_batch.rs"]
+mod history_batch_tests;

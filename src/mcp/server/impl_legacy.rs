@@ -90,7 +90,11 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         request: tools::GetRecentMessagesRequest,
     ) -> Result<String, String> {
         let value = self
-            .get_recent_messages_data(request, crate::mcp::tools::shaping::BudgetMode::Direct)
+            .get_recent_messages_data(
+                request,
+                crate::mcp::tools::shaping::BudgetMode::Direct,
+                telegram_core::operations::CancellationToken::new(),
+            )
             .await
             .map_err(|error| error.to_string())?;
         tools::json_response(&value)
@@ -130,7 +134,11 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
         request: tools::GetMessagesBatchRequest,
     ) -> Result<String, String> {
         let value = self
-            .get_messages_batch_data(request, crate::mcp::tools::shaping::BudgetMode::Direct)
+            .get_messages_batch_data(
+                request,
+                crate::mcp::tools::shaping::BudgetMode::Direct,
+                telegram_core::operations::CancellationToken::new(),
+            )
             .await
             .map_err(|error| error.to_string())?;
         tools::json_response(&value)

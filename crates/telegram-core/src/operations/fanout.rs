@@ -193,3 +193,28 @@ pub fn normalize_channels(list: &[String]) -> Result<Vec<FanoutChannel>, String>
     }
     Ok(deduped)
 }
+
+pub(super) fn finish(
+    timing: &super::BoundedOperation<'_>,
+    outcomes: Vec<ChannelFetchOutcome>,
+    limit: usize,
+    query: String,
+    window_from: UtcTimestamp,
+    window_to: Option<UtcTimestamp>,
+) -> Result<SearchPage, Error> {
+    if timing.cancellation.is_cancelled() {
+        return Err(Error::Cancelled);
+    }
+    let deadline_hit = timing.expired();
+    match merge_results(outcomes, limit, query, window_from, window_to) {
+        Ok(mut page) => {
+            if deadline_hit {
+                page.result.query_metadata.timed_out = true;
+                page.result.query_metadata.partial = true;
+            }
+            Ok(page)
+        }
+        Err(Error::AllChannelsFailed(_)) if deadline_hit => Err(timing.timeout()),
+        Err(error) => Err(error),
+    }
+}

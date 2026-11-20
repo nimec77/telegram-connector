@@ -2,12 +2,15 @@
 //! bounded-concurrency fetch outcomes merged into one flat, newest-first
 //! response. Pure over wire/domain types so merging is unit-testable.
 
+#[cfg(test)]
 use crate::UtcTimestamp;
 use crate::error::Error;
 use crate::mcp::tools::types::responses::{ChannelFetchError, SearchResponse};
 use telegram_core::operations::SearchPage;
+#[cfg(test)]
 pub(crate) use telegram_core::operations::fanout::ChannelFetchOutcome;
 
+#[cfg(test)]
 pub(crate) use telegram_core::operations::fanout::{FanoutChannel, run, validate_channel_scope};
 
 pub(crate) fn wire_page(page: SearchPage) -> SearchResponse<Error> {
@@ -23,6 +26,7 @@ pub(crate) fn wire_page(page: SearchPage) -> SearchResponse<Error> {
     response
 }
 
+#[cfg(test)]
 pub(crate) fn merge_results(
     outcomes: Vec<ChannelFetchOutcome>,
     limit: usize,
@@ -366,7 +370,7 @@ mod tests {
 
     #[test]
     fn shared_reference_parser_classifies_accepted_plus_numeric_as_id() {
-        let reference = crate::mcp::tools::validation::parse_channel_reference("+123").unwrap();
+        let reference = telegram_core::operations::parse_channel_reference("+123").unwrap();
         assert!(matches!(reference, crate::link::ChannelRef::Id(id) if id.get() == 123));
     }
 }

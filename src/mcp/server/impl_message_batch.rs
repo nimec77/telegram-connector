@@ -2,33 +2,27 @@
 
 use super::McpServer;
 use crate::error::Error;
-use crate::mcp::tools::validation::dedupe_and_validate_ids;
+use crate::mcp::tools::validation::parse_message_id;
 use crate::mcp::tools::{
     GetMessagesBatchRequest, MessageResponse, MessagesBatchResponse, MissingMessageEntry, shaping,
 };
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
 use crate::telegram::types::MessageId;
-
-/// Hard cap on ids per batch call (one `channels.GetMessages` RPC).
-pub(super) const MAX_BATCH_IDS: usize = 50;
+use telegram_core::operations::{BatchOperation, CancellationToken};
 
 impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<T, R> {
     pub(super) async fn get_messages_batch_data(
         &self,
         request: GetMessagesBatchRequest,
         budget_mode: shaping::BudgetMode,
+        cancellation: CancellationToken,
     ) -> Result<MessagesBatchResponse, Error> {
-        if request.channel_id.trim().is_empty() {
-            return Err(Error::InvalidInput("channel_id is required".to_string()));
-        }
-        if request.message_ids.is_empty() {
-            return Err(Error::InvalidInput(
-                "message_ids must contain at least one id".to_string(),
-            ));
-        }
-
-        let (unique, wire_ids) = dedupe_and_validate_ids(&request.message_ids, MAX_BATCH_IDS)?;
+        let message_ids = request
+            .message_ids
+            .into_iter()
+            .map(parse_message_id)
+            .collect::<Result<Vec<_>, _>>()?;
 
         let max_text_length = request
             .max_text_length
@@ -39,21 +33,17 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
             ));
         }
 
-        crate::mcp::tools::validation::validate_channel_reference(&request.channel_id)?;
-        self.rate_limiter.acquire(1).await?;
-
-        let batch = self
-            .telegram_client
-            .get_messages_batch(&request.channel_id, &wire_ids)
+        let operations = self.account_operations();
+        let context = operations.history_context(cancellation)?;
+        let batch = operations
+            .batch(
+                BatchOperation {
+                    channel: request.channel_id.clone(),
+                    message_ids,
+                },
+                &context,
+            )
             .await?;
-
-        tracing::info!(
-            channel = %request.channel_id,
-            requested = unique.len(),
-            found = batch.messages.len(),
-            missing = batch.missing_ids.len(),
-            "Messages batch results"
-        );
 
         let mut messages: Vec<MessageResponse> = batch
             .messages

@@ -132,6 +132,7 @@ pub(crate) fn parse_optional_utc(
         .transpose()
 }
 
+#[cfg(test)]
 pub(crate) use telegram_core::operations::validate_date_window;
 
 /// Serialize a value to a JSON string for an MCP tool response.

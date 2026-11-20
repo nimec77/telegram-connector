@@ -2,7 +2,7 @@
 
 use crate::error::Error;
 use crate::link::ChannelRef;
-use crate::telegram::types::{ChannelId, Username};
+use crate::telegram::types::{ChannelId, MessageId, Username};
 
 fn error_detail(error: Error) -> String {
     match error {
@@ -103,4 +103,32 @@ pub fn validate_date_window(
         )),
         _ => Ok(()),
     }
+}
+
+pub(super) fn wire_message_id(id: MessageId) -> Result<i32, Error> {
+    id.as_i32().ok_or_else(|| {
+        Error::InvalidInput(format!(
+            "message_id {} exceeds Telegram's message id range",
+            id.get()
+        ))
+    })
+}
+
+pub(super) fn validate_cursors(
+    before_id: Option<MessageId>,
+    after_id: Option<MessageId>,
+) -> Result<(), Error> {
+    for id in [before_id, after_id].into_iter().flatten() {
+        wire_message_id(id)?;
+    }
+    if let (Some(before), Some(after)) = (before_id, after_id)
+        && before.get() <= after.get()
+    {
+        return Err(Error::InvalidInput(format!(
+            "before_id ({}) must be greater than after_id ({}): the page covers after_id < id < before_id",
+            before.get(),
+            after.get()
+        )));
+    }
+    Ok(())
 }
