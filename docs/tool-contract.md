@@ -1,22 +1,24 @@
 # Versioned tool output and migration
 
-Since version 0.23.0, MCP calls default to `[server] output_format = "json_v1"`. This contract is
-independent of MCP 2026-07-28 versus the retained 2025-11-25 handshake, and of a search
-request’s `format = "full" | "compact"`. The default changes the application wire format;
-existing clients that parse the historical text can explicitly select `output_format =
-"legacy"` while migrating. See the [0.23.0 changelog](../CHANGELOG.md#0230---2026-10-31)
-for the default-output and Rust API migration.
+Since version 0.23.0, the stdio connector defaults to `[server] output_format = "json_v1"`.
+Both MCP 2026-07-28 and the 2025-11-25 handshake support this output mode. Search
+requests choose `format = "full" | "compact"` independently. Clients that parse
+the historical stdio text can select `output_format = "legacy"` with either protocol.
+See the [0.23.0 changelog](../CHANGELOG.md#0230---2026-10-31) for the default-output
+and Rust API migration.
 
-The hosted gateway uses the modern binding and derives its catalog from the
-originating OAuth client's current grant. It returns canonical structured JSON
-with matching text fallback. Hosted media may include caller-scoped resource
-links, and live posts use the API's event stream. See the
-[hosted service contract](hosted-services.md).
+The hosted gateway uses MCP 2026-07-28 over Streamable HTTP and derives its catalog
+from the OAuth token's scopes and the originating client's current grant. Its tool
+results carry canonical structured JSON with matching text fallback. Hosted media may
+include caller-scoped resource links, and live posts use the API's event stream.
+The tool details below describe stdio. See the [hosted service contract](hosted-services.md)
+for hosted inputs, permissions, media retrieval and errors.
 
 ## Envelope and errors
 
-The sixteen default tools and the two optional sending tools return one versioned JSON object in `structuredContent` and
-the same JSON value in the first text content block. Success has required
+In canonical mode, the sixteen default stdio tools and the two optional sending
+tools return one versioned JSON object in `structuredContent` and the same JSON
+value in the first text content block. Success has required
 `{"schema_version":"1","data":{...},"error":null}`; failure has required
 `{"schema_version":"1","data":null,"error":{"code":"invalid_input","message":"...",
 "retryable":false}}`. The version is a string, and exactly one of data/error is non-null.
@@ -185,8 +187,9 @@ dispatch; duplicate pending/retained keys fail without account charges or Telegr
 Canonical recovery requires `recovery_keys: ["your-key"]` and returns only those selections,
 in selection order. Pending keys return per-key `response_pending`; missing, expired,
 evicted, cancelled or restarted results return `response_unavailable`. Key errors are data
-inside a successful recovery call. Results remain for ten minutes after completion, capacity
-eviction or restart. Oversized payloads remain explicit stubs with the original wire size.
+inside a successful recovery call. Results are retained for up to ten minutes after
+completion in the current process, subject to capacity eviction. Oversized payloads
+remain explicit stubs with the original wire size.
 All pending slots reject new reservations rather than evicting active work. Cancellation
 makes its slot unavailable and evictable. Recovery responses are never retained.
 
@@ -230,20 +233,26 @@ ACL behavior remains unverified. Keyed recovery's historical written_at field re
 completion before delivery, while legacy diagnostic entries record observed stdout writes.
 
 See [macOS validation](validation/2026-11-01-task8.md) for measured results and limitations.
-Optional resource/file media delivery remains outside this change.
+The [artifact validation report](validation/2026-11-01-media-artifacts.md) covers
+optional resource and file delivery.
 
 ## Validator dependency
 
-jsonschema 0.60.2 (MIT, declared MSRV 1.85) is dev-only with default features disabled.
-Tests build Draft202012 validators with explicit format checks and offline reference handling.
-The exact lock addition introduces 37 package identities and removes/updates none of the
-previous resolved identities. All existing grammers revisions remain unchanged.
+The stdio crate uses jsonschema 0.61.2 as a dev dependency with default features
+disabled. Tests build Draft202012 validators with explicit format checks and offline
+reference handling. See the [workspace dependency inventory](dependency-status.md#final-workspace-dependency-check--2026-11-20)
+for the current locked graph.
 
-Older compatible lines are upstream constraints, not overrides: fancy-regex 0.19.2 requires
-bit-set 0.8 (which requires bit-vec 0.8); fraction 0.17/num 0.4/num-rational 0.4 require
-num-bigint 0.4; ahash 0.8 plus jsonschema/jsonschema-value/referencing 0.60 require getrandom
-0.3; ahash 0.8 requires zerocopy 0.8. Moving these across incompatible ranges requires an
-upstream migration. The highest declared MSRV among additions is 1.87, supported by the
-selected nightly. Parent-reviewed package-specific MIT-0 and Zlib declarations cover
-borrow-or-share 0.2.4 and foldhash 0.2.0; root licensing remains unassigned. Full graph policy,
-source/advisory checks and offline schema tests validate the actual locked graph.
+### Original validator adoption
+
+Task 7 used jsonschema 0.60.2 (MIT, declared MSRV 1.85). That lock update added 37
+package identities, left existing resolutions in place and retained the grammers
+revision used at the time.
+
+At adoption, fancy-regex 0.19.2 required bit-set 0.8, which required bit-vec 0.8.
+Fraction 0.17, num 0.4 and num-rational 0.4 required num-bigint 0.4. Ahash 0.8,
+jsonschema 0.60, jsonschema-value 0.60 and referencing 0.60 required getrandom 0.3.
+Ahash 0.8 also required zerocopy 0.8. The highest declared MSRV among additions
+was 1.87, supported by the selected nightly. Package-specific license declarations
+covered borrow-or-share 0.2.4 (MIT-0) and foldhash 0.2.0 (Zlib). The root license
+remained unassigned. See the [dated dependency snapshot](dependency-status.md#historical-migration--2026-10-31).

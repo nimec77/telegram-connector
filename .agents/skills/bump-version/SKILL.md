@@ -5,10 +5,12 @@ description: Use when bumping Telegram MCP Connector's package version by patch,
 
 # Bump Version
 
-Synchronize **all four files**: `Cargo.toml`, `Cargo.lock`, `CHANGELOG.md`, and
-`README.md` for this single Rust crate. Preserve dependency pins and unrelated work.
-Resolve the root with `git rev-parse --show-toplevel`, read `AGENTS.md`, and run
-Cargo commands from there.
+Synchronize the four first-party package versions and versioned internal path
+dependencies, the workspace `Cargo.lock`, `CHANGELOG.md`, and `README.md`.
+Preserve external dependency pins and unrelated work. Resolve the workspace
+root with `git rev-parse --show-toplevel`, read `AGENTS.md`, and run Cargo
+commands from there. The root manifest declares the virtual workspace and
+`crates/telegram-connector/Cargo.toml` is the release version authority.
 
 A normal bump includes a scoped version commit and publication of the annotated
 `v<target>` tag to GitHub. A dry run makes no changes; a local-only/no-push request
@@ -17,38 +19,37 @@ remain separate operations requiring their own scope.
 
 ## Choose the target
 
-Read the current version from **`[package].version` in `Cargo.toml`**. Take the
+Read the current version from **`[package].version` in `crates/telegram-connector/Cargo.toml`**. Take the
 bump kind or exact target from the user's request; ask if neither was specified.
 For a request to fix the current version's tag, use the current package version
 without incrementing it.
 Apply normal SemVer patch/minor/major increments, resetting lower components.
 For an existing prerelease and a relative bump, clarify the intended next version.
 Validate an explicit target as a Cargo-compatible SemVer version. If already at
-that target, inspect all four files and repair stale documentation before reporting
+that target, inspect the release metadata and repair stale documentation before reporting
 a no-op; also repair a missing remote tag. Preserve existing release dates and
 Unreleased notes in this repair case; do not roll a second release. A lower version
 needs an explicit downgrade request.
 For an explicitly requested downgrade to an existing release, reuse its section
 and date and preserve Unreleased notes instead of rewriting release history.
 
-An explicit dry run reports the current/target versions and proposed changes to all
-four files, including the dated changelog section, notes to move, and README's
+An explicit dry run reports the current/target versions and proposed changes to the release metadata, including the dated changelog section, notes to move, and README's
 current-version line and changelog link, plus the planned commit and `v<target>`
 tag publication. Do not edit files, run mutating Cargo commands, commit, create
 tags, or push during a dry run.
 
 ## Apply and verify
 
-1. Inspect `git status --short` and existing diffs for `Cargo.toml`, `Cargo.lock`,
-   `CHANGELOG.md`, and `README.md`. Read the Unreleased notes, existing version
+1. Inspect `git status --short` and existing diffs for the four member manifests, `Cargo.lock`, `CHANGELOG.md`,
+   and `README.md`. Read the Unreleased notes, existing version
    headings, and README's current-version line.
    Preserve unrelated edits; a dirty tree alone does not block a version bump.
    Resolve conflicting edits to the package version or an existing changelog section
    for the target version before making changes; never duplicate a version heading.
-2. Change only `[package].version` in `Cargo.toml`, then run `cargo check` to
-   synchronize the root package version in `Cargo.lock`. Use `--offline` when
-   dependencies are cached. Keep the lockfile and dependency declarations intact;
-   do not run a broad `cargo update` or regenerate the entire dependency graph.
+2. Set `[package].version` in all four member manifests. Update versioned
+   path requirements for the first-party members, and run `cargo check
+   --workspace` to synchronize the lockfile. Use `--offline` with cached
+   dependencies. Preserve the external requirements, lock entries and Git pins.
 3. For a new version, update `CHANGELOG.md`. Insert `## [<target>] - YYYY-MM-DD`
    immediately below `## [Unreleased]`, using the current local date unless the user
    supplied a date. Move the existing Unreleased notes under the target heading,
@@ -66,13 +67,15 @@ tags, or push during a dry run.
    Current package version: [<target>](CHANGELOG.md#<release-heading-anchor>).
    ```
 
-   If the line is absent, add it near the introduction. Use the actual target
+   If the line is absent, add it near the introduction. Synchronize the tag
+   in the release installation clone command with `v<target>`. Use the actual target
    section's date for the GitHub heading anchor, including when repairing an
    already-bumped version. Preserve historical references such as "Since version
    0.23.0" and protocol/dependency versions. A package bump does not establish that
    a tag or GitHub release has been published.
-5. Inspect the diff for the four required surfaces: manifest package version,
-   root lockfile entry, changelog section, and README current-version line/link.
+5. Inspect the member versions, internal requirements, lockfile entries,
+   changelog section, and README current-version line/link. Confirm all four
+   package identities and versions with locked Cargo metadata.
    Investigate dependency churn instead of including it in the bump. Confirm the
    date, transferred notes, and empty Unreleased section for a new bump. Run the
    bundled read-only consistency check from the project root. Check
@@ -83,7 +86,7 @@ tags, or push during a dry run.
    python3 .agents/skills/bump-version/scripts/check_version_docs.py .
    ```
 
-   It checks both Cargo versions, the single latest dated changelog section, and
+   It checks the stdio member manifest and its local lockfile identity, the latest dated changelog section, and
    README's displayed version and exact local changelog link. Resolve diagnostics
    before completion; the command prints the expected README line when it differs.
    Only for an explicitly requested downgrade to an existing historical release,
@@ -105,7 +108,7 @@ GitHub Release publication.
 
 Report the old and new versions, changelog version/date, README version/link,
 files changed, results of both checks, and the tag name, peeled commit SHA, GitHub
-URL and publication result. Report a no-op only when all four surfaces agree and
+URL and publication result. Report a no-op only when the release metadata agrees and
 the intended remote tag already exists at its verified release commit. A local-only
 result explicitly reports tag publication as skipped.
 Example request: `Use $bump-version to bump the patch version.`

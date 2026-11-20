@@ -1,7 +1,8 @@
 # Telegram MCP Connector
 
-Rust MCP server for searching and reading Telegram channels over MTProto. Codex is
-the primary development agent; the stdio service supports any compatible MCP client.
+Rust workspace for working with Telegram over MTProto. It includes the local
+stdio connector, shared Telegram operations, a hosted HTTP API, and a remote
+MCP gateway. Codex is the primary development agent.
 
 ## Start here
 
@@ -15,17 +16,20 @@ the primary development agent; the stdio service supports any compatible MCP cli
 
   ```bash
   cargo fmt --all --check
-  cargo clippy --locked --all-targets -- -D warnings
-  cargo test --locked
-  RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps
+  cargo clippy --workspace --locked --all-targets -- -D warnings
+  cargo test --workspace --locked
+  RUSTDOCFLAGS="-D warnings" cargo doc --workspace --locked --no-deps
   ```
 
 - Offline tests use mocks; Telegram credentials and a live session are not required.
   Use `--offline` as well as `--locked` when dependencies are already cached.
 - Run local agent validation on macOS. Linux setup and checks are owner-managed unless
   explicitly requested; see the validation ownership policy in `docs/memory.md`.
-- Build the server with `cargo build --locked --release`. Authentication with
-  `telegram-mcp --setup` is a separate, interactive operation.
+- Build the stdio connector with `cargo build --locked --release -p telegram-connector`.
+  Authentication with `telegram-mcp --setup` is a separate, interactive operation.
+  For API and gateway builds and isolation checks, see the
+  [hosted service guide](docs/hosted-services.md) and
+  [development conventions](docs/conventions.md#hosted-verification).
 
 ## Source navigation
 
@@ -54,38 +58,57 @@ the installed ast-index skill when available.
 
 ## Architecture and change placement
 
-- `src/lib.rs` exports modules; `src/main.rs` handles CLI setup, signals, and stdio.
-  Keep stdout exclusively for MCP messages; diagnostics use `tracing`/stderr.
-- `McpServer<T: TelegramClientTrait, R: RateLimiterTrait>` composes `Arc<T>` and
+- The root `Cargo.toml` defines a virtual workspace with `telegram-connector` as
+  its default member. All packages live under `crates/`.
+- `crates/telegram-connector` owns the `telegram-mcp` stdio binary. Its `src/lib.rs`
+  preserves public connector imports, including core reexports. Its `src/main.rs`
+  handles CLI setup, signals, and stdio. Keep stdout exclusively for MCP messages
+  and send diagnostics through `tracing` to stderr or a log file.
+- Shared Telegram operations, rate limiting, domain types, and native stream
+  primitives live in `crates/telegram-core`. Keep transport adapters out of core.
+- `crates/telegram-api` owns HTTP v1 contracts, hosted identity, account and
+  session ownership, grants, and SSE streams. The `service` feature enables
+  the stateful implementation. [HTTP contract](crates/telegram-api/openapi/v1.yaml)
+- `crates/telegram-mcp-http` owns the hosted tool catalog and Streamable HTTP
+  transport. It uses the API's `identity` and `schemas` features in production
+  and delegates operations over HTTP. Keep the API service, SQLite, grammers,
+  and the stdio connector out of the gateway's production dependency graph.
+- Stdio `McpServer<T: TelegramClientTrait, R: RateLimiterTrait>` composes `Arc<T>` and
   `Arc<R>`. Production uses `TelegramClient`/`RateLimiter`; tests use mockall mocks.
-- All tool entry points stay in the single `#[tool_router] impl` in
-  `src/mcp/server.rs`. The macro scans the impl before declarative macro expansion.
-  Keep entry points thin; operation bodies live in `src/mcp/server/impl_*.rs`.
-- Request/response types live in `src/mcp/tools/types/`. Requests derive
-  `Deserialize` and schemars **v1** `JsonSchema`. Wire routes return `CallToolResult`:
-  canonical typed JSON in structuredContent plus matching text, followed by media image
-  blocks. Explicit legacy mode retains historical text shapes; direct Rust convenience
-  methods remain legacy adapters. See `docs/tool-contract.md`.
-- `src/telegram/trait_def.rs` is the client seam. Extend the trait, dispatch in
-  `src/telegram/client.rs`, and implement operations in `client/ops_*.rs`.
+- In the connector crate, keep all stdio tool entry points in the single `#[tool_router]`
+  impl in `src/mcp/server.rs`. The macro scans the impl before declarative macro
+  expansion. Keep entry points thin and operation bodies in `src/mcp/server/impl_*.rs`.
+- Stdio request and response types live in the connector's `src/mcp/tools/types/`.
+  Requests derive `Deserialize` and schemars **v1** `JsonSchema`. Wire routes return
+  `CallToolResult` with canonical typed JSON in `structuredContent` and matching text,
+  followed by media image blocks. Explicit legacy mode retains historical text shapes.
+  Direct Rust convenience methods remain legacy adapters. [Stdio contract](docs/tool-contract.md)
+- The client seam is `crates/telegram-core/src/telegram/trait_def.rs`. Dispatch in
+  that crate's `src/telegram/client.rs` and implement RPCs in `src/telegram/client/ops_*.rs`.
 - Domain newtypes (`ChannelId`, `MessageId`, `UserId`, `Username`, `ChannelName`)
-  live in `src/telegram/types/`. Keep flexible scalar coercion at the MCP boundary
-  in `serde_helpers.rs`; the domain remains strict.
-- File-as-module layout throughout; no `mod.rs`. Large tests use sibling files
-  via `#[path]`. MCP tests live in `src/mcp/tests/`; shared fixtures in
-  `src/test_helpers.rs`.
+  live in `crates/telegram-core/src/telegram/types/`. Keep flexible scalar coercion
+  at the stdio MCP boundary in the connector's `src/mcp/tools/types/serde_helpers.rs`.
+- Use file-as-module layout without `mod.rs` and sibling `#[path]` files for large unit
+  tests. Stdio MCP tests live in the connector's `src/mcp/tests/`. The connector
+  and core each have a `src/test_helpers.rs`. Integration tests live under each
+  member's `tests/`.
 - Config expansion tests use injected lookups; actual environment/path loader tests
   run in subprocesses configured through `Command::env`/`env_remove`. Never mutate the
   parent process environment. Global logging initialization is also subprocess-isolated.
-- Config resolution: `--config` → `TELEGRAM_MCP_CONFIG` → the platform config
-  directory. See README for platform paths. Config supports `${VAR}` expansion.
+- Stdio resolves its TOML configuration from `--config`, then `TELEGRAM_MCP_CONFIG`,
+  then the platform config directory. It supports `${VAR}` expansion. Hosted
+  binaries take separate JSON configuration files with secrets supplied through
+  the environment. See [README](README.md#configuration) and the
+  [hosted service guide](docs/hosted-services.md).
 
 ## Dependencies and implementation rules
 
 - Keep all three `grammers` dependencies pinned to the same Codeberg revision.
   Do not use the stale GitHub mirror or casually regenerate `Cargo.lock`.
-- `rmcp` v3.9 supports MCP 2026-07-28 and the legacy `initialize` handshake.
-  Gate version-specific response fields on the negotiated client protocol.
+- Stdio supports MCP 2026-07-28 and the 2025-11-25 `initialize` handshake. The
+  gateway serves MCP 2026-07-28 over Streamable HTTP. Gate version-specific stdio
+  response fields on the negotiated protocol and keep the connector's loopback HTTP
+  SDK feature in dev dependencies. [Temporary Chrono-optional rmcp pin](docs/dependency-status.md#temporary-rmcp-pin--2026-11-20)
 - Apply the manual’s error/secret rules (§5), behavior-test workflow (§9), and
   checked-in formatter settings (§1). Never commit config/session files. The existing
   canonical MCP boundary maps typed errors to safe `ToolError` values; legacy adapters
@@ -107,8 +130,10 @@ the installed ast-index skill when available.
   verification workflows as appropriate. This repository's no-routine-checkpoint
   workflow takes precedence over generic skill approval pauses.
 - Repository skills in `.agents/skills/` are discovered by Codex.
-  `$bump-version` updates the crate version, lockfile, and changelog for patch,
-  minor, major, or explicit version requests.
+  Use `$bump-version` for patch, minor, major, or explicit version requests. Read
+  the release version from `crates/telegram-connector/Cargo.toml` and keep all four
+  package versions, versioned internal dependency requirements, the root lockfile,
+  changelog, and README in sync.
 - Delegate independent bounded tasks when available and authorized; assign file
   ownership and acceptance criteria. Otherwise complete the work inline. Use only
   actual available tools/models; do not rely on Claude `Task`/`Skill` APIs.
@@ -128,7 +153,7 @@ the installed ast-index skill when available.
   Fan-out charges each attempted channel and does not refund failed channels.
 - Preserve per-channel pagination semantics, response byte budgets, partial-result
   metadata, and per-item errors. Message IDs are unique only within a channel.
-- Keep tool schemas self-contained: request enums use `#[schemars(inline)]`
+- Keep stdio tool schemas self-contained. Request enums use `#[schemars(inline)]`
   where needed because advertised input schemas do not carry `$defs`.
 - Keep every network path bounded by its configured timeout. Preserve the search
   deadline and paused-time tests; do not introduce unbounded retries.

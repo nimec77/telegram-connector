@@ -21,10 +21,13 @@ choose abstractions and dependencies for a concrete need.
 | Type | Location | Tools |
 | --- | --- | --- |
 | Unit | `#[cfg(test)]` / `#[path]` sibling files | `#[test]`, `mockall` |
-| Integration | `tests/` directory | `tokio::test` |
+| Integration | `tests/` inside the package under test | `tokio::test` |
 | Property-based | Within unit/integration tests | `proptest` |
 
-MCP tests live in `src/mcp/tests/`; shared fixtures live in `src/test_helpers.rs`.
+Stdio MCP tests live in `crates/telegram-connector/src/mcp/tests/`. The connector
+and core each have a `src/test_helpers.rs`. The hosted API route fixtures live
+alongside the service modules in `crates/telegram-api/src/service/`. The account
+lifecycle and gateway process tests live in their respective member `tests/` directories.
 Environment expansion uses pure injected lookups in tests. Full environment/path loaders
 and global logging initialization run in re-executed test subprocesses configured by
 `Command::env`/`env_remove`; parent tests invoke each ignored child entrypoint. No test
@@ -36,8 +39,10 @@ a successful mock expectation alone is insufficient evidence.
 ## Formatting and quality gate
 
 `rust-toolchain.toml` selects nightly with rustfmt and clippy. Run `cargo fmt --all`
-after Rust changes; the checked-in `rustfmt.toml` implements manual §1. `just check`
-runs the Rust quality gate used in CI:
+after Rust changes. The checked-in `rustfmt.toml` implements manual §1. From the
+virtual workspace root, unqualified Cargo build and test commands select the
+default member `telegram-connector`. `just check` checks the whole workspace,
+using the same Rust commands as CI.
 
 ```bash
 cargo fmt --all --check
@@ -64,14 +69,24 @@ cargo build --locked --offline --release -p telegram-connector
 cargo build --locked --offline --release -p telegram-core
 cargo build --locked --offline --release -p telegram-api --features service
 cargo build --locked --offline --release -p telegram-mcp-http
-cargo tree --locked --offline -p telegram-mcp-http -e normal,build,features
+cargo tree --locked --offline -p telegram-mcp-http -e normal,build,features --prefix none
 ```
 
-The API and gateway tests bind numeric loopback sockets for the issuer, HTTP,
-SSE and MCP fixtures. Use disposable roots for SQLite and session tests. Run
-the owner page regression with `node --test crates/telegram-api/tests/account_page.cjs`.
-The
-[operator guide](hosted-services.md) describes production configuration.
+The production gateway graph uses the API's `identity` and `schemas` features.
+It excludes the API's `service` feature, SQLite, grammers, `telegram-core`, and
+`telegram-connector`. The gateway integration tests enable the API service in
+their development dependencies. The API and gateway fixtures use numeric loopback
+sockets for issuer, HTTP, SSE, and MCP traffic, with disposable roots for SQLite
+and session data. To run the hosted suites and owner page fixture individually, use
+these commands from the workspace root.
+
+```bash
+cargo test --locked --offline -p telegram-api --features service
+cargo test --locked --offline -p telegram-mcp-http --test mcp_http
+node --test crates/telegram-api/tests/account_page.cjs
+```
+
+The [operator guide](hosted-services.md) describes production configuration.
 
 ## Git commits
 

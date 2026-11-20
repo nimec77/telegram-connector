@@ -1,6 +1,6 @@
 # GitHub version tags
 
-Read this after the four-file consistency check and Rust gate pass. New tags use
+Read this after the version consistency check and Rust gate pass. New tags use
 the repository convention: annotated `v<package-version>`, message `Release v<version>`.
 Publishing a tag sends its reachable commits to GitHub; it does not update a branch
 or create a GitHub Release. Existing version tags are immutable.
@@ -34,10 +34,12 @@ or create a GitHub Release. Existing version tags are immutable.
    Reuse a valid remote tag's commit, or a valid unpushed local tag's commit. Later
    unrelated commits on HEAD do not require moving an existing tag. If no tag exists,
    use the validated current commit; first commit any required documentation repair.
-5. Verify the selected commit contains the target `[package].version`, matching
-   root lock version, dated changelog section, and README version/link. For an
-   existing tag, read its four committed files with `git show` (fetch the exact tag
-   if needed), copy only those files to a temporary directory, and run the bundled
+5. Verify the selected commit contains the target stdio member version,
+   matching workspace lock entry, dated changelog section, and README version/link.
+   For an existing tag, extract its root manifest, stdio member manifest when
+   present, lockfile, changelog and README at their original relative paths with
+   `git show` in a temporary directory. For releases with the stdio package at
+   the root, the root manifest supplies the package version. Run the bundled
    `scripts/check_version_docs.py` against that directory. Use `--allow-older-release`
    only for an explicitly requested historical downgrade. Never tag uncommitted
    metadata or assume that an annotated tag object SHA is the commit SHA.

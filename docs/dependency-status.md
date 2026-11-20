@@ -1,5 +1,9 @@
 # Dependency status
 
+Version 0.27.0 synchronizes the four local workspace package versions.
+Its resolved external package versions and Git revisions match the final
+workspace inventory below.
+
 ## Temporary rmcp pin — 2026-11-20
 
 The current released SDK is 3.11.0. The workspace uses the exact unreleased

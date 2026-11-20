@@ -18,10 +18,12 @@ def metadata():
         "workspace_root": str(PROJECT_ROOT),
         "workspace_members": ["root"],
         "packages": [
-            {"id": "root", "name": "telegram-connector", "manifest_path": str(PROJECT_ROOT / "Cargo.toml"), "version": "0.22.10", "source": None, "license": None},
+            {"id": "root", "name": "telegram-connector",
+             "manifest_path": str(PROJECT_ROOT / "crates/telegram-connector/Cargo.toml"),
+             "version": "0.27.0", "source": None, "license": None},
             {"id": "dep", "name": "example-dependency", "version": "1.0.0", "source": REGISTRY, "license": "MIT"},
         ],
-        "resolve": {"root": "root", "nodes": [
+        "resolve": {"root": None, "nodes": [
             {"id": "root", "dependencies": ["dep"], "deps": [{"name": "example_dependency", "pkg": "dep", "dep_kinds": [{"kind": None, "target": None}]}]},
             {"id": "dep", "dependencies": [], "deps": []},
         ]},
@@ -39,8 +41,13 @@ class DependencyPolicyTests(unittest.TestCase):
     def assert_code(self, code):
         self.assertIn(code, [issue["code"] for issue in self.check()])
 
-    def test_exact_unlicensed_local_root_and_reviewed_external_are_accepted(self):
+    def test_virtual_workspace_accepts_exact_unlicensed_connector_and_reviewed_external(self):
         self.assertEqual(self.check(), [])
+
+    def test_former_connector_manifest_at_workspace_root_is_rejected(self):
+        self.metadata["packages"][0]["manifest_path"] = str(PROJECT_ROOT / "Cargo.toml")
+        with self.assertRaises(PolicyError):
+            self.check()
 
     def add_core(self, manifest="crates/telegram-core/Cargo.toml", *, member=True):
         self.metadata["packages"].append({

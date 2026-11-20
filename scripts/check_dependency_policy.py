@@ -2,7 +2,7 @@
 """Check complete Cargo metadata against reviewed external-dependency declarations.
 
 This checks license metadata, not source license texts or distribution compliance.
-Only this application's exact local root identity is exempt from license checks.
+Only reviewed local workspace members are exempt from license checks.
 """
 import argparse
 import datetime
@@ -17,7 +17,7 @@ ROOT_PACKAGE = "telegram-connector"
 STANDARD_CHOICES = {"MIT", "Apache-2.0", "BSD-3-Clause", "ISC", "Unicode-3.0"}
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 REVIEWED_WORKSPACE_MANIFESTS = {
-    ROOT_PACKAGE: "Cargo.toml",
+    ROOT_PACKAGE: "crates/telegram-connector/Cargo.toml",
     "telegram-core": "crates/telegram-core/Cargo.toml",
     "telegram-api": "crates/telegram-api/Cargo.toml",
     "telegram-mcp-http": "crates/telegram-mcp-http/Cargo.toml",
@@ -65,7 +65,7 @@ def reviewed_workspace_members(metadata, by_id):
         raise PolicyError("duplicate workspace member identity")
 
     reviewed = set()
-    root_ids = []
+    connector_ids = []
     for package_id in members:
         package = by_id[package_id]
         expected = REVIEWED_WORKSPACE_MANIFESTS.get(package["name"])
@@ -77,9 +77,9 @@ def reviewed_workspace_members(metadata, by_id):
             continue
         reviewed.add(package_id)
         if package["name"] == ROOT_PACKAGE:
-            root_ids.append(package_id)
-    if len(root_ids) != 1:
-        raise PolicyError("the exact local telegram-connector root must be a workspace member")
+            connector_ids.append(package_id)
+    if len(connector_ids) != 1:
+        raise PolicyError("the exact local telegram-connector package must be a workspace member")
     return reviewed
 
 
@@ -87,7 +87,7 @@ def validate_metadata(metadata, policy, today=None):
     """Return explicit violations; raise PolicyError for incomplete metadata/policy."""
     today = today or datetime.datetime.now(datetime.timezone.utc).date()
     if policy.get("schema_version") != 1 or policy.get("root_package") != ROOT_PACKAGE:
-        raise PolicyError("policy must identify this exact application root")
+        raise PolicyError("policy must identify the telegram-connector package")
     choices = policy.get("reviewed_license_choices")
     exceptions = policy.get("license_exceptions", [])
     if not isinstance(choices, dict) or any(

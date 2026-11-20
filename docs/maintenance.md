@@ -1,9 +1,11 @@
 # Dependency and toolchain maintenance
 
-Normal CI checks Linux and macOS with `nightly-2026-10-31`, locked dependency
-fetching, offline formatting/Clippy/tests/release builds, and the offline stdio
-process/probe checks. The floating-nightly workflow is scheduled/manual and separate
-from the reproducible required gate. Windows runtime support remains unverified.
+Normal CI checks Linux and macOS with `nightly-2026-10-31`. It fetches the locked
+workspace graph, then runs formatting, workspace Clippy, tests, rustdoc, release
+builds, isolated member builds, and the gateway dependency check. It also runs
+the offline stdio process and client probes and the hosted account page fixture.
+The scheduled and manually triggered floating-nightly workflow runs separately.
+Windows runtime support remains unverified. [Check commands](conventions.md#formatting-and-quality-gate)
 Action revisions are immutable and reviewed; checkout uses Node24 and requires
 runner >=2.327.1 (hosted runners provide the runtime). Credentials are not persisted,
 and workflows use only `contents: read` with ordinary pull_request events.
@@ -15,16 +17,18 @@ approved. Any future exception must identify the advisory, affected scope, reaso
 named owner, expiry and tracking issue. Offline compile checks do not replace fresh
 advisory data.
 
-The workspace pins an unreleased rmcp revision that makes Chrono optional.
-The connector explicitly selects `base64`, `macros` and `server`, the
-loopback fixture adds the HTTP server transport in dev dependencies, and the
-gateway selects its HTTP server features independently.
+The workspace pins an unreleased rmcp revision based on 3.11.0 that makes Chrono
+optional. Workspace defaults are disabled. The production stdio connector selects
+`base64`, `macros`, and `server`. Its loopback fixture adds
+`transport-streamable-http-server` in dev dependencies. The production gateway
+selects `server` and `transport-streamable-http-server` directly. Both use the shared
+workspace SDK pin, with `chrono` disabled.
 [Dependency status](dependency-status.md#temporary-rmcp-pin--2026-11-20)
 
 Return to a crates.io rmcp release once a stable version can resolve the whole
 workspace without Chrono. Verify the complete graph and repeat the stdio and
 HTTP conformance checks, then remove the Rust SDK repository from the source
-allowlists.
+allowlists in `deny.toml` and `dependency-policy.json`.
 
 `cargo deny --locked check sources advisories` checks the entire graph.
 The source policy covers crates.io and exact revisions of the official
@@ -33,10 +37,11 @@ move together after review of upstream commits, TL changes, peer/session
 fixtures and wire tests.
 
 `python3 scripts/check_dependency_policy.py` reads complete locked Cargo metadata
-(including dev/build/platform packages). The metadata-declaration check recognizes first-party packages by exact reviewed
-names and manifest paths in this checkout's Cargo workspace. Their own licensing
-remains unassigned. Every external package still needs a reviewed source and full
-license declaration in `dependency-policy.json`.
+(including dev/build/platform packages). The checker recognizes first-party packages
+by exact reviewed names, manifest paths under `crates/`, and membership in this
+checkout's virtual workspace. First-party licensing remains unassigned. Every
+external package needs a reviewed source and full license declaration in
+`dependency-policy.json`.
 This is a declaration policy, not a source-text license or distribution-compliance
 scanner. Full expressions are reviewed as a whole, including Unicode obligations;
 the helper does not split AND/OR expressions. Selected alternatives are recorded
@@ -61,10 +66,11 @@ unexpected Git sources, mismatched revisions and out-of-scope/expired exceptions
 `--metadata PATH` checks previously captured complete metadata; `--offline` is for
 cached local checks and does not make an advisory scan fresh.
 
-Dependabot separates rmcp, compatible registry patches, explicitly stable-major
-minor updates and GitHub Actions. Incompatible updates stay individual; grammers
-rev updates are manual and never follow master automatically. No auto-merge or
-write-token update workflow is enabled.
+Dependabot groups rmcp and rmcp-macros updates, compatible registry patches, and
+minor updates for selected stable-major dependencies. GitHub Actions have a
+separate weekly schedule. Review the temporary SDK pin and grammers revision
+changes manually. Incompatible updates stay individual. Auto-merge and write-token
+update workflows are disabled.
 
 The workflow linter is actionlint 1.7.12; its Linux release archive SHA256 is pinned
 in CI. Primary references: [checkout v7.0.1](https://github.com/actions/checkout/releases/tag/v7.0.1),

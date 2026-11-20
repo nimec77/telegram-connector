@@ -6,11 +6,12 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Current state
 
-- **Hosted workspace services are integrated into local `master`.** The workspace
-  includes the compatible stdio connector, `telegram-core`, the stateful API and
-  the separate HTTP MCP gateway. The completed plan and design are archived in
-  Git at merge revision `4618221`. [Operator guide](hosted-services.md) ·
-  [Acceptance evidence](validation/2026-11-20-workspace-services.md)
+- **Version 0.27.0 includes hosted workspace services.** The workspace
+  places all four packages under `crates/`. The stdio connector is the default
+  member at `crates/telegram-connector`; install from that path. The core, stateful
+  API and independent HTTP MCP gateway share the root lockfile. The completed plan and design are archived in
+  Git at merge revision `4618221`. [Workspace specification](workspace-specification.md) ·
+  [Operator guide](hosted-services.md) · [Acceptance evidence](validation/2026-11-20-workspace-services.md)
 
 - **2026-11-15 review remediation is integrated into `master` as 0.26.1.**
   All 15 implementation slices have independent scoped review. Fresh whole-branch
@@ -157,7 +158,7 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 - **Codex development:** `AGENTS.md` is the canonical repository guide.
   Shared Codex skills live in `.agents/skills/`; obsolete Claude files were removed.
-  `$bump-version` updates package/lockfile versions and rolls Unreleased notes into
+  `$bump-version` synchronizes the workspace package and lockfile versions and rolls Unreleased notes into
   a dated changelog section, leaving a fresh Unreleased section.
   Keep personal permissions/config outside version control. `just check` matches
   CI (locked dependencies, all-target clippy). Nightly is selected explicitly in
@@ -168,8 +169,8 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
   resolve breaks". Never delete `Cargo.lock` casually; prefer targeted `cargo update -p` —
   the lockfile once masked a dead dependency graph (yanked `core2`/`glass_pumpkin` chain)
   for months.
-- **Stdio protocol/runtime:** rmcp 3.9.0 supports exactly tested 2026-07-28 and legacy
-  2025-11-25. A bounded raw-frame adapter preserves readable IDs, while per-request
+- **Stdio protocol/runtime:** the pinned rmcp build serves the tested 2026-07-28
+  and legacy 2025-11-25 revisions. A bounded raw-frame adapter preserves readable IDs, while per-request
   context controls identity/caching/version fields. Default input cap 1MiB and 16
   nonwaiting in-flight admissions are independent of account charging/output budgets.
   Cooperative cancellation drops operations and suppresses queued late output; progress
@@ -331,7 +332,7 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 - **grammers wraps deleted/never-existed ids in a `MessageEmpty`-backed object, not `None`**
   — blindly converting fabricates an epoch-timestamp message. Every fetch path must route
-  through `require_found`/`require_found_raw` (`src/telegram/client/guard.rs`).
+  through `require_found`/`require_found_raw` (`crates/telegram-core/src/telegram/client/guard.rs`).
 - **Video/audio/voice/GIF are all `Media::Document`** — distinguish via `DocumentAttribute`
   variants (`round_message`, `voice`, `Animated`); only photos/stickers get dedicated
   variants.

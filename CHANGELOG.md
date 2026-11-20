@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-11-20
+
 ### Added
 
 - Hosted Telegram accounts with OAuth identity, isolated sessions, per-client grants,
@@ -17,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Move the stdio package into `crates/telegram-connector` and use a virtual
+  workspace root. Install with `cargo install --locked --path crates/telegram-connector`.
+  The package, Rust import and binary names carry over.
 - Use the reviewed unreleased rmcp revision with Chrono disabled across the
   workspace until the fix reaches a stable release.
 - Replace the connector's Chrono timestamp types with `UtcTimestamp` backed by

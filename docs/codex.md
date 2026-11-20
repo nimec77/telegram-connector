@@ -1,8 +1,10 @@
 # Developing with Codex
 
-Codex is the primary development workflow for this Rust repository. The connector
-itself is a client-independent MCP stdio server: it can be developed without launching
-Telegram and consumed from any compatible MCP client.
+Codex is the primary development workflow for this Rust workspace. The local stdio
+connector supports compatible MCP clients and can be developed without a Telegram
+session. The workspace also contains shared Telegram operations, a stateful HTTP API,
+and a separate Streamable HTTP MCP gateway. For hosted installation, see the
+[operator guide](hosted-services.md).
 
 All ten original roadmap tasks are implemented and accepted on `master`, including
 typed outputs, runtime/media hardening, maintenance automation and Rust standards
@@ -30,19 +32,22 @@ completed Codex migration and standards-alignment plans are archived in Git hist
 
 ## Local checks
 
-`rust-toolchain.toml` selects `nightly-2026-10-31`, rustfmt and Clippy. Run:
+`rust-toolchain.toml` selects `nightly-2026-10-31`, rustfmt and Clippy. Run the full
+workspace gate from the repository root.
 
 ```bash
 just check
 ```
 
-Without `just`, use the equivalent gate:
+The virtual workspace defaults to `telegram-connector` for Cargo commands that
+select packages. Use `--workspace` to check all four members. These commands match
+the `just` gate.
 
 ```bash
 cargo fmt --all --check
-cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked
-RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps
+cargo clippy --workspace --locked --all-targets -- -D warnings
+cargo test --workspace --locked
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --locked --no-deps
 ```
 
 Tests and doctests use offline fixtures/mocks and need no Telegram credentials. With
@@ -63,18 +68,25 @@ reads and report the limitation. Build the separate symbol graph only when neede
 
 The [Rust API inventory](rust-api.md) distinguishes supported, compatibility and internal
 surfaces. Public direct tool methods retain legacy output; registered MCP wire routes use
-the configured output mode. Library examples live in `examples/inert_server.rs`; it
-performs no authentication, Telegram RPC or desktop launch. Wire/process checks use the
-`offline_mcp_fixture` example described in the [runtime guide](stdio-runtime.md).
+the configured output mode. The library example at
+`crates/telegram-connector/examples/inert_server.rs` runs without authentication,
+Telegram RPC or desktop launch. Wire and process checks use the connector's
+`offline_mcp_fixture` example. [Runtime guide](stdio-runtime.md)
 
 ## Use the connector from Codex
 
-Build with `cargo build --locked --release`, create a private Telegram configuration as
-described in [README](../README.md#configuration), and authenticate once:
+Build the stdio binary from the workspace root with
+`cargo build --locked --release -p telegram-connector`. For a Cargo install, use
+`cargo install --locked --path crates/telegram-connector` from the workspace root. Create a private
+Telegram configuration and authenticate once.
+[Configuration reference](../README.md#configuration)
 
 ```bash
 ./target/release/telegram-mcp --config /absolute/path/to/telegram-connector-config.toml --setup
 ```
+
+For a Cargo installation, use `telegram-mcp` from your PATH in the setup
+command and use its installed path in your Codex configuration.
 
 Keep the config, session and logs outside version control. Merge the table from
 [the Codex example](../.codex/config.toml.example) into `~/.codex/config.toml`, replacing
@@ -123,12 +135,20 @@ For example:
 Use $bump-version to bump the patch version.
 ```
 
-It reads `[package].version`, updates Cargo.toml and the root Cargo.lock entry, rolls
-Unreleased notes into a dated CHANGELOG section, leaves a fresh Unreleased section,
-and updates README's current package version and changelog link. It runs a read-only
-four-file consistency check and the Rust gate. An empty Unreleased section still gets
-a dated version heading. An already-matching target repairs stale documentation
-without moving Unreleased notes or changing historical release dates.
+The `[package].version` in `crates/telegram-connector/Cargo.toml` is the release
+authority. Keep all four package versions, versioned internal path dependency
+requirements, and the corresponding `Cargo.lock` entries aligned. Roll Unreleased
+notes into a dated changelog section, leave a
+fresh Unreleased section, and update README's current version and changelog link.
+An empty Unreleased section still gets a dated version heading. An already-matching
+target repairs stale metadata or documentation while preserving Unreleased notes
+and historical release dates.
+
+The bundled consistency checker covers the connector manifest, its entry in the
+workspace lockfile, the changelog and README. Also check the member versions and
+internal requirements with `cargo metadata --locked --format-version 1`, and run the
+workspace Rust gate with `just check`.
+
 Dry runs describe changes without editing. Preserve dependency pins, historical notes
 and unrelated work. A normal bump commits its scoped metadata changes, creates an
 annotated `v<version>` tag, and pushes only that tag to the selected GitHub remote

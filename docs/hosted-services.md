@@ -1,30 +1,42 @@
 # Hosted Telegram services
 
-Run one stateful `telegram-api` process per encrypted service data volume. It owns account sessions, grants, rate limits, native update readers and uploads. Run `telegram-mcp-http` separately to expose the HTTPS MCP endpoint. The gateway uses the API for each operation and can restart independently. Local `telegram-mcp` stdio installations keep their own configuration and session. The HTTP routes, request types and status codes are published in the [versioned OpenAPI contract](../crates/telegram-api/openapi/v1.yaml).
+The 0.27.0 workspace includes the stateful `telegram-api` and the separate
+`telegram-mcp-http` gateway. Run one API process per encrypted service data volume.
+It owns account sessions, grants, rate limits, native update readers and uploads.
+The gateway exposes HTTPS MCP through the edge and uses the API for each operation.
+It can restart independently. Local `telegram-mcp` stdio installations keep their
+own configuration and session.
+
+The REST API uses `/v1` and an OpenAPI 3.1 document with contract version `v1`.
+Hosted MCP uses the `2026-07-28` Streamable HTTP revision. Both wire versions are
+independent of the workspace release number. [REST OpenAPI contract](../crates/telegram-api/openapi/v1.yaml) ·
+[Stdio protocol versions](stdio-runtime.md)
 
 ## Identity provider and registrations
 
-Use an HTTPS OpenID issuer with discovery, asymmetric JWT signing keys, authorization code with S256 PKCE and OAuth token exchange. Set distinct HTTPS resource identifiers for the API and the gateway. For example, use `https://service.example/v1` and `https://mcp.example/mcp`. Access tokens use type `at+jwt`, an exclusive resource audience, and signed `iss`, `sub`, `client_id`, `scope`, `iat`, `exp` and `jti` claims. Pick `RS256`, `ES256` or `EdDSA` explicitly. Publish rotated keys under distinct `kid` values and overlap their availability until outstanding credentials expire. The signing key cache lasts five minutes and unknown-key refreshes are limited to one per five seconds. [JWT access tokens](https://www.rfc-editor.org/rfc/rfc9068.html)
+Use an HTTPS OpenID issuer with discovery, asymmetric JWT signing keys, authorization code with S256 PKCE and OAuth token exchange. Set distinct HTTPS resource identifiers for the API and the gateway, such as `https://service.example/v1` and `https://mcp.example/mcp`. The gateway requires the public `/mcp` path in its resource identifier. Access tokens use type `at+jwt`, an exclusive resource audience, and signed `iss`, `sub`, `client_id`, `scope`, `iat`, `exp` and `jti` claims. Pick `RS256`, `ES256` or `EdDSA` explicitly. Publish rotated keys under distinct `kid` values and overlap their availability until outstanding credentials expire. The signing key cache lasts five minutes and unknown-key refreshes are limited to one per five seconds. [JWT access tokens](https://www.rfc-editor.org/rfc/rfc9068.html)
 
 | Registration | Provider configuration |
 | --- | --- |
 | Account page | Confidential browser client with an exact HTTPS callback at `/auth/callback`, Basic authentication at the token endpoint, an ID token for that browser client and an API-audience access token. Request `openid telegram.link telegram.read`. The page uses PKCE, state and nonce. |
 | Direct API clients | Registered client IDs and their exact redirect URIs. Request the API resource and `telegram.read` or `telegram.send` as needed. |
 | Remote MCP clients | Independently registered clients with their own redirect URIs. Follow the gateway's bearer challenge to `/.well-known/oauth-protected-resource/mcp`, then authorize at the listed issuer for the MCP resource. |
-| Gateway | Confidential token-exchange client authenticated with HTTP Basic. Issue an API-audience bearer valid for at most five minutes, bounded by the incoming credential's expiry. Set signed `act.sub` to the configured gateway actor and `client_id` to the originating client. Grant only the requested subset of its read/send scopes. |
+| Gateway | Confidential token-exchange client authenticated with HTTP Basic. Set `authority.gateway_actor` to this registration's client ID. Return `token_type` of `Bearer` and `issued_token_type` of `urn:ietf:params:oauth:token-type:access_token`. The API-audience bearer is valid for at most five minutes, bounded by the incoming credential's expiry. Set signed `act.sub` to the configured gateway actor and `client_id` to the originating client. Grant only the requested subset of its read/send scopes. |
 
 The service maps accounts by verified issuer and subject. If the issuer uses pairwise subjects, configure `subject_claim` with a stable, issuer-signed user identifier present in the browser ID token and both audiences' access tokens. Check the same person and originating client survive an exchange. A mismatch refuses the request before the gateway calls the API. API and MCP discovery are public, and both resources send a metadata URL in a bearer challenge. [OIDC](https://openid.net/specs/openid-connect-core-1_0.html) · [Token exchange](https://www.rfc-editor.org/rfc/rfc8693.html) · [MCP authorization](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization)
 
 ## Start the processes
 
-Build each release binary from the workspace root using its pinned toolchain and lockfile.
+Build both hosted binaries from the workspace root using its pinned toolchain and
+lockfile. Select the hosted packages explicitly because the default workspace member
+is the stdio connector.
 
 ```sh
 cargo build --locked --release -p telegram-api --features service
 cargo build --locked --release -p telegram-mcp-http
 ```
 
-Create a private API JSON file using your actual issuer registrations and Telegram application credentials. `eligible_channels` is the deployment's positive list of decimal channel IDs for approved hosted content. Keep it empty until the operator has established permission for the intended use. Record the permissions for AI-facing use separately from account and client grants. [Telegram API terms](https://core.telegram.org/api/terms) · [Content terms](https://telegram.org/tos/content-licensing)
+Create a private API JSON file using your issuer registrations and Telegram application credentials. List the browser registration and each originating API or MCP client in `hosted.registered_clients`. `hosted.eligible_channels` accepts up to 10,000 positive decimal channel IDs as strings without leading zeros. Keep the list empty until the operator has established permission for the intended hosted use. Record the permissions for AI-facing use separately from account and client grants. [Telegram API terms](https://core.telegram.org/api/terms) · [Content terms](https://telegram.org/tos/content-licensing)
 
 ```json
 {
@@ -55,7 +67,7 @@ Create a private API JSON file using your actual issuer registrations and Telegr
 
 Provision `data_root` on encrypted persistent storage owned by the API service user. Keep the directory private (0700) and configuration/session files private (0600). The API takes an exclusive root lock, opens its SQLite metadata database and assigns a separate private MTProto session path per link generation. Store encrypted backups under the same controls. Exclude this volume from source control, static file serving and diagnostic archives. Inject the browser client secret as `TELEGRAM_API_OIDC_SECRET` through the service manager.
 
-Create a second private JSON file for the gateway. Use the same authority settings and inject the exchange client secret as `TELEGRAM_MCP_EXCHANGE_SECRET`. `api_origin` is an HTTPS origin or a numeric loopback HTTP origin. Both public-facing processes bind loopback behind the edge.
+Create a second private JSON file for the gateway. Use the same authority settings and inject the exchange client secret as `TELEGRAM_MCP_EXCHANGE_SECRET`. Set `api_origin` to a bare HTTPS origin or numeric loopback HTTP origin. The gateway adds the `/v1` paths itself. Both services bind loopback behind the edge.
 
 ```json
 {
@@ -77,7 +89,7 @@ Create a second private JSON file for the gateway. Use the same authority settin
 ./target/release/telegram-mcp-http /etc/telegram-private/gateway.json
 ```
 
-Run the commands as separate services. `GET /readyz` on the API returns 204 after initialization and 503 while draining. `GET /livez` on the gateway returns 204 without accessing a Telegram account. Per-account sessions open on demand. `hosted.max_in_flight` bounds concurrent API handlers (1–1,024), `hosted.max_accounts` ranges from 1 to 256, `idle_seconds` from 1 to 3,600 and `request_seconds` from 1 to 120. The gateway's configurable deadline is 1–120 seconds and includes verification, exchange, capability lookup and the API operation. Only verified delegated API callers can shorten the API's local budget with `X-Telegram-Deadline-Unix-Ms`. The API also clamps it to token expiry and reserves 100 ms for clock skew. Keep both service clocks synchronized.
+Run the commands as separate services. `GET /readyz` on the API returns 204 after initialization and 503 while draining. `GET /livez` on the gateway returns 204 without accessing a Telegram account. Per-account sessions open on demand. `hosted.max_in_flight` bounds concurrent API handlers (1–1,024). `hosted.max_accounts` bounds resident clients, including startup and shutdown (1–256). `idle_seconds` ranges from 1 to 3,600 and `request_seconds` from 1 to 120. Optional `hosted.rate_limiting` sets the policy shared by each account generation's direct and delegated callers. The gateway's configurable deadline is 1–120 seconds and includes verification, exchange, capability lookup and the API operation. The API bounds the local operation by credential expiry. A verified delegated caller can shorten that budget with `X-Telegram-Deadline-Unix-Ms`, for which the API subtracts 100 ms to allow for clock skew. Keep both service clocks synchronized.
 
 On SIGINT or SIGTERM the API stops admission, ends account readers and senders even when requests hold leases, and gives the HTTP listener and account tasks one shared ten-second drain deadline. Clients must open fresh streams after a restart. Restart the gateway independently when its issuer settings or exchange secret change.
 
@@ -117,13 +129,13 @@ location = /v1/uploads {
 
 Open `/account` and sign in via `/auth/start`. The callback establishes a Secure, HttpOnly, SameSite=Lax owner cookie and redirects to `/account`, where you can enter the Telegram phone number, code and optional two-step password. A link challenge lasts up to five minutes. The browser session lasts at most fifteen minutes and expires on process restart. Owner mutations require the HTTPS Origin, the session's `X-CSRF-Token` and `telegram.link`.
 
-Use the joined-channel list on the account page to find IDs, then load a registered client's permissions before saving. Send back the opaque `generation` and the `revision` from that read. A relink or concurrent edit returns HTTP 409. Reload the grant and review the new account or permissions before applying changes. For example, a grant update at revision 0 can use the following body.
+Use the account page's joined-channel list to find IDs. The page loads the registered client's grant with `GET /v1/account/grants/{client}` before replacing it with `PUT` on the same path. A new generation starts with empty grants at revision 0. Copy the opaque `generation` and map the returned `revision` to `expected_revision`. Include the owner cookie, HTTPS Origin and `X-CSRF-Token` on the `PUT`. A stale generation with a newer active link or a concurrent edit returns HTTP 409. Reload the grant and review the account or permissions before applying changes.
 
 ```json
 {"generation":"COPY_FROM_GRANT_RESPONSE","expected_revision":0,"read":{"kind":"channels","channel_ids":["42","73"]},"send_enabled":false}
 ```
 
-Use `none`, selected `channels`, or `all_joined` for the read grant. Delegated clients require an explicit channel list. Both the owner grant and deployment eligibility must admit each channel, and Telegram membership and peer eligibility are checked by the operation. A missing and a foreign channel receive the same unavailable-resource response. Only clients also listed in `discovery_clients` can use public discovery, and results still pass through their effective channel grant. Direct and delegated operations use the same linked account's limiter. The process retains its budget across idle eviction and initializes it conservatively on restart.
+Use `none`, selected `channels` or `all_joined` for the read grant. Delegated MCP reads require the explicit `channels` form. Both the owner grant and deployment eligibility must admit each channel, and Telegram membership and peer eligibility are checked by the operation. A missing and a foreign channel receive the same unavailable-resource response. Only clients also listed in `discovery_clients` can use public discovery, and results still pass through their effective channel grant. Direct and delegated operations use the same linked account's limiter. The process retains its budget across idle eviction and initializes it conservatively on restart. Replacing a grant invalidates that client's current preview and upload handles and ends its streams.
 
 Unlink retires the active generation locally and invalidates its handles and streams. The API attempts remote logout while retirement is pending. If cleanup cannot complete within its one-day retention window, `manual_revocation` or `linked_with_manual_revocation` asks the owner to terminate the retired Telegram session in Telegram's Devices settings. A newer link uses a different generation.
 
@@ -139,7 +151,7 @@ Sending requires `hosted.sending_enabled`, the originating client's account-gene
 {"recipient":{"kind":"peer","namespace":"channel","id":"42"},"text":"Build complete."}
 ```
 
-For media, stage raw bytes with `POST /v1/uploads` and a matching Content-Type. Supported image types are JPEG and PNG (10 MiB limit). Supported audio/video types are MPEG audio, M4A, AAC, Ogg voice and MP4 video (100 MiB limit). The API checks the observed byte count and media type, then returns `upload_handle`. Receiving, validating and retained uploads share a limit of two objects per caller and originating client, 128 objects across the service and 200 MiB of incoming upload data. Send staging has its own limit of two concurrent media snapshots and 200 MiB. A handle belongs to the caller, originating client, account generation and grant revision. It expires after five minutes. Grant changes and unlink cancel uploads still being accepted. Use the same identity to submit `POST /v1/messages/send-media` or the MCP `send_media` tool.
+For media, stage raw bytes with `POST /v1/uploads` and a matching Content-Type. Supported image types are JPEG and PNG (10 MiB limit). Supported audio/video types are MPEG audio, M4A, AAC, Ogg voice and MP4 video (100 MiB limit). The API checks the observed byte count and media type, then returns `upload_handle`. Receiving, validating and retained uploads share a limit of two objects per caller and originating client, 128 objects across the service and 200 MiB of incoming upload data. Send staging has its own limit of two concurrent media snapshots and 200 MiB. A handle belongs to the caller, originating client, account generation and grant revision. It expires after five minutes. Grant changes and unlink cancel uploads still being accepted. On restart the API purges its private upload files under the data-root lock, including when sending is disabled. Use the same identity to submit `POST /v1/messages/send-media` or the MCP `send_media` tool.
 
 ```json
 {"recipient":{"kind":"saved_messages"},"upload_handle":"REPLACE_WITH_RETURNED_HANDLE","media":{"kind":"image"},"caption":"Latest chart"}
@@ -165,20 +177,61 @@ data: {"reason":"upstream_disconnected"}
 
 `null` means Telegram confirmed an empty channel. Once ready, each channel emits new posts above its captured head. An ID jump alone gives no information about missed posts. Heartbeats are SSE comments. An interrupted frame is best effort. EOF, token expiry, membership loss, a changed grant, service drain or a slow consumer can end the connection. Treat every reconnect as a fresh subscription. The API stores neither consumer positions nor an event archive. The reader can observe a reported disconnection, malformed update or an unrecoverable difference. Upstream events that Telegram or the SDK silently omits cannot be signalled individually.
 
-1. Persist a last-processed message ID per **account and channel** after processing succeeds. For a first historical load use 0.
-2. Open a fresh live subscription, read `ready` and begin buffering new posts with a client-side size bound. For each non-null head above the saved cursor, request `GET /v1/channels/{id}/messages?after_id={saved}&through_id={head}&limit=100`. Skip channels with an empty or already-processed range.
-3. The range is `saved < message_id <= head`. Pages are newest first. Keep both bounds fixed and pass the response's `next_before_id` as the next page's exclusive `before_id`. The inclusive upper bound also accepts 2147483647. Process the retrieved series in chronological order per channel before processing buffered live posts. Deduplicate by account, channel and message ID.
+1. Persist a last-processed message ID per **linked account generation and channel** after processing succeeds. Track link replacement outside the stream using the generation in the owner grant response or an account-owner reset. Start at 0 for a first historical load or a replacement account link.
+2. Open a fresh live subscription, read `ready` and begin buffering new posts with a client-side size bound. If the saved position on channel 42 is 100 and the captured head is 104, request `GET /v1/channels/42/messages?after_id=100&through_id=104&limit=100`. Skip channels with an empty or already-processed range.
+3. The range is `saved < message_id <= head`. Pages are newest first. Keep both bounds fixed and pass each `next_before_id` as the following page's exclusive `before_id` until the response has no continuation. The inclusive upper bound also accepts 2147483647. Process the retrieved series in chronological order per channel before processing buffered live posts. Deduplicate by linked account generation, channel and message ID.
 4. If the connection closes, the live buffer fills, or a partial/timeout response leaves coverage uncertain, restart at the last successfully persisted position. A history read can recover only messages still visible to the account.
 
 Set stream limits under `hosted.events`. Closing the connection releases its account lease and queue reservations. `stalled_write_seconds` applies to writes from the API to its peer. The edge applies its own `send_timeout` to writes to the client. Verify stalled-client behavior through the deployed edge.
 
-| Setting | Default |
-| --- | --- |
-| `max_channels`, `max_account_subscriptions`, `max_total_subscriptions` | 20 distinct channels per feed, 4 feeds per account, 256 feeds total |
-| `max_queue_items`, `max_queue_bytes` | 128 items, 1 MiB per subscriber |
-| `max_event_bytes`, `max_total_queue_bytes` | 64 KiB per encoded event, 64 MiB across the service |
-| `setup_seconds`, `heartbeat_seconds`, `stalled_write_seconds` | 30, 15, 10 seconds |
+| Setting | Default | Accepted range |
+| --- | --- | --- |
+| `max_channels` (distinct per subscription) | 20 | 1–100 |
+| `max_account_subscriptions` | 4 | 1–32 |
+| `max_total_subscriptions` | 256 | 1–1,024 |
+| `max_queue_items` (per subscriber) | 128 | 1–1,024 |
+| `max_event_bytes` | 64 KiB | 80 bytes–1 MiB |
+| `max_queue_bytes` (per subscriber) | 1 MiB | `max_event_bytes`–8 MiB |
+| `max_total_queue_bytes` | 64 MiB | `max_queue_bytes`–256 MiB |
+| `setup_seconds` | 30 | 1–120 |
+| `heartbeat_seconds` | 15 | 1–60 |
+| `stalled_write_seconds` | 10 | 1–60 |
 
 ## Hosted MCP client
 
-Connect with the `2026-07-28` Streamable HTTP binding at `/mcp`. Send the protocol version header, method/name mirror headers as applicable, and the matching per-request `_meta` for that binding. Browser-originated requests must match the configured public gateway origin. `tools/list` reflects current grants, and every call rechecks them before submitting its API operation. Read structured output from `structuredContent` or its matching first text block. A media preview can add resource links after that block. Continuous subscriptions use the API's SSE endpoint. [MCP Streamable HTTP](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http)
+POST to `/mcp` with the `2026-07-28` Streamable HTTP binding. The gateway is
+stateless and accepts JSON request bodies up to 64 KiB. Send the MCP-audience
+bearer, `Content-Type: application/json`, `Accept: application/json, text/event-stream`,
+`MCP-Protocol-Version: 2026-07-28` and `Mcp-Method: tools/list` with this request
+body. For a tool call, use `Mcp-Method: tools/call` and set `Mcp-Name` to the
+same name as `params.name`. Browser-originated requests must match the public
+gateway origin. [MCP Streamable HTTP](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http)
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/list",
+  "params": {
+    "_meta": {
+      "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+      "io.modelcontextprotocol/clientInfo": {"name": "example-client", "version": "1"},
+      "io.modelcontextprotocol/clientCapabilities": {}
+    }
+  }
+}
+```
+
+`tools/list` reflects current grants, and every call rechecks them before
+submitting its API operation. Read `structuredContent` or its matching first
+text block. A media preview can add resource links after that block. Continuous
+subscriptions use the API's SSE endpoint.
+
+## Installation verification
+
+The workspace acceptance used a loopback issuer, Telegram fixtures and disposable
+SQLite roots. A local NGINX TLS smoke test exercised the example location blocks,
+including buffering, disconnect propagation and the upload limit. The API's socket
+stall deadline passed a separate TCP fixture. A production identity provider,
+live Telegram and the deployed edge's downstream stall behavior still need
+installation verification. [Hosted acceptance evidence](validation/2026-11-20-workspace-services.md)

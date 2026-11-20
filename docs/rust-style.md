@@ -1,7 +1,7 @@
 # Rust coding manual for Telegram MCP Connector
 
 Version: adopted 2026-10-31. This manual is the authoritative Rust style policy for this
-Cargo/Tokio application and its exported library surface. [AGENTS.md](../AGENTS.md)
+Cargo/Tokio workspace and its exported library surfaces. [AGENTS.md](../AGENTS.md)
 defines repository workflow and operational invariants; [conventions.md](conventions.md)
 provides development commands and test locations. This policy includes the compatibility
 and architectural exceptions below. Standards alignment stages S1–S6 and the subsequent
@@ -46,8 +46,8 @@ New code follows the rules below unless it shares one of these explicit constrai
 | Scope | Exception and reason | Validation / retirement |
 | --- | --- | --- |
 | Extracted `#[cfg(test)]` / `#[path]` test modules | Test-local `super::*` imports remain permitted so fixtures can exercise their parent module without maintaining a duplicate prelude. | Preserve offline behavior tests; this is an intentional test-only exception. |
-| `src/mcp/server.rs` | Keep the complete single `#[tool_router]` impl visible to rmcp and entry points thin; its coordination role overrides cosmetic file-size rules. | Tool registration and self-contained schema tests protect the macro contract; operation bodies stay in `server/impl_*.rs`. |
-| `src/telegram/client.rs` | Keep client state and the complete thin trait dispatcher together so descendant operation modules can use private state. Pure cursor/result helpers and async resolution/session helpers live in focused siblings. | Existing helper, converter and operation tests protect the move; no field visibility widening. |
+| `crates/telegram-connector/src/mcp/server.rs` | Keep the complete single `#[tool_router]` impl visible to rmcp and entry points thin; its coordination role overrides cosmetic file-size rules. | Tool registration and self-contained schema tests protect the macro contract; operation bodies stay in `server/impl_*.rs`. |
+| `crates/telegram-core/src/telegram/client.rs` | Keep client state and the complete thin trait dispatcher together so descendant operation modules can use private state. Pure cursor/result helpers and async resolution/session helpers live in focused siblings. | Existing helper, converter and operation tests protect the move; no field visibility widening. |
 | Established public fallible `new` constructors | Retain existing names and signatures for Rust API compatibility. New fallible APIs prefer `try_new`; compatibility migrations must be explicit. | [API inventory](rust-api.md) retains the supported/compatibility constructors; S6 retained these names after reviewing current callers; no unused aliases or conversion traits were added. |
 | Legacy diagnostic getters and best-effort recorders | Established getters retain conservative fallbacks without inspecting poisoned contents: zero tokens/count, empty replay/identities, absent timestamp/correlation. These lose failure information; `refund` refuses unavailable state. | New/internal consumers use fallible `try_*` snapshots or independent write observations. Status distinguishes absent from unavailable; replay failure is a typed error. Keep this narrow compatibility exception documented in the [API inventory](rust-api.md). |
 | Poison/isolation regression tests | Controlled unit-test threads and isolated child tests intentionally panic to exercise interrupted-state handling and process isolation. | Join poison threads and inspect child status. This test-only exception never authorizes catching production panics to resume protected state. |
@@ -83,21 +83,21 @@ retain qualified names such as `tl::enums::Peer` where the generated type family
 
 ## 2. File structure and visibility
 
-Required: keep file-as-module organization, no `mod.rs`, thin MCP entry points, operation
-bodies in `server/impl_*.rs`, and Telegram RPC bodies in `client/ops_*.rs`.
+Required: use file-as-module organization without `mod.rs`. Keep stdio MCP entry points
+thin and their operation bodies in `crates/telegram-connector/src/mcp/server/impl_*.rs`.
+Keep Telegram RPC bodies in `crates/telegram-core/src/telegram/client/ops_*.rs`.
 Prefer private or `pub(crate)` implementation items. Public APIs must be intentional.
 Facade modules should explain their purpose and expose a selected surface.
 
-The entire `#[tool_router]` impl must remain visible to rmcp's attribute macro. Do not
-hide tool methods inside a declarative macro or split that impl to satisfy a style count.
-The existing server's coordination role is a documented structural exception. Named
-responsibilities, rather than arbitrary line limits, determine module splits.
+The entire stdio `#[tool_router]` impl must remain visible to rmcp's attribute macro.
+Keep its tool methods explicit and together. The server's coordination role is a
+documented structural exception. Split modules by responsibility.
 
-Before reducing visibility, list external paths used by `src/main.rs` (a separate crate)
-and any supported Rust consumers. Preserve needed reexports; schedule public removals as
-API migrations. Do not add `#[non_exhaustive]` to every DTO: use it for genuinely evolving
-external Rust APIs after providing construction methods, and retain exhaustive internal
-enums and explicit known upstream variants. Passive serialized DTOs may have public fields.
+Before reducing visibility, identify uses across crate boundaries, including workspace
+binaries, dependent members and supported Rust consumers. Preserve needed reexports and
+schedule public removals as API migrations. Use `#[non_exhaustive]` for genuinely evolving
+external Rust APIs after providing construction methods. Retain exhaustive internal enums
+and explicit known upstream variants. Passive serialized DTOs may have public fields.
 [API evolution guidance](https://rust-lang.github.io/api-guidelines/future-proofing.html).
 
 ## 3. Names, constructors and conversions
@@ -233,14 +233,15 @@ Run the existing gate after code changes:
 
 ```sh
 cargo fmt --all --check
-cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked
-RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps
+cargo clippy --workspace --locked --all-targets -- -D warnings
+cargo test --workspace --locked
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --locked --no-deps
 ```
 
 `cargo test` includes executable doctests. `just check-docs` runs warning-free rustdoc
-and explicit `cargo test --locked --doc` for focused documentation work. CI uses the same
-checks after fetching locked dependencies. Use `--offline` when dependencies are cached.
+and explicit `cargo test --workspace --locked --doc` for focused documentation work.
+CI uses the same checks after fetching locked dependencies. Use `--offline` when
+dependencies are cached.
 
 Cargo enables only `clippy::wildcard_imports`, `clippy::missing_errors_doc`, and
 `clippy::return_self_not_must_use` at warning level across project targets; the gate's
@@ -254,7 +255,7 @@ fallible signature currently returns only `Ok` and skips filesystem failures bes
 Do not enable all pedantic/restriction lints, apply all automatic fixes, or add source-text
 tests that merely count annotations.
 
-Current S6 evidence (2026-10-31, pinned nightly): the exact three selected lints are clean
+S6 adoption evidence (2026-10-31, pinned nightly): the exact three selected lints are clean
 on all targets; full parallel tests pass (866 library, 3 doctests; four child entrypoints
 are invoked by parent tests), and rustdoc passes with `-D warnings`. This is scoped
 manual enforcement, not a claim that every advisory library guideline is a crate-wide lint.

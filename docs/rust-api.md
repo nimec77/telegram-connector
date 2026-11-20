@@ -1,27 +1,29 @@
 # Rust API surface and compatibility policy
 
-The library and MCP wire protocol are separate contracts. This inventory covers the
-current exported Rust surface. Prefer supported facades for new integrations; transitional
-paths remain callable and compatibility-sensitive. “Internal” below means already private
-or crate-visible, not public APIs silently withdrawn by this policy. There are no visibility
-removals, renamed constructors, sealed traits, or new `non_exhaustive` restrictions in S3.
-Public DTO field literals remain possible. Future removals, added enum variants or required
-fields/type changes need an explicit Rust compatibility note even if JSON stays identical.
+This inventory covers the exported Rust surface of the 0.27.0 workspace. Prefer the
+supported facades for new integrations. Transitional paths remain callable and
+compatibility-sensitive. “Internal” refers to private or crate-visible code. Public
+DTO field literals remain possible. Removals, added enum variants and changes to required
+fields or types need an explicit Rust compatibility note even if JSON stays identical.
+The application release, hosted REST `v1`, the stdio `json_v1` output contract and
+the dated MCP protocol revisions version separate interfaces. [Hosted services](hosted-services.md) ·
+[Stdio tool contract](tool-contract.md) · [Stdio protocol versions](stdio-runtime.md)
 
 ## Supported facade and actual consumers
 
-`src/main.rs` is a separate Cargo crate, so its imports require public library visibility.
-It consumes root `Cli`, `Config`, `RateLimiter`, `TelegramClientTrait`, and `logging`;
-`mcp::server::McpServer` construction, builders, metrics and serving;
-`telegram::client::TelegramClient` construction/session path; and
-`telegram::auth::interactive_auth`. Authentication also needs concrete client login APIs.
-The repository previously documented no additional external Rust consumer imports; that
-is not evidence that downstream users do not exist. Every existing public path is retained.
+The `telegram-mcp` binary uses public library imports from the `telegram_connector`
+crate. It uses the root `Cli`, `Config`, `RateLimiter`, `TelegramClientTrait` and
+`logging` exports, plus the `McpServer` builders, metrics and serving methods.
+Interactive setup uses `telegram::auth::interactive_auth` and the concrete client
+login and session APIs. [Stdio entry point](../crates/telegram-connector/src/main.rs)
+The workspace extraction preserves the connector's existing public paths. An
+integration fixture exercises those imports and an external read-only trait
+implementation. [Public compatibility fixture](../crates/telegram-connector/tests/public_compatibility.rs)
 
 | Supported surface | Scope and preferred imports |
 | --- | --- |
-| Crate root | `Cli`, `Config`, `ObservabilityConfig`, `ServerConfig`, `MediaArtifactsConfig`, `Error`, `MessageLink`, `RateLimiter`, `RateLimiterTrait`, `TelegramClient`, `TelegramClientTrait` are canonical conveniences. |
-| `config` | `Config`, `TelegramConfig`, `TimeoutConfig`, `SearchConfig`, `RateLimitConfig`, `TranscriptionConfig`, `LimitsConfig`, `LoggingConfig`, `ObservabilityConfig`, `ServerConfig`, `MediaArtifactsConfig`, `SendingConfig`; fields and validation/loading methods remain public. |
+| Crate root | `Cli`, `Config`, `ObservabilityConfig`, `ServerConfig`, `MediaArtifactsConfig`, `Error`, `MessageLink`, `RateLimiter`, `RateLimiterTrait`, `TelegramClient`, `TelegramClientTrait` and `UtcTimestamp` are canonical conveniences. |
+| `config` | `Config`, `TelegramConfig`, `TimeoutConfig`, `SearchConfig`, `RateLimitConfig`, `TranscriptionConfig`, `LimitsConfig`, `LoggingConfig`, `ObservabilityConfig`, `ServerConfig`, `OutputFormat`, `MediaArtifactsConfig` and `SendingConfig`. Fields and validation/loading methods remain public. |
 | `mcp::McpServer` and `mcp::server::McpServer` | Inert construction, consuming `with_*` builders (optional artifact initialization writes private disk state), metrics/replay handles, stdio/injected I/O and existing tool methods. Direct tools retain legacy adapters and string errors/content blocks; registered wire entrypoints select the configured typed contract. |
 | `telegram::{TelegramClient, TelegramClientTrait}` | Production client and intentionally substitutable, unsealed client seam. Concrete `new`, `client`, `session`, `session_path`, `request_login_code`, `check_password` stay available. |
 | `telegram::types` | All domain facade exports: IDs/names, account/channel/message/album/link-preview/reaction entities, media metadata and outcomes, query/history parameters/results, stats and transcription data. This includes `MediaDownload`, metadata types and `SizeCandidate` even when not reexported directly by `telegram`. |
@@ -29,26 +31,37 @@ is not evidence that downstream users do not exist. Every existing public path i
 | `error` | `Error` and `StateUnavailable`; typed library failures, with fixed safe component identities for interrupted state. |
 | `link` | `ChannelRef`, `parse_telegram_link`, `MessageLink`; pure parsing/building, without resolution or URL launching. |
 | `cli`, `logging`, `telegram::auth` | CLI argument data, process-global tracing setup/retention/redaction, interactive terminal setup. These have application side effects described below. |
-| `mcp::runtime` / `runtime::process` | `Runtime`, `RuntimeError`, `SUPPORTED_VERSIONS`, process `run` and `shutdown_signal`; configurable protocol transport/lifecycle support, subject to the bounded product bootstrap contract. |
+| `mcp::runtime` and `mcp::runtime::process` | `Runtime`, `RuntimeError`, `SUPPORTED_VERSIONS` and the process helpers `run` and `shutdown_signal`. Configurable transport/lifecycle support under the bounded product bootstrap contract. |
 | `mcp::observability` | `SessionMetrics`, `InFlightRequest`, `WriteObservation`, `ResponseBuffer`, `ResponseSnapshot`, `BufferedResponse`, `InstrumentedTransport`, `GET_LAST_RESPONSES_TOOL`, `OVERSIZED_PAYLOAD_STUB`; shared diagnostic handles with fallible storage access. |
 
 ## Workspace type ownership
 
-`telegram-core` owns the Telegram client, configuration used to construct it,
-domain values, rates, attachment snapshots, and operation deadlines. The
-`telegram_connector` crate re-exports the same Rust types at its existing
-public paths. It also provides the interactive setup prompts and stdio tool
-transport. Libraries that want only the Telegram operations can depend on
-`telegram-core` directly.
+The root manifest defines the virtual workspace and selects `telegram-connector`
+as its default member. The stdio package lives at `crates/telegram-connector`.
+
+| Cargo package (Rust crate) | Library surface |
+| --- | --- |
+| `telegram-connector` (`telegram_connector`) | Preserves the existing facade paths and type identity for core-owned values. Owns application configuration loading, interactive setup and the stdio tooling and transport. |
+| `telegram-core` (`telegram_core`) | Owns the Telegram client, domain values, account configuration, rates, attachment snapshots, deadlines, charged operations and native channel streams. Use this crate directly to embed Telegram operations without the stdio transport. Enable `image-preview` for the bounded JPEG operations. |
+| `telegram-api` (`telegram_api`) | `contracts` exposes the REST wire DTOs. Enable `schemas` for their supported schemars derives and `identity` for credential verification. The default `service` feature enables the stateful HTTP service and account storage. Use `default-features = false` for a contracts-only dependency. |
+| `telegram-mcp-http` (`telegram_mcp_http`) | Exposes `router` to assemble the stateless hosted MCP gateway from a credential verifier, API origin, exchange secret and timeout. The production gateway uses the API crate's contracts, identity and schema features. |
+
+`telegram_api::service::router` assembles the browser sign-in and session routes.
+`hosted_router` opens the private data root and returns the complete router plus a
+cancellation token. Use `serve_hosted` for the production hosted listener and the shared
+listener and account-task shutdown deadline. These service construction paths can
+open persistent state and start background work. [Hosted operator guide](hosted-services.md)
 
 ## Charged operations and channel posts
 
 `telegram_core::operations::AccountOperations` binds a client and limiter.
 Reuse one facade and limiter for an account. Pass an `OperationContext` with
 one absolute Tokio deadline and a cancellation token. Search, recent history
-and batches return domain rows with pagination and partial metadata. A concrete
-Telegram account supports `history_range` for exclusive `after_id`, inclusive
-`through_id` and descending `before_id` continuation.
+and batches return typed domain results. For a concrete `TelegramClient`,
+`AccountOperations::history_range` fetches an authorized joined channel or
+supergroup's history in descending message ID order. The caller admits the channel
+to its local scope before calling. Empty ranges skip Telegram and each nonempty
+attempt charges one token before any RPC.
 
 The core also owns charged channel metadata, directory queries, links,
 transcription, media admission and sends. Local operations preserve
@@ -58,12 +71,26 @@ adapters handle response framing, image delivery and private upload staging.
 
 Open a streaming client with `TelegramClient::new_with_streams`, then construct
 `AccountStreams` using the account's same client and limiter. Share a
-`StreamBudget` across managers to cap queued bytes. Subscriptions return
-`Ready` with per-channel heads, followed by individual `Post` events or an
-`Interrupted` event. Drop the receiver to unregister. After interruption,
-subscribe again for fresh heads and use the bounded history range to bridge the
-gap. Close the reader before closing or replacing its Telegram sender.
-[Live and history recovery](hosted-services.md)
+`StreamBudget` across account readers to cap queued and in-flight encoded bytes.
+Call `subscribe_channel_posts` with distinct broadcast channel IDs and a setup
+context. The returned `ChannelSubscription` yields `ChannelEvent::Ready` with
+per-channel heads, individual `Post` events and an `Interrupted` event when
+available. Drop the subscription to unregister. For transports using
+`next_queued`, retain the returned event until the write completes or is
+abandoned so its queue reservation follows the bytes. Observe
+`membership_lost()` while writing. Close the reader before closing or replacing
+its Telegram sender. Reader failure requires a fresh client and sender once the
+previous sender closes.
+
+After an interruption or EOF, subscribe again and buffer live posts while
+recovering history. Set `HistoryIdRange.after_id` to the last processed ID
+(`None` for an initial load), `through_id` to the new captured head and
+`before_id` to `None` for the first page. Skip channels with an empty head or
+range. The lower bound is exclusive and the captured head is inclusive. Keep
+both fixed while passing each `HistoryIdPage.next_before_id` as the next
+exclusive `before_id`. Inspect `partial` and `timed_out` before advancing the
+stored position. REST expresses the same interval in query parameters and
+accepts `after_id=0` for an open lower bound. [Live and history recovery](hosted-services.md#consume-live-posts-and-recover-a-gap)
 
 ## UTC timestamp migration
 
@@ -94,12 +121,10 @@ Splitting inherent impls preserves all method paths. The crate-visible image flo
 `config::MIN_IMAGE_BASE64_BYTES`. The default path resolver stays private to loading; `Config::selected_path` exposes
 the effective explicit/environment/platform selection without opening it.
 
-Already internal: config representation/loading/validation/defaults/environment expansion;
-MCP fanout/media-budget/shaping; Telegram albums/envelope and client operations/raw pagers/
-guards/search-budget/walk/cursor/results/resolve helpers; runtime state/transport/processing;
-and converter implementation modules. No field
-visibility is widened for module layout. Test-only helpers and mocks are not supported
-external APIs.
+The stdio facade keeps configuration implementation, MCP fan-out and response
+shaping, transport internals and Telegram/client implementation helpers outside
+its supported surface. Core exposes some helpers under `#[doc(hidden)]` for
+workspace use. Test-only helpers and mocks are outside the supported external API.
 
 ## Validated domain deserialization
 
@@ -223,8 +248,8 @@ bootstrap handlers are outside the production guarantee. The precise contract, b
 write stall guard and runtime/process ownership are in [stdio-runtime.md](stdio-runtime.md).
 
 Crate rustdoc contains runnable domain and in-memory configuration examples and a compiled
-generic composition function. Run `cargo run --offline --locked --example inert_server`
-for an external-crate example that composes the inert builders with an example-local
+generic composition function. Run `cargo run --offline --locked -p telegram-connector --example inert_server`
+from the workspace root for an external-crate example that composes the inert builders with an example-local
 inert trait implementation and reads status without RPCs, session files or credentials.
 `offline_mcp_fixture` remains the separate protocol/process fixture. No fake client is added
 to the production API. The old ignored `parse_channel_id` doctest now runs.
@@ -248,12 +273,11 @@ dependency internals remain outside that policy. Retained `logging::cleanup_old_
 currently returns only `Ok`, skipping filesystem failures best effort; its `Result`
 signature remains compatible and the error contract documents that fact.
 
-`just check` and CI enforce warning-free `RUSTDOCFLAGS="-D warnings" cargo doc --locked
---no-deps` and executable doctests via `cargo test --locked`. `just check-docs` also runs
-explicit `cargo test --locked --doc`. Use `--offline` locally when dependencies are cached.
-The S6 measured gate is 866 library tests and 3 passing doctests with no selected lint or
-rustdoc warnings; four ignored unit entries are subprocess implementations invoked by
-ordinary parent tests. Independent S6 review remains separate from implementation evidence.
+`just check` and CI run warning-free
+`RUSTDOCFLAGS="-D warnings" cargo doc --workspace --locked --no-deps` and
+`cargo test --workspace --locked`, including doctests. `just check-docs` also
+runs `cargo test --workspace --locked --doc`. Use `--offline` locally when
+dependencies are cached. [Workspace acceptance evidence](validation/2026-11-20-workspace-services.md)
 
 
 ## Numeric channel resolution migration

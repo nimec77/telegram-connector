@@ -1,9 +1,12 @@
 # Media artifacts and DeepSeek Harness
 
-The two media tools can retain their processed JPEG previews in a private, bounded
-per-process store. Every delivery mode still returns the inline preview. Artifacts
-contain the selected photo variant or video thumbnail after preview processing;
-they do not download original attachments, videos, audio or documents.
+The two media tools in the local `telegram-mcp` stdio connector can retain their
+processed JPEG previews in a private, bounded per-process store. Every delivery mode
+returns the inline preview. Each artifact contains the selected photo variant or
+video thumbnail after preview processing.
+
+The HTTP gateway uses caller-scoped preview resource links. See
+[hosted media retrieval](hosted-services.md#read-preview-and-send).
 
 ## Enable the store
 
@@ -77,12 +80,13 @@ empty; no subscriptions or change notifications are advertised.
 
 Resource reads allow at most 6 MiB of JPEG (8 MiB base64), with a five-second deadline
 including blocking-worker admission. Larger cached previews require an explicit file
-mode or a new, explicitly requested smaller preview. Modern clients receive private
-cache hints no longer than remaining TTL; legacy clients receive no modern hints.
+mode or a new, explicitly requested smaller preview. MCP 2026-07-28 responses
+include private cache hints bounded by the remaining TTL.
 Malformed URI, missing/expired artifact, oversized read, timeout and unavailable storage
 have distinct safe `error.data.code` values: `artifact_invalid_uri`, `artifact_missing`,
 `artifact_too_large`, `artifact_timeout`, and `artifact_unavailable`. Missing uses numeric
--32002 for legacy and -32602 for modern protocol; malformed uses -32602 for both.
+-32002 with MCP 2025-11-25 and -32602 with MCP 2026-07-28. Malformed uses -32602
+with either protocol.
 Expiry/missing reads never silently re-download or spend another Telegram token.
 
 Use `file_path` only with an authorized client filesystem/image tool on the same host.

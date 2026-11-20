@@ -21,23 +21,48 @@ class VersionDocsTests(unittest.TestCase):
         self.write("README.md", "# Telegram MCP Connector\n\nCurrent package version: [0.26.0](CHANGELOG.md#0260---2026-11-14).\n\nSince version 0.23.0, tools use JSON outputs.\n")
 
     def write(self, name, content):
-        (self.root / name).write_text(content, encoding="utf-8")
+        path = self.root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
 
     def replace(self, name, old, new):
         self.write(name, (self.root / name).read_text(encoding="utf-8").replace(old, new))
 
     def run_check(self, expected_code, diagnostic="", *extra_args):
-        before = {p.name: p.read_bytes() for p in self.root.iterdir()}
+        before = {p.relative_to(self.root): p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
         result = subprocess.run(
             [sys.executable, str(SCRIPT), str(self.root), *extra_args],
             capture_output=True, text=True, check=False,
         )
         self.assertEqual(result.returncode, expected_code, result.stdout + result.stderr)
         self.assertIn(diagnostic, result.stdout + result.stderr)
-        self.assertEqual(before, {p.name: p.read_bytes() for p in self.root.iterdir()})
+        self.assertEqual(before, {p.relative_to(self.root): p.read_bytes() for p in self.root.rglob("*") if p.is_file()})
 
     def test_consistent_metadata_accepts_historical_references(self):
         self.run_check(0, "0.26.0")
+
+    def test_virtual_workspace_checks_its_declared_connector_member(self):
+        self.write(
+            "crates/telegram-connector/Cargo.toml",
+            (self.root / "Cargo.toml").read_text(encoding="utf-8"),
+        )
+        self.write("Cargo.toml", '[workspace]\nmembers = ["crates/telegram-connector"]\n')
+        self.run_check(0, "telegram-connector 0.26.0")
+
+    def test_virtual_workspace_rejects_an_undeclared_connector_manifest(self):
+        self.write(
+            "crates/telegram-connector/Cargo.toml",
+            (self.root / "Cargo.toml").read_text(encoding="utf-8"),
+        )
+        self.write("Cargo.toml", '[workspace]\nmembers = ["crates/elsewhere"]\n')
+        self.run_check(1, "crates/telegram-connector")
+
+    def test_registry_package_cannot_satisfy_the_local_lock_check(self):
+        self.replace(
+            "Cargo.lock", 'name = "telegram-connector"\nversion',
+            'name = "telegram-connector"\nsource = "registry+https://example.com/index"\nversion',
+        )
+        self.run_check(1, "Cargo.lock")
 
     def test_stale_root_lock_version_fails(self):
         self.replace("Cargo.lock", 'version = "0.26.0"', 'version = "0.25.0"')

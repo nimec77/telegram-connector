@@ -7,13 +7,13 @@ credentials, authenticated session, or account configuration.
 From the repository root, with the pinned toolchain and dependencies cached:
 
 ```sh
-cargo run --offline --locked --example safe_send
-cargo test --offline --locked --example safe_send
+cargo run --offline --locked -p telegram-connector --example safe_send
+cargo test --offline --locked -p telegram-connector --example safe_send
 ```
 
 The demo prints each result and its fake sender call count to stderr. The five lesson
 cases appear first, followed by preview, missing destination, and a definitive refusal.
-The tests also run as part of normal `cargo test --offline --locked`.
+The tests also run in `cargo test --workspace --offline --locked`.
 
 ## Read the code
 
@@ -66,6 +66,6 @@ Telegram delivery, implement a real deadline, or provide exactly-once delivery.
 Manually repeating an unknown send can still create a duplicate. A successful preview
 does not authorize a later send; each invocation is validated independently.
 
-The project's existing opt-in sending implementation has its own recipient types,
-limits, timeouts and receipts; see [the production sending guide](../../docs/sending.md).
+The stdio connector's opt-in sending implementation defines its own recipient types,
+limits, timeouts and receipts. See [the production sending guide](../../../../docs/sending.md).
 The exercise adds no MCP tools and makes no changes to `TelegramClientTrait`.

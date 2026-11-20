@@ -31,7 +31,7 @@ check: fmt-check lint test doc
 
 # Run the MCP server binary
 run:
-    cargo run --locked --bin telegram-mcp
+    cargo run --locked -p telegram-connector --bin telegram-mcp
 
 # Fresh security and full dependency declaration/source policy (tools installed separately)
 security:

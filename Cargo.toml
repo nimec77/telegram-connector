@@ -1,110 +1,12 @@
 [workspace]
-members = ["crates/telegram-core", "crates/telegram-api", "crates/telegram-mcp-http"]
+members = [
+    "crates/telegram-connector",
+    "crates/telegram-core",
+    "crates/telegram-api",
+    "crates/telegram-mcp-http",
+]
+default-members = ["crates/telegram-connector"]
 resolver = "3"
-
-[package]
-name = "telegram-connector"
-version = "0.26.1"
-edition = "2024"
-
-[lib]
-name = "telegram_connector"
-path = "src/lib.rs"
-
-[[bin]]
-name = "telegram-mcp"
-path = "src/main.rs"
-
-[[example]]
-name = "safe_send"
-path = "examples/safe_send/main.rs"
-test = true
-
-[dependencies]
-telegram-core = { path = "crates/telegram-core", version = "0.26.1", features = ["image-preview"] }
-# MCP
-rmcp = { workspace = true, features = ["base64", "macros", "server"] }
-
-# Async
-# Explicit feature list rather than `full`: "net" and "fs" are unused here, and
-# `full` also pulls "parking_lot". Each entry below backs a real call site —
-# io-std: `tokio::io::{stdin, stdout}` for the MCP stdio transport;
-# io-util: transport extension traits and bounded outgoing AsyncRead streams;
-# macros: `#[tokio::main]` / `#[tokio::test]` and `select!`;
-# process: `tokio::process::Command` (open_message_in_telegram);
-# rt-multi-thread: the default `#[tokio::main]` flavor, `spawn`,
-#   `spawn_blocking`, and `Runtime::new` in tests;
-# signal: SIGINT/SIGTERM shutdown handling;
-# sync: `oneshot`, `RwLock`;
-# time: timeout budgets, `sleep`, `Instant`.
-tokio = { workspace = true, features = [
-    "io-std",
-    "io-util",
-    "macros",
-    "process",
-    "rt-multi-thread",
-    "signal",
-    "sync",
-    "time",
-] }
-async-trait.workspace = true
-futures.workspace = true
-
-# Interactive prompts
-dialoguer = "0.12.0"
-
-# CLI parsing
-clap = { version = "4.6.9", features = ["derive"] }
-
-# Config & Serialization
-toml = "1.2.1"
-serde.workspace = true
-serde_json = "1.0.154"
-schemars.workspace = true
-directories.workspace = true
-
-# Logging
-tracing.workspace = true
-tracing-subscriber = { version = "0.3", features = [
-    "env-filter",
-    "fmt",
-    "json",
-] }
-tracing-appender = "0.2.5"
-
-# Errors
-anyhow.workspace = true
-thiserror.workspace = true
-
-# Utilities
-jiff.workspace = true
-
-# Security
-getrandom.workspace = true
-secrecy.workspace = true
-
-# Media processing
-base64 = "0.23.1"
-
-[dev-dependencies]
-grammers-client.workspace = true
-grammers-session.workspace = true
-grammers-mtsender.workspace = true
-
-telegram-core = { path = "crates/telegram-core", version = "0.26.1", features = ["test-support"] }
-# Exercise the modern binding over loopback without enabling HTTP for production stdio.
-axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio"] }
-rmcp = { workspace = true, features = ["transport-streamable-http-server"] }
-# PNG codec for tests: create_test_jpeg & non-JPEG re-encode test write_to PNG
-image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
-# `test-util` enables the pausable test clock; `net` enables the loopback HTTP fixture.
-# Neither feature needs to be requested on the production connector dependency.
-tokio = { workspace = true, features = ["test-util", "net"] }
-tempfile.workspace = true
-proptest.workspace = true
-mockall.workspace = true
-# Validate real advertised 2020-12 output unions offline; no HTTP/file resolver defaults.
-jsonschema = { version = "0.61.2", default-features = false }
 
 # Targeted manual enforcement; keep advisory pedantic/restriction groups opt-in.
 [workspace.lints.rust]
@@ -114,9 +16,6 @@ unsafe_code = "forbid"
 wildcard_imports = "warn"
 missing_errors_doc = "warn"
 return_self_not_must_use = "warn"
-
-[lints]
-workspace = true
 
 [workspace.dependencies]
 # Use the immutable upstream Chrono-optional patch (rust-sdk PR #1474).

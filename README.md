@@ -1,15 +1,17 @@
 # Telegram MCP Connector
 
-A local stdio Model Context Protocol (MCP) server for searching and reading Telegram
-channels and messages, with opt-in text/media sending over MTProto. It supports Codex and other compatible MCP clients,
-using Rust, `rmcp` and `grammers`.
+Telegram MCP Connector provides account-scoped Telegram reads, previews and
+opt-in text and media sending over MTProto. Run `telegram-mcp` locally over
+stdio, or deploy the hosted HTTPS API and HTTP MCP gateway. The hosted API
+also streams live channel posts over SSE.
 
-Current package version: [0.26.1](CHANGELOG.md#0261---2026-11-15).
+Current package version: [0.27.0](CHANGELOG.md#0270---2026-11-20).
 
-Supported MCP revisions are **2026-07-28** and **2025-11-25**. Since version 0.23.0,
-tools default to versioned JSON outputs with advertised output schemas. Applications
-migrating from historical text responses can select `output_format = "legacy"`; see
-the [output contract](docs/tool-contract.md) and [changelog](CHANGELOG.md).
+The stdio connector supports MCP **2026-07-28** and **2025-11-25**. The HTTP
+gateway supports MCP **2026-07-28**. Stdio tools default to versioned JSON
+with advertised output schemas and support historical text output through
+`output_format = "legacy"`. The HTTP gateway returns canonical responses and
+advertises tools according to the caller's current grants. [Output contract](docs/tool-contract.md)
 
 ## Features
 
@@ -34,21 +36,16 @@ the [output contract](docs/tool-contract.md) and [changelog](CHANGELOG.md).
 
 ## Architecture
 
-```
-MCP Client (Codex or another stdio client)
-        │ JSON-RPC over stdio
-MCP Server Layer — 16 default tools, 18 with sending enabled (rmcp, src/mcp/)
-        │
-Application Layer (config, logging, rate_limiter, link, sending, error)
-        │
-Telegram Layer (grammers client, auth, converters, src/telegram/)
-        │ MTProto
-Telegram Cloud API
-```
+| Package | Location | Responsibility |
+| --- | --- | --- |
+| `telegram-connector` | [crates/telegram-connector](crates/telegram-connector) | Builds the local `telegram-mcp` stdio binary and exports the `telegram_connector` Rust library. |
+| `telegram-core` | [crates/telegram-core](crates/telegram-core) | Owns Telegram sessions, account operations, charging and native channel updates for stdio and the hosted API. |
+| `telegram-api` | [crates/telegram-api](crates/telegram-api) | Links hosted accounts and serves scoped HTTPS operations, media and live SSE. |
+| `telegram-mcp-http` | [crates/telegram-mcp-http](crates/telegram-mcp-http) | Serves remote MCP at `/mcp` and delegates operations to the hosted API. |
 
-**Key design patterns:** library + binary separation (`lib.rs` / `main.rs`); shared state
-via `Arc<T>`; traits + `mockall` for testability; JSON schemas via `schemars` for MCP tool
-parameters and canonical tool outputs.
+All four packages live under `crates/` and share one lockfile at the virtual
+workspace root. The stdio crate is the default Cargo member.
+[Workspace specification](docs/workspace-specification.md) · [Supported Rust API](docs/rust-api.md)
 
 ## Prerequisites
 
@@ -58,10 +55,18 @@ parameters and canonical tool outputs.
 
 ## Installation
 
+Build the local stdio connector.
+
 ```bash
-git clone https://github.com/nimec77/telegram-connector.git
+git clone --branch v0.27.0 --single-branch https://github.com/nimec77/telegram-connector.git
 cd telegram-connector
-cargo build --locked --release  # binary at target/release/telegram-mcp
+cargo build --locked --release -p telegram-connector  # target/release/telegram-mcp
+```
+
+For a Cargo-managed installation, run this from the repository root.
+
+```bash
+cargo install --locked --path crates/telegram-connector
 ```
 
 Get API credentials at https://my.telegram.org → "API development tools" → create an
@@ -189,6 +194,8 @@ Other MCP clients can launch the same binary with the same `--config` argument
 over stdio using their own MCP configuration format.
 
 ## MCP Tools
+
+This catalog describes the local stdio connector. See the operator guide for the grant-filtered hosted MCP catalog. [Hosted services](docs/hosted-services.md)
 
 Required parameters are marked `*`. Tool schemas are self-describing over MCP; this table
 summarizes the default `json_v1` output. Legacy mode retains historical text shapes.
@@ -333,10 +340,16 @@ and safe recovery after uncertain delivery.
 
 ## Hosted services
 
-The workspace also builds `telegram-api` for linked accounts, scoped HTTP
-operations and live channel posts, and `telegram-mcp-http` for authorized remote
-MCP clients. The [operator guide](docs/hosted-services.md) covers OAuth provider
-registration, private account storage, reverse proxy settings and stream recovery.
+Build `telegram-api` and `telegram-mcp-http` as separate services. The API
+owns the hosted sessions, account grants and live channel feed. The gateway
+exchanges caller credentials for scoped API access. The operator guide
+covers issuer registration, private storage, TLS termination, upload quotas
+and reconnect recovery. [Hosted operator guide](docs/hosted-services.md)
+
+```bash
+cargo build --locked --release -p telegram-api
+cargo build --locked --release -p telegram-mcp-http
+```
 
 ## Development
 
@@ -356,6 +369,8 @@ skills in `.agents/skills/`.
 
 | Guide | Contents |
 | --- | --- |
+| [Hosted services](docs/hosted-services.md) / [OpenAPI](crates/telegram-api/openapi/v1.yaml) | Hosted setup, scopes, endpoints, live SSE and history recovery |
+| [Workspace acceptance](docs/validation/2026-11-20-workspace-services.md) | Integration evidence and installation checks |
 | [Output contract and migration](docs/tool-contract.md) | JSON envelopes, schemas, typed errors, IDs, media ordering and legacy mode |
 | [Sending](docs/sending.md) | Opt-in text/media, local upload roots, exact destinations, delivery truth and recovery |
 | [Stdio runtime](docs/stdio-runtime.md) | Protocol negotiation, admission, cancellation, progress, shutdown and offline probes |

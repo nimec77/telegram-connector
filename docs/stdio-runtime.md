@@ -1,12 +1,17 @@
 # Stdio runtime contract
 
-The connector uses rmcp 3.9.0 and tests and advertises MCP 2026-07-28 and legacy
-2025-11-25. Modern clients can send tools/list or tools/call first, without discovery
-or initialize.
-Every modern request supplies protocolVersion and clientCapabilities under the
-`io.modelcontextprotocol/` metadata prefix. Client identity is optional and never
-inherited from another modern request. Legacy clients explicitly initialize at
-2025-11-25 and send notifications/initialized.
+The `telegram-mcp` stdio binary supports MCP 2026-07-28 and the legacy 2025-11-25
+handshake. Modern clients can send `tools/list` or `tools/call` as their first
+request. Each modern request supplies `protocolVersion` and `clientCapabilities`
+in `params._meta` under the `io.modelcontextprotocol/` prefix. Client identity is
+optional and scoped to the request. Legacy clients send `initialize` with
+2025-11-25, followed by `notifications/initialized`.
+
+The workspace pins an unreleased, Chrono-optional rmcp revision based on 3.11.0.
+See the [SDK pin and return condition](dependency-status.md#temporary-rmcp-pin--2026-11-20).
+
+The separately deployed `telegram-mcp-http` gateway uses only the 2026-07-28
+Streamable HTTP binding. See the [hosted MCP client guide](hosted-services.md#hosted-mcp-client).
 
 Modern complete tools/list results identify the server in result metadata. Tool
 lists retain one-hour/private caching hints; discovery uses zero/private hints.
@@ -97,8 +102,8 @@ Ordinary tool handlers receive the external `RequestContext.id`.
 
 The product does not advertise subscriptions. For custom `subscriptions/listen`
 handlers using the injectable runtime, `SubscriptionContext` retains the internal
-SDK lifecycle identity in its request context ID. rmcp 3.9.0 keeps its constructor
-private and derives subscription acknowledgements and sink correlation from that ID.
+SDK lifecycle identity in its request context ID. The pinned SDK constructs that
+context internally and uses the ID for subscription acknowledgements and sink correlation.
 Retrieve the external ID through the public, nonserialized extension instead:
 
 ```rust,ignore
@@ -112,16 +117,19 @@ notifications, preserving external identity across reused IDs.
 
 ## Offline verification and probe
 
-`src/mcp/tests/protocol_stdio.rs` and sibling protocol test files drive raw NDJSON
-through the same runtime, framing and instrumentation as production. They use mocks
-or test-only protocol handlers, never Telegram credentials. The extra handlers used
-to verify MRTR and subscriptions do not change advertised production capabilities.
+[The stdio protocol tests](../crates/telegram-connector/src/mcp/tests/protocol_stdio.rs)
+and sibling files drive raw NDJSON through the same runtime, framing and instrumentation
+as production. They use mocks or test-only protocol handlers, never Telegram credentials.
+The extra handlers used to verify MRTR and subscriptions do not change advertised
+production capabilities.
 
-The `offline_mcp_fixture` example exposes deterministic echo/wait tools and shares
-production runtime/signal handling. It reads no Telegram configuration or session.
+The `offline_mcp_fixture` example exposes deterministic echo/wait tools by default
+and shares production runtime/signal handling. With `--typed-tools` or
+`--legacy-typed-tools`, it runs the connector routes with an inert Telegram client.
+It reads no Telegram configuration or session.
 
 ```sh
-cargo build --locked --example offline_mcp_fixture
+cargo build --locked --offline -p telegram-connector --example offline_mcp_fixture
 python3 scripts/test_stdio_process.py target/debug/examples/offline_mcp_fixture
 python3 scripts/test_mcp_probe.py target/debug/examples/offline_mcp_fixture
 ```

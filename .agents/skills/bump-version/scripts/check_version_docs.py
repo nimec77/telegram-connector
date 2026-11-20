@@ -1,4 +1,4 @@
-"""Check this crate's four version surfaces without modifying files (Python 3.11+)."""
+"""Check the connector release version without modifying files (Python 3.11+)."""
 
 import argparse
 from datetime import date
@@ -12,15 +12,35 @@ if sys.version_info < (3, 11):
 import tomllib
 
 
-def check(root: Path, allow_older_release: bool = False) -> list[str]:
+CONNECTOR_NAME = "telegram-connector"
+CONNECTOR_MEMBER = "crates/telegram-connector"
+
+
+def connector_package(root: Path) -> dict:
     manifest = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))
+    if "package" not in manifest:
+        members = manifest.get("workspace", {}).get("members", [])
+        if CONNECTOR_MEMBER not in members:
+            raise ValueError(f"Cargo.toml: expected workspace member {CONNECTOR_MEMBER}")
+        path = root / CONNECTOR_MEMBER / "Cargo.toml"
+        manifest = tomllib.loads(path.read_text(encoding="utf-8"))
     package = manifest["package"]
+    if package["name"] != CONNECTOR_NAME:
+        raise ValueError(f"Cargo.toml: expected package {CONNECTOR_NAME}")
+    return package
+
+
+def check(root: Path, allow_older_release: bool = False) -> list[str]:
+    package = connector_package(root)
     version = package["version"]
     lock = tomllib.loads((root / "Cargo.lock").read_text(encoding="utf-8"))
-    entries = [p for p in lock.get("package", []) if p["name"] == package["name"]]
+    entries = [
+        p for p in lock.get("package", [])
+        if p["name"] == CONNECTOR_NAME and p.get("source") is None
+    ]
     errors = []
     if len(entries) != 1 or entries[0]["version"] != version:
-        errors.append(f"Cargo.lock: expected one root package {package['name']} at {version}")
+        errors.append(f"Cargo.lock: expected one local package {package['name']} at {version}")
 
     changelog = (root / "CHANGELOG.md").read_text(encoding="utf-8")
     headings = re.findall(r"^## \[([^\]\n]+)\](?: - ([^\n]+))?$", changelog, re.MULTILINE)
@@ -65,13 +85,14 @@ def main() -> int:
     args = parser.parse_args()
     try:
         errors = check(args.root, args.allow_older_release)
-    except (OSError, KeyError, TypeError, tomllib.TOMLDecodeError) as exc:
+        if not errors:
+            package = connector_package(args.root)
+    except (OSError, KeyError, TypeError, ValueError) as exc:
         print(f"Version documentation check failed: {exc}", file=sys.stderr)
         return 1
     if errors:
         print("\n".join(errors), file=sys.stderr)
         return 1
-    package = tomllib.loads((args.root / "Cargo.toml").read_text(encoding="utf-8"))["package"]
     print(f"Version documentation is consistent: {package['name']} {package['version']}")
     return 0
 

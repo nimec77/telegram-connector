@@ -1,12 +1,14 @@
 # Sending messages and media
 
-Sending is an explicit opt-in feature of the authenticated MTProto account. Calls send
-immediately, using Telegram's ordinary account/channel posting identity; there is no
-connector confirmation dialog or per-call sender override. The default catalog has 16
-tools. Enabling sending with `output_format = "json_v1"` adds `send_message` and
-`send_media`. Both supported MCP protocol versions use the same canonical receipts.
-Enabling sending with legacy output is a configuration error; existing legacy reads
-remain supported.
+Sending from the local `telegram-mcp` stdio connector is an explicit opt-in for
+the authenticated MTProto account. Calls send immediately using Telegram's ordinary
+account/channel posting identity. There is no connector confirmation dialog or per-call
+sender override. The default catalog has 16 tools. Enabling sending adds
+`send_message` and `send_media`. Startup validates that enabling sending uses
+`output_format = "json_v1"`. Both stdio protocol versions use the same canonical
+receipts. Read tools also support legacy output.
+For OAuth grants, HTTP uploads and hosted tool arguments, see
+[hosted sending](hosted-services.md#read-preview-and-send).
 
 ## Enable text or local media
 
@@ -234,7 +236,7 @@ owner-authorized acceptance step with named destinations.
 For credential-free protocol experiments, the fixture can simulate sends:
 
 ```bash
-cargo run --offline --locked --example offline_mcp_fixture -- --typed-tools --sending-enabled true
+cargo run --offline --locked -p telegram-connector --example offline_mcp_fixture -- --typed-tools --sending-enabled true
 ```
 
 Add `--upload-root /absolute/disposable/prepared` and
