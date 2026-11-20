@@ -28,7 +28,18 @@ pub async fn stalled_client() -> (TelegramClient, impl Send, tempfile::TempDir) 
         account_status: tokio::sync::RwLock::new(AccountStatus::default()),
         runner_abort: runner_handle.abort_handle(),
         runner_handle: tokio::sync::Mutex::new(runner_handle),
+        #[cfg(feature = "image-preview")]
+        media_source: None,
+        metadata_fixture: None,
         stream_updates: None,
     };
     (client, pool.runner, dir)
+}
+
+#[cfg(feature = "image-preview")]
+impl TelegramClient {
+    /// Supply joined membership and raw media at the Telegram boundary for offline fixtures.
+    pub fn set_media_source(&mut self, source: Arc<dyn crate::operations::JoinedMediaSource>) {
+        self.media_source = Some(source);
+    }
 }

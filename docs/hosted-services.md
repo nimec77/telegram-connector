@@ -115,12 +115,12 @@ location = /v1/uploads {
 
 ## Link an account and grant a client access
 
-Open `/account` and sign in via `/auth/start`. The callback establishes a Secure, HttpOnly, SameSite=Lax owner cookie and redirects to `/v1/session`. Return to `/account` to enter the Telegram phone number, code and optional two-step password. A link challenge lasts up to five minutes. The browser session lasts at most fifteen minutes and expires on process restart. Owner mutations require the HTTPS Origin, the session's `X-CSRF-Token` and `telegram.link`.
+Open `/account` and sign in via `/auth/start`. The callback establishes a Secure, HttpOnly, SameSite=Lax owner cookie and redirects to `/account`, where you can enter the Telegram phone number, code and optional two-step password. A link challenge lasts up to five minutes. The browser session lasts at most fifteen minutes and expires on process restart. Owner mutations require the HTTPS Origin, the session's `X-CSRF-Token` and `telegram.link`.
 
-Use the joined-channel list on the account page to find IDs, then load a registered client's permissions before saving. Updates include the loaded revision. On HTTP 409, reload before applying changes. For example, a grant update at revision 0 can use the following body.
+Use the joined-channel list on the account page to find IDs, then load a registered client's permissions before saving. Send back the opaque `generation` and the `revision` from that read. A relink or concurrent edit returns HTTP 409. Reload the grant and review the new account or permissions before applying changes. For example, a grant update at revision 0 can use the following body.
 
 ```json
-{"expected_revision":0,"read":{"kind":"channels","channel_ids":["42","73"]},"send_enabled":false}
+{"generation":"COPY_FROM_GRANT_RESPONSE","expected_revision":0,"read":{"kind":"channels","channel_ids":["42","73"]},"send_enabled":false}
 ```
 
 Use `none`, selected `channels`, or `all_joined` for the read grant. Delegated clients require an explicit channel list. Both the owner grant and deployment eligibility must admit each channel, and Telegram membership and peer eligibility are checked by the operation. A missing and a foreign channel receive the same unavailable-resource response. Only clients also listed in `discovery_clients` can use public discovery, and results still pass through their effective channel grant. Direct and delegated operations use the same linked account's limiter. The process retains its budget across idle eviction and initializes it conservatively on restart.
@@ -139,7 +139,7 @@ Sending requires `hosted.sending_enabled`, the originating client's account-gene
 {"recipient":{"kind":"peer","namespace":"channel","id":"42"},"text":"Build complete."}
 ```
 
-For media, stage raw bytes with `POST /v1/uploads` and a matching Content-Type. Supported image types are JPEG and PNG (10 MiB limit). Supported audio/video types are MPEG audio, M4A, AAC, Ogg voice and MP4 video (100 MiB limit). The API checks the observed byte count and media type, reserves capacity while receiving the stream and returns `upload_handle`. A handle belongs to the caller, originating client, account generation and grant revision. It expires after five minutes. Use the same identity to submit `POST /v1/messages/send-media` or the MCP `send_media` tool.
+For media, stage raw bytes with `POST /v1/uploads` and a matching Content-Type. Supported image types are JPEG and PNG (10 MiB limit). Supported audio/video types are MPEG audio, M4A, AAC, Ogg voice and MP4 video (100 MiB limit). The API checks the observed byte count and media type, then returns `upload_handle`. Receiving, validating and retained uploads share a limit of two objects per caller and originating client, 128 objects across the service and 200 MiB of incoming upload data. Send staging has its own limit of two concurrent media snapshots and 200 MiB. A handle belongs to the caller, originating client, account generation and grant revision. It expires after five minutes. Grant changes and unlink cancel uploads still being accepted. Use the same identity to submit `POST /v1/messages/send-media` or the MCP `send_media` tool.
 
 ```json
 {"recipient":{"kind":"saved_messages"},"upload_handle":"REPLACE_WITH_RETURNED_HANDLE","media":{"kind":"image"},"caption":"Latest chart"}
@@ -170,7 +170,7 @@ data: {"reason":"upstream_disconnected"}
 3. The range is `saved < message_id <= head`. Pages are newest first. Keep both bounds fixed and pass the response's `next_before_id` as the next page's exclusive `before_id`. The inclusive upper bound also accepts 2147483647. Process the retrieved series in chronological order per channel before processing buffered live posts. Deduplicate by account, channel and message ID.
 4. If the connection closes, the live buffer fills, or a partial/timeout response leaves coverage uncertain, restart at the last successfully persisted position. A history read can recover only messages still visible to the account.
 
-Set stream limits under `hosted.events`. Closing the connection releases its account lease and queue reservations. A paused writer is bounded at the HTTP socket and at the downstream edge.
+Set stream limits under `hosted.events`. Closing the connection releases its account lease and queue reservations. `stalled_write_seconds` applies to writes from the API to its peer. The edge applies its own `send_timeout` to writes to the client. Verify stalled-client behavior through the deployed edge.
 
 | Setting | Default |
 | --- | --- |

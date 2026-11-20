@@ -107,6 +107,16 @@ async fn open_hosted_router(
     Ok((router, hosted))
 }
 
+#[cfg(test)]
+pub(crate) async fn account_router_fixture(
+    verifier: CredentialVerifier,
+    browser: BrowserConfig,
+    config: HostedConfig,
+) -> Result<(Router, Arc<AccountStore>), ErrorCode> {
+    let (router, hosted) = open_hosted_router(verifier, browser, config).await?;
+    Ok((router, Arc::clone(&hosted.store)))
+}
+
 /// Run the hosted API and stop the listener and its account tasks under one deadline.
 ///
 /// # Errors
@@ -262,7 +272,14 @@ async fn private_response(
     request: Request,
     next: Next,
 ) -> Response {
+    let stream_setup = request.method() == Method::GET && request.uri().path() == "/v1/events";
     let mut response = next.run(request).await;
+    if stream_setup
+        && !response.status().is_success()
+        && let Ok(hosted) = state.hosted()
+    {
+        hosted.streams.record_rejected_setup();
+    }
     response
         .headers_mut()
         .entry(header::CACHE_CONTROL)

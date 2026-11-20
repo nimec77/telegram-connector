@@ -1,3 +1,4 @@
+use super::fixture::{SendFixture, SendOutcome};
 use super::*;
 use crate::contracts::{GrantUpdate, ReadGrant};
 use crate::identity_http::Fixture as Issuer;
@@ -5,59 +6,9 @@ use crate::service::accounts::Hosted;
 use crate::service::{BrowserConfig, HostedConfig, build_router};
 use secrecy::SecretString;
 use serde_json::{Value, json};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::Ordering;
 use std::time::Duration;
-use telegram_core::telegram::types::sending::ContentKind;
 use tokio::net::TcpListener;
-use tokio::sync::Notify;
-
-#[derive(Default)]
-pub(in crate::service) struct SendFixture {
-    dispatches: AtomicUsize,
-    pause: AtomicBool,
-    unknown: AtomicBool,
-    entered: Notify,
-    resume: Notify,
-}
-
-impl SendFixture {
-    pub(super) async fn call(
-        &self,
-        access: &ReadAccess,
-        request: &SendOptions,
-        content_kind: ContentKind,
-    ) -> Response {
-        if self.pause.load(Ordering::Acquire) {
-            self.entered.notify_one();
-            self.resume.notified().await;
-        }
-        if let Err(error) = FinalGate(access)
-            .submit(&mut || {
-                self.dispatches.fetch_add(1, Ordering::Relaxed);
-            })
-            .await
-        {
-            return failure(error);
-        }
-        if self.unknown.load(Ordering::Acquire) {
-            return failure(SendFailure::unknown());
-        }
-        let RecipientSpec::Peer(recipient) = request.recipient else {
-            return failure(SendFailure::not_sent(SendFailureKind::SendForbidden, None));
-        };
-        success(SentMessage {
-            recipient,
-            saved_messages: false,
-            message_id: MessageId::new(105).expect("ID"),
-            date: telegram_core::UtcTimestamp::from_unix_seconds(1_700_000_000).expect("date"),
-            content_kind,
-            reply_to_message_id: None,
-            topic_id: None,
-            message_link: None,
-            media: None,
-        })
-    }
-}
 
 #[tokio::test]
 async fn send_http_write_grant_selects_writable_peers_and_gates_final_media_dispatch() {
@@ -138,7 +89,7 @@ async fn send_http_write_grant_selects_writable_peers_and_gates_final_media_disp
             json!({"namespace":namespace,"id":id.to_string()})
         );
     }
-    assert_eq!(fixture.dispatches.load(Ordering::Relaxed), 2);
+    assert_eq!(fixture.dispatches(), 2);
 
     let mut png = vec![0_u8; 33];
     png[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
@@ -198,7 +149,7 @@ async fn send_http_write_grant_selects_writable_peers_and_gates_final_media_disp
         response.json::<Value>().await.expect("failure")["error"]["delivery"],
         "not_sent"
     );
-    assert_eq!(fixture.dispatches.load(Ordering::Relaxed), 2);
+    assert_eq!(fixture.dispatches(), 2);
 
     hosted
         .store
@@ -206,12 +157,21 @@ async fn send_http_write_grant_selects_writable_peers_and_gates_final_media_disp
         .await
         .expect("restore");
     fixture.pause.store(false, Ordering::Release);
-    fixture.unknown.store(true, Ordering::Release);
+    fixture.set_outcome(SendOutcome::Unknown);
     let reply = text(42, "channel").send().await.expect("lost receipt");
     let failure: Value = reply.json().await.expect("ambiguous response");
     assert_eq!(failure["error"]["delivery"], "unknown");
     assert_eq!(failure["error"]["retryable"], false);
-    assert_eq!(fixture.dispatches.load(Ordering::Relaxed), 3);
+    assert_eq!(fixture.dispatches(), 3);
+
+    fixture.set_outcome(SendOutcome::Refused);
+    let reply = text(73, "user").send().await.expect("posting refusal");
+    assert_eq!(reply.status(), 403);
+    let failure: Value = reply.json().await.expect("safe refusal");
+    assert_eq!(failure["error"]["code"], "send_forbidden");
+    assert_eq!(failure["error"]["delivery"], "not_sent");
+    assert_eq!(failure["error"]["retryable"], false);
+    assert_eq!(fixture.dispatches(), 4);
     hosted.cancellation.cancel();
     task.abort();
 }

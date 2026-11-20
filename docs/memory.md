@@ -91,6 +91,18 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Key decisions
 
+- **Hosted grants and retired data:** a grant edit is scoped to its loaded
+  account generation and grant revision. The active account can change while
+  a browser tab stays open. Bind upload handles to the same caller and generation,
+  count in-flight transfers against quota, and purge the private upload trees
+  under the service-data-root lock on every restart.
+
+- **Hosted stream output:** keep the account lease, subscription permit and
+  membership observation with encoded bytes through the HTTP writer. Queue
+  termination can precede a stalled frame dropping its reservations.
+  HTTP/1 vectored writes preserve frame ownership through Hyper's output queue.
+  The listener, readers and senders share one absolute shutdown deadline.
+
 - **Response/artifact work:** wire paths fit once against complete frames and retain the
   accepted rendering; direct Rust adapters retain raw DTO budgets. Required serialized
   row bytes can prune impossible prefixes only after a real oversized candidate, with

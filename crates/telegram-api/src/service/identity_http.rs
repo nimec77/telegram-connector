@@ -2,7 +2,7 @@
 
 use crate::contracts::{ErrorCode, ErrorResponse, SessionInfo, SessionKind};
 use crate::identity::{Audience, AuthorityConfig, CredentialVerifier, SigningAlgorithm, unix_now};
-use crate::service::{BrowserConfig, router};
+use crate::service::{BrowserConfig, account_router_fixture, router};
 use axum::extract::{Form, Query, State};
 use axum::http::{HeaderMap, StatusCode as IssuerStatus, header};
 use axum::response::{IntoResponse, Redirect, Response};
@@ -103,15 +103,7 @@ impl Fixture {
         })
         .await
         .expect("test discovery");
-        let app = router(
-            verifier.clone(),
-            BrowserConfig {
-                client_id: BROWSER.into(),
-                client_secret: SecretString::from("secret + value"),
-                callback_url: Url::parse(CALLBACK).expect("public callback URL"),
-            },
-        )
-        .expect("auth router");
+        let app = router(verifier.clone(), browser_config()).expect("auth router");
         let api = serve(
             TcpListener::bind("127.0.0.1:0").await.expect("API socket"),
             app,
@@ -225,6 +217,14 @@ impl Fixture {
     }
 }
 
+fn browser_config() -> BrowserConfig {
+    BrowserConfig {
+        client_id: BROWSER.into(),
+        client_secret: SecretString::from("secret + value"),
+        callback_url: Url::parse(CALLBACK).expect("public callback URL"),
+    }
+}
+
 fn bytes(hex: &str) -> Vec<u8> {
     hex.as_bytes()
         .as_chunks::<2>()
@@ -282,7 +282,10 @@ async fn authorize(
     if values.get("client_id").map(String::as_str) != Some(BROWSER)
         || values.get("redirect_uri").map(String::as_str) != Some(CALLBACK)
         || values.get("resource").map(String::as_str) != Some(API)
-        || values.get("scope").map(String::as_str) != Some("openid telegram.link")
+        || !matches!(
+            values.get("scope").map(String::as_str),
+            Some("openid telegram.link" | "openid telegram.link telegram.read")
+        )
     {
         return IssuerStatus::BAD_REQUEST.into_response();
     }
@@ -359,7 +362,7 @@ fn get_cookie(response: &reqwest::Response, name: &str) -> String {
 }
 
 async fn expect_error(response: reqwest::Response, status: StatusCode, code: ErrorCode) {
-    assert_eq!(response.status(), status, "response to invalid identity");
+    assert_eq!(response.status(), status, "error response status");
     let error: ErrorResponse = response.json().await.expect("safe error body");
     assert_eq!(error.error.code, code);
 }
@@ -633,4 +636,142 @@ async fn browser_flow_binds_cookie_state_pkce_nonce_and_csrf() {
         fixture.callback(&pending, &callback).await.status(),
         StatusCode::UNAUTHORIZED
     );
+}
+
+#[tokio::test]
+async fn browser_grant_update_rejects_prior_generation_at_the_same_revision() {
+    let root = tempfile::tempdir().expect("private account root");
+    let mut fixture = Fixture::start().await;
+    let (app, store) = account_router_fixture(
+        fixture.verifier.clone(),
+        browser_config(),
+        serde_json::from_value(json!({
+            "data_root":root.path(),"telegram":{"api_id":1,"api_hash":"fixture"},
+            "registered_clients":[BROWSER,"reader"],"eligible_channels":["42"]
+        }))
+        .expect("hosted configuration"),
+    )
+    .await
+    .expect("hosted router");
+    fixture.api = serve(
+        TcpListener::bind("127.0.0.1:0").await.expect("API socket"),
+        app,
+    );
+    let (pending, authorization) = fixture.start_login().await;
+    assert!(
+        authorization.query_pairs().any(|(name, value)| {
+            name == "scope" && value == "openid telegram.link telegram.read"
+        })
+    );
+    let callback = fixture.authorization(authorization).await;
+    let signed_in = fixture.callback(&pending, &callback).await;
+    assert_eq!(signed_in.status(), StatusCode::SEE_OTHER);
+    assert_eq!(signed_in.headers()[header::LOCATION], "/account");
+    let session = get_cookie(&signed_in, "__Host-tg_session");
+    let info: SessionInfo = fixture
+        .http
+        .get(format!("{}/v1/session", fixture.api.base))
+        .header(header::COOKIE, &session)
+        .send()
+        .await
+        .expect("browser session")
+        .json()
+        .await
+        .expect("session info");
+    let csrf = info.csrf_token.expect("browser session CSRF");
+    let first = store
+        .start(&fixture.issuer.base, "same-user")
+        .await
+        .expect("first account generation");
+    store.activate(&first, 1).await.expect("first active link");
+
+    let url = format!("{}/v1/account/grants/reader", fixture.api.base);
+    let get = || async {
+        fixture
+            .http
+            .get(&url)
+            .header(header::COOKIE, &session)
+            .send()
+            .await
+            .expect("read grant")
+            .error_for_status()
+            .expect("current grant")
+            .json::<Value>()
+            .await
+            .expect("grant response")
+    };
+    let first_grant = get().await;
+    assert_eq!(first_grant["revision"], 0);
+    let proposal = json!({
+        "expected_revision":0,"read":{"kind":"channels","channel_ids":["42"]},
+        "send_enabled":false
+    });
+    let mut stale = proposal.clone();
+    stale["generation"] = json!(
+        first_grant["generation"]
+            .as_str()
+            .expect("first generation")
+    );
+    let unlink = fixture
+        .http
+        .delete(format!("{}/v1/account/link", fixture.api.base))
+        .header(header::COOKIE, &session)
+        .header(header::ORIGIN, "https://service.example")
+        .header("x-csrf-token", &csrf)
+        .send()
+        .await
+        .expect("unlink");
+    assert_eq!(unlink.status(), StatusCode::OK);
+    let second = store
+        .start(&fixture.issuer.base, "same-user")
+        .await
+        .expect("replacement generation");
+    store.activate(&second, 1).await.expect("replacement link");
+    let second_grant = get().await;
+    assert_eq!(second_grant["revision"], 0);
+
+    let put = |body: &Value| {
+        fixture
+            .http
+            .put(&url)
+            .header(header::COOKIE, &session)
+            .header(header::ORIGIN, "https://service.example")
+            .header("x-csrf-token", &csrf)
+            .json(body)
+            .send()
+    };
+    expect_error(
+        put(&stale).await.expect("stale update"),
+        StatusCode::CONFLICT,
+        ErrorCode::Conflict,
+    )
+    .await;
+    assert_eq!(get().await, second_grant);
+    assert_ne!(first_grant["generation"], second_grant["generation"]);
+    assert!(second_grant["generation"].is_string());
+    expect_error(
+        put(&proposal).await.expect("missing generation"),
+        StatusCode::BAD_REQUEST,
+        ErrorCode::InvalidRequest,
+    )
+    .await;
+    let mut current = proposal;
+    current["generation"] = second_grant["generation"].clone();
+    let updated: Value = put(&current)
+        .await
+        .expect("current update")
+        .error_for_status()
+        .expect("current grant updated")
+        .json()
+        .await
+        .expect("updated grant");
+    assert_eq!(updated["generation"], second_grant["generation"]);
+    assert_eq!(updated["revision"], 1);
+    assert_eq!(updated["read"], current["read"]);
+    expect_error(
+        put(&current).await.expect("stale revision"),
+        StatusCode::CONFLICT,
+        ErrorCode::Conflict,
+    )
+    .await;
 }

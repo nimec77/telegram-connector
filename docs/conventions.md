@@ -37,7 +37,7 @@ a successful mock expectation alone is insufficient evidence.
 
 `rust-toolchain.toml` selects nightly with rustfmt and clippy. Run `cargo fmt --all`
 after Rust changes; the checked-in `rustfmt.toml` implements manual §1. `just check`
-runs the same gate as CI:
+runs the Rust quality gate used in CI:
 
 ```bash
 cargo fmt --all --check
@@ -68,7 +68,9 @@ cargo tree --locked --offline -p telegram-mcp-http -e normal,build,features
 ```
 
 The API and gateway tests bind numeric loopback sockets for the issuer, HTTP,
-SSE and MCP fixtures. Use disposable roots for SQLite and session tests. The
+SSE and MCP fixtures. Use disposable roots for SQLite and session tests. Run
+the owner page regression with `node --test crates/telegram-api/tests/account_page.cjs`.
+The
 [operator guide](hosted-services.md) describes production configuration.
 
 ## Git commits

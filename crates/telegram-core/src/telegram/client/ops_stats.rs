@@ -73,7 +73,10 @@ impl TelegramClient {
                 // Raw GetHistory pager instead of grammers' iter_messages:
                 // same request, but it keeps the response envelope, which is
                 // what lets the envelope-less converter be deleted entirely.
+                #[cfg(not(any(test, feature = "test-support")))]
                 let mut pager = RawHistoryPager::new(&self.client, peer_ref);
+                #[cfg(any(test, feature = "test-support"))]
+                let mut pager = RawHistoryPager::fixture_history(self, peer_ref);
                 while let Some((raw_msg, entities)) = pager.next().await.map_err(|e| {
                     if require_peer.is_some() {
                         stream_rpc_error(e)

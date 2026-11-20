@@ -36,6 +36,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use telegram_api::identity::{
     Audience, AuthorityConfig, CredentialKind, CredentialVerifier, SigningAlgorithm,
 };
+use telegram_api::service::test_support::{
+    ReadApi, SendApi, SendOutcome, start_read_api, start_read_api_with_admission, start_send_api,
+};
 use tokio::net::TcpListener;
 
 const MCP: &str = "https://gateway.example/mcp";
@@ -228,8 +231,6 @@ struct Api {
     requests: Mutex<Vec<(Uri, Value)>>,
     capabilities: AtomicUsize,
     restricted: AtomicUsize,
-    slow: tokio::sync::Notify,
-    dropped: tokio::sync::Notify,
 }
 
 async fn api(
@@ -283,17 +284,6 @@ async fn api(
     }
     api.reads.fetch_add(1, Ordering::SeqCst);
     let args: Value = serde_json::from_slice(&body).unwrap_or_default();
-    if args["query"] == "hold" {
-        struct Release(Arc<Api>);
-        impl Drop for Release {
-            fn drop(&mut self) {
-                self.0.dropped.notify_one();
-            }
-        }
-        let _lease = Release(api.clone());
-        api.slow.notify_one();
-        std::future::pending::<()>().await;
-    }
     api.requests
         .lock()
         .unwrap()
@@ -328,6 +318,13 @@ fn http() -> Client {
         .build()
         .unwrap()
 }
+enum ApiFixture {
+    Mock,
+    Hosted,
+    SingleRequest,
+    Send { enabled: bool },
+}
+
 struct Fixture {
     issuer: Arc<Issuer>,
     api: Arc<Api>,
@@ -335,15 +332,16 @@ struct Fixture {
     gateway: String,
     http: Client,
     _process: Process,
-    _read_api: Option<telegram_api::service::test_support::ReadApi>,
+    read_api: Option<ReadApi>,
+    send_api: Option<SendApi>,
 }
 
 impl Fixture {
     async fn start() -> Self {
-        Self::start_with_api(false).await
+        Self::start_with_api(ApiFixture::Mock).await
     }
 
-    async fn start_with_api(real_api: bool) -> Self {
+    async fn start_with_api(kind: ApiFixture) -> Self {
         let issuer_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let issuer = Arc::new(Issuer {
             url: format!("http://{}", issuer_listener.local_addr().unwrap()),
@@ -362,26 +360,39 @@ impl Fixture {
             requests: Mutex::default(),
             capabilities: 0.into(),
             restricted: 0.into(),
-            slow: Default::default(),
-            dropped: Default::default(),
         });
         let api_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let endpoint = format!("http://{}", api_listener.local_addr().unwrap());
-        let read_api = if real_api {
-            let bearer = SecretString::from(signed(claims(&issuer, "reader", API)));
-            let owner = verifier
-                .verify(&bearer, &Audience::Api)
-                .await
-                .expect("fixture API identity");
-            Some(
-                telegram_api::service::test_support::start_read_api(api_listener, verifier, &owner)
+        let (read_api, send_api) = match kind {
+            ApiFixture::Mock => {
+                let app = Router::new().fallback(self::api).with_state(api.clone());
+                tokio::spawn(async move { axum::serve(api_listener, app).await.unwrap() });
+                (None, None)
+            }
+            ApiFixture::Hosted | ApiFixture::SingleRequest => {
+                let bearer = SecretString::from(signed(claims(&issuer, "reader", API)));
+                let owner = verifier
+                    .verify(&bearer, &Audience::Api)
                     .await
-                    .expect("actual hosted read routes"),
-            )
-        } else {
-            let app = Router::new().fallback(self::api).with_state(api.clone());
-            tokio::spawn(async move { axum::serve(api_listener, app).await.unwrap() });
-            None
+                    .expect("fixture API identity");
+                let host = if matches!(kind, ApiFixture::SingleRequest) {
+                    start_read_api_with_admission(api_listener, verifier, &owner, 1).await
+                } else {
+                    start_read_api(api_listener, verifier, &owner).await
+                };
+                (Some(host.expect("actual hosted read routes")), None)
+            }
+            ApiFixture::Send { enabled } => {
+                let bearer = SecretString::from(signed(claims(&issuer, "writer", API)));
+                let owner = verifier
+                    .verify(&bearer, &Audience::Api)
+                    .await
+                    .expect("fixture API identity");
+                let host = start_send_api(api_listener, verifier, &owner, enabled)
+                    .await
+                    .expect("actual hosted send routes");
+                (None, Some(host))
+            }
         };
         let dir = tempfile::tempdir().unwrap();
         let ready = dir.path().join("ready");
@@ -413,7 +424,8 @@ impl Fixture {
             gateway: format!("http://{addr}"),
             http: http(),
             _process: process,
-            _read_api: read_api,
+            read_api,
+            send_api,
         }
     }
 
@@ -669,21 +681,54 @@ async fn mcp_challenges_and_rejects_mismatched_binding_before_api_access() {
 
 #[tokio::test]
 async fn client_disconnect_releases_pending_api_request() {
-    let f = Fixture::start().await;
+    let f = Fixture::start_with_api(ApiFixture::SingleRequest).await;
+    let api = f.read_api.as_ref().expect("hosted API");
     let reader = f.login("reader").await;
+    let direct = signed(claims(&f.issuer, "reader", API));
+    let request = json!({"channel_ids":["42"],"query":"same"});
+    let direct_search = || {
+        f.http
+            .post(format!("{}/v1/messages/search", f.api_endpoint))
+            .bearer_auth(&direct)
+            .json(&request)
+    };
+    let entering_search = api.hold_next_search();
     let call = f.rpc(
         &reader,
         "tools/call",
-        json!({"name":"search_messages","arguments":{"channel_ids":["42"],"query":"hold"}}),
+        json!({"name":"search_messages","arguments":request}),
     );
-    let task = tokio::spawn(call.send());
-    tokio::time::timeout(Duration::from_secs(3), f.api.slow.notified())
+    let response = tokio::spawn(call.send());
+    let mut pending = tokio::time::timeout(Duration::from_secs(3), entering_search)
         .await
-        .expect("API operation starts");
-    task.abort();
-    tokio::time::timeout(Duration::from_secs(2), f.api.dropped.notified())
+        .expect("hosted search starts")
+        .expect("search reaches its pause");
+    assert!(!api.evict_idle_account().expect("check borrowed account"));
+    assert_eq!(
+        direct_search()
+            .send()
+            .await
+            .expect("competing request")
+            .status(),
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    assert!(!response.is_finished());
+
+    response.abort();
+    assert!(
+        response
+            .await
+            .expect_err("aborted MCP request")
+            .is_cancelled()
+    );
+    tokio::time::timeout(Duration::from_secs(2), pending.closed())
         .await
-        .expect("disconnect drops pending API future");
+        .expect("disconnect drops the hosted search before its deadline");
+    assert!(api.evict_idle_account().expect("check released lease"));
+    let next = direct_search().send().await.expect("new API search");
+    assert_eq!(next.status(), StatusCode::OK);
+    let page: Value = next.json().await.expect("search page");
+    assert_eq!(page["messages"][0]["text"], "same account message");
 }
 
 #[tokio::test]
@@ -868,6 +913,164 @@ async fn send_only_grant_is_independent_and_uncertain_delivery_is_never_retried(
 }
 
 #[tokio::test]
+async fn hosted_api_and_gateway_send_to_requested_peers_and_preserve_delivery() {
+    let fixture = Fixture::start_with_api(ApiFixture::Send { enabled: true }).await;
+    let api = fixture.send_api.as_ref().expect("hosted send routes");
+    let remote = fixture.login("writer").await;
+    let direct = signed(claims(&fixture.issuer, "writer", API));
+    let catalog: Value = fixture
+        .rpc(&remote, "tools/list", json!({}))
+        .send()
+        .await
+        .expect("list send tools")
+        .json()
+        .await
+        .expect("tool catalog");
+    let names: Vec<_> = catalog["result"]["tools"]
+        .as_array()
+        .expect("tools")
+        .iter()
+        .map(|tool| tool["name"].as_str().expect("tool name"))
+        .collect();
+    assert_eq!(names, ["send_message", "send_media"]);
+
+    let submit = |args: &Value| {
+        fixture
+            .http
+            .post(format!("{}/v1/messages/send", fixture.api_endpoint))
+            .bearer_auth(&direct)
+            .json(args)
+    };
+    for (namespace, id) in [("channel", "42"), ("user", "73")] {
+        let args = json!({
+            "recipient":{"kind":"peer","namespace":namespace,"id":id},"text":"post"
+        });
+        let response = submit(&args).send().await.expect("direct submit");
+        assert_eq!(response.status(), StatusCode::OK);
+        let direct_receipt: Value = response.json().await.expect("direct receipt");
+        assert_eq!(
+            direct_receipt["recipient"],
+            json!({"namespace":namespace,"id":id})
+        );
+        let gateway_receipt = fixture.call(&remote, "send_message", args).await;
+        let data = &gateway_receipt["result"]["structuredContent"]["data"];
+        assert_eq!(*data, direct_receipt);
+    }
+    assert_eq!(api.dispatches(), 4);
+
+    let png = base64::engine::general_purpose::STANDARD
+        .decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jX2kAAAAASUVORK5CYII=")
+        .expect("one-pixel PNG");
+    let upload = fixture
+        .http
+        .post(format!("{}/v1/uploads", fixture.api_endpoint))
+        .bearer_auth(&direct)
+        .header(header::CONTENT_TYPE, "image/png")
+        .body(png)
+        .send()
+        .await
+        .expect("upload");
+    assert_eq!(upload.status(), StatusCode::OK);
+    let upload: Value = upload.json().await.expect("upload handle");
+    let media = json!({
+        "recipient":{"kind":"peer","namespace":"user","id":"73"},
+        "upload_handle":upload["upload_handle"],"media":{"kind":"image"}
+    });
+    let direct_media = fixture
+        .http
+        .post(format!("{}/v1/messages/send-media", fixture.api_endpoint))
+        .bearer_auth(&direct)
+        .json(&media)
+        .send()
+        .await
+        .expect("direct media send");
+    assert_eq!(direct_media.status(), StatusCode::OK);
+    let direct_media: Value = direct_media.json().await.expect("media receipt");
+    assert_eq!(direct_media["content_kind"], "image");
+    let delegated_media = fixture.call(&remote, "send_media", media).await;
+    assert_eq!(
+        delegated_media["result"]["structuredContent"]["data"],
+        direct_media
+    );
+    assert_eq!(api.dispatches(), 6);
+
+    for (outcome, status, delivery, code) in [
+        (
+            SendOutcome::Refused,
+            StatusCode::FORBIDDEN,
+            "not_sent",
+            "send_forbidden",
+        ),
+        (
+            SendOutcome::Unknown,
+            StatusCode::SERVICE_UNAVAILABLE,
+            "unknown",
+            "delivery_unknown",
+        ),
+    ] {
+        api.set_outcome(outcome);
+        let args = json!({
+            "recipient":{"kind":"peer","namespace":"channel","id":"42"},"text":"post"
+        });
+        let submitted = api.dispatches();
+        let response = submit(&args).send().await.expect("direct outcome");
+        assert_eq!(response.status(), status);
+        let failure: Value = response.json().await.expect("direct error");
+        assert_eq!(failure["error"]["code"], code);
+        assert_eq!(failure["error"]["delivery"], delivery);
+        assert_eq!(failure["error"]["retryable"], false);
+        assert_eq!(api.dispatches(), submitted + 1);
+
+        let gateway = fixture.call(&remote, "send_message", args).await;
+        let error = &gateway["result"]["structuredContent"]["error"];
+        assert_eq!(error["code"], code);
+        assert_eq!(error["delivery_state"], delivery);
+        assert_eq!(error["retryable"], false);
+        assert_eq!(api.dispatches(), submitted + 2);
+    }
+}
+
+#[tokio::test]
+async fn disabled_hosted_sending_hides_tools_and_refuses_direct_calls() {
+    let fixture = Fixture::start_with_api(ApiFixture::Send { enabled: false }).await;
+    let remote = fixture.login("writer").await;
+    let catalog: Value = fixture
+        .rpc(&remote, "tools/list", json!({}))
+        .send()
+        .await
+        .expect("list tools")
+        .json()
+        .await
+        .expect("tool catalog");
+    assert_eq!(catalog["result"]["tools"], json!([]));
+
+    let args = json!({
+        "recipient":{"kind":"peer","namespace":"channel","id":"42"},"text":"post"
+    });
+    let gateway = fixture.call(&remote, "send_message", args.clone()).await;
+    let error = &gateway["result"]["structuredContent"]["error"];
+    assert_eq!(error["code"], "forbidden");
+    assert_eq!(error["delivery_state"], "not_sent");
+    let direct = fixture
+        .http
+        .post(format!("{}/v1/messages/send", fixture.api_endpoint))
+        .bearer_auth(signed(claims(&fixture.issuer, "writer", API)))
+        .json(&args)
+        .send()
+        .await
+        .expect("direct disabled sending response");
+    assert_eq!(direct.status(), StatusCode::FORBIDDEN);
+    assert_eq!(
+        fixture
+            .send_api
+            .as_ref()
+            .expect("hosted send routes")
+            .dispatches(),
+        0
+    );
+}
+
+#[tokio::test]
 async fn issuer_can_narrow_dual_scope_catalog() {
     let f = Fixture::start().await;
     let bearer = f.login("mixed").await;
@@ -886,7 +1089,7 @@ async fn issuer_can_narrow_dual_scope_catalog() {
 
 #[tokio::test]
 async fn direct_and_gateway_requests_share_hosted_account_budget() {
-    let fixture = Fixture::start_with_api(true).await;
+    let fixture = Fixture::start_with_api(ApiFixture::Hosted).await;
     let remote = fixture.login("reader").await;
     let direct = signed(claims(&fixture.issuer, "reader", API));
     let request = json!({ "channel_ids": ["42"], "query": "same" });

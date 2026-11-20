@@ -38,6 +38,22 @@ impl TelegramClient {
         message_id: i32,
         deadline: TranscriptionDeadline,
     ) -> Result<TranscriptionOutcome, Error> {
+        #[cfg(any(test, feature = "test-support"))]
+        if let Some(fixture) = &self.metadata_fixture {
+            let channel_id = joined.identity()?.id;
+            return fixture
+                .transcription
+                .as_ref()
+                .filter(|outcome| {
+                    outcome.channel_id == channel_id
+                        && outcome.message_id.as_i32() == Some(message_id)
+                })
+                .cloned()
+                .ok_or_else(|| Error::MessageNotFound {
+                    channel: channel_id.to_string(),
+                    message_id: i64::from(message_id),
+                });
+        }
         let reference = joined.identity()?.id.to_string();
         self.transcribe_for_peer(
             &joined.peer,

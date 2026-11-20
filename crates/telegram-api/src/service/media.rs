@@ -22,7 +22,7 @@ use telegram_core::error::Error;
 use telegram_core::operations::{MAX_PREVIEW_JPEG_BYTES, MediaPreviewRequest};
 use telegram_core::telegram::types::{ChannelId, MediaType, MessageId};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
-use tokio::time::{Instant, sleep_until};
+use tokio::time::Instant;
 
 const TTL: Duration = Duration::from_secs(300);
 const MAX_PREVIEW_CALLS: usize = 8;
@@ -303,7 +303,7 @@ pub(super) async fn previews(
         .await
         .map_err(from_telegram)?;
 
-    let _transition = current_access(&access).await?;
+    let _transition = access.current().await?;
     let owner = MediaOwner::current(&access);
     let expires_at = access.credential_deadline().min(Instant::now() + TTL);
     let mut delivered = 0;
@@ -372,7 +372,7 @@ pub(super) async fn download(
         .await
         .map_err(from_telegram)?;
 
-    let _transition = current_access(&access).await?;
+    let _transition = access.current().await?;
     let preview = store.lookup(&owner, &handle)?;
     Ok((
         [
@@ -382,20 +382,6 @@ pub(super) async fn download(
         preview.jpeg,
     )
         .into_response())
-}
-
-async fn current_access(access: &ReadAccess) -> Result<tokio::sync::MutexGuard<'_, ()>, ApiError> {
-    let context = access.opening_context();
-    tokio::select! {
-        biased;
-        _ = context.cancellation().cancelled() => Err(ApiError::new(ErrorCode::Unavailable)),
-        _ = sleep_until(context.deadline()) => Err(ApiError::new(ErrorCode::Timeout)),
-        result = async {
-            let transition = access.hosted.transition.lock().await;
-            access.revalidate().await?;
-            Ok(transition)
-        } => result,
-    }
 }
 
 fn failed_item(message_id: i32, code: &'static str) -> PreviewItem {

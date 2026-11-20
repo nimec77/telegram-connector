@@ -1,3 +1,6 @@
+#[path = "http.rs"]
+mod http;
+
 use super::{MediaOwner, MediaStore};
 use crate::contracts::ErrorCode;
 use crate::service::AccountStore;

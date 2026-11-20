@@ -300,6 +300,7 @@ async fn one_full_subscriber_closes_while_the_other_continues() {
         held.next().await,
         Some(ChannelEvent::Interrupted(InterruptionReason::SlowConsumer))
     );
+    assert_eq!(budget.diagnostics().slow_consumers, 1);
     assert!(held.next().await.is_none());
     assert!(matches!(fast.next().await, Some(ChannelEvent::Post(_))));
     assert!(budget.used_bytes() > 0);
@@ -564,4 +565,56 @@ async fn invalid_and_saturated_admission_spend_no_additional_tokens() {
         Err(SubscribeError::Capacity)
     ));
     assert_eq!(limiter.available_tokens(), 9.0);
+}
+
+#[tokio::test]
+async fn membership_loss_revokes_an_in_flight_post_after_overflow_and_receiver_drop() {
+    let heads = Arc::new(HeldHeads::new(false));
+    heads.release.add_permits(2);
+    let budget = Arc::new(StreamBudget::new(8192));
+    let (streams, input) = test_support::account_streams(
+        heads,
+        limiter(),
+        StreamLimits {
+            max_queue_items: 1,
+            max_subscriptions: 1,
+            ..StreamLimits::default()
+        },
+        budget.clone(),
+    );
+    let mut subscription = streams
+        .subscribe_channel_posts(&[channel(42)], &context(10))
+        .await
+        .expect("ready");
+    let writer = subscription.membership_lost();
+    assert!(matches!(
+        subscription.next().await,
+        Some(ChannelEvent::Ready(_))
+    ));
+    input.publish(post(42, 104, "held by transport"));
+    let in_flight = subscription.next_queued().await.expect("in-flight post");
+    input.publish(post(42, 105, "queue overflow"));
+    assert_eq!(
+        subscription.next().await,
+        Some(ChannelEvent::Interrupted(InterruptionReason::SlowConsumer))
+    );
+    assert!(subscription.next().await.is_none());
+    assert!(!writer.is_cancelled());
+    drop(subscription);
+
+    assert!(matches!(
+        streams
+            .subscribe_channel_posts(&[channel(73)], &context(10))
+            .await,
+        Err(SubscribeError::Capacity)
+    ));
+    input.membership_lost(channel(42));
+    assert!(writer.is_cancelled());
+    drop(in_flight);
+    assert_eq!(budget.used_bytes(), 0);
+    let mut fresh = streams
+        .subscribe_channel_posts(&[channel(73)], &context(10))
+        .await
+        .expect("free subscription slot");
+    assert!(matches!(fresh.next().await, Some(ChannelEvent::Ready(_))));
 }

@@ -41,7 +41,7 @@ pub(super) async fn text(
     if let Err(error) = request.validate() {
         return Ok(failure(error));
     }
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     if let Some(fixture) = access.hosted.send_fixture.get() {
         return Ok(fixture
             .call(
@@ -108,7 +108,7 @@ pub(super) async fn media(
         media,
         staged,
     };
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     if let Some(fixture) = access.hosted.send_fixture.get() {
         return Ok(fixture
             .call(&access, &request.options, request.media.content_kind())
@@ -285,5 +285,7 @@ fn failure(error: SendFailure) -> Response {
     response
 }
 
+#[cfg(any(test, feature = "test-support"))]
+pub(super) mod fixture;
 #[cfg(test)]
-pub(super) mod tests;
+mod tests;

@@ -260,7 +260,13 @@ impl Shared {
     }
 
     pub(super) fn mark_started(&self) {
-        self.started.cancel();
+        if let Ok(_state) = self.lock()
+            && !self.stopped.is_cancelled()
+            && !self.started.is_cancelled()
+        {
+            self.budget.reader_started();
+            self.started.cancel();
+        }
     }
 
     fn lock(&self) -> Result<std::sync::MutexGuard<'_, State>, SubscribeError> {
@@ -277,6 +283,9 @@ impl Shared {
         if self.stopped.is_cancelled() {
             return Err(SubscribeError::ReaderUnavailable);
         }
+        state.listeners.retain(|_, listener| {
+            !listener.slot.ended.is_cancelled() || listener.usage.has_reservations()
+        });
         if state.listeners.len() >= self.limits.max_subscriptions {
             return Err(SubscribeError::Capacity);
         }
@@ -332,6 +341,7 @@ impl Shared {
         let listener = state
             .listeners
             .get_mut(&subscription.id)
+            .filter(|listener| !listener.slot.ended.is_cancelled())
             .ok_or_else(|| subscription.setup_error())?;
         listener.events.retain(|event| {
             matches!(
@@ -362,10 +372,9 @@ impl Shared {
 
     pub(super) fn interested(&self, channel: ChannelId) -> bool {
         self.lock().is_ok_and(|state| {
-            state
-                .listeners
-                .values()
-                .any(|listener| listener.positions.contains_key(&channel))
+            state.listeners.values().any(|listener| {
+                !listener.slot.ended.is_cancelled() && listener.positions.contains_key(&channel)
+            })
         })
     }
 
@@ -378,6 +387,9 @@ impl Shared {
             return;
         };
         state.listeners.retain(|_, listener| {
+            if listener.slot.ended.is_cancelled() {
+                return listener.usage.has_reservations();
+            }
             let Some(position) = listener.positions.get_mut(&channel) else {
                 return true;
             };
@@ -389,9 +401,8 @@ impl Shared {
                 .as_ref()
                 .and_then(|payload| self.reserve(listener, payload))
             else {
-                listener.events.clear();
-                listener.slot.end(InterruptionReason::SlowConsumer);
-                return false;
+                self.interrupt(listener, InterruptionReason::SlowConsumer);
+                return listener.usage.has_reservations();
             };
             listener.events.push_back(event);
             if !listener.pending {
@@ -405,25 +416,40 @@ impl Shared {
         QueuedEvent::new(event, &listener.usage, &self.budget, self.limits)
     }
 
+    fn interrupt(&self, listener: &mut Listener, reason: InterruptionReason) {
+        listener.events.clear();
+        if listener.slot.ended.is_cancelled() {
+            if reason == InterruptionReason::MembershipLost {
+                listener.slot.membership_lost.cancel();
+            }
+            return;
+        }
+        if !listener.pending {
+            self.budget.record_interruption(reason);
+        }
+        listener.slot.end(reason);
+    }
+
     pub(super) fn interrupt_channel(&self, channel: ChannelId, reason: InterruptionReason) {
         if let Ok(mut state) = self.lock() {
             state.listeners.retain(|_, listener| {
                 if !listener.positions.contains_key(&channel) {
                     return true;
                 }
-                listener.events.clear();
-                listener.slot.end(reason);
-                false
+                self.interrupt(listener, reason);
+                reason != InterruptionReason::MembershipLost && listener.usage.has_reservations()
             });
         }
     }
 
     pub(super) fn close(&self, reason: InterruptionReason) {
         if let Ok(mut state) = self.lock() {
+            if !self.stopped.is_cancelled() && self.started.is_cancelled() {
+                self.budget.reader_stopped();
+            }
             self.stopped.cancel();
             for (_, mut listener) in state.listeners.drain() {
-                listener.events.clear();
-                listener.slot.end(reason);
+                self.interrupt(&mut listener, reason);
             }
         } else {
             self.stopped.cancel();
@@ -437,8 +463,8 @@ fn above(id: MessageId, position: Option<MessageId>) -> bool {
 
 /// Registration and queue for one accepted subscription.
 ///
-/// Dropping it releases queued events and frees its account subscription slot.
-/// An event already leased to the caller remains reserved until dropped.
+/// Dropping this receiver releases queued events. In-flight events keep their
+/// reservations and membership observation until the transport drops them.
 pub struct ChannelSubscription {
     id: u64,
     shared: Arc<Shared>,
@@ -460,6 +486,17 @@ impl ChannelSubscription {
         self.slot.membership_lost.child_token()
     }
 
+    /// Discard queued data when the hosted transport begins draining.
+    #[doc(hidden)]
+    pub fn end_for_service_drain(&self) {
+        if let Ok(mut state) = self.shared.lock()
+            && let Some(listener) = state.listeners.get_mut(&self.id)
+        {
+            self.shared
+                .interrupt(listener, InterruptionReason::ServiceDraining);
+        }
+    }
+
     /// Receive the next typed event and release its queue reservation.
     pub async fn next(&mut self) -> Option<ChannelEvent> {
         self.next_queued()
@@ -472,16 +509,15 @@ impl ChannelSubscription {
         loop {
             {
                 let mut state = self.shared.lock().ok()?;
-                match state.listeners.get_mut(&self.id) {
-                    Some(listener) => {
-                        if let Some(event) = listener.events.pop_front() {
-                            return Some(event);
-                        }
+                if let Some(listener) = state.listeners.get_mut(&self.id)
+                    && !listener.slot.ended.is_cancelled()
+                {
+                    if let Some(event) = listener.events.pop_front() {
+                        return Some(event);
                     }
-                    None => {
-                        let reason = self.slot.terminal.lock().ok()?.take()?;
-                        return QueuedEvent::terminal(reason, self.shared.limits.max_event_bytes);
-                    }
+                } else {
+                    let reason = self.slot.terminal.lock().ok()?.take()?;
+                    return QueuedEvent::terminal(reason, self.shared.limits.max_event_bytes);
                 }
             }
             self.slot.available.notified().await;
@@ -491,8 +527,18 @@ impl ChannelSubscription {
 
 impl Drop for ChannelSubscription {
     fn drop(&mut self) {
-        if let Ok(mut state) = self.shared.lock() {
-            state.listeners.remove(&self.id);
+        if let Ok(mut state) = self.shared.lock()
+            && let Some(listener) = state.listeners.get_mut(&self.id)
+        {
+            listener.events.clear();
+            // Encoded bytes may still be buffered by the HTTP connection after
+            // its response body drops. The bounded account slot keeps observing
+            // membership until those byte reservations end.
+            if listener.usage.has_reservations() {
+                listener.slot.ended.cancel();
+            } else {
+                state.listeners.remove(&self.id);
+            }
         }
     }
 }

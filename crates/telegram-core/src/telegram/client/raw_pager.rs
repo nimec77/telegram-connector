@@ -139,6 +139,11 @@ impl RawHistoryPager {
 }
 
 impl<F: HistoryFetch> RawHistoryPager<F> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub(super) fn fixture_history(fetch: F, peer: PeerRef) -> Self {
+        Self::with_offsets(fetch, peer.into(), 0, HistoryOffsets::IdAndDate)
+    }
+
     fn with_offsets(
         fetch: F,
         peer: tl::enums::InputPeer,

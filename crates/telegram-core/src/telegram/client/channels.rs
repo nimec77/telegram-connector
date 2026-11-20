@@ -54,7 +54,10 @@ impl TelegramClient {
             self.timeouts.history_secs,
             async {
                 let mut builder = ChannelPageBuilder::new(offset, limit);
-                let mut dialogs = self.client.iter_dialogs();
+                let dialogs = self.client.iter_dialogs();
+                #[cfg(any(test, feature = "test-support"))]
+                let dialogs = self.fixture_dialogs(dialogs);
+                let mut dialogs = dialogs;
                 let mut pending = Vec::new();
                 let require_membership = matches!(listing, Listing::ConfirmedChannels);
 
@@ -236,6 +239,13 @@ impl TelegramClient {
         peer: &Peer,
         reference: Option<PeerRef>,
     ) -> Result<(Option<String>, Option<u64>), Error> {
+        #[cfg(any(test, feature = "test-support"))]
+        if let Some(fixture) = &self.metadata_fixture {
+            return Ok(fixture
+                .full_info
+                .clone()
+                .map_or((None, None), |(about, count)| (Some(about), Some(count))));
+        }
         let peer_ref = match reference {
             Some(reference) => reference,
             None => peer_to_ref(peer).await?,
@@ -270,6 +280,10 @@ impl TelegramClient {
         peer: &Peer,
         reference: Option<PeerRef>,
     ) -> Result<Option<crate::UtcTimestamp>, Error> {
+        #[cfg(any(test, feature = "test-support"))]
+        if let Some(fixture) = &self.metadata_fixture {
+            return Ok(fixture.last_message_date);
+        }
         let peer_ref = match reference {
             Some(reference) => reference,
             None => peer_to_ref(peer).await?,
@@ -311,6 +325,14 @@ impl TelegramClient {
             limit: clamped_limit as i32,
         };
         let found = with_timeout("contacts_search", self.timeouts.search_secs, async {
+            #[cfg(any(test, feature = "test-support"))]
+            if let Some(found) = self
+                .metadata_fixture
+                .as_ref()
+                .and_then(|fixture| fixture.discovery.as_ref())
+            {
+                return Ok(found.clone());
+            }
             self.client
                 .invoke(&request)
                 .await

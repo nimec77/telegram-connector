@@ -13,14 +13,18 @@ use futures::StreamExt as _;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
+use telegram_core::operations::CancellationToken;
 use telegram_core::sending::{StagedUpload, StagingConfig, StagingSource, StagingStore};
 use telegram_core::telegram::sending::SendDeadline;
 use telegram_core::telegram::types::sending::SendMediaKind;
 use tokio::io::AsyncWriteExt as _;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::time::Instant;
+
+#[cfg(test)]
+mod tests;
 
 const MAX_UPLOAD_BYTES: u32 = 104_857_600;
 const MAX_IMAGE_BYTES: u32 = 10_485_760;
@@ -33,6 +37,7 @@ pub(super) struct Uploads {
     staged: Arc<StagingStore>,
     saved: Mutex<HashMap<String, Arc<Stored>>>,
     capacity: Arc<Semaphore>,
+    reservations: Mutex<Vec<Weak<Reservation>>>,
     _root: tempfile::TempDir,
     _snapshots: tempfile::TempDir,
 }
@@ -45,9 +50,14 @@ struct Owner {
     revision: u64,
 }
 
+struct Reservation {
+    owner: Owner,
+    cancelled: CancellationToken,
+}
+
 struct Stored {
     file: tempfile::TempPath,
-    owner: Owner,
+    reservation: Arc<Reservation>,
     expires: Instant,
     mime: &'static str,
     _bytes: OwnedSemaphorePermit,
@@ -62,16 +72,21 @@ pub(super) struct UploadReply {
 }
 
 impl Uploads {
-    pub(super) async fn new(root: &Path) -> Result<Self, ApiError> {
+    pub(super) async fn open(root: &Path, enabled: bool) -> Result<Option<Self>, ApiError> {
         // Only this service opens its locked private data root. These designated
         // subtrees contain ephemeral uploads from the previous process.
-        for name in ["incoming", "snapshots"] {
-            let path = root.join(name);
-            match std::fs::remove_dir_all(&path) {
+        let paths = [root.join("incoming"), root.join("snapshots")];
+        for path in &paths {
+            match std::fs::remove_dir_all(path) {
                 Ok(()) => (),
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
                 Err(_) => return Err(unavailable()),
             }
+        }
+        if !enabled {
+            return Ok(None);
+        }
+        for path in &paths {
             let mut builder = std::fs::DirBuilder::new();
             #[cfg(unix)]
             {
@@ -86,12 +101,9 @@ impl Uploads {
             use std::os::unix::fs::PermissionsExt as _;
             builder.permissions(std::fs::Permissions::from_mode(0o700));
         }
-        let incoming = builder
-            .tempdir_in(root.join("incoming"))
-            .map_err(|_| unavailable())?;
-        let snapshots = builder
-            .tempdir_in(root.join("snapshots"))
-            .map_err(|_| unavailable())?;
+        let [incoming, snapshots] = paths;
+        let incoming = builder.tempdir_in(incoming).map_err(|_| unavailable())?;
+        let snapshots = builder.tempdir_in(snapshots).map_err(|_| unavailable())?;
         let config = StagingConfig {
             staging_root: Some(snapshots.path().to_owned()),
             upload_roots: BTreeMap::from([("hosted".into(), incoming.path().to_owned())]),
@@ -100,13 +112,14 @@ impl Uploads {
         let staged = StagingStore::try_new(&config, &[])
             .await
             .map_err(|_| unavailable())?;
-        Ok(Self {
+        Ok(Some(Self {
             _root: incoming,
             _snapshots: snapshots,
             staged,
             capacity: Arc::new(Semaphore::new(TOTAL_BYTES)),
+            reservations: Mutex::new(Vec::new()),
             saved: Mutex::new(HashMap::new()),
-        })
+        }))
     }
 
     pub(super) fn reap(&self) {
@@ -116,12 +129,43 @@ impl Uploads {
         }
     }
 
+    /// Each open body, validation worker and retained file owns one reservation.
+    fn reserve(&self, owner: Owner) -> Result<Arc<Reservation>, ApiError> {
+        self.reap();
+        let mut slots = self.reservations.lock().map_err(|_| unavailable())?;
+        slots.retain(|slot| slot.strong_count() > 0);
+        if slots.len() >= MAX_HANDLES
+            || slots
+                .iter()
+                .filter_map(Weak::upgrade)
+                .filter(|slot| {
+                    slot.owner.principal == owner.principal && slot.owner.client == owner.client
+                })
+                .count()
+                >= MAX_CLIENT_HANDLES
+        {
+            return Err(ApiError::new(ErrorCode::RateLimited));
+        }
+        let reservation = Arc::new(Reservation {
+            owner,
+            cancelled: CancellationToken::new(),
+        });
+        slots.push(Arc::downgrade(&reservation));
+        Ok(reservation)
+    }
+
     pub(super) fn invalidate(&self, generation: &AccountGeneration, client: Option<&str>) {
+        if let Ok(slots) = self.reservations.lock() {
+            for slot in slots.iter().filter_map(Weak::upgrade) {
+                if &slot.owner.generation == generation
+                    && client.is_none_or(|client| slot.owner.client == client)
+                {
+                    slot.cancelled.cancel();
+                }
+            }
+        }
         if let Ok(mut saved) = self.saved.lock() {
-            saved.retain(|_, object| {
-                &object.owner.generation != generation
-                    || client.is_some_and(|client| object.owner.client != client)
-            });
+            saved.retain(|_, object| !object.reservation.cancelled.is_cancelled());
         }
     }
 
@@ -138,17 +182,19 @@ impl Uploads {
             .lock()
             .map_err(|_| unavailable())?
             .get(id)
-            .filter(|object| object.owner == owner && object.expires > Instant::now())
+            .filter(|object| object.reservation.owner == owner && object.expires > Instant::now())
             .cloned()
             .ok_or(ApiError::new(ErrorCode::UnavailableResource))?;
         let filename = object.file.file_name().ok_or_else(unavailable)?;
         let input =
             StagingSource::try_new("hosted", Path::new(filename)).map_err(|_| unavailable())?;
-        let snapshot = self
-            .staged
-            .stage(&input, kind, deadline)
-            .await
-            .map_err(send_stage_error)?;
+        let snapshot = tokio::select! {
+            biased;
+            _ = access.hosted.cancellation.cancelled() => return Err(unavailable()),
+            _ = object.reservation.cancelled.cancelled() => return Err(ApiError::new(ErrorCode::UnavailableResource)),
+            _ = tokio::time::sleep_until(object.expires) => return Err(ApiError::new(ErrorCode::UnavailableResource)),
+            result = self.staged.stage(&input, kind, deadline) => result.map_err(send_stage_error)?,
+        };
         if snapshot.mime_type() != object.mime {
             return Err(ApiError::new(ErrorCode::InvalidRequest));
         }
@@ -156,20 +202,7 @@ impl Uploads {
     }
 
     fn insert(&self, object: Stored, bytes: u32) -> Result<UploadReply, ApiError> {
-        self.reap();
         let mut saved = self.saved.lock().map_err(|_| unavailable())?;
-        if saved.len() >= MAX_HANDLES
-            || saved
-                .values()
-                .filter(|existing| {
-                    existing.owner.principal == object.owner.principal
-                        && existing.owner.client == object.owner.client
-                })
-                .count()
-                >= MAX_CLIENT_HANDLES
-        {
-            return Err(ApiError::new(ErrorCode::RateLimited));
-        }
         let mut entropy = [0_u8; 24];
         getrandom::fill(&mut entropy).map_err(|_| unavailable())?;
         let handle = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(entropy);
@@ -222,6 +255,11 @@ pub(super) async fn upload(
     if supplied.is_some_and(|size| size > limit) {
         return Err(ApiError::new(ErrorCode::PayloadTooLarge));
     }
+    let reservation = {
+        let _transition = access.current().await?;
+        uploads.reserve(owner(&access))?
+    };
+    let cancelled = reservation.cancelled.clone();
     let mut reserved = Arc::clone(&uploads.capacity)
         .try_acquire_many_owned(supplied.unwrap_or(limit))
         .map_err(|_| ApiError::new(ErrorCode::RateLimited))?;
@@ -233,7 +271,7 @@ pub(super) async fn upload(
         .map_err(|_| unavailable())?;
     let (file, path) = temp.into_parts();
     let mut file = tokio::fs::File::from_std(file);
-    let transfer = async {
+    let transfer = async move {
         let mut stream = body.into_data_stream();
         let mut size = 0_u32;
         while let Some(chunk) = stream.next().await {
@@ -251,37 +289,35 @@ pub(super) async fn upload(
         }
         file.flush().await.map_err(|_| unavailable())?;
         let mut file = file.into_std().await;
-        let (path, observed) = tokio::task::spawn_blocking(move || {
+        tokio::task::spawn_blocking(move || {
             let observed = telegram_core::sending::check_upload_type(
                 &mut file,
                 &kind,
                 u64::from(size),
                 deadline,
             );
-            (path, observed)
+            if observed.map_err(send_stage_error)? != mime {
+                return Err(ApiError::new(ErrorCode::InvalidRequest));
+            }
+            drop(reserved.split(reserved.num_permits().saturating_sub(size as usize)));
+            Ok((path, reservation, reserved, size))
         })
         .await
-        .map_err(|_| unavailable())?;
-        if observed.map_err(send_stage_error)? != mime {
-            return Err(ApiError::new(ErrorCode::InvalidRequest));
-        }
-        Ok((path, size))
+        .map_err(|_| unavailable())?
     };
-    let (path, size) = tokio::select! {
+    let (file, reservation, reserved, size) = tokio::select! {
         biased;
         _ = access.hosted.cancellation.cancelled() => return Err(unavailable()),
+        _ = cancelled.cancelled() => return Err(ApiError::new(ErrorCode::UnavailableResource)),
         _ = tokio::time::sleep_until(deadline.instant()) => return Err(ApiError::new(ErrorCode::Timeout)),
         result = transfer => result?,
     };
-    access.revalidate().await?;
-    // A reservation includes every byte in flight. Shrink it only after the
-    // file and type are validated.
-    drop(reserved.split(reserved.num_permits().saturating_sub(size as usize)));
+    let _transition = access.current().await?;
     uploads
         .insert(
             Stored {
-                file: path,
-                owner: owner(&access),
+                file,
+                reservation,
                 expires: Instant::now() + UPLOAD_TTL,
                 mime,
                 _bytes: reserved,

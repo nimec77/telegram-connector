@@ -29,6 +29,10 @@ pub(super) async fn list(
     let Query(params) = params.map_err(|_| invalid())?;
     let limit = limit(params.limit, 100)?;
     let access = ReadAccess::authorize(&state, &headers).await?;
+    if !access.any_reads() {
+        access.revalidate().await?;
+        return Ok(Json(json!({"channels":[],"total":0})));
+    }
     let lease = access.lease().await?;
     let page = lease
         .client()
@@ -91,24 +95,28 @@ pub(super) async fn resolve(
         return Err(invalid());
     }
     let access = ReadAccess::authorize(&state, &headers).await?;
-    let lease = access.lease().await?;
-    let allowed = lease
-        .client()
-        .operations
-        .list_channels(
-            10_000,
-            0,
-            |channel| permitted(&access, channel),
-            &access.context(&lease),
-        )
-        .await
-        .map_err(from_telegram)?;
+    let allowed = if access.any_reads() {
+        let lease = access.lease().await?;
+        lease
+            .client()
+            .operations
+            .list_channels(
+                10_000,
+                0,
+                |channel| permitted(&access, channel),
+                &access.context(&lease),
+            )
+            .await
+            .map_err(from_telegram)?
+            .channels
+    } else {
+        Vec::new()
+    };
     let items = body
         .identifiers
         .iter()
         .map(|reference| {
             let mut matches = allowed
-                .channels
                 .iter()
                 .filter(|channel| matches_ref(channel, reference));
             match (matches.next(), matches.next()) {
@@ -302,3 +310,6 @@ pub(super) fn channel_json(channel: Channel) -> Value {
 fn invalid() -> ApiError {
     ApiError::new(ErrorCode::InvalidRequest)
 }
+
+#[cfg(test)]
+mod tests;

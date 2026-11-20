@@ -3,13 +3,38 @@
 use super::{ChannelEvent, ChannelHead, InterruptionReason, StreamLimits};
 use serde::Serialize;
 use std::io::{self, Write};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 /// A byte budget shared by all account stream managers in one service.
 pub struct StreamBudget {
     capacity: usize,
     used: AtomicUsize,
+    readers: AtomicUsize,
+    rejected_setups: AtomicU64,
+    slow_consumers: AtomicU64,
+    upstream_disconnects: AtomicU64,
+    membership_losses: AtomicU64,
+    service_drains: AtomicU64,
+}
+
+/// Aggregate live stream resource use and cumulative outcomes for a shared budget.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct StreamDiagnostics {
+    /// Started readers that have yet to close.
+    pub active_readers: usize,
+    /// Encoded bytes reserved by pending, queued, and in-flight events.
+    pub queued_bytes: usize,
+    /// Subscription setup attempts rejected by the transport.
+    pub rejected_setups: u64,
+    /// Accepted subscriptions interrupted by queue limits.
+    pub slow_consumers: u64,
+    /// Accepted subscriptions interrupted by a reader failure.
+    pub upstream_disconnects: u64,
+    /// Accepted subscriptions interrupted by observed membership loss.
+    pub membership_losses: u64,
+    /// Accepted subscriptions interrupted by service drain.
+    pub service_drains: u64,
 }
 
 impl StreamBudget {
@@ -18,12 +43,54 @@ impl StreamBudget {
         Self {
             capacity: max_bytes,
             used: AtomicUsize::new(0),
+            readers: AtomicUsize::new(0),
+            rejected_setups: AtomicU64::new(0),
+            slow_consumers: AtomicU64::new(0),
+            upstream_disconnects: AtomicU64::new(0),
+            membership_losses: AtomicU64::new(0),
+            service_drains: AtomicU64::new(0),
         }
     }
 
     /// Current reserved bytes across account queues and in-flight events.
     pub fn used_bytes(&self) -> usize {
         self.used.load(Ordering::Relaxed)
+    }
+
+    /// Read the service's resource totals and interruption counts.
+    pub fn diagnostics(&self) -> StreamDiagnostics {
+        StreamDiagnostics {
+            active_readers: self.readers.load(Ordering::Relaxed),
+            queued_bytes: self.used_bytes(),
+            rejected_setups: self.rejected_setups.load(Ordering::Relaxed),
+            slow_consumers: self.slow_consumers.load(Ordering::Relaxed),
+            upstream_disconnects: self.upstream_disconnects.load(Ordering::Relaxed),
+            membership_losses: self.membership_losses.load(Ordering::Relaxed),
+            service_drains: self.service_drains.load(Ordering::Relaxed),
+        }
+    }
+
+    /// Count a failed subscription setup at the transport boundary.
+    pub fn record_rejected_setup(&self) {
+        self.rejected_setups.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(super) fn reader_started(&self) {
+        self.readers.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(super) fn reader_stopped(&self) {
+        self.readers.fetch_sub(1, Ordering::Relaxed);
+    }
+
+    pub(super) fn record_interruption(&self, reason: InterruptionReason) {
+        let counter = match reason {
+            InterruptionReason::SlowConsumer => &self.slow_consumers,
+            InterruptionReason::UpstreamDisconnected => &self.upstream_disconnects,
+            InterruptionReason::MembershipLost => &self.membership_losses,
+            InterruptionReason::ServiceDraining => &self.service_drains,
+        };
+        counter.fetch_add(1, Ordering::Relaxed);
     }
 
     fn reserve(&self, bytes: usize) -> bool {
@@ -45,6 +112,12 @@ impl Default for StreamBudget {
 #[derive(Default)]
 pub(super) struct Usage {
     counts: Mutex<(usize, usize)>,
+}
+
+impl Usage {
+    pub(super) fn has_reservations(&self) -> bool {
+        self.counts.lock().map_or(true, |counts| counts.0 != 0)
+    }
 }
 
 struct Reservation {

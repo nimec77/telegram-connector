@@ -202,6 +202,10 @@ impl crate::operations::JoinedMediaSource for TelegramClient {
         &self,
         channel_id: crate::telegram::types::ChannelId,
     ) -> Result<(), Error> {
+        #[cfg(any(test, feature = "test-support"))]
+        if let Some(source) = &self.media_source {
+            return source.verify_media_channel(channel_id).await;
+        }
         self.joined_channel_peers(
             &[channel_id],
             super::stream_source::JoinedChannelKind::BroadcastOrSupergroup,
@@ -216,6 +220,12 @@ impl crate::operations::JoinedMediaSource for TelegramClient {
         message_ids: &[i32],
         max_dimension: u32,
     ) -> Result<MediaBatch, Error> {
+        #[cfg(any(test, feature = "test-support"))]
+        if let Some(source) = &self.media_source {
+            return source
+                .joined_media(channel_id, message_ids, max_dimension)
+                .await;
+        }
         let deadline = MediaDeadline::try_new(self.timeouts.download_secs)?;
         deadline
             .run(async {

@@ -68,7 +68,10 @@ impl TelegramClient {
         kind: JoinedChannelKind,
     ) -> Result<HashMap<ChannelId, JoinedChannel>, Error> {
         let requested: HashSet<_> = channels.iter().map(|id| id.get()).collect();
-        let mut dialogs = self.client.iter_dialogs();
+        let dialogs = self.client.iter_dialogs();
+        #[cfg(any(test, feature = "test-support"))]
+        let dialogs = self.fixture_dialogs(dialogs);
+        let mut dialogs = dialogs;
         let mut peers = HashMap::with_capacity(channels.len());
         while let Some(dialog) = dialogs.next().await.map_err(stream_rpc_error)? {
             let peer = dialog.peer();
@@ -108,6 +111,10 @@ impl TelegramClient {
     ) -> Result<HashSet<ChannelId>, Error> {
         if references.is_empty() {
             return Ok(HashSet::new());
+        }
+        #[cfg(any(test, feature = "test-support"))]
+        if let Some(fixture) = &self.metadata_fixture {
+            return confirmed_memberships(&fixture.dialogs, kind);
         }
         // Dialog peer normalization loses forbidden status. Confirm fresh raw flags
         // from the channel namespace before using these references for content.

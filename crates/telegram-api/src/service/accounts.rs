@@ -4,7 +4,7 @@ use super::linking::{self, LinkReply, Linking};
 use super::registry::{AccountLease, AccountRegistry};
 use super::storage::{AccountStore, LinkState, RetirementOutcome};
 use super::{ApiError, ServiceState};
-use crate::contracts::{ErrorCode, GrantSnapshot, GrantUpdate, Scope};
+use crate::contracts::{ErrorCode, GrantSnapshot, GrantUpdate, ReadGrant, Scope};
 use crate::identity::{VerifiedIdentity, unix_now, valid_label};
 use axum::Json;
 use axum::extract::rejection::JsonRejection;
@@ -92,8 +92,8 @@ pub(super) struct Hosted {
     pub(super) grant_changes: tokio::sync::broadcast::Sender<()>,
     linking: Linking,
     pub(super) transition: tokio::sync::Mutex<()>,
-    #[cfg(test)]
-    pub(super) send_fixture: std::sync::OnceLock<super::sends::tests::SendFixture>,
+    #[cfg(any(test, feature = "test-support"))]
+    pub(super) send_fixture: std::sync::OnceLock<super::sends::fixture::SendFixture>,
     #[cfg(any(test, feature = "test-support"))]
     pub(super) reads_fixture: std::sync::OnceLock<super::reads::fixture::ReadFixture>,
     maintenance: tokio::sync::Notify,
@@ -149,11 +149,7 @@ impl Hosted {
         store
             .replace_eligible_channels(&config.eligible_channels)
             .await?;
-        let uploads = if config.sending_enabled {
-            Some(super::uploads::Uploads::new(store.root()).await?)
-        } else {
-            None
-        };
+        let uploads = super::uploads::Uploads::open(store.root(), config.sending_enabled).await?;
         let hosted = Arc::new(Self {
             store,
             uploads,
@@ -179,7 +175,7 @@ impl Hosted {
             transition: tokio::sync::Mutex::new(()),
             #[cfg(any(test, feature = "test-support"))]
             reads_fixture: std::sync::OnceLock::new(),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             send_fixture: std::sync::OnceLock::new(),
             maintenance: tokio::sync::Notify::new(),
         });
@@ -282,6 +278,7 @@ impl Hosted {
 }
 
 async fn maintain(hosted: Weak<Hosted>) {
+    let mut reported = (0, telegram_core::streams::StreamDiagnostics::default());
     loop {
         let Some(service) = hosted.upgrade() else {
             break;
@@ -305,14 +302,40 @@ async fn maintain(hosted: Weak<Hosted>) {
                 let deadline = service.begin_draining();
                 let _ = tokio::time::timeout_at(deadline, service.registry.join_stopped(ActiveAccount::close)).await;
                 service.registry.release_stopped();
+                report_streams(&service, &mut reported);
                 service.drained.cancel();
                 break;
             }
-            () = maintenance => (),
+            () = maintenance => report_streams(&service, &mut reported),
         }
         if Arc::strong_count(&service) == 1 {
             break;
         }
+    }
+}
+
+fn report_streams(
+    service: &Hosted,
+    reported: &mut (usize, telegram_core::streams::StreamDiagnostics),
+) {
+    let subscribers =
+        service.config.events.max_total_subscriptions - service.subscribers.available_permits();
+    let totals = service.streams.diagnostics();
+    if (subscribers, totals) != *reported {
+        *reported = (subscribers, totals);
+        use std::io::Write as _;
+        let _ = writeln!(
+            std::io::stderr(),
+            "Channel streams active_readers={} subscriptions={} queued_bytes={} rejected_setups={} slow_consumers={} upstream_disconnects={} membership_losses={} service_drains={}",
+            totals.active_readers,
+            subscribers,
+            totals.queued_bytes,
+            totals.rejected_setups,
+            totals.slow_consumers,
+            totals.upstream_disconnects,
+            totals.membership_losses,
+            totals.service_drains
+        );
     }
 }
 
@@ -575,37 +598,63 @@ pub(super) async fn unlink(
     }))
 }
 
+#[derive(Serialize)]
+pub(super) struct GrantView {
+    generation: String,
+    #[serde(flatten)]
+    snapshot: GrantSnapshot,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct GrantUpdateRequest {
+    generation: String,
+    expected_revision: u64,
+    read: ReadGrant,
+    send_enabled: bool,
+}
+
 pub(super) async fn grant(
     State(state): State<Arc<ServiceState>>,
     Path(client): Path<String>,
     headers: HeaderMap,
-) -> Result<Json<GrantSnapshot>, ApiError> {
+) -> Result<Json<GrantView>, ApiError> {
     let (_, owner) = state.browser.owner(&headers)?;
     require_owner(&owner.identity)?;
     let hosted = state.hosted()?;
     let generation = grant_generation(hosted, &owner.identity, &client).await?;
-    hosted
-        .store
-        .grant(&generation, &client)
-        .await
-        .map(Json)
-        .map_err(ApiError::from)
+    let snapshot = hosted.store.grant(&generation, &client).await?;
+    Ok(Json(GrantView {
+        generation: generation.id().to_owned(),
+        snapshot,
+    }))
 }
 
 pub(super) async fn update_grant(
     State(state): State<Arc<ServiceState>>,
     Path(client): Path<String>,
     headers: HeaderMap,
-    body: Result<Json<GrantUpdate>, JsonRejection>,
-) -> Result<Json<GrantSnapshot>, ApiError> {
+    body: Result<Json<GrantUpdateRequest>, JsonRejection>,
+) -> Result<Json<GrantView>, ApiError> {
     let (_, owner) = state.browser.owner_mutation(&headers)?;
     let Json(body) = body.map_err(super::json_error)?;
     let hosted = state.hosted()?;
-    let generation = grant_generation(hosted, &owner.identity, &client).await?;
     let _transition = hosted.transition.lock().await;
-    let updated = hosted
+    let generation = grant_generation(hosted, &owner.identity, &client).await?;
+    if generation.id() != body.generation {
+        return Err(ApiError::new(ErrorCode::Conflict));
+    }
+    let snapshot = hosted
         .store
-        .update_grant(&generation, &client, body)
+        .update_grant(
+            &generation,
+            &client,
+            GrantUpdate {
+                expected_revision: body.expected_revision,
+                read: body.read,
+                send_enabled: body.send_enabled,
+            },
+        )
         .await?;
     if let Some(uploads) = &hosted.uploads {
         uploads.invalidate(&generation, Some(&client));
@@ -613,7 +662,10 @@ pub(super) async fn update_grant(
     hosted.media.invalidate(&generation, Some(&client));
     hosted.writers.revoke(&generation, Some(&client));
     let _ = hosted.grant_changes.send(());
-    Ok(Json(updated))
+    Ok(Json(GrantView {
+        generation: body.generation,
+        snapshot,
+    }))
 }
 
 pub(super) async fn joined_channels(

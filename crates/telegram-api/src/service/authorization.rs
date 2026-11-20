@@ -161,6 +161,20 @@ impl ReadAccess {
         self.credential_deadline
     }
 
+    /// Hold the grant/retirement transition through local handle publication or access.
+    pub(super) async fn current(&self) -> Result<tokio::sync::MutexGuard<'_, ()>, ApiError> {
+        tokio::select! {
+            biased;
+            _ = self.hosted.cancellation.cancelled() => Err(ApiError::new(ErrorCode::Unavailable)),
+            _ = tokio::time::sleep_until(self.deadline) => Err(ApiError::new(ErrorCode::Timeout)),
+            result = async {
+                let transition = self.hosted.transition.lock().await;
+                self.revalidate().await?;
+                Ok(transition)
+            } => result,
+        }
+    }
+
     pub(super) async fn revalidate(&self) -> Result<(), ApiError> {
         if self.credential_deadline <= Instant::now() || self.identity.expires_at() <= unix_now()? {
             return Err(ApiError::new(ErrorCode::Unauthenticated));

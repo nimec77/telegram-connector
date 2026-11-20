@@ -89,6 +89,10 @@ impl TelegramClient {
             account_status: tokio::sync::RwLock::new(AccountStatus::default()),
             runner_abort: runner_handle.abort_handle(),
             runner_handle: tokio::sync::Mutex::new(runner_handle),
+            #[cfg(all(feature = "image-preview", any(test, feature = "test-support")))]
+            media_source: None,
+            #[cfg(any(test, feature = "test-support"))]
+            metadata_fixture: None,
             stream_updates,
         })
     }

@@ -79,6 +79,11 @@ pub mod client_fixture;
 #[doc(hidden)]
 pub use client_fixture::stalled_client;
 
+#[cfg(any(test, feature = "test-support"))]
+#[path = "client/tests/metadata_fixture.rs"]
+#[doc(hidden)]
+pub mod metadata_fixture;
+
 #[cfg(test)]
 #[path = "client/tests/session_upgrade_tests.rs"]
 mod session_upgrade_tests;
@@ -90,6 +95,10 @@ pub struct TelegramClient {
     api_id: i32,
     client: Client,
     send_adapter: send_transport::FinalSendAdapter,
+    #[cfg(all(feature = "image-preview", any(test, feature = "test-support")))]
+    media_source: Option<Arc<dyn crate::operations::JoinedMediaSource>>,
+    #[cfg(any(test, feature = "test-support"))]
+    metadata_fixture: Option<metadata_fixture::MetadataFixture>,
     session: Arc<SqliteSession>,
     session_path: PathBuf,
     timeouts: TimeoutConfig,

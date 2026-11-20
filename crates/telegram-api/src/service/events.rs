@@ -137,13 +137,15 @@ pub(super) async fn subscribe(
     let state = Stream {
         ready: Some(ready),
         subscription,
-        _lease: lease,
+        lease: Arc::new(StreamLease {
+            _account: lease,
+            _permit: permit,
+        }),
         revocation,
         access,
         changes,
         writer,
         _watch: watch,
-        _permit: permit,
         finished: false,
         heartbeat: Duration::from_secs(service.config.events.heartbeat_seconds),
     };
@@ -233,13 +235,12 @@ fn watch_authorization(
 struct Stream {
     ready: Option<QueuedEvent>,
     subscription: ChannelSubscription,
-    _lease: AccountLease<super::accounts::ActiveAccount>,
+    lease: Arc<StreamLease>,
     revocation: CancellationToken,
     _watch: Watch,
     access: ReadAccess,
     changes: broadcast::Receiver<()>,
     writer: WriteAuthorization,
-    _permit: OwnedSemaphorePermit,
     heartbeat: Duration,
     finished: bool,
 }
@@ -250,17 +251,14 @@ impl Stream {
             return None;
         }
         if self.access.hosted.cancellation.is_cancelled() {
-            self.finished = true;
-            return Some(Bytes::from_static(
-                b"event: interrupted\ndata: {\"reason\":\"service_draining\"}\n\n",
-            ));
+            return Some(self.drain());
         }
         if self.access.revalidate().await.is_err() {
             self.writer.revoke();
             return None;
         }
         if let Some(ready) = self.ready.take() {
-            return Some(encode(ready));
+            return Some(encode(ready, Arc::clone(&self.lease)));
         }
         let pulse = Instant::now() + self.heartbeat;
         loop {
@@ -270,10 +268,7 @@ impl Stream {
                     self.writer.revoke();
                     return None;
                 }
-                _ = self.access.hosted.cancellation.cancelled() => {
-                    self.finished = true;
-                    return Some(Bytes::from_static(b"event: interrupted\ndata: {\"reason\":\"service_draining\"}\n\n"));
-                }
+                _ = self.access.hosted.cancellation.cancelled() => return Some(self.drain()),
                 _ = self.revocation.cancelled() => {
                     self.writer.revoke();
                     return None;
@@ -291,17 +286,29 @@ impl Stream {
                         return None;
                     }
                     self.finished = matches!(event.event(), ChannelEvent::Interrupted(_));
-                    return Some(encode(event));
+                    return Some(encode(event, Arc::clone(&self.lease)));
                 }
                 _ = tokio::time::sleep_until(pulse) => return Some(Bytes::from_static(KEEPALIVE)),
             }
         }
     }
+
+    fn drain(&mut self) -> Bytes {
+        self.subscription.end_for_service_drain();
+        self.finished = true;
+        Bytes::from_static(b"event: interrupted\ndata: {\"reason\":\"service_draining\"}\n\n")
+    }
+}
+
+struct StreamLease {
+    _account: AccountLease<super::accounts::ActiveAccount>,
+    _permit: OwnedSemaphorePermit,
 }
 
 struct EventBytes {
     frame: Vec<u8>,
     _queued: QueuedEvent,
+    _lease: Arc<StreamLease>,
 }
 
 impl AsRef<[u8]> for EventBytes {
@@ -310,7 +317,7 @@ impl AsRef<[u8]> for EventBytes {
     }
 }
 
-fn encode(queued: QueuedEvent) -> Bytes {
+fn encode(queued: QueuedEvent, lease: Arc<StreamLease>) -> Bytes {
     let frame = format!(
         "event: {}\ndata: {}\n\n",
         queued.event_name(),
@@ -320,6 +327,7 @@ fn encode(queued: QueuedEvent) -> Bytes {
     Bytes::from_owner(EventBytes {
         frame,
         _queued: queued,
+        _lease: lease,
     })
 }
 

@@ -4,7 +4,7 @@ use axum::extract::connect_info::Connected;
 use axum::serve::{IncomingStream, Listener};
 use futures::task::AtomicWaker;
 use std::future::Future;
-use std::io;
+use std::io::{self, IoSlice};
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, Weak};
@@ -271,6 +271,25 @@ impl<T: AsyncWrite + Unpin> AsyncWrite for DeadlineIo<T> {
         self.track(cx, progress)
     }
 
+    fn is_write_vectored(&self) -> bool {
+        // Hyper queues owned body buffers for vectored writes. Its fallback
+        // copies frames and can drop their reservations before socket progress.
+        self.inner.is_write_vectored()
+    }
+
+    fn poll_write_vectored(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buffers: &[IoSlice<'_>],
+    ) -> Poll<io::Result<usize>> {
+        self.check_drain(cx)?;
+        let this = self.as_mut().get_mut();
+        let progress = this.authorization.write(cx, |cx| {
+            Pin::new(&mut this.inner).poll_write_vectored(cx, buffers)
+        });
+        self.track(cx, progress)
+    }
+
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         self.check_drain(cx)?;
         let this = self.as_mut().get_mut();
@@ -413,3 +432,7 @@ mod tests {
         server.await.expect("bounded server stop");
     }
 }
+
+#[cfg(test)]
+#[path = "event_writer/http_tests.rs"]
+mod http_tests;

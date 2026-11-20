@@ -64,5 +64,7 @@ jobs:
           python3 scripts/test_mcp_probe.py target/debug/examples/offline_mcp_fixture
           python3 scripts/test_media_clients.py target/debug/examples/offline_mcp_fixture
           python3 scripts/test_artifact_clients.py target/debug/examples/offline_mcp_fixture
+      - name: Hosted account page fixture
+        run: node --test crates/telegram-api/tests/account_page.cjs
       - name: Dependency policy fixtures
         run: python3 -m unittest discover -s scripts -p test_dependency_policy.py

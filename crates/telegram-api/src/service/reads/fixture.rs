@@ -7,8 +7,8 @@ use crate::service::registry::{AccountLease, AccountRegistry};
 use crate::service::storage::StorageError;
 use std::cmp::Reverse;
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use telegram_core::UtcTimestamp;
 use telegram_core::config::RateLimitConfig;
@@ -22,9 +22,14 @@ use telegram_core::telegram::types::{
     SearchResult,
 };
 
+use tokio::sync::oneshot;
+
+type SearchEntered = oneshot::Sender<oneshot::Sender<()>>;
+
 pub(in crate::service) struct ReadFixture {
     registry: AccountRegistry<Arc<FixtureAccount>>,
     accounts: HashMap<AccountGeneration, Arc<FixtureAccount>>,
+    next_search: Arc<Mutex<Option<SearchEntered>>>,
 }
 
 pub(in crate::service) struct FixtureAccount {
@@ -36,6 +41,7 @@ pub(in crate::service) struct FixtureAccount {
 pub(super) struct FixtureLease {
     lease: AccountLease<Arc<FixtureAccount>>,
     context: OperationContext,
+    next_search: Arc<Mutex<Option<SearchEntered>>>,
 }
 
 impl ReadFixture {
@@ -44,9 +50,35 @@ impl ReadFixture {
         accounts: HashMap<AccountGeneration, Arc<FixtureAccount>>,
     ) -> Self {
         Self {
-            registry: AccountRegistry::new(4, Duration::from_secs(60), rates),
+            registry: AccountRegistry::new(4, Duration::ZERO, rates),
             accounts,
+            next_search: Arc::default(),
         }
+    }
+
+    #[cfg(feature = "test-support")]
+    pub(in crate::service) fn hold_next_search(&self) -> oneshot::Receiver<oneshot::Sender<()>> {
+        let (entered, entry) = oneshot::channel();
+        assert!(
+            self.next_search
+                .lock()
+                .expect("fixture gate")
+                .replace(entered)
+                .is_none()
+        );
+        entry
+    }
+
+    #[cfg(feature = "test-support")]
+    pub(in crate::service) fn evict_idle_account(&self) -> Result<bool, StorageError> {
+        let mut evicted = self.registry.evict()?;
+        let Some((key, account)) = evicted.pop() else {
+            return Ok(false);
+        };
+        assert!(evicted.is_empty(), "single-account fixture");
+        drop(account);
+        self.registry.finish_close(&key)?;
+        Ok(true)
     }
 
     pub(in crate::service) async fn warm(&self, key: &AccountGeneration) {
@@ -80,7 +112,11 @@ impl ReadFixture {
             .await
             .map_err(ApiError::from)?;
         let context = access.context(&lease);
-        Ok(FixtureLease { lease, context })
+        Ok(FixtureLease {
+            lease,
+            context,
+            next_search: Arc::clone(&self.next_search),
+        })
     }
 }
 
@@ -115,6 +151,19 @@ impl FixtureLease {
             SearchScope::Global => panic!("explicit channel scope required"),
         };
         self.charge(channels.len() as u32).await?;
+        let gate = self.next_search.lock().expect("fixture gate").take();
+        if let Some(entered) = gate {
+            let (release, blocked) = oneshot::channel();
+            if entered.send(release).is_ok() {
+                tokio::select! {
+                    _ = self.context.cancellation().cancelled() => return Err(Error::Cancelled),
+                    _ = tokio::time::sleep_until(self.context.deadline()) => {
+                        return Err(Error::Timeout { operation: "fixture search".into(), secs: 0 });
+                    }
+                    result = blocked => result.map_err(|_| Error::Cancelled)?,
+                }
+            }
+        }
         let mut messages = Vec::new();
         for channel in channels {
             let channel =

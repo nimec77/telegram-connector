@@ -91,7 +91,7 @@ paths:
             format: uri
       responses:
         "303":
-          description: Owner session created and redirected to /v1/session
+          description: Owner session created and redirected to /account
           headers:
             Set-Cookie:
               schema:
@@ -539,7 +539,7 @@ paths:
           type: string
       responses:
         '200':
-          description: Current revision and permissions
+          description: Current link generation, revision and permissions
           content:
             application/json:
               schema:
@@ -554,10 +554,10 @@ paths:
           "$ref": "#/components/responses/Error"
     put:
       operationId: replaceGrant
-      summary: Replace a grant at its expected revision
+      summary: Replace a grant for the expected link generation and revision
       security:
       - BrowserSession: []
-      description: A concurrent grant update returns 409.
+      description: Echo the opaque generation and revision from the current grant. A relink or concurrent grant update returns 409.
       parameters:
       - name: client
         in: path
@@ -583,14 +583,18 @@ paths:
               "$ref": "#/components/schemas/GrantUpdate"
       responses:
         '200':
-          description: New grant and revision
+          description: Current link generation, new grant and revision
           content:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Grant"
+        '400':
+          "$ref": "#/components/responses/Error"
         '401':
           "$ref": "#/components/responses/Unauthenticated"
         '403':
+          "$ref": "#/components/responses/Error"
+        '409':
           "$ref": "#/components/responses/Error"
         '429':
           "$ref": "#/components/responses/Throttled"
@@ -1682,10 +1686,14 @@ components:
     Grant:
       type: object
       required:
+      - generation
       - revision
       - read
       - send_enabled
       properties:
+        generation:
+          type: string
+          description: Opaque identifier for the account link generation.
         revision:
           type: integer
           minimum: 0
@@ -1695,11 +1703,16 @@ components:
           type: boolean
     GrantUpdate:
       type: object
+      additionalProperties: false
       required:
+      - generation
       - expected_revision
       - read
       - send_enabled
       properties:
+        generation:
+          type: string
+          description: Opaque generation identifier returned by the grant read.
         expected_revision:
           type: integer
           minimum: 0

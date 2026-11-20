@@ -62,6 +62,10 @@ pub struct AccountGeneration {
 }
 
 impl AccountGeneration {
+    pub(super) fn id(&self) -> &str {
+        &self.id
+    }
+
     /// Path assigned to this generation exclusively.
     pub fn session_file(&self) -> &Path {
         &self.path

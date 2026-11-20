@@ -11,7 +11,7 @@ mod queue;
 mod reader;
 mod subscription;
 
-pub use queue::{QueuedEvent, StreamBudget};
+pub use queue::{QueuedEvent, StreamBudget, StreamDiagnostics};
 pub use subscription::{AccountStreams, ChannelSubscription};
 
 #[cfg(any(test, feature = "test-support"))]
