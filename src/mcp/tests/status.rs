@@ -107,7 +107,12 @@ async fn check_status_includes_session_counters() {
     assert_eq!(response.requests_received, 1);
     assert_eq!(response.responses_written, 1);
     assert_eq!(response.last_response_write_age_secs, Some(0));
-    assert!(chrono::DateTime::parse_from_rfc3339(&response.session_started_at).is_ok());
+    assert!(
+        response
+            .session_started_at
+            .parse::<crate::UtcTimestamp>()
+            .is_ok()
+    );
 }
 
 #[tokio::test]

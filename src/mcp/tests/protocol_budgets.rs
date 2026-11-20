@@ -16,7 +16,7 @@ fn budget_server(
                     m.id = types::MessageId::new(id).expect("id");
                     m.text = "\"\\🦀".repeat(400);
                     m.timestamp =
-                        chrono::DateTime::from_timestamp(1_800_000_000, 0).expect("timestamp");
+                        crate::UtcTimestamp::from_unix_seconds(1_800_000_000).expect("timestamp");
                     m
                 })
                 .collect()
@@ -31,7 +31,7 @@ fn budget_server(
             1,
         );
         result.query_metadata.window_from =
-            chrono::DateTime::from_timestamp(1_800_000_000, 0).expect("timestamp");
+            crate::UtcTimestamp::from_unix_seconds(1_800_000_000).expect("timestamp");
         result
     }
     client

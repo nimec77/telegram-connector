@@ -1,5 +1,14 @@
 # Dependency status
 
+## Connector timestamp migration — 2026-11-20
+
+The connector's public timestamp fields use `UtcTimestamp` and the connector has
+no direct Chrono dependency. Its UTC calendar conversion uses Jiff 1.0.1, and the
+pinned grammers client still uses Jiff 0.2.46. The stable rmcp 3.11.0 build retains
+Chrono through its own requirements, including its activation of Schemars'
+`chrono04` feature. [Rust API migration](rust-api.md#utc-timestamp-migration) ·
+[SDK migration tracker](https://github.com/modelcontextprotocol/rust-sdk/pull/1474)
+
 ## Workspace baseline refresh — 2026-11-19
 
 The UTC cutoff was **2026-11-19T15:46:01Z**, with connector 0.26.1 at

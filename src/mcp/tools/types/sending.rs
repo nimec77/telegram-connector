@@ -291,7 +291,7 @@ impl TryFrom<SentMessage> for SendReceipt {
     type Error = SendFailure;
     fn try_from(value: SentMessage) -> Result<Self, Self::Error> {
         let wire_id = |id: MessageId| id.as_i32().ok_or_else(SendFailure::unknown);
-        if !(1..=i64::from(i32::MAX)).contains(&value.date.timestamp()) {
+        if !(1..=i64::from(i32::MAX)).contains(&value.date.unix_seconds()) {
             return Err(SendFailure::unknown());
         }
         if let Some(link) = &value.message_link {
@@ -349,9 +349,7 @@ impl TryFrom<SentMessage> for SendReceipt {
                 saved_messages: value.saved_messages,
             },
             message_id: wire_id(value.message_id)?,
-            date: value
-                .date
-                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            date: value.date.to_rfc3339_seconds(),
             content_kind: value.content_kind,
             reply_to_message_id: value.reply_to_message_id.map(wire_id).transpose()?,
             topic_id: value.topic_id.map(wire_id).transpose()?,

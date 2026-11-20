@@ -179,15 +179,13 @@ pub(crate) fn wire_message_id(id: MessageId) -> Result<i32, String> {
 pub(crate) fn parse_optional_utc(
     field: &str,
     value: &Option<String>,
-) -> Result<Option<chrono::DateTime<chrono::Utc>>, String> {
+) -> Result<Option<crate::UtcTimestamp>, String> {
     value
         .as_deref()
         .map(|s| {
-            chrono::DateTime::parse_from_rfc3339(s.trim())
-                .map(|dt| dt.with_timezone(&chrono::Utc))
-                .map_err(|e| {
-                    format!("Invalid {field}: {e} (expected RFC 3339, e.g. 2026-08-01T00:00:00Z)")
-                })
+            crate::UtcTimestamp::parse_rfc3339(s.trim()).map_err(|e| {
+                format!("Invalid {field}: {e} (expected RFC 3339, e.g. 2026-08-01T00:00:00Z)")
+            })
         })
         .transpose()
 }
@@ -203,9 +201,9 @@ pub(crate) fn parse_optional_utc(
 ///   budget, so this is caught up front and the caller is told to pass
 ///   `from_date` when reaching further back than `hours_back`.
 pub(crate) fn validate_date_window(
-    from_date: Option<chrono::DateTime<chrono::Utc>>,
-    to_date: Option<chrono::DateTime<chrono::Utc>>,
-    window_start: chrono::DateTime<chrono::Utc>,
+    from_date: Option<crate::UtcTimestamp>,
+    to_date: Option<crate::UtcTimestamp>,
+    window_start: crate::UtcTimestamp,
     hours_back: u32,
 ) -> Result<(), String> {
     match (from_date, to_date) {
@@ -401,7 +399,7 @@ mod tests {
         assert_eq!(parse_optional_utc("from_date", &None).expect("ok"), None);
     }
 
-    fn utc(s: &str) -> chrono::DateTime<chrono::Utc> {
+    fn utc(s: &str) -> crate::UtcTimestamp {
         s.parse().expect("valid test timestamp")
     }
 

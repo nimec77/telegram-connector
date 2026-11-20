@@ -3,7 +3,7 @@
 use super::ids::{ChannelId, MessageId, UserId};
 use super::media::{AudioInfo, DocumentInfo, MediaType, PollInfo, VideoInfo};
 use super::names::{ChannelName, Username};
-use chrono::{DateTime, Utc};
+use crate::UtcTimestamp;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -18,7 +18,7 @@ pub struct Message {
     pub channel_name: ChannelName,
     pub channel_username: Option<Username>,
     pub text: String,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: UtcTimestamp,
     pub sender_id: Option<UserId>,
     pub sender_name: Option<String>,
     pub has_media: bool,
@@ -78,7 +78,7 @@ pub struct ForwardInfo {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub post_author: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub original_date: Option<DateTime<Utc>>,
+    pub original_date: Option<UtcTimestamp>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub original_message_id: Option<MessageId>,
 }
@@ -149,7 +149,7 @@ pub struct Channel {
     pub is_verified: bool,
     pub is_public: bool,
     pub is_subscribed: bool,
-    pub last_message_date: Option<DateTime<Utc>>,
+    pub last_message_date: Option<UtcTimestamp>,
 }
 
 /// One page of the subscribed-channel list plus the genuine full count.
@@ -250,7 +250,7 @@ mod tests {
             channel_name: ChannelName::new("Test").unwrap(),
             channel_username: Some(Username::new("testchan").unwrap()),
             text: "test".to_string(),
-            timestamp: Utc::now(),
+            timestamp: UtcTimestamp::now(),
             sender_id: None,
             sender_name: None,
             has_media: false,
@@ -378,7 +378,7 @@ mod tests {
             is_verified: true,
             is_public: true,
             is_subscribed: true,
-            last_message_date: Some(Utc::now()),
+            last_message_date: Some(UtcTimestamp::now()),
         };
 
         let json = serde_json::to_string(&channel).unwrap();

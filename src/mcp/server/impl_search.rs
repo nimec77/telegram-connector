@@ -4,6 +4,7 @@
 //! delegate to them. Split out per LM-3 (`server.rs` was 880 lines).
 
 use super::McpServer;
+use crate::UtcTimestamp;
 use crate::error::Error;
 use crate::link::{ChannelRef, parse_telegram_link};
 use crate::mcp::tools::validation::{
@@ -17,7 +18,6 @@ use crate::mcp::tools::{
 use crate::rate_limiter::RateLimiterTrait;
 use crate::telegram::TelegramClientTrait;
 use crate::telegram::types::{ChannelId, HistoryParams, SearchParams, SearchResult};
-use chrono::{DateTime, Utc};
 use std::future::Future;
 
 /// The per-call inputs of a fan-out beyond the per-channel fetch itself:
@@ -25,8 +25,8 @@ use std::future::Future;
 struct FanoutPage {
     limit: u32,
     query: String,
-    window_from: DateTime<Utc>,
-    window_to: Option<DateTime<Utc>>,
+    window_from: UtcTimestamp,
+    window_to: Option<UtcTimestamp>,
     format: ResponseFormat,
     max_text_length: u32,
 }

@@ -8,7 +8,7 @@ use crate::error::StateUnavailable;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Instant, SystemTime};
+use std::time::Instant;
 
 /// A request that has been received but not yet answered.
 #[derive(Debug, Clone)]
@@ -34,7 +34,7 @@ pub struct WriteObservation {
 /// Shared (`Arc`) between the instrumented transport (writer), `check_mcp_status`
 /// (reader), and the shutdown paths (summary logging).
 pub struct SessionMetrics {
-    session_started_at: SystemTime,
+    session_started_at: crate::UtcTimestamp,
     started_instant: Instant,
     requests_received: AtomicU64,
     responses_written: AtomicU64,
@@ -57,7 +57,7 @@ impl SessionMetrics {
     /// Start a local session with zero counts and no writes or pending identities.
     pub fn new() -> Self {
         Self {
-            session_started_at: SystemTime::now(),
+            session_started_at: crate::UtcTimestamp::now(),
             started_instant: Instant::now(),
             requests_received: AtomicU64::new(0),
             responses_written: AtomicU64::new(0),
@@ -176,7 +176,7 @@ impl SessionMetrics {
 
     /// Wall-clock session start in RFC 3339 UTC, independent of poisoned locks.
     pub fn session_started_at_rfc3339(&self) -> String {
-        chrono::DateTime::<chrono::Utc>::from(self.session_started_at).to_rfc3339()
+        self.session_started_at.to_rfc3339()
     }
 
     /// Monotonic elapsed seconds since creation, independent of poisoned locks.

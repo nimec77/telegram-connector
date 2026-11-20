@@ -1,11 +1,11 @@
 //! Response types for MCP tools.
 
+use crate::UtcTimestamp;
 use crate::telegram::types::{
     AlbumInfo, AudioInfo, Channel, ChannelId, ChannelName, ChannelResolution, DocumentInfo,
     ForwardInfo, LinkPreview, MediaType, Message, MessageId, MessageReaction, PollInfo,
     QueryMetadata, SearchResult, UserId, Username, VideoInfo,
 };
-use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -458,7 +458,7 @@ pub struct MessageResponse {
     /// Full text length in characters, present only when truncated.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub text_full_length: Option<u64>,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: UtcTimestamp,
     pub sender_id: Option<UserId>,
     pub sender_name: Option<String>,
     pub has_media: bool,

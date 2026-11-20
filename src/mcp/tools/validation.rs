@@ -1,9 +1,9 @@
 //! Typed validation for operations; public compatibility helpers keep string errors.
 use super::{fanout, helpers, shaping};
+use crate::UtcTimestamp;
 use crate::error::Error;
 use crate::link::ChannelRef;
 use crate::telegram::types::MessageId;
-use chrono::{DateTime, Utc};
 
 pub(crate) fn parse_channel_reference(value: &str) -> Result<ChannelRef, Error> {
     helpers::parse_channel_reference(value).map_err(Error::InvalidInput)
@@ -32,13 +32,13 @@ pub(crate) fn parse_cursor_bounds(
 pub(crate) fn parse_optional_utc(
     field: &str,
     value: &Option<String>,
-) -> Result<Option<DateTime<Utc>>, Error> {
+) -> Result<Option<UtcTimestamp>, Error> {
     helpers::parse_optional_utc(field, value).map_err(Error::InvalidInput)
 }
 pub(crate) fn validate_date_window(
-    from: Option<DateTime<Utc>>,
-    to: Option<DateTime<Utc>>,
-    start: DateTime<Utc>,
+    from: Option<UtcTimestamp>,
+    to: Option<UtcTimestamp>,
+    start: UtcTimestamp,
     hours: u32,
 ) -> Result<(), Error> {
     helpers::validate_date_window(from, to, start, hours).map_err(Error::InvalidInput)

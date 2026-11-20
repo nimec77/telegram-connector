@@ -3,7 +3,7 @@
 
 use super::entities::Message;
 use super::ids::ChannelId;
-use chrono::{DateTime, Utc};
+use crate::UtcTimestamp;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -30,8 +30,8 @@ pub struct ChannelStats {
 pub struct StatsSample {
     #[schemars(description = "Raw message records scanned (pre-collapse)")]
     pub messages_scanned: u32,
-    pub window_from: DateTime<Utc>,
-    pub window_to: DateTime<Utc>,
+    pub window_from: UtcTimestamp,
+    pub window_to: UtcTimestamp,
     #[schemars(description = "False when the scan cap cut the sweep short of days_back")]
     pub complete: bool,
 }
@@ -48,12 +48,12 @@ pub fn compute_stats(
     channel_id: ChannelId,
     posts: &[Message],
     messages_scanned: u32,
-    window_from: DateTime<Utc>,
-    window_to: DateTime<Utc>,
+    window_from: UtcTimestamp,
+    window_to: UtcTimestamp,
     complete: bool,
 ) -> ChannelStats {
     let post_count = posts.len() as u64;
-    let span_hours = ((window_to - window_from).num_seconds() as f64 / 3600.0).max(1.0);
+    let span_hours = ((window_to - window_from).as_secs() as f64 / 3600.0).max(1.0);
     let posts_per_day = if post_count == 0 {
         0.0
     } else {
@@ -94,9 +94,10 @@ pub fn compute_stats(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::UtcTimestamp;
     use crate::telegram::types::{AlbumInfo, MediaType, MessageId};
     use crate::test_helpers::create_test_message;
-    use chrono::{Duration, Utc};
+    use jiff::SignedDuration;
 
     fn post(id: i64, views: Option<u64>, media: bool, album: bool) -> crate::telegram::Message {
         let mut m = create_test_message(id, "t", 100);
@@ -117,8 +118,8 @@ mod tests {
 
     #[test]
     fn stats_over_mixed_posts() {
-        let to = Utc::now();
-        let from = to - Duration::days(2);
+        let to = UtcTimestamp::now();
+        let from = to - SignedDuration::from_hours(24 * (2));
         let posts = vec![
             post(1, Some(100), true, true),
             post(2, Some(300), true, false),
@@ -148,12 +149,12 @@ mod tests {
 
     #[test]
     fn stats_on_empty_window_are_zero_not_nan() {
-        let to = Utc::now();
+        let to = UtcTimestamp::now();
         let s = compute_stats(
             crate::telegram::ChannelId::new(100).expect("id"),
             &[],
             0,
-            to - Duration::days(7),
+            to - SignedDuration::from_hours(24 * (7)),
             to,
             true,
         );
@@ -166,8 +167,8 @@ mod tests {
 
     #[test]
     fn posts_per_day_floors_span_at_one_hour() {
-        let to = Utc::now();
-        let from = to - Duration::minutes(5); // tiny sampled span
+        let to = UtcTimestamp::now();
+        let from = to - SignedDuration::from_mins(5); // tiny sampled span
         let s = compute_stats(
             crate::telegram::ChannelId::new(100).expect("id"),
             &[post(1, None, false, false)],

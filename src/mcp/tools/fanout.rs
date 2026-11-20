@@ -2,13 +2,13 @@
 //! bounded-concurrency fetch outcomes merged into one flat, newest-first
 //! response. Pure over wire/domain types so merging is unit-testable.
 
+use crate::UtcTimestamp;
 use crate::error::Error;
 use crate::mcp::tools::helpers::{ChannelReferenceKey, channel_reference_key};
 use crate::mcp::tools::types::responses::{
     ChannelFetchError, MessageResponse, SearchResponse, unique_channel_count,
 };
 use crate::telegram::types::{QueryMetadata, SearchResult};
-use chrono::{DateTime, Utc};
 use futures::StreamExt;
 use std::future::Future;
 
@@ -61,8 +61,8 @@ pub(crate) fn merge_results(
     outcomes: Vec<ChannelFetchOutcome>,
     limit: usize,
     query: String,
-    window_from: DateTime<Utc>,
-    window_to: Option<DateTime<Utc>>,
+    window_from: UtcTimestamp,
+    window_to: Option<UtcTimestamp>,
 ) -> Result<SearchResponse<Error>, Error> {
     let attempted = outcomes.len() as u32;
     let mut messages: Vec<MessageResponse> = Vec::new();
@@ -200,16 +200,17 @@ pub(crate) fn validate_channel_scope(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::UtcTimestamp;
     use crate::telegram::types::{QueryMetadata, SearchResult};
     use crate::test_helpers::create_test_message;
-    use chrono::{Duration, Utc};
+    use jiff::SignedDuration;
 
     fn result_with(ids_and_offsets: &[(i64, i64)], channel: i64, has_more: bool) -> SearchResult {
         let messages = ids_and_offsets
             .iter()
             .map(|(id, mins_ago)| {
                 let mut m = create_test_message(*id, "text", channel);
-                m.timestamp = Utc::now() - Duration::minutes(*mins_ago);
+                m.timestamp = UtcTimestamp::now() - SignedDuration::from_mins(*mins_ago);
                 m
             })
             .collect::<Vec<_>>();
@@ -219,7 +220,7 @@ mod tests {
             search_time_ms: 1,
             query_metadata: QueryMetadata {
                 query: String::new(),
-                window_from: Utc::now() - Duration::hours(48),
+                window_from: UtcTimestamp::now() - SignedDuration::from_hours(48),
                 window_to: None,
                 channels_scanned: Some(1),
                 channels_in_results: 1,
@@ -249,7 +250,7 @@ mod tests {
             outcomes,
             3,
             String::new(),
-            Utc::now() - Duration::hours(48),
+            UtcTimestamp::now() - SignedDuration::from_hours(48),
             None,
         )
         .expect("merge");
@@ -277,7 +278,7 @@ mod tests {
             outcomes,
             20,
             String::new(),
-            Utc::now() - Duration::hours(48),
+            UtcTimestamp::now() - SignedDuration::from_hours(48),
             None,
         )
         .expect("partial ok");
@@ -309,7 +310,7 @@ mod tests {
             outcomes,
             20,
             String::new(),
-            Utc::now() - Duration::hours(48),
+            UtcTimestamp::now() - SignedDuration::from_hours(48),
             None,
         )
         .unwrap_err();
@@ -327,7 +328,7 @@ mod tests {
             outcomes,
             20,
             String::new(),
-            Utc::now() - Duration::hours(48),
+            UtcTimestamp::now() - SignedDuration::from_hours(48),
             None,
         )
         .expect("merge");
@@ -439,7 +440,7 @@ mod tests {
         second.messages[0].text = "later caption".into();
         second.messages[0].views = Some(99);
         second.messages[0].album = None;
-        second.messages[0].timestamp = Utc::now();
+        second.messages[0].timestamp = UtcTimestamp::now();
         second.query_metadata.pages_fetched = 3;
         second.query_metadata.messages_scanned = 30;
         second.query_metadata.partial = true;
@@ -448,7 +449,7 @@ mod tests {
             vec![ok("123", first), ok("alias", second)],
             1,
             "q".into(),
-            Utc::now(),
+            UtcTimestamp::now(),
             None,
         )
         .unwrap();
@@ -480,7 +481,7 @@ mod tests {
             outcomes.push(ok("alias", result));
         }
         outcomes.push(ok("other", result_with(&[(10, 0)], 456, false)));
-        let merged = merge_results(outcomes, 5, String::new(), Utc::now(), None).unwrap();
+        let merged = merge_results(outcomes, 5, String::new(), UtcTimestamp::now(), None).unwrap();
         assert_eq!(merged.returned, 5);
         assert_eq!(merged.query_metadata.channels_in_results, 5);
         assert!(!merged.has_more);

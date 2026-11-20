@@ -26,7 +26,7 @@ async fn search_messages_serializes_enrichment_fields() {
             channel_name: ChannelName::new("Test Channel").unwrap(),
             channel_username: Some(Username::new("testchannel").unwrap()),
             text: "forwarded post".to_string(),
-            timestamp: chrono::Utc::now(),
+            timestamp: crate::UtcTimestamp::now(),
             sender_id: None,
             sender_name: None,
             has_media: false,
@@ -64,7 +64,7 @@ async fn search_messages_serializes_enrichment_fields() {
         search_time_ms: 10,
         query_metadata: QueryMetadata {
             query: "x".to_string(),
-            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_from: crate::UtcTimestamp::now() - jiff::SignedDuration::from_hours(48),
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
@@ -253,7 +253,7 @@ async fn search_messages_shapes_response_end_to_end_for_single_channel() {
         search_time_ms: 5,
         query_metadata: QueryMetadata {
             query: "тест".to_string(),
-            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_from: crate::UtcTimestamp::now() - jiff::SignedDuration::from_hours(48),
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,

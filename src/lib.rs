@@ -90,3 +90,4 @@ pub use error::Error;
 pub use link::MessageLink;
 pub use rate_limiter::{RateLimiter, RateLimiterTrait};
 pub use telegram::{TelegramClient, TelegramClientTrait};
+pub use telegram_core::timestamp::UtcTimestamp;

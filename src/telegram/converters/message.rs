@@ -8,37 +8,37 @@ use super::media::{
     convert_media_to_type, extract_audio_info, extract_document_info, extract_poll_info,
     extract_video_info,
 };
+use crate::UtcTimestamp;
 use crate::link::MessageLink;
 use crate::telegram::envelope::EntityLookup;
 use crate::telegram::types::{
     ChannelId, ChannelName, ForwardInfo, LinkPreview, MediaType, Message, MessageId,
     MessageReaction, UserId, Username,
 };
-use chrono::{DateTime, Utc};
 use grammers_client::media::Media;
 use grammers_client::tl;
 
-/// A message's date at the grammers boundary as the domain's `DateTime<Utc>`.
+/// A message's date at the grammers boundary as the domain's `UtcTimestamp`.
 ///
 /// Telegram dates are whole-second `i32`s on the raw TL variants, so reading
 /// them directly loses nothing (grammers' own `date()` reads the same field).
 /// `MessageEmpty` placeholders have no real date and yield `None` — never an
-/// epoch-0 fabrication (work-order B1/B8). Single owner of the raw→chrono
+/// epoch-0 fabrication (work-order B1/B8). Single owner of the raw→UTC
 /// conversion — date-type churn lands here.
-pub(crate) fn message_timestamp(msg: &grammers_client::message::Message) -> Option<DateTime<Utc>> {
+pub(crate) fn message_timestamp(msg: &grammers_client::message::Message) -> Option<UtcTimestamp> {
     timestamp_from_raw(&msg.raw)
 }
 
 /// Raw-enum seam for [`message_timestamp`] — constructible offline, so the
 /// Empty-refusal is directly testable (same pattern as `client/guard.rs`).
 /// Also the timestamp reader for the raw-pager fetch paths.
-pub(crate) fn timestamp_from_raw(raw: &tl::enums::Message) -> Option<DateTime<Utc>> {
+pub(crate) fn timestamp_from_raw(raw: &tl::enums::Message) -> Option<UtcTimestamp> {
     let secs = match raw {
         tl::enums::Message::Message(m) => m.date,
         tl::enums::Message::Service(m) => m.date,
         tl::enums::Message::Empty(_) => return None,
     };
-    DateTime::from_timestamp(secs as i64, 0)
+    UtcTimestamp::from_unix_seconds(i64::from(secs)).ok()
 }
 
 /// Extract forward attribution from a raw forward header, resolving the
@@ -87,8 +87,9 @@ pub(crate) fn extract_forward_info(
         // otherwise a user-source forward carries the user's display name.
         sender_name: header.from_name.clone().or(user_sender_name),
         post_author: header.post_author.clone(),
-        original_date: DateTime::<Utc>::from_timestamp(header.date as i64, 0)
-            .filter(|dt| dt.timestamp() > 0),
+        original_date: UtcTimestamp::from_unix_seconds(i64::from(header.date))
+            .ok()
+            .filter(|dt| dt.unix_seconds() > 0),
         original_message_id: header
             .channel_post
             .and_then(|id| MessageId::new(id as i64).ok()),

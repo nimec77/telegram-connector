@@ -30,8 +30,8 @@ pub(super) fn map_ack(
     if id <= 0 || date <= 0 {
         return Err(SendFailure::unknown());
     }
-    let date =
-        chrono::DateTime::from_timestamp(i64::from(date), 0).ok_or_else(SendFailure::unknown)?;
+    let date = crate::UtcTimestamp::from_unix_seconds(i64::from(date))
+        .map_err(|_| SendFailure::unknown())?;
     Ok(SentMessage {
         recipient: expected.recipient,
         saved_messages: expected.saved_messages,

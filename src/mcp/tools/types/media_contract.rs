@@ -41,7 +41,7 @@ pub struct MediaArtifact {
     pub size_bytes: usize,
     pub width: u32,
     pub height: u32,
-    pub expires_at: chrono::DateTime<chrono::Utc>,
+    pub expires_at: crate::UtcTimestamp,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resource_uri: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

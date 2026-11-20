@@ -25,7 +25,7 @@ async fn get_recent_messages_emits_next_cursor_when_limit_truncates() {
         search_time_ms: 5,
         query_metadata: QueryMetadata {
             query: String::new(),
-            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_from: crate::UtcTimestamp::now() - jiff::SignedDuration::from_hours(48),
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
@@ -116,7 +116,7 @@ async fn get_recent_messages_truncates_long_text() {
         search_time_ms: 5,
         query_metadata: QueryMetadata {
             query: String::new(),
-            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_from: crate::UtcTimestamp::now() - jiff::SignedDuration::from_hours(48),
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
@@ -161,7 +161,7 @@ async fn get_recent_messages_compact_hoists_channel_header() {
         search_time_ms: 5,
         query_metadata: QueryMetadata {
             query: String::new(),
-            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_from: crate::UtcTimestamp::now() - jiff::SignedDuration::from_hours(48),
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
@@ -213,7 +213,7 @@ async fn get_recent_messages_oversized_page_stays_under_budget() {
         search_time_ms: 5,
         query_metadata: QueryMetadata {
             query: String::new(),
-            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_from: crate::UtcTimestamp::now() - jiff::SignedDuration::from_hours(48),
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,

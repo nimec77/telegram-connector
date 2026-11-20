@@ -88,8 +88,8 @@ impl OfflineClient {
             saved_messages: saved,
             message_id: telegram_connector::telegram::types::MessageId::new(id)
                 .map_err(|_| SendFailure::unknown())?,
-            date: chrono::DateTime::from_timestamp(1_700_000_000, 0)
-                .ok_or_else(SendFailure::unknown)?,
+            date: telegram_connector::UtcTimestamp::from_unix_seconds(1_700_000_000)
+                .map_err(|_| SendFailure::unknown())?,
             content_kind: kind,
             reply_to_message_id: options.reply_to_message_id,
             topic_id: options.topic_id,

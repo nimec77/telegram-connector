@@ -1,16 +1,16 @@
 //! get_channel_stats tool tests (work-order A5).
 
+use crate::UtcTimestamp;
 use crate::mcp::server::McpServer;
 use crate::mcp::tools::types::requests::GetChannelStatsRequest;
 use crate::rate_limiter::MockRateLimiterTrait;
 use crate::telegram::MockTelegramClientTrait;
 use crate::telegram::types::ChannelId;
 use crate::telegram::types::stats::{ChannelStats, compute_stats};
-use chrono::Utc;
 use std::sync::Arc;
 
 fn fixture_stats() -> ChannelStats {
-    let now = Utc::now();
+    let now = UtcTimestamp::now();
     compute_stats(ChannelId::new(1).expect("id"), &[], 0, now, now, true)
 }
 

@@ -318,9 +318,9 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 - **When grammers adds an enum variant, grep every `match` on it** — a `_` catch-all
   silently dropped `Peer::Community` (messages visible, channel invisible). Prefer
   exhaustive matches for foreign enums that grow.
-- **jiff stays at the boundary**: grammers 0.11 message dates are jiff `Timestamp`; the
-  domain stays chrono, converted at the single `message_timestamp` site via `.as_second()`
-  (Telegram dates are second-precision).
+- **Telegram timestamps** use `UtcTimestamp` with Jiff-backed calendar conversion.
+  `message_timestamp` reads whole Unix seconds from Telegram's raw variants. The UTC
+  JSON formats and date-time schema are covered by the timestamp regression fixtures.
 - **Received usernames use observed-name validation:** nonempty, at most 32 bytes,
   with the existing alphanumeric/underscore policy. Real short names survive channel and
   forward conversion. Input resolution retains its stricter ASCII `is_valid_shape` check.

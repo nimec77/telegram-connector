@@ -51,7 +51,7 @@ async fn get_recent_messages_accepts_equal_from_and_to_date() {
     mock_client
         .expect_get_recent_messages()
         .withf(|p| {
-            let instant: chrono::DateTime<chrono::Utc> = "2026-08-01T00:00:00Z".parse().unwrap();
+            let instant: crate::UtcTimestamp = "2026-08-01T00:00:00Z".parse().unwrap();
             p.from_date == Some(instant) && p.to_date == Some(instant)
         })
         .returning(move |_| Ok(create_test_search_result(vec![], "", 1)));
@@ -112,7 +112,7 @@ async fn get_recent_messages_rejects_to_date_older_than_hours_back_window() {
     let mock_limiter = MockRateLimiterTrait::new();
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
-    let long_ago = chrono::Utc::now() - chrono::Duration::days(30);
+    let long_ago = crate::UtcTimestamp::now() - jiff::SignedDuration::from_hours(24 * (30));
 
     let request = GetRecentMessagesRequest {
         channel_id: Some("123".to_string()),
@@ -143,7 +143,7 @@ async fn get_recent_messages_accepts_to_date_inside_hours_back_window() {
 
     let server = McpServer::new(Arc::new(mock_client), Arc::new(mock_limiter));
 
-    let recent = chrono::Utc::now() - chrono::Duration::hours(1);
+    let recent = crate::UtcTimestamp::now() - jiff::SignedDuration::from_hours(1);
 
     let request = GetRecentMessagesRequest {
         channel_id: Some("123".to_string()),

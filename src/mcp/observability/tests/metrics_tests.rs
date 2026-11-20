@@ -53,7 +53,7 @@ fn record_response_written_unknown_id_still_counts() {
 fn session_started_at_is_rfc3339() {
     let metrics = SessionMetrics::new();
     let stamp = metrics.session_started_at_rfc3339();
-    assert!(chrono::DateTime::parse_from_rfc3339(&stamp).is_ok());
+    assert!(stamp.parse::<crate::UtcTimestamp>().is_ok());
 }
 
 #[test]

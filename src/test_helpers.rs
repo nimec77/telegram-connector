@@ -3,11 +3,11 @@
 //! This module provides factory functions for creating domain objects in tests,
 //! reducing duplication across test files.
 
+use crate::UtcTimestamp;
 use crate::telegram::types::{
     Channel, ChannelId, ChannelName, ChatType, ForwardInfo, LinkPreview, MediaType, Message,
     MessageId, QueryMetadata, SearchResult, Username,
 };
-use chrono::Utc;
 use grammers_client::tl;
 
 /// Create a test message with commonly used defaults.
@@ -30,7 +30,7 @@ pub fn create_test_message(id: i64, text: &str, channel_id: i64) -> Message {
         channel_name: ChannelName::new("Test Channel").expect("Valid channel name"),
         channel_username: Some(Username::new("testchannel").expect("Valid username")),
         text: text.to_string(),
-        timestamp: Utc::now(),
+        timestamp: UtcTimestamp::now(),
         sender_id: None,
         sender_name: None,
         has_media: false,
@@ -116,7 +116,7 @@ pub fn create_test_channel(id: i64, username: &str) -> Channel {
         is_verified: false,
         is_public: true,
         is_subscribed: true,
-        last_message_date: Some(Utc::now()),
+        last_message_date: Some(UtcTimestamp::now()),
     }
 }
 
@@ -173,7 +173,7 @@ pub fn create_test_search_result(
         search_time_ms: 100,
         query_metadata: QueryMetadata {
             query: query.to_string(),
-            window_from: Utc::now() - chrono::Duration::hours(48),
+            window_from: UtcTimestamp::now() - jiff::SignedDuration::from_hours(48),
             window_to: None,
             channels_scanned: Some(channels_in_results),
             channels_in_results,

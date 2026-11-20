@@ -613,7 +613,7 @@ fn timestamp_from_raw_converts_service_date() {
         ttl_period: None,
     });
     let ts = timestamp_from_raw(&raw).expect("real date converts");
-    assert_eq!(ts.timestamp(), 1_700_000_000);
+    assert_eq!(ts.unix_seconds(), 1_700_000_000);
 }
 
 #[test]

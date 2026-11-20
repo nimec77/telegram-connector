@@ -21,7 +21,7 @@ fn single_message_result(channel: i64) -> SearchResult {
         search_time_ms: 5,
         query_metadata: QueryMetadata {
             query: String::new(),
-            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_from: crate::UtcTimestamp::now() - jiff::SignedDuration::from_hours(48),
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
@@ -382,7 +382,7 @@ async fn search_without_any_channel_scope_stays_global() {
                 search_time_ms: 1,
                 query_metadata: QueryMetadata {
                     query: "тест".to_string(),
-                    window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+                    window_from: crate::UtcTimestamp::now() - jiff::SignedDuration::from_hours(48),
                     window_to: None,
                     channels_scanned: Some(0),
                     channels_in_results: 0,
@@ -410,9 +410,9 @@ async fn search_without_any_channel_scope_stays_global() {
 
 #[test]
 fn fanout_merge_sums_counters_and_ors_flags() {
+    use crate::UtcTimestamp;
     use crate::mcp::tools::fanout::{ChannelFetchOutcome, merge_results};
     use crate::test_helpers::create_test_search_result;
-    use chrono::Utc;
 
     let mut clean = create_test_search_result(vec![], "q", 0);
     clean.query_metadata.pages_fetched = 2;
@@ -439,7 +439,7 @@ fn fanout_merge_sums_counters_and_ors_flags() {
         ],
         20,
         "q".to_string(),
-        Utc::now(),
+        UtcTimestamp::now(),
         None,
     )
     .expect("merge succeeds");

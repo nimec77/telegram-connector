@@ -1,8 +1,8 @@
 //! Tests for the raw-TL pagers: offset advancement and search-window math.
 
 use super::*;
+use crate::UtcTimestamp;
 use crate::test_helpers::{raw_tl_message, raw_tl_messages_slice};
-use chrono::DateTime;
 
 #[test]
 fn history_offsets_advance_from_last_message() {
@@ -52,8 +52,8 @@ fn search_offsets_advance_from_last_message() {
 
 #[test]
 fn window_bounds_maps_both_ends_widened_by_a_second() {
-    let from = DateTime::from_timestamp(1_700_000_000, 0).expect("valid ts");
-    let to = DateTime::from_timestamp(1_700_086_400, 0).expect("valid ts");
+    let from = UtcTimestamp::from_unix_seconds(1_700_000_000).expect("valid ts");
+    let to = UtcTimestamp::from_unix_seconds(1_700_086_400).expect("valid ts");
     let (min_date, max_date) = window_bounds(from, Some(to));
     // ±1 makes the server window a superset under both inclusive and
     // exclusive semantics; the client-side checks still filter exactly.
@@ -63,7 +63,7 @@ fn window_bounds_maps_both_ends_widened_by_a_second() {
 
 #[test]
 fn window_bounds_open_upper_end_is_unbounded_sentinel() {
-    let from = DateTime::from_timestamp(1_700_000_000, 0).expect("valid ts");
+    let from = UtcTimestamp::from_unix_seconds(1_700_000_000).expect("valid ts");
     let (min_date, max_date) = window_bounds(from, None);
     assert_eq!(min_date, 1_699_999_999);
     // 0 is the protocol's "no upper bound", not "the epoch" — and the
@@ -73,7 +73,7 @@ fn window_bounds_open_upper_end_is_unbounded_sentinel() {
 
 #[test]
 fn window_bounds_clamps_pre_epoch_lower_end_to_unbounded() {
-    let from = DateTime::from_timestamp(-86_400, 0).expect("valid ts");
+    let from = UtcTimestamp::from_unix_seconds(-86_400).expect("valid ts");
     let (min_date, max_date) = window_bounds(from, None);
     // A degraded bound costs latency; a rejected search costs the caller
     // their result. Degrade.
@@ -85,7 +85,7 @@ fn window_bounds_clamps_pre_epoch_lower_end_to_unbounded() {
 fn window_bounds_clamps_beyond_i32_range() {
     // Past 2038: saturates instead of wrapping into a negative i32, which
     // would silently widen the window to everything.
-    let from = DateTime::from_timestamp(i32::MAX as i64 + 1_000, 0).expect("valid ts");
+    let from = UtcTimestamp::from_unix_seconds(i32::MAX as i64 + 1_000).expect("valid ts");
     let (min_date, _) = window_bounds(from, None);
     assert_eq!(min_date, i32::MAX);
 }
@@ -95,12 +95,12 @@ fn window_bounds_saturates_the_upper_end_at_i32_max() {
     // The +1 widening is the edge here: an upper bound already at the i32
     // ceiling must clamp, not wrap to a negative "max_date" — which the
     // server would read as a nonsense window rather than an open one.
-    let from = DateTime::from_timestamp(1_700_000_000, 0).expect("valid ts");
-    let at_ceiling = DateTime::from_timestamp(i32::MAX as i64, 0).expect("valid ts");
+    let from = UtcTimestamp::from_unix_seconds(1_700_000_000).expect("valid ts");
+    let at_ceiling = UtcTimestamp::from_unix_seconds(i32::MAX as i64).expect("valid ts");
     let (_, max_date) = window_bounds(from, Some(at_ceiling));
     assert_eq!(max_date, i32::MAX);
 
-    let beyond = DateTime::from_timestamp(i32::MAX as i64 + 1_000, 0).expect("valid ts");
+    let beyond = UtcTimestamp::from_unix_seconds(i32::MAX as i64 + 1_000).expect("valid ts");
     let (_, max_date) = window_bounds(from, Some(beyond));
     assert_eq!(max_date, i32::MAX);
 }
@@ -126,7 +126,7 @@ fn apply_window_lands_both_bounds_on_the_tl_request() {
         community: None,
     };
 
-    let from = DateTime::from_timestamp(1_700_000_000, 0).expect("valid ts");
+    let from = UtcTimestamp::from_unix_seconds(1_700_000_000).expect("valid ts");
     apply_window(&mut request, from, None);
     assert_eq!(request.min_date, 1_699_999_999, "lower bound is min_date");
     assert_eq!(
@@ -134,7 +134,7 @@ fn apply_window_lands_both_bounds_on_the_tl_request() {
         "open-ended window leaves max_date at 0"
     );
 
-    let to = DateTime::from_timestamp(1_700_086_400, 0).expect("valid ts");
+    let to = UtcTimestamp::from_unix_seconds(1_700_086_400).expect("valid ts");
     apply_window(&mut request, from, Some(to));
     assert_eq!(request.min_date, 1_699_999_999, "lower bound is min_date");
     assert_eq!(request.max_date, 1_700_086_401, "upper bound is max_date");
@@ -206,8 +206,8 @@ fn scripted_pager(
     );
     RawGlobalSearchPager::with_fetch(
         &Client::new(handle),
-        DateTime::from_timestamp(1_000, 0).expect("cutoff"),
-        Some(DateTime::from_timestamp(2_000, 0).expect("upper bound")),
+        UtcTimestamp::from_unix_seconds(1_000).expect("cutoff"),
+        Some(UtcTimestamp::from_unix_seconds(2_000).expect("upper bound")),
         ScriptedSearch {
             pages: Mutex::new(pages.into()),
             requests: Mutex::new(vec![]),
@@ -268,8 +268,8 @@ fn terminal(messages: Vec<tl::enums::Message>) -> tl::enums::messages::Messages 
 fn global_walk(limit: usize, deadline_secs: u64) -> MessageWalk<'static> {
     MessageWalk::new(
         WalkConfig {
-            cutoff_time: DateTime::from_timestamp(1_000, 0).expect("cutoff"),
-            to_date: Some(DateTime::from_timestamp(2_000, 0).expect("upper bound")),
+            cutoff_time: UtcTimestamp::from_unix_seconds(1_000).expect("cutoff"),
+            to_date: Some(UtcTimestamp::from_unix_seconds(2_000).expect("upper bound")),
             after_bound: None,
             media_filter: None,
             below_cutoff: BelowCutoff::Skip,

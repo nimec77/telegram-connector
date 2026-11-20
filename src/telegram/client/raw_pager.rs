@@ -10,8 +10,8 @@
 use super::raw_page::{
     RawPage, chat_peer_for_message, fill_buffer, input_peer_for_message, unpack_page,
 };
+use crate::UtcTimestamp;
 use crate::telegram::envelope::EntityLookup;
-use chrono::{DateTime, Utc};
 use grammers_client::{Client, tl};
 use grammers_mtsender::InvocationError;
 use grammers_session::types::PeerRef;
@@ -76,11 +76,11 @@ fn advance_search_offsets(request: &mut tl::functions::messages::Search, page: &
 /// `from_date`/`to_date` (the README's own example is that shape), and the
 /// retained client-side guard never sees it to recover it. Cost is at most two
 /// extra seconds of index — unmeasurable against a sub-second search.
-fn window_bounds(from: DateTime<Utc>, to: Option<DateTime<Utc>>) -> (i32, i32) {
+fn window_bounds(from: UtcTimestamp, to: Option<UtcTimestamp>) -> (i32, i32) {
     let clamp = |ts: i64| ts.clamp(0, i32::MAX as i64) as i32;
     (
-        clamp(from.timestamp().saturating_sub(1)),
-        to.map_or(0, |t| clamp(t.timestamp().saturating_add(1))),
+        clamp(from.unix_seconds().saturating_sub(1)),
+        to.map_or(0, |t| clamp(t.unix_seconds().saturating_add(1))),
     )
 }
 
@@ -90,8 +90,8 @@ fn window_bounds(from: DateTime<Utc>, to: Option<DateTime<Utc>>) -> (i32, i32) {
 /// reinstate the unbounded global walk.
 fn apply_window(
     request: &mut tl::functions::messages::SearchGlobal,
-    from: DateTime<Utc>,
-    to: Option<DateTime<Utc>>,
+    from: UtcTimestamp,
+    to: Option<UtcTimestamp>,
 ) {
     let (min_date, max_date) = window_bounds(from, to);
     request.min_date = min_date;
@@ -262,7 +262,7 @@ pub(super) struct RawGlobalSearchPager<F = Client> {
 }
 
 impl RawGlobalSearchPager {
-    pub(super) fn new(client: &Client, from: DateTime<Utc>, to: Option<DateTime<Utc>>) -> Self {
+    pub(super) fn new(client: &Client, from: UtcTimestamp, to: Option<UtcTimestamp>) -> Self {
         Self::with_fetch(client, from, to, client.clone())
     }
 }
@@ -273,12 +273,7 @@ impl<F: GlobalSearchFetch> RawGlobalSearchPager<F> {
     /// backwards discarding out-of-window results — measured at 44.86 s for a
     /// rare media filter over a 24 h window. An omitted builder call would
     /// reinstate that silently, so the unbounded request is not constructible.
-    fn with_fetch(
-        client: &Client,
-        from: DateTime<Utc>,
-        to: Option<DateTime<Utc>>,
-        fetch: F,
-    ) -> Self {
+    fn with_fetch(client: &Client, from: UtcTimestamp, to: Option<UtcTimestamp>, fetch: F) -> Self {
         let mut request = tl::functions::messages::SearchGlobal {
             folder_id: None,
             q: String::new(),

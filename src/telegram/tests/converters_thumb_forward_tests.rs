@@ -339,7 +339,7 @@ fn forward_from_channel_without_envelope_extracts_ids_only() {
     let info = extract_forward_info(&header, &EntityLookup::empty());
     assert_eq!(info.channel_id.map(|c| c.get()), Some(555));
     assert_eq!(info.original_message_id.map(|m| m.get()), Some(42));
-    assert_eq!(info.original_date.unwrap().timestamp(), 1_700_000_000);
+    assert_eq!(info.original_date.unwrap().unix_seconds(), 1_700_000_000);
     assert!(info.channel_name.is_none());
     assert!(info.channel_username.is_none());
     assert!(info.sender_name.is_none());

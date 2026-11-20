@@ -7,12 +7,12 @@
 //! `MockTelegramClientTrait` replaces the whole client.
 
 use super::search_budget::SearchBudget;
+use crate::UtcTimestamp;
 use crate::telegram::albums::{AlbumMode, PageAccumulator};
 use crate::telegram::converters::{
     convert_raw_message, matches_media_filter_raw, timestamp_from_raw,
 };
 use crate::telegram::envelope::EntityLookup;
-use chrono::{DateTime, Utc};
 use grammers_client::peer::Peer;
 use grammers_client::tl;
 use std::sync::Arc;
@@ -37,8 +37,8 @@ pub(super) enum BelowCutoff {
 /// The five ways the three loops differ. Every field is inert at its default
 /// on the paths that do not use it.
 pub(super) struct WalkConfig<'a> {
-    pub(super) cutoff_time: DateTime<Utc>,
-    pub(super) to_date: Option<DateTime<Utc>>,
+    pub(super) cutoff_time: UtcTimestamp,
+    pub(super) to_date: Option<UtcTimestamp>,
     /// Exclusive lower cursor bound; `None` on global search, which rejects
     /// cursors upstream.
     pub(super) after_bound: Option<i32>,

@@ -3,7 +3,8 @@
 use super::entities::Message;
 use super::ids::{ChannelId, MessageId};
 use super::media::MediaFilter;
-use chrono::{DateTime, Duration, Utc};
+use crate::UtcTimestamp;
+use jiff::SignedDuration;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -23,9 +24,9 @@ pub struct SearchParams {
     pub media_filter: Option<MediaFilter>,
     /// Inclusive lower bound. When set, overrides `hours_back` as the window
     /// start (and is deliberately NOT clamped by `MAX_HOURS_BACK`).
-    pub from_date: Option<DateTime<Utc>>,
+    pub from_date: Option<UtcTimestamp>,
     /// Inclusive upper bound. Messages newer than this are skipped.
-    pub to_date: Option<DateTime<Utc>>,
+    pub to_date: Option<UtcTimestamp>,
     /// Collapse album siblings into one post-level result; limit counts posts (B5+A2).
     pub collapse_albums: bool,
     /// Exclusive upper message-id bound: only messages with id < before_id
@@ -45,9 +46,10 @@ impl SearchParams {
     pub const MAX_LIMIT: u32 = 100;
 
     /// Effective window start: `from_date` if set, else `now - hours_back`.
-    pub fn window_start(&self) -> DateTime<Utc> {
-        self.from_date
-            .unwrap_or_else(|| Utc::now() - Duration::hours(self.hours_back as i64))
+    pub fn window_start(&self) -> UtcTimestamp {
+        self.from_date.unwrap_or_else(|| {
+            UtcTimestamp::now() - SignedDuration::from_hours(self.hours_back as i64)
+        })
     }
 }
 
@@ -73,9 +75,9 @@ pub struct HistoryParams {
     pub media_filter: Option<MediaFilter>,
     /// Inclusive lower bound. When set, overrides `hours_back` as the window
     /// start (and is deliberately NOT clamped by `MAX_HOURS_BACK`).
-    pub from_date: Option<DateTime<Utc>>,
+    pub from_date: Option<UtcTimestamp>,
     /// Inclusive upper bound. Messages newer than this are skipped.
-    pub to_date: Option<DateTime<Utc>>,
+    pub to_date: Option<UtcTimestamp>,
     /// Collapse album siblings into one post-level result; limit counts posts (B5+A2).
     pub collapse_albums: bool,
     /// Exclusive upper message-id bound: only messages with id < before_id
@@ -95,9 +97,10 @@ impl HistoryParams {
     pub const MAX_LIMIT: u32 = 100;
 
     /// Effective window start: `from_date` if set, else `now - hours_back`.
-    pub fn window_start(&self) -> DateTime<Utc> {
-        self.from_date
-            .unwrap_or_else(|| Utc::now() - Duration::hours(self.hours_back as i64))
+    pub fn window_start(&self) -> UtcTimestamp {
+        self.from_date.unwrap_or_else(|| {
+            UtcTimestamp::now() - SignedDuration::from_hours(self.hours_back as i64)
+        })
     }
 }
 
@@ -121,10 +124,10 @@ pub struct SearchResult {
 pub struct QueryMetadata {
     pub query: String,
     /// Effective window start actually applied (from_date, or now - hours_back).
-    pub window_from: DateTime<Utc>,
+    pub window_from: UtcTimestamp,
     /// Effective upper bound; omitted when the window is open-ended.
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub window_to: Option<DateTime<Utc>>,
+    pub window_to: Option<UtcTimestamp>,
     /// Channels the search actually scanned; `null` when unknowable
     /// (server-side global search).
     pub channels_scanned: Option<u32>,
@@ -219,15 +222,15 @@ mod tests {
     #[test]
     fn window_start_defaults_to_hours_back() {
         let params = search_params("q"); // hours_back = 48 default
-        let expected = Utc::now() - Duration::hours(48);
-        let diff = (params.window_start() - expected).num_seconds().abs();
+        let expected = UtcTimestamp::now() - SignedDuration::from_hours(48);
+        let diff = (params.window_start() - expected).as_secs().abs();
         assert!(diff <= 1, "window_start should be ~now - hours_back");
     }
 
     #[test]
     fn window_start_prefers_from_date() {
         let mut params = search_params("q");
-        let from = Utc::now() - Duration::days(30);
+        let from = UtcTimestamp::now() - SignedDuration::from_hours(24 * (30));
         params.from_date = Some(from);
         assert_eq!(params.window_start(), from);
     }
@@ -278,7 +281,7 @@ mod tests {
             search_time_ms: 1,
             query_metadata: QueryMetadata {
                 query: String::new(),
-                window_from: Utc::now(),
+                window_from: UtcTimestamp::now(),
                 window_to: None,
                 channels_scanned: Some(1),
                 channels_in_results: 0,
@@ -296,7 +299,7 @@ mod tests {
     fn query_metadata_omits_false_flags_from_json() {
         let meta = QueryMetadata {
             query: "test".to_string(),
-            window_from: Utc::now(),
+            window_from: UtcTimestamp::now(),
             window_to: None,
             channels_scanned: None,
             channels_in_results: 0,
@@ -316,7 +319,7 @@ mod tests {
     fn query_metadata_emits_true_flags() {
         let meta = QueryMetadata {
             query: "test".to_string(),
-            window_from: Utc::now(),
+            window_from: UtcTimestamp::now(),
             window_to: None,
             channels_scanned: None,
             channels_in_results: 0,

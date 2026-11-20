@@ -1,7 +1,7 @@
 //! Validated outgoing identities, content and safe delivery outcomes.
 
+use crate::UtcTimestamp;
 use crate::telegram::types::{MessageId, PeerNamespace, Username};
-use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -242,7 +242,7 @@ pub struct SentMessage {
     pub recipient: QualifiedRecipient,
     pub saved_messages: bool,
     pub message_id: MessageId,
-    pub date: DateTime<Utc>,
+    pub date: UtcTimestamp,
     pub content_kind: ContentKind,
     pub reply_to_message_id: Option<MessageId>,
     pub topic_id: Option<MessageId>,

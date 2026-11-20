@@ -39,7 +39,7 @@ fn measure(operation: impl FnOnce() -> CallToolResult) -> (CallToolResult, Count
     (result, counts)
 }
 fn fixture(rows: i64) -> SearchResponse<Error> {
-    let timestamp = chrono::DateTime::from_timestamp(1_800_000_000, 0).expect("timestamp");
+    let timestamp = crate::UtcTimestamp::from_unix_seconds(1_800_000_000).expect("timestamp");
     let messages = (1..=rows)
         .rev()
         .map(|id| {

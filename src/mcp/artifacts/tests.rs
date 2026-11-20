@@ -360,13 +360,13 @@ async fn thousand_entry_eviction_skips_live_response_pin_then_reclaims_it() {
 #[tokio::test]
 async fn inserts_complete_bytes_with_dimensions_and_opaque_ids() {
     let (_temp, store) = store().await;
-    let before = chrono::Utc::now();
+    let before = crate::UtcTimestamp::now();
     let item = job(&store, |s| s.insert(b"verified JPEG bytes", 30, 20))
         .await
         .expect("insert");
     assert_eq!((item.width, item.height, item.size_bytes), (30, 20, 19));
-    assert!(item.expires_at >= before + chrono::Duration::seconds(599));
-    assert!(item.expires_at <= chrono::Utc::now() + chrono::Duration::seconds(600));
+    assert!(item.expires_at >= before + jiff::SignedDuration::from_secs(599));
+    assert!(item.expires_at <= crate::UtcTimestamp::now() + jiff::SignedDuration::from_secs(600));
     let id = item
         .uri
         .strip_prefix("telegram-media://artifact/")

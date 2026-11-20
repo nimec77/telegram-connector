@@ -9,12 +9,12 @@ use super::resolve::{NumericSelection, peer_to_ref};
 use super::results::assemble_search_result;
 use super::search_budget::SearchBudget;
 use super::walk::{BelowCutoff, Fetched, Flow, MessageWalk, WalkConfig};
+use crate::UtcTimestamp;
 use crate::error::Error;
 use crate::telegram::albums::{AlbumMode, PageAccumulator};
 use crate::telegram::converters::convert_media_filter;
 use crate::telegram::timeout::with_timeout;
 use crate::telegram::types::{ChannelId, SearchParams, SearchResult};
-use chrono::{DateTime, Utc};
 use std::time::Instant;
 use tracing::Instrument;
 
@@ -113,7 +113,7 @@ impl TelegramClient {
         &self,
         params: &SearchParams,
         channel_id: ChannelId,
-        cutoff_time: DateTime<Utc>,
+        cutoff_time: UtcTimestamp,
         before_offset: Option<i32>,
         after_bound: Option<i32>,
     ) -> Result<(PageAccumulator, u32, SearchBudget), Error> {
@@ -206,7 +206,7 @@ impl TelegramClient {
     async fn search_global(
         &self,
         params: &SearchParams,
-        cutoff_time: DateTime<Utc>,
+        cutoff_time: UtcTimestamp,
     ) -> Result<(PageAccumulator, SearchBudget), Error> {
         let album_mode = AlbumMode::from_collapse_albums(params.collapse_albums);
         let start_time = Instant::now();

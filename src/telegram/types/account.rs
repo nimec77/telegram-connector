@@ -1,5 +1,5 @@
 //! Successful account observations, independently timestamped by RPC.
-use chrono::{DateTime, Utc};
+use crate::UtcTimestamp;
 
 /// Last observed account state; absent timestamps mean not yet observed.
 /// A transport failure never changes authorization to false.
@@ -7,6 +7,6 @@ use chrono::{DateTime, Utc};
 pub struct AccountStatus {
     pub authorized: bool,
     pub premium: Option<bool>,
-    pub authorization_checked_at: Option<DateTime<Utc>>,
-    pub premium_checked_at: Option<DateTime<Utc>>,
+    pub authorization_checked_at: Option<UtcTimestamp>,
+    pub premium_checked_at: Option<UtcTimestamp>,
 }

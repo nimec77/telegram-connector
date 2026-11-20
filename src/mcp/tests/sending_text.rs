@@ -33,7 +33,7 @@ fn receipt() -> SentMessage {
         recipient: QualifiedRecipient::try_new(PeerNamespace::User, 91).expect("ID"),
         saved_messages: true,
         message_id: MessageId::new(42).expect("ID"),
-        date: chrono::DateTime::from_timestamp(1_700_000_000, 0).expect("date"),
+        date: crate::UtcTimestamp::from_unix_seconds(1_700_000_000).expect("date"),
         content_kind: ContentKind::Text,
         reply_to_message_id: None,
         topic_id: None,

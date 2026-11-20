@@ -99,7 +99,7 @@ fn new_message(id: i32, date: i32, namespace: PeerNamespace) -> tl::enums::Updat
 fn sending_transport_short_requires_real_positive_identity_and_date() {
     let receipt = map_ack(short(42, 1_700_000_000), &expected()).expect("sent");
     assert_eq!(receipt.message_id.get(), 42);
-    assert_eq!(receipt.date.timestamp(), 1_700_000_000);
+    assert_eq!(receipt.date.unix_seconds(), 1_700_000_000);
     assert_eq!(receipt.recipient.namespace(), PeerNamespace::Channel);
     for (id, date) in [(0, 1), (-1, 1), (42, 0), (42, -1)] {
         let error = map_ack(short(id, date), &expected()).expect_err("not an acknowledgement");

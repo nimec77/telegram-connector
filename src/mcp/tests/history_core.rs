@@ -25,7 +25,7 @@ async fn get_recent_messages_returns_results() {
         search_time_ms: 50,
         query_metadata: QueryMetadata {
             query: String::new(),
-            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_from: crate::UtcTimestamp::now() - jiff::SignedDuration::from_hours(48),
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
@@ -99,7 +99,7 @@ async fn get_recent_messages_with_media_filter() {
         search_time_ms: 30,
         query_metadata: QueryMetadata {
             query: String::new(),
-            window_from: chrono::Utc::now() - chrono::Duration::hours(24),
+            window_from: crate::UtcTimestamp::now() - jiff::SignedDuration::from_hours(24),
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
@@ -153,7 +153,7 @@ async fn get_recent_messages_applies_limits() {
         search_time_ms: 40,
         query_metadata: QueryMetadata {
             query: String::new(),
-            window_from: chrono::Utc::now() - chrono::Duration::hours(72),
+            window_from: crate::UtcTimestamp::now() - jiff::SignedDuration::from_hours(72),
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
@@ -208,7 +208,7 @@ async fn get_recent_messages_with_username_passes_identifier_without_pre_resolvi
         search_time_ms: 60,
         query_metadata: QueryMetadata {
             query: String::new(),
-            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_from: crate::UtcTimestamp::now() - jiff::SignedDuration::from_hours(48),
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,

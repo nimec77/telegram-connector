@@ -77,7 +77,12 @@ async fn returns_buffered_responses_newest_first_with_parsed_payload() {
     assert_eq!(response.responses[0].request_id, "8");
     // Payload is embedded as real JSON, not a double-encoded string.
     assert_eq!(response.responses[0].response["id"], 8);
-    assert!(chrono::DateTime::parse_from_rfc3339(&response.responses[0].written_at).is_ok());
+    assert!(
+        response.responses[0]
+            .written_at
+            .parse::<crate::UtcTimestamp>()
+            .is_ok()
+    );
 }
 
 #[tokio::test]

@@ -167,7 +167,7 @@ impl TelegramClient {
     async fn fetch_last_message_date(
         &self,
         peer: &grammers_client::peer::Peer,
-    ) -> Result<Option<chrono::DateTime<chrono::Utc>>, Error> {
+    ) -> Result<Option<crate::UtcTimestamp>, Error> {
         let peer_ref = peer_to_ref(peer).await?;
         with_timeout("last_message_peek", self.timeouts.history_secs, async {
             let mut iter = self.client.iter_messages(peer_ref);

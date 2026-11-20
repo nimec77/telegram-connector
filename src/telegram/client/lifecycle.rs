@@ -125,7 +125,7 @@ async fn refresh_account_status_with(
     {
         let mut status = cache.write().await;
         status.authorized = authorized;
-        status.authorization_checked_at = Some(chrono::Utc::now());
+        status.authorization_checked_at = Some(crate::UtcTimestamp::now());
         if !authorized {
             status.premium = None;
             status.premium_checked_at = None;
@@ -138,7 +138,7 @@ async fn refresh_account_status_with(
                 // Do not restore account data after a concurrent successful logout observation.
                 if status.authorized {
                     status.premium = Some(premium);
-                    status.premium_checked_at = Some(chrono::Utc::now());
+                    status.premium_checked_at = Some(crate::UtcTimestamp::now());
                 }
             }
             Err(error) => {

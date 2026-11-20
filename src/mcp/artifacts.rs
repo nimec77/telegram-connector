@@ -33,7 +33,7 @@ pub(crate) struct StoredArtifact {
     pub(crate) size_bytes: usize,
     pub(crate) width: u32,
     pub(crate) height: u32,
-    pub(crate) expires_at: chrono::DateTime<chrono::Utc>,
+    pub(crate) expires_at: crate::UtcTimestamp,
 }
 #[derive(Debug)]
 pub(crate) struct ArtifactRead {
@@ -219,17 +219,24 @@ impl ArtifactStore {
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 _ => return Err(StoreError::Unavailable),
             }
-            std::fs::rename(&file.path, &path).map_err(|_| StoreError::Unavailable)
+            let expires_at = crate::UtcTimestamp::now()
+                .checked_add(self.config.ttl)
+                .ok_or(StoreError::Unavailable)?;
+            std::fs::rename(&file.path, &path).map_err(|_| StoreError::Unavailable)?;
+            Ok(expires_at)
         })();
-        if written.is_err() {
-            if let Ok(metadata) = handle.metadata()
-                && let Some(pending) = state.pending.as_mut()
-            {
-                pending.size = metadata.len();
+        let expires_at = match written {
+            Ok(expires_at) => expires_at,
+            Err(error) => {
+                if let Ok(metadata) = handle.metadata()
+                    && let Some(pending) = state.pending.as_mut()
+                {
+                    pending.size = metadata.len();
+                }
+                state.available.store(false, Ordering::Release);
+                return Err(error);
             }
-            state.available.store(false, Ordering::Release);
-            return Err(StoreError::Unavailable);
-        }
+        };
         file.path = path.clone();
         file.size = bytes.len() as u64;
         state.pending = None;
@@ -251,9 +258,7 @@ impl ArtifactStore {
                 size_bytes: bytes.len(),
                 width,
                 height,
-                expires_at: chrono::Utc::now()
-                    + chrono::Duration::from_std(self.config.ttl)
-                        .map_err(|_| StoreError::Unavailable)?,
+                expires_at,
             },
             pin,
         ))

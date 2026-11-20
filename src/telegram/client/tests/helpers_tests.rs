@@ -12,12 +12,8 @@ fn mid(id: i64) -> MessageId {
     MessageId::new(id).expect("positive test id")
 }
 
-fn at_secs(secs: i64) -> chrono::DateTime<chrono::Utc> {
-    use chrono::TimeZone;
-    chrono::Utc
-        .timestamp_opt(secs, 0)
-        .single()
-        .expect("valid timestamp")
+fn at_secs(secs: i64) -> crate::UtcTimestamp {
+    crate::UtcTimestamp::from_unix_seconds(secs).expect("valid timestamp")
 }
 
 #[test]

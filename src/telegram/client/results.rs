@@ -37,8 +37,8 @@ pub(super) fn assemble_search_result(
     budget: &search_budget::SearchBudget,
     has_more: bool,
     query: String,
-    window_from: chrono::DateTime<chrono::Utc>,
-    window_to: Option<chrono::DateTime<chrono::Utc>>,
+    window_from: crate::UtcTimestamp,
+    window_to: Option<crate::UtcTimestamp>,
     channels_scanned: Option<u32>,
     search_time_ms: u64,
 ) -> SearchResult {

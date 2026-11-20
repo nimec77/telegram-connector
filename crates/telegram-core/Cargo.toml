@@ -7,6 +7,8 @@ edition = "2024"
 test-support = ["dep:mockall"]
 
 [dependencies]
+jiff.workspace = true
+schemars.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 mockall = { workspace = true, optional = true }

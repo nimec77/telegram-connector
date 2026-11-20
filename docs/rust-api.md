@@ -39,6 +39,15 @@ and `RateLimiterTrait`. The existing `telegram_connector` paths re-export the sa
 Rust types. Integration fixtures compile an external read-only `TelegramClientTrait`
 implementation and exercise the existing direct status method.
 
+## UTC timestamp migration
+
+Telegram message dates, search bounds, account observations, send results, and
+MCP response timestamps now use `telegram_connector::UtcTimestamp` in Rust.
+Construct it from a whole Unix second with `UtcTimestamp::from_unix_seconds`,
+parse an RFC 3339 string with `str::parse`, or obtain the current value with
+`UtcTimestamp::now`. The existing JSON date-time schema, UTC strings, and legacy
+rendering of timestamps are preserved.
+
 ## Transitional compatibility paths
 
 | Retained path | Reason and constraints |

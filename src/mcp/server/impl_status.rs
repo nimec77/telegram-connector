@@ -139,7 +139,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                             recovery_key: Some(key),
                             request_id: entry.request_id,
                             tool_name: entry.tool_name,
-                            written_at: chrono::DateTime::<chrono::Utc>::from(entry.written_at),
+                            written_at: crate::UtcTimestamp::try_from(entry.written_at)
+                                .map_err(|_| Error::Internal("invalid replay timestamp"))?,
                             size_bytes: entry.size_bytes,
                             response,
                         },
@@ -167,7 +168,8 @@ impl<T: TelegramClientTrait + 'static, R: RateLimiterTrait + 'static> McpServer<
                 Ok(BufferedResponseEntry {
                     request_id: entry.request_id,
                     tool_name: entry.tool_name,
-                    written_at: chrono::DateTime::<chrono::Utc>::from(entry.written_at)
+                    written_at: crate::UtcTimestamp::try_from(entry.written_at)
+                        .map_err(|_| Error::Internal("invalid replay timestamp"))?
                         .to_rfc3339(),
                     size_bytes: entry.size_bytes,
                     response,

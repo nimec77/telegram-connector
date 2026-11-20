@@ -20,6 +20,7 @@ pub mod sending;
 pub mod stats;
 pub mod transcription;
 
+pub use crate::UtcTimestamp;
 pub use account::AccountStatus;
 
 // Re-export all public types for convenience

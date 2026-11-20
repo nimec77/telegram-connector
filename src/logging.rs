@@ -193,7 +193,7 @@ pub fn cleanup_old_logs(config: &LoggingConfig) -> anyhow::Result<usize> {
                     byte.is_ascii_digit()
                 }
             })
-            || chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_err()
+            || date.parse::<jiff::civil::Date>().is_err()
         {
             continue;
         }

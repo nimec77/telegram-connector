@@ -1,9 +1,9 @@
 //! Unit tests for the synchronous accumulation-loop decision machine.
 
 use super::*;
+use crate::UtcTimestamp;
 use crate::telegram::envelope::EntityLookup;
 use crate::test_helpers::{raw_tl_channel, raw_tl_message};
-use chrono::{DateTime, TimeZone, Utc};
 use grammers_client::Client;
 use grammers_client::peer::Peer;
 use grammers_mtsender::SenderPool;
@@ -29,14 +29,12 @@ fn no_entities() -> Arc<EntityLookup> {
     Arc::new(EntityLookup::from_envelope(&[], &[]))
 }
 
-fn at(secs: i64) -> DateTime<Utc> {
-    Utc.timestamp_opt(secs, 0)
-        .single()
-        .expect("valid timestamp")
+fn at(secs: i64) -> UtcTimestamp {
+    UtcTimestamp::from_unix_seconds(secs).expect("valid timestamp")
 }
 
 /// Config admitting everything at or after `cutoff`, with no other bounds.
-fn open_config(cutoff: DateTime<Utc>) -> WalkConfig<'static> {
+fn open_config(cutoff: UtcTimestamp) -> WalkConfig<'static> {
     WalkConfig {
         cutoff_time: cutoff,
         to_date: None,

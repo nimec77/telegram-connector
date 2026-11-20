@@ -1,9 +1,9 @@
 //! Concrete canonical DTOs. Domain/legacy serializers remain unchanged.
 use super::contract::{ToolError, WireData, legacy_json};
 use super::responses;
+use crate::UtcTimestamp;
 use crate::error::Error;
 use crate::telegram::types::{self, PeerNamespace};
-use chrono::{DateTime, Utc};
 use rmcp::model::{CallToolResult, ContentBlock};
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -41,7 +41,7 @@ pub struct ChannelData {
     pub is_verified: bool,
     pub is_public: bool,
     pub is_subscribed: bool,
-    pub last_message_date: Option<DateTime<Utc>>,
+    pub last_message_date: Option<UtcTimestamp>,
 }
 impl TryFrom<types::Channel> for ChannelData {
     type Error = Error;
@@ -75,7 +75,7 @@ pub struct ForwardData {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub post_author: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub original_date: Option<DateTime<Utc>>,
+    pub original_date: Option<UtcTimestamp>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub original_message_id: Option<MessageId>,
 }
@@ -107,7 +107,7 @@ pub struct MessageData {
     pub text_truncated: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text_full_length: Option<u64>,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: UtcTimestamp,
     pub sender_id: Option<UserId>,
     pub sender_name: Option<String>,
     pub has_media: bool,
@@ -241,7 +241,7 @@ pub struct StatusData {
     pub last_response_write_age_secs: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_response_write_unavailable: Option<String>,
-    pub session_started_at: DateTime<Utc>,
+    pub session_started_at: UtcTimestamp,
     pub session_uptime_secs: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub premium: Option<bool>,
@@ -339,7 +339,7 @@ pub enum RecoveryEntry {
         recovery_key: Option<String>,
         request_id: String,
         tool_name: String,
-        written_at: DateTime<Utc>,
+        written_at: UtcTimestamp,
         size_bytes: usize,
         response: serde_json::Value,
     },

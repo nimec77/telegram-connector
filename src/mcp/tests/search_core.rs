@@ -26,7 +26,7 @@ async fn search_messages_returns_results() {
             channel_name: ChannelName::new("Test Channel").unwrap(),
             channel_username: Some(Username::new("testchannel").unwrap()),
             text: "Test message about AI".to_string(),
-            timestamp: chrono::Utc::now(),
+            timestamp: crate::UtcTimestamp::now(),
             sender_id: None,
             sender_name: None,
             has_media: false,
@@ -51,7 +51,7 @@ async fn search_messages_returns_results() {
         search_time_ms: 100,
         query_metadata: QueryMetadata {
             query: "AI".to_string(),
-            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_from: crate::UtcTimestamp::now() - jiff::SignedDuration::from_hours(48),
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
@@ -158,7 +158,7 @@ async fn search_messages_with_channel_filter() {
         search_time_ms: 50,
         query_metadata: QueryMetadata {
             query: "test".to_string(),
-            window_from: chrono::Utc::now() - chrono::Duration::hours(24),
+            window_from: crate::UtcTimestamp::now() - jiff::SignedDuration::from_hours(24),
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
@@ -211,7 +211,7 @@ async fn search_messages_applies_limits() {
         search_time_ms: 50,
         query_metadata: QueryMetadata {
             query: "test".to_string(),
-            window_from: chrono::Utc::now() - chrono::Duration::hours(72), // capped to MAX_HOURS_BACK
+            window_from: crate::UtcTimestamp::now() - jiff::SignedDuration::from_hours(72), // capped to MAX_HOURS_BACK
             window_to: None,
             channels_scanned: Some(0),
             channels_in_results: 0,
@@ -264,7 +264,7 @@ async fn search_allows_empty_query_with_media_filter() {
             channel_name: ChannelName::new("Test Channel").unwrap(),
             channel_username: Some(Username::new("testchannel").unwrap()),
             text: "".to_string(), // document with no caption
-            timestamp: chrono::Utc::now(),
+            timestamp: crate::UtcTimestamp::now(),
             sender_id: None,
             sender_name: None,
             has_media: true,
@@ -289,7 +289,7 @@ async fn search_allows_empty_query_with_media_filter() {
         search_time_ms: 100,
         query_metadata: QueryMetadata {
             query: "".to_string(),
-            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_from: crate::UtcTimestamp::now() - jiff::SignedDuration::from_hours(48),
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,
@@ -337,7 +337,7 @@ async fn search_passes_media_filter_to_params() {
         search_time_ms: 50,
         query_metadata: QueryMetadata {
             query: "AI news".to_string(),
-            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_from: crate::UtcTimestamp::now() - jiff::SignedDuration::from_hours(48),
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,

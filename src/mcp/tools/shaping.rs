@@ -252,7 +252,7 @@ mod tests {
             channel_name: ChannelName::new("Test").ok(),
             channel_username: Username::new("testchan").ok(),
             text: text.to_string(),
-            timestamp: chrono::Utc::now(),
+            timestamp: crate::UtcTimestamp::now(),
             sender_id: None,
             sender_name: None,
             has_media: false,
@@ -279,7 +279,7 @@ mod tests {
     fn test_metadata() -> QueryMetadata {
         QueryMetadata {
             query: String::new(),
-            window_from: chrono::Utc::now() - chrono::Duration::hours(48),
+            window_from: crate::UtcTimestamp::now() - jiff::SignedDuration::from_hours(48),
             window_to: None,
             channels_scanned: Some(1),
             channels_in_results: 1,

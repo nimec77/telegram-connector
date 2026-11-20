@@ -470,7 +470,7 @@ async fn include_full_passes_last_message_date_through() {
     let mut mock_client = MockTelegramClientTrait::new();
     let mut channel = create_test_channel_named(42, "News Channel", true);
     let expected_date = "2026-08-10T05:55:12Z"
-        .parse::<chrono::DateTime<chrono::Utc>>()
+        .parse::<crate::UtcTimestamp>()
         .unwrap();
     channel.last_message_date = Some(expected_date);
 

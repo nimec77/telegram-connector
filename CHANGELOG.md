@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Replace the connector's Chrono timestamp types with `UtcTimestamp` backed by
+  Jiff. Existing RFC 3339 JSON and legacy tool timestamp formats are preserved.
+
 ## [0.26.1] - 2026-11-15
 
 ### Fixed

@@ -25,8 +25,8 @@ impl TelegramClient {
             ));
         }
 
-        let window_to = chrono::Utc::now();
-        let cutoff = window_to - chrono::Duration::days(days_back as i64);
+        let window_to = crate::UtcTimestamp::now();
+        let cutoff = window_to - jiff::SignedDuration::from_hours(24 * (days_back as i64));
 
         let peer = self.resolve_peer(channel_ref).await?;
         let peer_ref = peer_to_ref(&peer).await?;
@@ -35,7 +35,7 @@ impl TelegramClient {
             with_timeout("iter_messages", self.timeouts.history_secs, async {
                 let mut messages = Vec::new();
                 let mut scanned = 0u32;
-                let mut oldest: Option<chrono::DateTime<chrono::Utc>> = None;
+                let mut oldest: Option<crate::UtcTimestamp> = None;
                 let mut complete = true;
                 // Raw GetHistory pager instead of grammers' iter_messages:
                 // same request, but it keeps the response envelope, which is
@@ -55,8 +55,7 @@ impl TelegramClient {
                     }
                     scanned += 1;
                     if let Some(t) = timestamp_from_raw(&raw_msg) {
-                        oldest =
-                            Some(oldest.map_or(t, |o: chrono::DateTime<chrono::Utc>| o.min(t)));
+                        oldest = Some(oldest.map_or(t, |o: crate::UtcTimestamp| o.min(t)));
                     }
                     if let Some(converted) = convert_raw_message(&raw_msg, &peer, &entities) {
                         messages.push(converted);
