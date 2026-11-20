@@ -19,6 +19,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 use telegram_core::config::{RateLimitConfig, TelegramConfig, defaults};
+use telegram_core::deadline::DrainDeadline;
 use telegram_core::operations::{
     AccountLimits, AccountOperations, CancellationToken, OperationContext,
 };
@@ -82,6 +83,8 @@ pub(super) struct Hosted {
     pub(super) media: super::media::MediaStore,
     pub(super) config: HostedConfig,
     pub(super) cancellation: CancellationToken,
+    drain_deadline: DrainDeadline,
+    drained: CancellationToken,
     registry: AccountRegistry<ActiveAccount>,
     pub(super) streams: Arc<telegram_core::streams::StreamBudget>,
     pub(super) subscribers: Arc<tokio::sync::Semaphore>,
@@ -91,11 +94,6 @@ pub(super) struct Hosted {
     pub(super) transition: tokio::sync::Mutex<()>,
     #[cfg(test)]
     pub(super) send_fixture: std::sync::OnceLock<super::sends::tests::SendFixture>,
-    #[cfg(test)]
-    pub(super) stream_fixture: std::sync::OnceLock<(
-        super::AccountGeneration,
-        telegram_core::streams::AccountStreams,
-    )>,
     #[cfg(any(test, feature = "test-support"))]
     pub(super) reads_fixture: std::sync::OnceLock<super::reads::fixture::ReadFixture>,
     maintenance: tokio::sync::Notify,
@@ -106,6 +104,18 @@ pub(super) struct ActiveAccount {
     pub(super) operations:
         AccountOperations<TelegramClient, telegram_core::rate_limiter::RateLimiter>,
     pub(super) streams: telegram_core::streams::AccountStreams,
+}
+
+impl ActiveAccount {
+    fn abort(&self) {
+        self.streams.abort();
+        self.client.abort_sender();
+    }
+
+    async fn close(&self) {
+        self.streams.close().await;
+        self.client.close().await;
+    }
 }
 
 impl Hosted {
@@ -164,11 +174,11 @@ impl Hosted {
             config,
             linking: Linking::default(),
             cancellation: CancellationToken::new(),
+            drain_deadline: DrainDeadline::default(),
+            drained: CancellationToken::new(),
             transition: tokio::sync::Mutex::new(()),
             #[cfg(any(test, feature = "test-support"))]
             reads_fixture: std::sync::OnceLock::new(),
-            #[cfg(test)]
-            stream_fixture: std::sync::OnceLock::new(),
             #[cfg(test)]
             send_fixture: std::sync::OnceLock::new(),
             maintenance: tokio::sync::Notify::new(),
@@ -236,6 +246,36 @@ impl Hosted {
             .map_err(ApiError::from)
     }
 
+    #[cfg(test)]
+    pub(super) async fn seed_account(
+        &self,
+        key: super::AccountGeneration,
+        account: impl FnOnce(Arc<telegram_core::rate_limiter::RateLimiter>) -> ActiveAccount,
+    ) -> Result<(), super::registry::LeaseError> {
+        let context = OperationContext::new(
+            tokio::time::Instant::now() + Duration::from_secs(5),
+            self.cancellation.child_token(),
+        );
+        self.registry
+            .lease(key, &context, async |limiter| Ok(account(limiter)))
+            .await?;
+        Ok(())
+    }
+
+    pub(super) fn begin_draining(&self) -> tokio::time::Instant {
+        let deadline = self
+            .drain_deadline
+            .start(tokio::time::Instant::now() + super::shutdown::DRAIN_LIMIT);
+        self.cancellation.cancel();
+        self.registry.stop(ActiveAccount::abort);
+        self.linking.stop_idle();
+        deadline
+    }
+
+    pub(super) async fn wait_drained(&self) {
+        self.drained.cancelled().await;
+    }
+
     pub(super) fn authorized_client(&self, id: &str) -> bool {
         self.config.registered_clients.contains(id)
     }
@@ -246,23 +286,30 @@ async fn maintain(hosted: Weak<Hosted>) {
         let Some(service) = hosted.upgrade() else {
             break;
         };
+        let maintenance = async {
+            tokio::select! {
+                _ = service.maintenance.notified() => (),
+                _ = tokio::time::sleep(maintenance_interval()) => (),
+            }
+            close_idle(&service).await;
+            if let Some(uploads) = &service.uploads {
+                uploads.reap();
+            }
+            service.media.purge_expired();
+            let _ = service.linking.reap(&service.store).await;
+            cleanup_retired(&service).await;
+        };
         tokio::select! {
             biased;
             _ = service.cancellation.cancelled() => {
-                service.registry.cancel_all();
-                close_idle(&service).await;
+                let deadline = service.begin_draining();
+                let _ = tokio::time::timeout_at(deadline, service.registry.join_stopped(ActiveAccount::close)).await;
+                service.registry.release_stopped();
+                service.drained.cancel();
                 break;
             }
-            _ = service.maintenance.notified() => (),
-            _ = tokio::time::sleep(maintenance_interval()) => (),
+            () = maintenance => (),
         }
-        close_idle(&service).await;
-        if let Some(uploads) = &service.uploads {
-            uploads.reap();
-        }
-        service.media.purge_expired();
-        let _ = service.linking.reap(&service.store).await;
-        cleanup_retired(&service).await;
         if Arc::strong_count(&service) == 1 {
             break;
         }
@@ -280,8 +327,7 @@ async fn close_idle(service: &Hosted) {
         .invalidate_failed(|account| account.streams.is_closed());
     if let Ok(clients) = service.registry.evict() {
         for (key, account) in clients {
-            account.streams.close().await;
-            account.client.close().await;
+            account.close().await;
             drop(account);
             let _ = service.registry.finish_close(&key);
         }
@@ -325,7 +371,7 @@ async fn cleanup_one(service: &Hosted, retired: super::RetiredGeneration, now: u
                     return false;
                 }
                 let settings = linking::session_config(&service.config.telegram, retired.generation());
-                let Ok(client) = TelegramClient::new(&settings, &defaults::default_search_config()).await else {
+                let Ok(client) = TelegramClient::new_with_streams(&settings, &defaults::default_search_config()).await else {
                     return false;
                 };
                 let clean = client.client().sign_out().await.is_ok();
@@ -428,17 +474,18 @@ pub(super) async fn start(
     let source = super::single_header(&headers, axum::http::HeaderName::from_static("x-real-ip"))
         .and_then(|value| value.parse::<IpAddr>().ok())
         .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST));
-    hosted
-        .linking
-        .start(
+    link_step(
+        hosted,
+        hosted.linking.start(
             &hosted.store,
             owner.identity.principal(),
             source,
             &hosted.config.telegram,
             body.phone_number,
-        )
-        .await
-        .map(Json)
+        ),
+    )
+    .await
+    .map(Json)
 }
 
 pub(super) async fn code(
@@ -450,16 +497,17 @@ pub(super) async fn code(
     let (_, owner) = state.browser.owner_mutation(&headers)?;
     let Json(body) = body.map_err(super::json_error)?;
     let hosted = state.hosted()?;
-    hosted
-        .linking
-        .code(
+    link_step(
+        hosted,
+        hosted.linking.code(
             &hosted.store,
             owner.identity.principal(),
             &challenge,
             body.code,
-        )
-        .await
-        .map(Json)
+        ),
+    )
+    .await
+    .map(Json)
 }
 
 pub(super) async fn password(
@@ -471,16 +519,28 @@ pub(super) async fn password(
     let (_, owner) = state.browser.owner_mutation(&headers)?;
     let Json(body) = body.map_err(super::json_error)?;
     let hosted = state.hosted()?;
-    hosted
-        .linking
-        .password(
+    link_step(
+        hosted,
+        hosted.linking.password(
             &hosted.store,
             owner.identity.principal(),
             &challenge,
             body.password,
-        )
-        .await
-        .map(Json)
+        ),
+    )
+    .await
+    .map(Json)
+}
+
+async fn link_step<T>(
+    hosted: &Hosted,
+    step: impl Future<Output = Result<T, ApiError>>,
+) -> Result<T, ApiError> {
+    tokio::select! {
+        biased;
+        _ = hosted.cancellation.cancelled() => Err(ApiError::new(ErrorCode::Unavailable)),
+        result = step => result,
+    }
 }
 
 pub(super) async fn unlink(
@@ -490,7 +550,7 @@ pub(super) async fn unlink(
     let (_, owner) = state.browser.owner_mutation(&headers)?;
     let hosted = state.hosted()?;
     let principal = owner.identity.principal();
-    hosted.linking.cancel(&hosted.store, principal).await?;
+    link_step(hosted, hosted.linking.cancel(&hosted.store, principal)).await?;
     let _transition = hosted.transition.lock().await;
     if let Some(generation) = hosted
         .store
@@ -640,3 +700,6 @@ pub(super) fn positive_channel_id(value: &str) -> Option<i64> {
     let id = value.parse::<i64>().ok()?;
     (id > 0 && id.to_string() == value).then_some(id)
 }
+
+#[cfg(test)]
+mod tests;

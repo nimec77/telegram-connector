@@ -119,9 +119,7 @@ pub(super) async fn subscribe(
         WriteAuthorization::default,
         |Extension(axum::extract::ConnectInfo(writer))| writer,
     );
-    let cancellation = lease
-        .as_ref()
-        .map_or_else(CancellationToken::new, |lease| lease.cancellation().clone());
+    let revocation = lease.revocation().clone();
     {
         let _transition =
             tokio::time::timeout_at(context_deadline(&access), service.transition.lock())
@@ -131,16 +129,16 @@ pub(super) async fn subscribe(
         writer.bind(
             access.credential_deadline(),
             subscription.membership_lost(),
-            cancellation.clone(),
+            revocation.clone(),
         )?;
         service.writers.register(&access, &writer)?;
     }
-    let watch = watch_authorization(&access, &subscription, &writer, cancellation.clone());
+    let watch = watch_authorization(&access, &subscription, &writer, revocation.clone());
     let state = Stream {
         ready: Some(ready),
         subscription,
         _lease: lease,
-        cancellation,
+        revocation,
         access,
         changes,
         writer,
@@ -179,21 +177,11 @@ async fn establish(
     ids: &[ChannelId],
 ) -> Result<
     (
-        Option<AccountLease<super::accounts::ActiveAccount>>,
+        AccountLease<super::accounts::ActiveAccount>,
         ChannelSubscription,
     ),
     ApiError,
 > {
-    #[cfg(test)]
-    if let Some((generation, streams)) = access.hosted.stream_fixture.get()
-        && generation == &access.generation
-    {
-        let subscription = streams
-            .subscribe_channel_posts(ids, &access.opening_context())
-            .await
-            .map_err(subscribe_error)?;
-        return Ok((None, subscription));
-    }
     let lease = access.lease().await?;
     let subscription = lease
         .client()
@@ -201,7 +189,7 @@ async fn establish(
         .subscribe_channel_posts(ids, &access.context(&lease))
         .await
         .map_err(subscribe_error)?;
-    Ok((Some(lease), subscription))
+    Ok((lease, subscription))
 }
 
 struct Watch(tokio::task::JoinHandle<()>);
@@ -245,8 +233,8 @@ fn watch_authorization(
 struct Stream {
     ready: Option<QueuedEvent>,
     subscription: ChannelSubscription,
-    _lease: Option<AccountLease<super::accounts::ActiveAccount>>,
-    cancellation: CancellationToken,
+    _lease: AccountLease<super::accounts::ActiveAccount>,
+    revocation: CancellationToken,
     _watch: Watch,
     access: ReadAccess,
     changes: broadcast::Receiver<()>,
@@ -286,7 +274,7 @@ impl Stream {
                     self.finished = true;
                     return Some(Bytes::from_static(b"event: interrupted\ndata: {\"reason\":\"service_draining\"}\n\n"));
                 }
-                _ = self.cancellation.cancelled() => {
+                _ = self.revocation.cancelled() => {
                     self.writer.revoke();
                     return None;
                 }

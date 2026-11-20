@@ -1,16 +1,17 @@
 use super::*;
 use crate::contracts::{GrantUpdate, ReadGrant};
 use crate::identity_http::Fixture as Issuer;
-use crate::service::accounts::Hosted;
+use crate::service::accounts::{ActiveAccount, Hosted};
 use crate::service::reads::fixture::{FixtureAccount, ReadFixture};
-use crate::service::{BrowserConfig, HostedConfig, build_router, serve};
+use crate::service::{BrowserConfig, HostedConfig, build_router};
 use futures::StreamExt as _;
 use secrecy::SecretString;
 use serde_json::json;
 use telegram_core::UtcTimestamp;
 use telegram_core::config::RateLimitConfig;
 use telegram_core::error::Error;
-use telegram_core::rate_limiter::RateLimiter;
+use telegram_core::operations::{AccountLimits, AccountOperations};
+use telegram_core::rate_limiter::RateLimiterTrait as _;
 use telegram_core::streams::{ChannelHead, ChannelHeadLookup, ChannelPost, test_support};
 use telegram_core::telegram::types::MessageId;
 use tokio::net::TcpListener;
@@ -120,18 +121,30 @@ async fn reconnect_only_delivers_posts_after_the_new_head() {
         .await
         .expect("grant");
     let heads = Arc::new(Heads(std::sync::atomic::AtomicI64::new(103)));
-    let (streams, input) = test_support::account_streams(
-        heads.clone(),
-        Arc::new(RateLimiter::new(&RateLimitConfig::default())),
-        state.config.events.stream_limits(),
-        Arc::clone(&state.streams),
-    );
-    assert!(
-        state
-            .stream_fixture
-            .set((generation.clone(), streams))
-            .is_ok()
-    );
+    let (client, _runner, _session) = telegram_core::telegram::client::stalled_client().await;
+    let client = Arc::new(client);
+    let mut input = None;
+    state
+        .seed_account(generation.clone(), |limiter| {
+            limiter.refund(u32::MAX);
+            let (streams, source) = test_support::account_streams(
+                heads.clone(),
+                limiter.clone(),
+                state.config.events.stream_limits(),
+                Arc::clone(&state.streams),
+            );
+            input = Some(source);
+            let operations =
+                AccountOperations::new(Arc::clone(&client), limiter, AccountLimits::default());
+            ActiveAccount {
+                client,
+                operations,
+                streams,
+            }
+        })
+        .await
+        .expect("seed production account lease");
+    let input = input.expect("fixture update source");
     let mut retained: telegram_core::telegram::types::Message = serde_json::from_value(json!({
         "id":104,"channel_id":42,"channel_name":"Channel","text":"A",
         "timestamp":"2023-11-14T22:13:20Z","has_media":false,"media_type":"none","link":""
@@ -166,10 +179,15 @@ async fn reconnect_only_delivers_posts_after_the_new_head() {
     let server = TcpListener::bind("127.0.0.1:0").await.expect("listen");
     let base = format!("http://{}", server.local_addr().expect("address"));
     let cancel = state.cancellation.clone();
+    let managed = Arc::clone(&state);
     let task = tokio::spawn(async move {
-        serve(server, app, Duration::from_secs(1), async move {
-            cancel.cancelled().await
-        })
+        super::super::shutdown::serve(
+            server,
+            app,
+            Duration::from_secs(1),
+            Some(managed),
+            async move { cancel.cancelled().await },
+        )
         .await
         .expect("server");
     });
@@ -263,16 +281,9 @@ async fn reconnect_only_delivers_posts_after_the_new_head() {
     let mut draining = Frames::new(fetch("channel_id=42").send().await.expect("fresh stream"));
     assert!(draining.read().await.contains("\"head_message_id\":104"));
     state.cancellation.cancel();
-    let drained = tokio::time::timeout(Duration::from_secs(3), draining.stream.next())
-        .await
-        .expect("bounded drain");
-    if let Some(Ok(chunk)) = drained {
-        assert!(
-            std::str::from_utf8(&chunk)
-                .expect("terminal data")
-                .contains("service_draining")
-        );
-    }
+    let terminal = draining.read().await;
+    assert!(terminal.starts_with("event: interrupted\n"));
+    assert!(terminal.contains("service_draining"));
     task.await.expect("server stop");
     assert_eq!(
         state.subscribers.available_permits(),

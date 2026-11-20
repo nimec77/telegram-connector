@@ -71,3 +71,23 @@ tests and three doctests, warning-denied Clippy and rustdoc, the workspace
 release build, isolated stdio and gateway release builds, and all four stdio
 client and process probes.
 [Temporary pin and stable return condition](../dependency-status.md#temporary-rmcp-pin--2026-11-20)
+
+## Hosted shutdown follow-up
+
+The hosted listener and account tasks now share the first ten-second drain
+deadline. A regression with a retained account lease timed out against the
+previous commit. It passed after the service began aborting and joining
+retained account readers and senders. A late-startup test keeps a second
+reservation alive and verifies that the stopped registry discards the newly
+constructed client.
+
+The SSE loopback test holds a real registry lease and receives the
+`service_draining` frame on a writable connection. Generation revocation and
+service work cancellation have separate signals, so unlink, membership loss
+and credential expiry can still cut off writes. The independent re-review
+found no remaining Critical or Important issue in the shutdown paths.
+
+The repeat macOS gate passed 1,273 tests and three doctests, strict Clippy,
+warning-free rustdoc, the workspace release build and the isolated hosted API
+release build. The stdio startup probe reached its response deadline during a
+concurrent run. All four stdio probes passed on the isolated rerun.

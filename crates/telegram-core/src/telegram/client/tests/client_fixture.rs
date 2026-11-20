@@ -8,6 +8,7 @@ pub async fn stalled_client() -> (TelegramClient, impl Send, tempfile::TempDir) 
     let session = Arc::new(SqliteSession::open(&path).await.expect("temporary session"));
     let pool = SenderPool::new(Arc::clone(&session), 1);
     let send_adapter = super::send_transport::FinalSendAdapter::new(pool.handle.thin.clone());
+    let runner_handle = tokio::spawn(async {});
     let client = TelegramClient {
         api_id: 1,
         client: Client::new(pool.handle),
@@ -25,7 +26,8 @@ pub async fn stalled_client() -> (TelegramClient, impl Send, tempfile::TempDir) 
         max_download_bytes: 1024,
         search_deadline_secs: 20,
         account_status: tokio::sync::RwLock::new(AccountStatus::default()),
-        runner_handle: tokio::sync::Mutex::new(tokio::spawn(async {})),
+        runner_abort: runner_handle.abort_handle(),
+        runner_handle: tokio::sync::Mutex::new(runner_handle),
         stream_updates: None,
     };
     (client, pool.runner, dir)

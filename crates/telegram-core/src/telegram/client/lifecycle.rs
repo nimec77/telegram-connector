@@ -87,6 +87,7 @@ impl TelegramClient {
             max_download_bytes: config.max_download_bytes,
             search_deadline_secs: search.deadline_seconds,
             account_status: tokio::sync::RwLock::new(AccountStatus::default()),
+            runner_abort: runner_handle.abort_handle(),
             runner_handle: tokio::sync::Mutex::new(runner_handle),
             stream_updates,
         })
@@ -106,6 +107,12 @@ impl TelegramClient {
                 let _ = (&mut *handle).await;
             }
         }
+    }
+
+    /// Abort the sender immediately, including when a host retains account leases.
+    pub fn abort_sender(&self) {
+        self.client.disconnect();
+        self.runner_abort.abort();
     }
 
     /// Borrow the upstream grammers client for compatibility/integration.
@@ -157,7 +164,7 @@ impl TelegramClient {
 impl Drop for TelegramClient {
     fn drop(&mut self) {
         if self.stream_updates.is_some() {
-            self.runner_handle.get_mut().abort();
+            self.runner_abort.abort();
         }
     }
 }

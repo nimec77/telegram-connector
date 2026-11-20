@@ -100,6 +100,7 @@ pub struct TelegramClient {
     /// Local observations; refreshes never hold this lock across network work.
     account_status: tokio::sync::RwLock<AccountStatus>,
     runner_handle: tokio::sync::Mutex<JoinHandle<()>>,
+    runner_abort: tokio::task::AbortHandle,
     stream_updates: Option<std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<UpdatesLike>>>>,
 }
 

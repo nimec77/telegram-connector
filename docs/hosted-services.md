@@ -79,7 +79,7 @@ Create a second private JSON file for the gateway. Use the same authority settin
 
 Run the commands as separate services. `GET /readyz` on the API returns 204 after initialization and 503 while draining. `GET /livez` on the gateway returns 204 without accessing a Telegram account. Per-account sessions open on demand. `hosted.max_in_flight` bounds concurrent API handlers (1–1,024), `hosted.max_accounts` ranges from 1 to 256, `idle_seconds` from 1 to 3,600 and `request_seconds` from 1 to 120. The gateway's configurable deadline is 1–120 seconds and includes verification, exchange, capability lookup and the API operation. Only verified delegated API callers can shorten the API's local budget with `X-Telegram-Deadline-Unix-Ms`. The API also clamps it to token expiry and reserves 100 ms for clock skew. Keep both service clocks synchronized.
 
-On SIGINT or SIGTERM the API stops admission, cancels hosted work and allows up to ten seconds for the HTTP listener to drain. Clients must open fresh streams after a restart. Restart the gateway independently when its issuer settings or exchange secret change.
+On SIGINT or SIGTERM the API stops admission, ends account readers and senders even when requests hold leases, and gives the HTTP listener and account tasks one shared ten-second drain deadline. Clients must open fresh streams after a restart. Restart the gateway independently when its issuer settings or exchange secret change.
 
 ### HTTPS edge
 

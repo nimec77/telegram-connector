@@ -2,12 +2,12 @@
 
 use super::storage::{AccountGeneration, StorageError};
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use telegram_core::config::RateLimitConfig;
 use telegram_core::operations::{CancellationToken, OperationContext};
 use telegram_core::rate_limiter::RateLimiter;
-use tokio::sync::{OnceCell, OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::time::Instant;
 
 pub(super) struct AccountRegistry<C> {
@@ -19,15 +19,18 @@ pub(super) struct AccountRegistry<C> {
 }
 
 struct RegistryState<C> {
+    stopped: bool,
     entries: HashMap<AccountGeneration, Arc<Entry<C>>>,
     budgets: HashMap<AccountGeneration, Arc<RateLimiter>>,
     closing: HashSet<AccountGeneration>,
 }
 
 struct Entry<C> {
-    client: OnceCell<C>,
+    client: OnceLock<C>,
+    initializing: tokio::sync::Mutex<()>,
     limiter: Arc<RateLimiter>,
     cancellation: CancellationToken,
+    revocation: CancellationToken,
     last_used: Mutex<Instant>,
     admitted: Arc<Semaphore>,
 }
@@ -59,6 +62,10 @@ impl<C> AccountLease<C> {
     pub(super) fn cancellation(&self) -> &CancellationToken {
         &self.entry.cancellation
     }
+
+    pub(super) fn revocation(&self) -> &CancellationToken {
+        &self.entry.revocation
+    }
 }
 
 impl<C> Drop for AccountLease<C> {
@@ -81,6 +88,7 @@ impl<C> AccountRegistry<C> {
     pub(super) fn new(max_clients: usize, idle_timeout: Duration, rates: RateLimitConfig) -> Self {
         Self {
             state: Mutex::new(RegistryState {
+                stopped: false,
                 entries: HashMap::new(),
                 budgets: HashMap::new(),
                 closing: HashSet::new(),
@@ -116,6 +124,9 @@ impl<C> AccountRegistry<C> {
         }
         let entry = {
             let mut state = self.state.lock().map_err(|_| unavailable())?;
+            if state.stopped {
+                return Err(LeaseError::Cancelled);
+            }
             if let Some(entry) = state.entries.get(&key) {
                 Arc::clone(entry)
             } else {
@@ -136,9 +147,11 @@ impl<C> AccountRegistry<C> {
                     })
                 });
                 let entry = Arc::new(Entry {
-                    client: OnceCell::new(),
+                    client: OnceLock::new(),
+                    initializing: tokio::sync::Mutex::new(()),
                     limiter: Arc::clone(limiter),
                     cancellation: CancellationToken::new(),
+                    revocation: CancellationToken::new(),
                     last_used: Mutex::new(Instant::now()),
                     admitted: Arc::new(Semaphore::new(32)),
                 });
@@ -159,13 +172,31 @@ impl<C> AccountRegistry<C> {
         start: impl AsyncFnOnce(Arc<RateLimiter>) -> Result<C, StorageError>,
     ) -> Result<AccountLease<C>, LeaseError> {
         let Reservation { key, entry, permit } = reservation;
+        let initialize = async {
+            if entry.client.get().is_some() {
+                return Ok(());
+            }
+            let _initializer = entry.initializing.lock().await;
+            if entry.client.get().is_none() {
+                let client = start(Arc::clone(&entry.limiter))
+                    .await
+                    .map_err(LeaseError::Storage)?;
+                // Publish under the same lock used to stop admission and revoke
+                // generations so the supervisor cannot miss a late sender.
+                let state = self.state.lock().map_err(|_| unavailable())?;
+                if state.stopped || entry.cancellation.is_cancelled() {
+                    return Err(LeaseError::Cancelled);
+                }
+                entry.client.set(client).map_err(|_| unavailable())?;
+            }
+            Ok(())
+        };
         let started = tokio::select! {
             biased;
             _ = entry.cancellation.cancelled() => Err(LeaseError::Cancelled),
             _ = context.cancellation().cancelled() => Err(LeaseError::Cancelled),
             _ = tokio::time::sleep_until(context.deadline()) => Err(LeaseError::Deadline),
-            result = entry.client.get_or_try_init(|| async { start(Arc::clone(&entry.limiter)).await }) =>
-                result.map(|_| ()).map_err(LeaseError::Storage),
+            result = initialize => result,
         };
         if let Err(error) = started {
             // Serialize waiter-drop with entry removal. Keeping two cancelled
@@ -178,6 +209,9 @@ impl<C> AccountRegistry<C> {
                 state.entries.remove(&key);
             }
             return Err(error);
+        }
+        if entry.cancellation.is_cancelled() {
+            return Err(LeaseError::Cancelled);
         }
         Ok(AccountLease {
             entry,
@@ -201,6 +235,7 @@ impl<C> AccountRegistry<C> {
     pub(super) fn invalidate(&self, key: &AccountGeneration) -> Result<(), StorageError> {
         let mut state = self.state.lock().map_err(|_| StorageError::Unavailable)?;
         if let Some(entry) = state.entries.get(key) {
+            entry.revocation.cancel();
             entry.cancellation.cancel();
         }
         state.budgets.remove(key);
@@ -235,11 +270,47 @@ impl<C> AccountRegistry<C> {
         Ok(())
     }
 
-    pub(super) fn cancel_all(&self) {
-        if let Ok(state) = self.state.lock() {
-            for entry in state.entries.values() {
-                entry.cancellation.cancel();
+    // Take an ownership snapshot before touching any client. Leases retain
+    // the entry for the caller, but cannot keep its sender or reader running.
+    pub(super) fn stop(&self, abort: impl Fn(&C)) {
+        let entries = if let Ok(mut state) = self.state.lock() {
+            state.stopped = true;
+            state.entries.values().cloned().collect::<Vec<_>>()
+        } else {
+            return;
+        };
+        for entry in entries {
+            entry.cancellation.cancel();
+            if let Some(client) = entry.client.get() {
+                abort(client);
             }
+        }
+    }
+
+    pub(super) async fn join_stopped(&self, close: impl AsyncFn(&C)) {
+        use futures::StreamExt as _;
+
+        let entries = self.state.lock().map_or_else(
+            |_| Vec::new(),
+            |state| state.entries.values().cloned().collect(),
+        );
+        let close = &close;
+        futures::stream::iter(entries)
+            .for_each_concurrent(None, |entry| async move {
+                if let Some(client) = entry.client.get() {
+                    close(client).await;
+                }
+            })
+            .await;
+    }
+
+    pub(super) fn release_stopped(&self) {
+        if let Ok(mut state) = self.state.lock() {
+            let entries = std::mem::take(&mut state.entries);
+            state.budgets.clear();
+            state.closing.clear();
+            drop(state);
+            drop(entries);
         }
     }
 
@@ -378,5 +449,36 @@ mod tests {
                 .await
                 .is_ok()
         );
+    }
+    #[tokio::test]
+    async fn client_finishing_startup_after_stop_is_dropped_with_a_reservation_alive() {
+        let root = tempfile::tempdir().expect("root");
+        let store = AccountStore::open(root.path()).await.expect("store");
+        let generation = store.start("issuer", "owner").await.expect("generation");
+        let registry = AccountRegistry::new(1, Duration::from_secs(1), RateLimitConfig::default());
+        let context = OperationContext::new(
+            Instant::now() + Duration::from_secs(5),
+            CancellationToken::new(),
+        );
+        let builder = registry
+            .reserve(generation.clone(), &context)
+            .expect("startup reservation");
+        let waiting = registry
+            .reserve(generation, &context)
+            .expect("second reservation");
+        let client = Arc::new(());
+        let result = registry
+            .open(builder, &context, async |_| {
+                registry.stop(|_: &Arc<()>| panic!("client has not finished startup"));
+                Ok(Arc::clone(&client))
+            })
+            .await;
+        assert!(matches!(result, Err(LeaseError::Cancelled)));
+        assert_eq!(
+            Arc::strong_count(&client),
+            1,
+            "late client left in the reserved entry"
+        );
+        drop(waiting);
     }
 }

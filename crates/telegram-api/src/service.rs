@@ -12,6 +12,7 @@ mod media;
 mod reads;
 mod registry;
 mod sends;
+mod shutdown;
 mod storage;
 #[cfg(feature = "test-support")]
 #[doc(hidden)]
@@ -89,13 +90,41 @@ pub async fn hosted_router(
     browser: BrowserConfig,
     config: HostedConfig,
 ) -> Result<(Router, telegram_core::operations::CancellationToken), ErrorCode> {
+    let (router, hosted) = open_hosted_router(verifier, browser, config).await?;
+    Ok((router, hosted.cancellation.clone()))
+}
+
+async fn open_hosted_router(
+    verifier: CredentialVerifier,
+    browser: BrowserConfig,
+    config: HostedConfig,
+) -> Result<(Router, Arc<accounts::Hosted>), ErrorCode> {
     let hosted = accounts::Hosted::open(config)
         .await
         .map_err(|error| error.0)?;
-    let shutdown = hosted.cancellation.clone();
-    let router =
-        build_router(verifier, browser, Some(hosted)).map_err(|_| ErrorCode::Unavailable)?;
-    Ok((router, shutdown))
+    let router = build_router(verifier, browser, Some(Arc::clone(&hosted)))
+        .map_err(|_| ErrorCode::Unavailable)?;
+    Ok((router, hosted))
+}
+
+/// Run the hosted API and stop the listener and its account tasks under one deadline.
+///
+/// # Errors
+/// Returns a fixed diagnostic if initialization or the hosted listener fails.
+pub async fn serve_hosted(
+    listener: tokio::net::TcpListener,
+    verifier: CredentialVerifier,
+    browser: BrowserConfig,
+    config: HostedConfig,
+    shutdown_signal: impl Future<Output = ()> + Send + 'static,
+) -> Result<(), &'static str> {
+    let write_timeout = std::time::Duration::from_secs(config.events.stalled_write_seconds);
+    let (app, hosted) = open_hosted_router(verifier, browser, config)
+        .await
+        .map_err(|_| "Could not initialize the hosted account service")?;
+    shutdown::serve(listener, app, write_timeout, Some(hosted), shutdown_signal)
+        .await
+        .map_err(|_| "Hosted API listener failed")
 }
 
 fn build_router(
@@ -353,29 +382,7 @@ pub async fn serve(
     write_timeout: std::time::Duration,
     shutdown: impl Future<Output = ()> + Send + 'static,
 ) -> std::io::Result<()> {
-    let stop = telegram_core::operations::CancellationToken::new();
-    let listener_stop = stop.clone();
-    let hard_stop = telegram_core::operations::CancellationToken::new();
-    let listener_task = axum::serve(
-        event_writer::DeadlineListener::new(listener, write_timeout, hard_stop.clone()),
-        app.into_make_service_with_connect_info::<event_writer::WriteAuthorization>(),
-    )
-    .with_graceful_shutdown(async move { listener_stop.cancelled().await });
-    let mut server = std::pin::pin!(std::future::IntoFuture::into_future(listener_task));
-    tokio::select! {
-        result = &mut server => result,
-        () = shutdown => {
-            stop.cancel();
-            match tokio::time::timeout(std::time::Duration::from_secs(10), server).await {
-                Ok(result) => result,
-                Err(_) => {
-                    hard_stop.cancel();
-                    tokio::task::yield_now().await;
-                    Ok(())
-                }
-            }
-        }
-    }
+    shutdown::serve(listener, app, write_timeout, None, shutdown).await
 }
 
 #[cfg(test)]

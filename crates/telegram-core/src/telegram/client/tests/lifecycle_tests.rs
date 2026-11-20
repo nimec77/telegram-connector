@@ -114,3 +114,22 @@ async fn cached_status_remains_readable_while_refresh_is_pending() {
     drop(value);
     task.abort();
 }
+
+#[tokio::test]
+async fn sender_can_be_aborted_while_the_client_remains_owned() {
+    let (mut client, _runner, _dir) =
+        crate::telegram::client::client_fixture::stalled_client().await;
+    let worker = tokio::spawn(pending::<()>());
+    client.runner_abort = worker.abort_handle();
+    *client.runner_handle.get_mut() = worker;
+
+    client.abort_sender();
+    let result = tokio::time::timeout(StdDuration::from_secs(1), client.runner_handle.get_mut())
+        .await
+        .expect("sender task must end");
+    assert!(
+        result
+            .expect_err("pending sender was aborted")
+            .is_cancelled()
+    );
+}

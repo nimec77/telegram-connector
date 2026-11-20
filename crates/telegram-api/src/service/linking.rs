@@ -298,6 +298,17 @@ impl Linking {
         result
     }
 
+    pub(super) fn stop_idle(&self) {
+        let slots = if let Ok(mut attempts) = self.attempts.lock() {
+            std::mem::take(&mut attempts.owners)
+        } else {
+            return;
+        };
+        // Idle attempts own their client in the slot. An in-flight step owns
+        // its slot independently and is cancelled by the HTTP handler.
+        drop(slots);
+    }
+
     pub(super) async fn cancel(
         &self,
         store: &Arc<AccountStore>,
@@ -474,7 +485,7 @@ async fn request_code(
     phone: &str,
     hash: &str,
 ) -> Result<Box<dyn LoginChallenge>, ApiError> {
-    let client = TelegramClient::new(config, &defaults::default_search_config())
+    let client = TelegramClient::new_with_streams(config, &defaults::default_search_config())
         .await
         .map_err(super::http_error::from_telegram)?;
     let token = client

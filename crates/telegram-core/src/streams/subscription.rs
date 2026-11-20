@@ -14,14 +14,19 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::Notify;
-use tokio::task::JoinHandle;
+use tokio::task::{AbortHandle, JoinHandle};
 
 /// One account's native update reader and its pending and active subscriptions.
 pub struct AccountStreams {
     shared: Arc<Shared>,
     heads: Arc<dyn ChannelHeadLookup>,
     limiter: Arc<dyn RateLimiterTrait>,
-    reader: Option<tokio::sync::Mutex<JoinHandle<()>>>,
+    reader: Option<ReaderTask>,
+}
+
+struct ReaderTask {
+    abort: AbortHandle,
+    join: tokio::sync::Mutex<JoinHandle<()>>,
 }
 
 impl AccountStreams {
@@ -57,10 +62,14 @@ impl AccountStreams {
         let mut streams = Self::with_head_lookup(client, limiter, limits, budget);
         let shared = Arc::clone(&streams.shared);
         let lifetime = ReaderLifetime(Arc::clone(&shared));
-        streams.reader = Some(tokio::sync::Mutex::new(runtime.spawn(async move {
+        let task = runtime.spawn(async move {
             let _lifetime = lifetime;
             reader::run(reader_client, updates, shared, maintenance_timeout).await;
-        })));
+        });
+        streams.reader = Some(ReaderTask {
+            abort: task.abort_handle(),
+            join: tokio::sync::Mutex::new(task),
+        });
         Ok(streams)
     }
 
@@ -109,13 +118,20 @@ impl AccountStreams {
     ///
     /// The Telegram sender is owned by the client separately.
     pub async fn close(&self) {
-        self.shared.close(InterruptionReason::ServiceDraining);
+        self.abort();
         if let Some(reader) = &self.reader {
-            let mut handle = reader.lock().await;
+            let mut handle = reader.join.lock().await;
             if !handle.is_finished() {
-                handle.abort();
                 let _ = (&mut *handle).await;
             }
+        }
+    }
+
+    /// End subscriptions and abort native update work without waiting for leases to drop.
+    pub fn abort(&self) {
+        self.shared.close(InterruptionReason::ServiceDraining);
+        if let Some(reader) = &self.reader {
+            reader.abort.abort();
         }
     }
 
@@ -155,10 +171,7 @@ impl AccountStreams {
 
 impl Drop for AccountStreams {
     fn drop(&mut self) {
-        self.shared.close(InterruptionReason::ServiceDraining);
-        if let Some(reader) = &mut self.reader {
-            reader.get_mut().abort();
-        }
+        self.abort();
     }
 }
 
