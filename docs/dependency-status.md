@@ -19,16 +19,54 @@ Return to crates.io once a stable SDK can pass the workspace graph and
 transport checks with Chrono absent. Remove the Rust SDK source allowance
 as part of that change. [Maintenance policy](maintenance.md)
 
+## Final workspace dependency check — 2026-11-20
+
+The official crates.io sparse index check began at **2026-11-20T14:33:22Z**
+and returned versions for all **403 registry names** in the lockfile. The
+workspace resolves **439 packages** across four members, including **435
+external identities**. The inventory records normal, build, development,
+optional and target-conditional declarations, default and all-feature
+resolution, license declarations, exact source identities and build lockfile
+hash. It includes each resolved package's reverse requirements, duplicate
+lines and changes from the earlier workspace inventory.
+[Final locked inventory](validation/2026-11-20-workspace-final-dependency-inventory.json) ·
+[Pre-pin inventory](validation/2026-11-20-workspace-dependency-inventory.json)
+
+- `cc` advanced from **1.11.2** to **1.11.3** as a lockfile-only build-dependency
+  update. Its resolved parents are `aws-lc-sys` (`^1.2.41`), `cmake` (`^1.2.46`),
+  `libsql-ffi` (`^1.0`) and `ring` (`^1.2.8`). A fresh online `cargo update
+  --dry-run --verbose` selected zero further updates. All direct registry
+  dependencies resolve to the newest stable non-yanked releases at the cutoff.
+- There are **60 older transitive identities** and **20 names with multiple
+  resolved versions**. For example, Axum 0.8.9 pins `matchit =0.8.4`, and
+  grammers-client 0.12.0 requires `jiff ^0.2.40` while the connector uses Jiff
+  1.x. Inverse Cargo trees show first-level parents for 57 of these identities.
+  Locked Cargo metadata supplies the remaining three edges for `getrandom 0.2.17`,
+  `quinn-udp 0.5.16` and `windows-sys 0.52.0`. The inventory records each parent
+  and its requirement, including target-specific and build edges.
+- Codeberg `HEAD` remained `e61cf8585e1e9969ab81eda9fb4725a1500e2d86`, the
+  shared revision for all eight resolved grammers packages. The latest stable
+  rmcp release remained **3.11.0**. Its Chrono-optional pull request is open at
+  the approved revision, and the full locked graph remains Chrono-free.
+  [grammers upstream](https://codeberg.org/Lonami/grammers) ·
+  [SDK releases](https://github.com/modelcontextprotocol/rust-sdk/releases) ·
+  [Chrono-optional change](https://github.com/modelcontextprotocol/rust-sdk/pull/1474)
+- The fresh RustSec database `f291af9b1cc0d21dfcea1709d6b037963cef262b`
+  contained 1,555 advisories. `cargo audit --deny unsound --deny yanked`,
+  workspace all-feature `cargo deny --locked check sources advisories`, and
+  `python3 scripts/check_dependency_policy.py` passed with the final lockfile.
+  [RustSec database revision](https://github.com/RustSec/advisory-db/tree/f291af9b1cc0d21dfcea1709d6b037963cef262b)
+
 ## Workspace service integration — 2026-11-20
 
-The final registry inventory used the official crates.io sparse index at
+The pre-pin registry inventory used the official crates.io sparse index at
 **2026-11-20T02:45:05Z**. It compared all **413 registry names**, with **443
 external resolved identities** across the four workspace members. The inventory
 retains normal, build, development, optional and target-specific declarations,
 default and all-feature resolution, exact registry and Git identities, licenses,
 and reverse edges with each parent's declared requirements. The two dated
 inventories preserve the previous and current resolved lines.
-[Final inventory](validation/2026-11-20-workspace-dependency-inventory.json) ·
+[Pre-pin inventory](validation/2026-11-20-workspace-dependency-inventory.json) ·
 [Baseline inventory](validation/2026-11-19-dependency-inventory.json)
 
 - Clap and its derive crate advanced from **4.6.8** to **4.6.9**.
