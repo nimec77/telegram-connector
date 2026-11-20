@@ -49,6 +49,14 @@ with no remaining Critical or Important finding in those reproductions.
 
 The full external declarations and reverse edges are in the
 [dependency inventory](2026-11-20-workspace-dependency-inventory.json).
-The source gate passed. The advisory gate still rejects Chrono 0.4.45,
-which stable rmcp 3.11.0 requires. Its RustSec advisory is unmaintained and
-lists no patched version. [RUSTSEC-2026-0543](https://rustsec.org/advisories/RUSTSEC-2026-0543.html)
+The source gate passed. In the original run, the advisory gate rejected
+Chrono 0.4.45, which stable rmcp 3.11.0 requires. Its RustSec advisory is
+unmaintained and lists no patched version. [RUSTSEC-2026-0543](https://rustsec.org/advisories/RUSTSEC-2026-0543.html)
+
+The follow-up pin to the Chrono-optional rmcp revision resolved the advisory
+gate. Fresh cargo-audit and cargo-deny checks passed. The complete workspace
+graph has 439 packages with Chrono absent. The repeat macOS gate passed 1,268
+tests and three doctests, warning-denied Clippy and rustdoc, the workspace
+release build, isolated stdio and gateway release builds, and all four stdio
+client and process probes.
+[Temporary pin and stable return condition](../dependency-status.md#temporary-rmcp-pin--2026-11-20)

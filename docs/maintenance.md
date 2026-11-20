@@ -15,16 +15,22 @@ approved. Any future exception must identify the advisory, affected scope, reaso
 named owner, expiry and tracking issue. Offline compile checks do not replace fresh
 advisory data.
 
-The current reviewed SDK is rmcp and rmcp-macros 3.11.0. The root production build
-uses the existing server/async-I/O feature scope. The loopback HTTP conformance
-fixture enables the server transport in dev dependencies. The current dependency
-report also records the open advisory about `chrono`, required by rmcp and the
-root public API. [Dependency status](dependency-status.md#workspace-baseline-refresh--2026-11-19)
+The workspace pins an unreleased rmcp revision that makes Chrono optional.
+The connector explicitly selects `base64`, `macros` and `server`, the
+loopback fixture adds the HTTP server transport in dev dependencies, and the
+gateway selects its HTTP server features independently.
+[Dependency status](dependency-status.md#temporary-rmcp-pin--2026-11-20)
 
-`cargo deny --locked check sources advisories` checks the entire graph. Sources
-are restricted to crates.io and immutable revisions of the official Codeberg
-grammers repository. All three direct grammers dependencies move together after
-review of upstream commits, TL changes, peer/session fixtures and wire tests.
+Return to a crates.io rmcp release once a stable version can resolve the whole
+workspace without Chrono. Verify the complete graph and repeat the stdio and
+HTTP conformance checks, then remove the Rust SDK repository from the source
+allowlists.
+
+`cargo deny --locked check sources advisories` checks the entire graph.
+The source policy covers crates.io and exact revisions of the official
+grammers and Rust MCP SDK repositories. All three direct grammers dependencies
+move together after review of upstream commits, TL changes, peer/session
+fixtures and wire tests.
 
 `python3 scripts/check_dependency_policy.py` reads complete locked Cargo metadata
 (including dev/build/platform packages). The metadata-declaration check recognizes first-party packages by exact reviewed

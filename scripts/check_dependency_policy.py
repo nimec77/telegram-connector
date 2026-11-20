@@ -21,7 +21,6 @@ REVIEWED_WORKSPACE_MANIFESTS = {
     "telegram-core": "crates/telegram-core/Cargo.toml",
     "telegram-api": "crates/telegram-api/Cargo.toml",
     "telegram-mcp-http": "crates/telegram-mcp-http/Cargo.toml",
-    "telegram-mcp-http": "crates/telegram-mcp-http/Cargo.toml",
 }
 
 

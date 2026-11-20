@@ -1,5 +1,24 @@
 # Dependency status
 
+## Temporary rmcp pin — 2026-11-20
+
+The current released SDK is 3.11.0. The workspace uses the exact unreleased
+upstream pull-request head `9043cdfa8694d83bf506c2f3eb0313ec173edd7e`, two
+commits ahead of that release. The patch uses Jiff for internal timestamps and
+makes the Chrono dependency and Schemars integration optional. The workspace
+selects its existing transport features explicitly and leaves `chrono`
+disabled. [Upstream pull request](https://github.com/modelcontextprotocol/rust-sdk/pull/1474)
+
+The updated lockfile resolves rmcp and rmcp-macros from the same revision.
+It removes Chrono and seven packages from its timezone dependency chain. The
+all-feature workspace graph now contains 439 packages, including 435 external
+packages. Fresh `cargo audit --deny unsound --deny yanked`, `cargo deny --locked
+check sources advisories` and the external declaration checker passed.
+
+Return to crates.io once a stable SDK can pass the workspace graph and
+transport checks with Chrono absent. Remove the Rust SDK source allowance
+as part of that change. [Maintenance policy](maintenance.md)
+
 ## Workspace service integration — 2026-11-20
 
 The final registry inventory used the official crates.io sparse index at
@@ -29,13 +48,13 @@ inventories preserve the previous and current resolved lines.
 - Fresh RustSec database `074ea9a7ed619f511b5b7374c7a97e98d1e98be4`
   reported no vulnerability, unsound or yanked dependency under the
   `cargo audit --deny unsound --deny yanked` gate. The source and declaration
-  checks passed. `cargo deny` continues to reject the unmaintained advisory
+  checks passed. At that cutoff, `cargo deny` rejected the unmaintained advisory
   for **Chrono 0.4.45**, which stable **rmcp 3.11.0** requires directly and
   through its Schemars `chrono04` feature. The advisory has no patched version.
   The existing advisory policy remains in force.
   [RustSec advisory](https://rustsec.org/advisories/RUSTSEC-2026-0543.html)
 
-## Connector timestamp migration — 2026-11-20
+## Connector timestamp migration baseline — 2026-11-20
 
 The connector's public timestamp fields use `UtcTimestamp` and the connector has
 no direct Chrono dependency. Its UTC calendar conversion uses Jiff 1.0.1, and the

@@ -72,12 +72,10 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Open items
 
-- **Hosted workspace advisory:** the workspace's stable `rmcp 3.11.0` requires
-  Chrono 0.4.45 directly and through Schemars. The unmaintained advisory
-  RUSTSEC-2026-0543 remains open under cargo-deny. First-party timestamp types
-  use Jiff. See the [dependency inventory](dependency-status.md) and
-  [hosted verification](validation/2026-11-20-workspace-services.md).
-
+- **Temporary rmcp revision:** the workspace uses the Chrono-optional upstream
+  pull-request revision. Return to crates.io when a stable SDK supports the
+  same Chrono-free graph. Rerun advisory and transport checks and remove the Rust
+  SDK Git source allowance at that point. [Dependency status](dependency-status.md#temporary-rmcp-pin--2026-11-20)
 
 - **Operational limits:** chosen live model/desktop UI and Telegram/account behavior
   remain unverified; offline Rust/Python payloads and installed DeepSeek adapter

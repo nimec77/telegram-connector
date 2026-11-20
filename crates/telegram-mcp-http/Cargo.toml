@@ -8,7 +8,7 @@ publish = false
 base64 = "0.23.1"
 axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio", "json"] }
 reqwest = { version = "0.13.5", default-features = false, features = ["form", "json", "rustls", "query"] }
-rmcp = { version = "3.11.0", default-features = false, features = ["server", "transport-streamable-http-server"] }
+rmcp = { workspace = true, features = ["server", "transport-streamable-http-server"] }
 schemars.workspace = true
 secrecy.workspace = true
 serde.workspace = true

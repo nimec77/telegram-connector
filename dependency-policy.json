@@ -5,7 +5,8 @@
     "registry+https://github.com/rust-lang/crates.io-index"
   ],
   "git_repositories": [
-    "https://codeberg.org/Lonami/grammers"
+    "https://codeberg.org/Lonami/grammers",
+    "https://github.com/modelcontextprotocol/rust-sdk"
   ],
   "reviewed_license_choices": {
     "MIT": [

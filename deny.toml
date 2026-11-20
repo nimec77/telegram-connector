@@ -9,5 +9,8 @@ ignore = []
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-allow-git = ["https://codeberg.org/Lonami/grammers"]
+allow-git = [
+    "https://codeberg.org/Lonami/grammers",
+    "https://github.com/modelcontextprotocol/rust-sdk",
+]
 required-git-spec = "rev"

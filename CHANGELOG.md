@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Use the reviewed unreleased rmcp revision with Chrono disabled across the
+  workspace until the fix reaches a stable release.
 - Replace the connector's Chrono timestamp types with `UtcTimestamp` backed by
   Jiff. Existing RFC 3339 JSON and legacy tool timestamp formats are preserved.
 
