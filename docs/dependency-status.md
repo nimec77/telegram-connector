@@ -1,8 +1,8 @@
 # Dependency status
 
-Version 0.27.0 synchronizes the four local workspace package versions.
-Its resolved external package versions and Git revisions match the final
-workspace inventory below.
+The four local packages share a workspace release version.
+Version 0.27.1 retains the external package versions and Git revisions from
+the final workspace inventory below.
 
 ## Temporary rmcp pin — 2026-11-20
 

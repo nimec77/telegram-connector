@@ -1,6 +1,6 @@
 # Hosted Telegram services
 
-The 0.27.0 workspace includes the stateful `telegram-api` and the separate
+The workspace includes the stateful `telegram-api` and the separate
 `telegram-mcp-http` gateway. Run one API process per encrypted service data volume.
 It owns account sessions, grants, rate limits, native update readers and uploads.
 The gateway exposes HTTPS MCP through the edge and uses the API for each operation.

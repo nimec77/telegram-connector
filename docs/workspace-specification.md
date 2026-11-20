@@ -1,10 +1,10 @@
 # Telegram workspace, hosted services, and live channel posts
 
-**Status** — Workspace specification for 0.27.0, revised 2026-11-20. The original design is archived at `4618221`.
+**Status** — Workspace specification for the 0.27 release series. The original design is archived at `4618221`.
 
 People can run the stdio connector locally or sign into a centrally hosted service and link their own Telegram account. Applications can search, read, and observe that account through an HTTPS API. MCP clients get a separate HTTP service with tools suited to remote use. A Rust application can use the same Telegram operations and live feed in process.
 
-The first hosted milestone has two users, two linked Telegram accounts, search through both hosted interfaces, and a live channel feed through the core and API. A returning listener receives newly published posts from a fresh starting point. History is a separate, explicit read. The implementation also includes a full dependency update.
+The first hosted milestone has two users, two linked Telegram accounts, search through both hosted interfaces, and a live channel feed through the core and API. A returning listener receives newly published posts from a fresh starting point. History is a separate, explicit read.
 
 ## Workspace and process ownership
 
@@ -57,28 +57,29 @@ If logout fails, quarantine only the old session material for bounded revocation
 
 ## HTTPS API and HTTP MCP
 
-Publish a versioned OpenAPI contract, including status codes, scopes, request limits, media types and examples. Use JSON over HTTPS for operations, bounded binary bodies for uploads/downloads, and SSE for live events. Axum/Tower with Tokio is the proposed server stack. The API derives the account from authentication. Channels and message IDs in a request select resources inside that account.
+Publish a versioned OpenAPI contract, including status codes, scopes, request limits, media types and examples. Use JSON over HTTPS for operations, bounded binary bodies for uploads/downloads, and SSE for live events. The service runs Axum and Tower on Tokio. The API derives the account from authentication. Channels and message IDs in a request select resources inside that account.
 
-| Surface | Initial contract |
+| Surface | REST v1 contract |
 |---|---|
 | `POST /v1/account/link`, `POST /v1/account/link/{challenge}/code`, `POST /v1/account/link/{challenge}/password`, `DELETE /v1/account/link` | Account linking/unlinking, `telegram.link`. Return the next required step or a terminal state. `GET /v1/account` reports only the caller's linked state and cached account status. |
-| `GET` and `PUT /v1/account/grants/{client_id}` | Manage the client's read scope and a single `send_enabled` boolean for the linked account. Require a first-party owner session with `telegram.link`, CSRF protection for browser writes, and an expected revision on updates to prevent a stale tab from restoring revoked access. |
+| `GET` and `PUT /v1/account/grants/{client_id}` | Manage the client's read scope and a single `send_enabled` boolean for the linked account. Require a first-party owner session with `telegram.link`, CSRF protection for browser writes, and the opaque `generation` plus `expected_revision` on updates. On an active link, a mismatched generation or revision gives HTTP 409, including when a replacement account's grant starts at the same revision. |
 | `POST /v1/messages/search` | Query, explicit channel scope, filters and limit. Return typed messages, pagination, partial/timeout flags and per-channel failures. Include only scopes supported by the caller and deployment. |
 | `GET /v1/channels/{id}/messages`, `POST /v1/messages/batch` | Paged channel history and bounded ID lookup. The history route supports the precise stream-to-history handoff below. A batch returns missing or omitted IDs explicitly. |
 | `GET /v1/events?channel_id=42&channel_id=73` | Authenticated live feed for one or more distinct joined broadcast channels. The public event contract follows below. |
-| Additional reads | Add joined channel listing, info, channel resolution, message links, channel stats, discovery, media and transcription as complete operations. Preserve existing operation-specific eligibility, limits, costs, and Premium checks. Media downloads require caller-bound authorization on each access. |
-| Hosted writes | Add explicit opt-in text and media sends after reads. Use `POST /v1/messages/send`, a bounded `POST /v1/uploads` returning a short-lived caller-owned handle, and `POST /v1/messages/send-media`. Require send scope, deployment enablement, and the active user's write grant. Enforce file type, size, expiry and quotas while streaming uploads. |
+| Additional reads | Serve joined channel listing, info, channel resolution, message links, channel stats, discovery, media and transcription. Preserve existing operation-specific eligibility, limits, costs, and Premium checks. Media downloads require caller-bound authorization on each access. |
+| Hosted writes | Serve explicit opt-in text and media sends. Use `POST /v1/messages/send`, a bounded `POST /v1/uploads` returning a short-lived caller-owned handle, and `POST /v1/messages/send-media`. Require send scope, deployment enablement, and the active user's write grant. Enforce file type, size, expiry and quotas while streaming uploads. |
 
 Return normal HTTP statuses with a stable error body such as `{"error":{"code":"rate_limited","retry_after_seconds":4}}`. Use 400 for malformed inputs, 401 for invalid credentials, 403 for insufficient scope, 404 for unavailable/foreign objects, 409 for account or linkage conflict, 413 for oversized input, 429 with `Retry-After` for quota, and 503/504 for upstream unavailability/deadline. Whole-operation failures differ from success with per-item errors. Redact upstream diagnostics. Carry send delivery state in errors, including `unknown` with `retryable=false` after ambiguous dispatch. Disable automatic retries for mutations at the gateway, proxy and API. A lost receipt does not authorize a resend. Document the lifetime and caller scope of any recovery facility before exposing it. [Existing receipt semantics](sending.md#receipts-charges-and-uncertain-delivery)
 
-Serve MCP Streamable HTTP at `/mcp` using rmcp's transport and a router separate from the stdio router. Implement protected-resource discovery, bearer challenges, origin validation, request cancellation and bounded responses. Start with the 2026-07-28 binding. Advertise only tested protocol versions and capabilities. Return canonical `structuredContent` and matching text, with self-contained schemas. Keep stable tool names and ID semantics for shared reads. Disclose the authorized catalog through `tools/list` and enforce the same permissions at call time. [Streamable HTTP](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http) · [MCP tool contract](tool-contract.md)
+Serve MCP Streamable HTTP at `/mcp` using rmcp's transport and a router separate from the stdio router. Implement protected-resource discovery, bearer challenges, origin validation, request cancellation and bounded responses. The gateway uses the 2026-07-28 binding. Advertise only tested protocol versions and capabilities. Return canonical `structuredContent` and matching text, with self-contained schemas. Keep stable tool names and ID semantics for shared reads. Disclose the authorized catalog through `tools/list` and enforce the same permissions at call time. [Streamable HTTP](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http) · [MCP tool contract](tool-contract.md)
 
 | Hosted tool choice | Behavior |
 |---|---|
-| Initial catalog | `search_messages`, `get_recent_messages`, `get_messages_batch`. Extend access to other reads as their API operations ship. |
-| Message links and media | Return links the remote client can open. Offer bounded MCP image blocks or authenticated caller-scoped media resources. Host paths, desktop-launch tools and process-wide response history belong to local stdio. |
+| Message reads | `search_messages`, `get_recent_messages` and `get_messages_batch`. |
+| Channel metadata and transcription | `get_subscribed_channels`, `get_channel_info`, `resolve_channels`, `get_channel_stats` and `transcribe_voice_message`. `search_public_channels` requires its additional deployment capability. |
+| Message links and media | Return Telegram message links in the `generate_message_link` result. Preview tools return caller-scoped resource links that the client fetches through MCP `resources/read`. Host paths, desktop-launch tools and process-wide response history belong to local stdio. |
 | Sending | Advertise only when authorized. Hosted media uses the upload handle. Keep Telegram target validation, receipts and uncertain-delivery rules. |
-| Continuous posts | Expose the feed through the Rust core and the HTTPS API. The first MCP catalog uses bounded read tools. An ordinary tool call must finish. A future MCP-native subscription needs a separately negotiated protocol contract. |
+| Continuous posts | Expose the feed through the Rust core and the HTTPS API. The MCP catalog uses bounded operations. An ordinary tool call must finish. A future MCP-native subscription needs a separately negotiated protocol contract. |
 
 For AI-facing clients, the published Telegram API and content terms restrict AI uses and describe possible exceptions tied to specific content and the relevant users' consent. A Telegram account link establishes technical access. Hosted scope configuration must separately represent the permitted content/use. Keep the AI-facing catalog channel-scoped in the first release and enforce the same authorized scope in the API for its delegated calls, including history, batch, and media lookups. Scope selection alone does not establish consent. The operator determines permitted production use before enabling that content. [Telegram API terms](https://core.telegram.org/api/terms) · [Content terms](https://telegram.org/tos/content-licensing)
 

@@ -1,6 +1,6 @@
 # Rust API surface and compatibility policy
 
-This inventory covers the exported Rust surface of the 0.27.0 workspace. Prefer the
+This inventory covers the exported Rust surface of the 0.27 workspace. Prefer the
 supported facades for new integrations. Transitional paths remain callable and
 compatibility-sensitive. “Internal” refers to private or crate-visible code. Public
 DTO field literals remain possible. Removals, added enum variants and changes to required

@@ -6,7 +6,7 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Current state
 
-- **Version 0.27.0 includes hosted workspace services.** The workspace
+- **Current workspace release is 0.27.1.** Hosted services arrived in 0.27.0. The workspace
   places all four packages under `crates/`. The stdio connector is the default
   member at `crates/telegram-connector`; install from that path. The core, stateful
   API and independent HTTP MCP gateway share the root lockfile. The completed plan and design are archived in
