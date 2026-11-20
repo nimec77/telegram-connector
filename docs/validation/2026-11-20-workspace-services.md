@@ -91,3 +91,66 @@ The repeat macOS gate passed 1,273 tests and three doctests, strict Clippy,
 warning-free rustdoc, the workspace release build and the isolated hosted API
 release build. The stdio startup probe reached its response deadline during a
 concurrent run. All four stdio probes passed on the isolated rerun.
+
+## Plan closeout
+
+| Task | Acceptance evidence |
+| --- | --- |
+| 1. Dependency baseline and refresh | The earlier baseline, the locked legacy-session reopen, the stateless loopback MCP transport test and the approved temporary SDK pin are recorded in the dependency report. |
+| 2. Workspace extraction | The root compatibility integration test exercises supported imports and an external read-only trait implementer. Workspace policy fixtures verify exact first-party member paths. |
+| 3. Charged search | Core search tests check deadline, attempted-channel charges and validation before admission. Stdio search still fits and renders both output modes. |
+| 4. History and message batches | Core tests preserve exclusive cursors and ordered, deduplicated IDs. Stdio tests distinguish missing, returned and budget-omitted IDs. |
+| 5. Hosted identity | A real loopback issuer covers exact audiences, signature and expiry checks, JWKS rotation and browser state, PKCE, nonce, cookies and CSRF. |
+| 6. Accounts and grants | Disposable roots and re-executed child processes cover root ownership and durable retirement. Challenge tests cover code and password progression. Real owner grant edits are bound to the generation and revision returned by the API. |
+| 7. First REST reads | Real HTTP route tests isolate same-number IDs across accounts. Inclusive recovery covers the highest Telegram message ID, old rows, album siblings, exact continuation, partial results and budget metadata. |
+| 8. Gateway delegation | The separate gateway process completes OAuth against a loopback issuer and invokes real hosted API routes. It preserves the originating client, shares the direct API account budget and releases the held API lease on disconnect. |
+| 9. Native updates | The pinned SDK's native adapter and core queue fixtures cover channel membership, heads, ordering, own-send updates, albums, deduplication and interrupted setup. |
+| 10. SSE history handoff | A real HTTP client sees fresh heads on reconnect, catches up through the advertised head and receives later posts live. Setup timeout, overflow and reader loss return normal HTTP errors before stream headers. |
+| 11. Capacity and interruption | Controlled and real stalled writers, a setup disconnect, membership loss, overflow, replacement with a retained limiter and shared shutdown all release their reservations. Aggregate diagnostics cover capacity and native interruptions. |
+| 12. Additional reads, media and sends | The hosted metadata and JPEG route fixtures exercise real account charging, current access, pagination and typed results. Stdio and hosted routes share the charged core. Both hosted interfaces send to explicit peers outside read grants and preserve posting refusal and nonretryable unknown delivery. Upload fixtures cover quota, publication races and cleanup after a crash. |
+| 13. Workspace integration | The final locked inventory, macOS gate, per-member builds, CLI and stdio probes, version and dependency policy, OpenAPI validation, TLS reverse-proxy smoke and independent branch review establish the local acceptance results. |
+
+The plan's named HTTP integration targets correspond to private library
+fixtures that share the production service state. Run the API cases with
+`cargo test --offline --locked -p telegram-api --features service --lib`,
+the child-process account tests with `--test account_lifecycle`, and the
+gateway cases with `cargo test --offline --locked -p telegram-mcp-http --test mcp_http`.
+The owner page's deterministic JavaScript fixture runs with Node's built-in test
+runner. The hosted implementation landed in a combined feature commit with
+subsequent scoped corrections.
+
+The final review identified four concrete gaps. A disabled restart now purges
+private upload files left by a terminated process. A grant edit must present the
+generation and revision it loaded. The owner page ignores out-of-order client
+snapshots. In-flight SSE output stays covered by membership observation after
+queue overflow. Each correction has a focused regression.
+
+A disposable NGINX 1.30.7 TLS smoke test used the operator guide's location
+blocks with a local fixture upstream. It verified forwarded headers and source
+address replacement, SSE readiness before the first post, disabled compression
+and buffering, downstream disconnect propagation, streaming upload and the
+100 MiB edge limit. The sustained synthetic TLS case did not establish a strict
+downstream stall deadline. The API socket deadline has a separate real TCP
+fixture. Production identity providers and live Telegram accounts remain
+installation verification.
+
+
+### Final macOS gate
+
+The reviewed branch passed formatting, all-target Clippy with warnings denied,
+1,294 Rust tests, three doctests, three browser regressions, and warning-free
+rustdoc. Fifteen Rust test entrypoints and two doctests were ignored in the
+top-level run. Parent tests exercised the isolated helper processes.
+
+The workspace release build, four isolated member builds, all three binary
+help commands, root examples and a locked installation into a disposable
+root passed. All four stdio probes passed, and the production gateway and
+stdio feature graphs remained isolated. The dependency policy passed 30
+fixtures and the version checker passed 17. OpenAPI Generator 7.23.0
+validated the final request and response schemas.
+
+The locked HTTP/1 dispatcher regression reproduced early release of an
+encoded post's reservations before a blocked socket write. Vectored output
+now retains the original frame, membership guard and both admissions
+through transport release. The re-review confirmed this fix and the other
+three final-review corrections.
