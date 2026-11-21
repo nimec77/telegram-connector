@@ -55,6 +55,8 @@ Create a private API JSON file using your issuer registrations and Telegram appl
     "telegram": {"api_id": 12345, "api_hash": "REPLACE_WITH_PRIVATE_APP_HASH"},
     "registered_clients": ["telegram-account", "personal-reader", "remote-assistant"],
     "eligible_channels": [],
+    "eligible_groups": [],
+    "group_changes": {"retention_seconds": 86400, "retention_bytes": 67108864},
     "discovery_clients": [],
     "sending_enabled": false,
     "max_accounts": 64,
@@ -95,9 +97,9 @@ On SIGINT or SIGTERM the API stops admission, ends account readers and senders e
 
 ### HTTPS edge
 
-Route the API hostname to port 3000 and the MCP hostname to port 3001. Preserve the registered public Host, HTTPS Origin, Authorization, Accept and MCP headers, and forward the matching protected-resource discovery paths. Replace the incoming `X-Real-IP` header at the trusted edge with the observed client IP for link admission. Keep callback queries, stream query strings, authorization, cookies, media handles, bodies, phone numbers, codes and passwords out of access logs. Set body and header timeouts on the edge. Allow a raw upload body only up to the selected service limit. Disable automatic upstream retries for mutations.
+Route the API hostname to port 3000 and the MCP hostname to port 3001. Preserve the registered public Host, HTTPS Origin, Authorization, Accept and MCP headers, and forward the matching protected-resource discovery paths. Replace the incoming `X-Real-IP` header at the trusted edge with the observed client IP for link admission. Keep callback and content request query strings, authorization, cookies, media handles, bodies, phone numbers, codes and passwords out of access logs. Set body and header timeouts on the edge. Allow a raw upload body only up to the selected service limit. Disable automatic upstream retries for mutations.
 
-For an NGINX API server, the following locations illustrate stream and upload settings inside a TLS virtual host. Configure downstream idle timeouts above the heartbeat interval wherever an intermediary observes the stream. Keep gzip, caching and response buffering disabled throughout the SSE path so disconnects and slow downstream writes reach the API. Configure the other API and MCP locations with the same no-retry and header policy. [NGINX proxy buffering and timeouts](https://nginx.org/en/docs/http/ngx_http_proxy_module.html) · [NGINX downstream send timeout](https://nginx.org/en/docs/http/ngx_http_core_module.html#send_timeout)
+For an NGINX API server, the following locations illustrate settings for live streams, group changes and uploads inside a TLS virtual host. Configure downstream idle timeouts above the heartbeat interval wherever an intermediary observes the stream. Keep gzip, caching and response buffering disabled throughout the SSE path so disconnects and slow downstream writes reach the API. Configure the other API and MCP locations with the same no-retry and header policy. [NGINX proxy buffering and timeouts](https://nginx.org/en/docs/http/ngx_http_proxy_module.html) · [NGINX downstream send timeout](https://nginx.org/en/docs/http/ngx_http_core_module.html#send_timeout)
 
 ```nginx
 location = /v1/events {
@@ -112,6 +114,17 @@ location = /v1/events {
     proxy_read_timeout 45s;
     send_timeout 10s;
     gzip off;
+}
+
+location ^~ /v1/groups/ {
+    access_log off;
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_cache off;
+    proxy_next_upstream off;
+    proxy_read_timeout 45s;
 }
 
 location = /v1/uploads {
@@ -196,6 +209,25 @@ Set stream limits under `hosted.events`. Closing the connection releases its acc
 | `setup_seconds` | 30 | 1–120 |
 | `heartbeat_seconds` | 15 | 1–60 |
 | `stalled_write_seconds` | 10 | 1–60 |
+
+## Read and replay group changes
+
+Set up to 20 typed group references in `hosted.eligible_groups`. For example, `chat:42` identifies a basic group and `supergroup:42` identifies a different peer. Put the same typed references in the client's `group_refs` grant using the account page or the grant API. An omitted `group_refs` leaves that part of a saved grant as it was. An empty list revokes all group permissions. Channel grants, including `all_joined`, do not convey group access.
+
+Capture starts when the service initializes a configured group that the linked account has joined. The service maintains capture without an HTTP reader and restarts failed readers under its existing account capacity. Set `max_accounts` to accommodate linked accounts actively monitoring groups and any other accounts served concurrently. The service monitors from the enabling boundary forward. A history import requires a separate workflow.
+
+Send a bearer with the API audience and `telegram.read`:
+
+```http
+GET /v1/groups/supergroup:42/changes?start=earliest&limit=100&wait_ms=0
+GET /v1/groups/supergroup:42/changes?after=<saved-cursor>&limit=100&wait_ms=15000
+```
+
+Save `stream_id` and `base_cursor` on the first read. Process the entries in sequence and save each entry's cursor after downstream processing succeeds. A retry replays retained entries with the same text and observation times. Use `has_more` to drain backlog. An empty poll returns the same boundary. The server returns at most 100 whole entries and 256 KiB of JSON per page. Changes cover text additions, edits, attributable deletions and coverage gaps.
+
+An authorized HTTP 410 has `error.code` set to `cursor_expired` and includes the current `stream_id`, `base_cursor` and `base_seq`. Reconcile missed coverage before adopting that boundary. A journal `gap` entry reports uncertainty during Telegram capture, including reconnects. Telegram may omit intermediate changes during an outage. For 429, honor `Retry-After`. Retry transient failures from the saved cursor. Unknown groups and groups you cannot access both return 404.
+
+The journal retains up to 24 hours or 64 MiB of encoded entries per group by default. Configure `group_changes.retention_seconds` and `group_changes.retention_bytes` to change those limits. Keep the private journal and cursor key on the persistent encrypted data root. SQLite storage also includes metadata and indexes. Treat journal files and backups as sensitive message data and keep request queries and payloads out of service and proxy logs.
 
 ## Hosted MCP client
 

@@ -331,7 +331,21 @@ fn native_batches_include_own_text_and_captionless_media() {
         update_stickersets_order: false,
         invert_media: false,
         allow_paid_floodskip: false,
-        reply_to: None,
+        reply_to: Some(
+            tl::types::InputReplyToMessage {
+                reply_to_msg_id: 101,
+                top_msg_id: None,
+                reply_to_peer_id: None,
+                quote_text: None,
+                quote_entities: None,
+                quote_offset: None,
+                monoforum_peer_id: None,
+                todo_item_id: None,
+                poll_option: None,
+                quote_rich: None,
+            }
+            .into(),
+        ),
         reply_markup: None,
         entities: None,
         schedule_date: None,
@@ -360,6 +374,17 @@ fn native_batches_include_own_text_and_captionless_media() {
     let (updates, _, _) = state
         .process_updates(as_received)
         .expect("channel message is sequenced");
+    let tl::enums::Update::NewChannelMessage(update) = &updates[0].0 else {
+        panic!("sequenced new channel message");
+    };
+    let tl::enums::Message::Message(raw_message) = &update.message else {
+        panic!("channel message body");
+    };
+    let Some(tl::enums::MessageReplyHeader::Header(reply)) = &raw_message.reply_to else {
+        panic!("short send retains reply metadata");
+    };
+    assert_eq!(reply.reply_to_msg_id, Some(101));
+    assert_eq!(reply.reply_to_peer_id, None);
     let text = updates
         .into_iter()
         .find_map(|(update, _)| decode_post(update))

@@ -138,6 +138,7 @@ async fn media_http_renders_charges_and_rechecks_membership_before_serving_cache
             ActiveAccount {
                 client,
                 streams,
+                capture: None,
                 operations,
             }
         })

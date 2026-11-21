@@ -120,6 +120,7 @@ async fn seed_stream(
                 client,
                 operations,
                 streams,
+                capture: None,
             }
         })
         .await?;

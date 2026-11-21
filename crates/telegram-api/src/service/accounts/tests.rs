@@ -37,6 +37,7 @@ async fn active_account(limiter: Arc<RateLimiter>) -> (ActiveAccount, tempfile::
             client,
             operations,
             streams,
+            capture: None,
         },
         dir,
     )

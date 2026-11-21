@@ -1,9 +1,13 @@
 //! Owner account administration and hosted account-generation state.
 
+use super::group_capture::Capture;
+use super::group_changes::{GroupChangesConfig, GroupMonitoring};
+use super::group_journal::GroupJournal;
 use super::linking::{self, LinkReply, Linking};
 use super::registry::{AccountLease, AccountRegistry};
 use super::storage::{AccountStore, LinkState, RetirementOutcome};
 use super::{ApiError, ServiceState};
+use crate::contracts::groups::GroupRef;
 use crate::contracts::{ErrorCode, GrantSnapshot, GrantUpdate, ReadGrant, Scope};
 use crate::identity::{VerifiedIdentity, unix_now, valid_label};
 use axum::Json;
@@ -38,6 +42,12 @@ pub struct HostedConfig {
     /// Channel IDs approved by the operator for hosted use.
     #[serde(default)]
     pub eligible_channels: HashSet<String>,
+    /// Typed basic-group and supergroup references enabled for change capture.
+    #[serde(default)]
+    pub eligible_groups: HashSet<String>,
+    /// Retention for the replayable group journal.
+    #[serde(default)]
+    pub group_changes: GroupChangesConfig,
     /// Explicit OAuth client IDs allowed to use public directory discovery.
     #[serde(default)]
     pub discovery_clients: HashSet<String>,
@@ -82,6 +92,7 @@ pub(super) struct Hosted {
     pub(super) uploads: Option<super::uploads::Uploads>,
     pub(super) media: super::media::MediaStore,
     pub(super) config: HostedConfig,
+    pub(super) groups: GroupMonitoring,
     pub(super) cancellation: CancellationToken,
     drain_deadline: DrainDeadline,
     drained: CancellationToken,
@@ -104,6 +115,7 @@ pub(super) struct ActiveAccount {
     pub(super) operations:
         AccountOperations<TelegramClient, telegram_core::rate_limiter::RateLimiter>,
     pub(super) streams: telegram_core::streams::AccountStreams,
+    pub(super) capture: Option<Arc<Capture>>,
 }
 
 impl ActiveAccount {
@@ -120,6 +132,13 @@ impl ActiveAccount {
 
 impl Hosted {
     pub(super) async fn open(config: HostedConfig) -> Result<Arc<Self>, ApiError> {
+        Self::open_config(config, true).await
+    }
+
+    pub(super) async fn open_config(
+        config: HostedConfig,
+        supervise_capture: bool,
+    ) -> Result<Arc<Self>, ApiError> {
         if config.telegram.api_id <= 0
             || config.telegram.api_hash.is_none()
             || !config.events.valid()
@@ -134,6 +153,8 @@ impl Hosted {
                 .discovery_clients
                 .is_subset(&config.registered_clients)
             || config.eligible_channels.len() > 10_000
+            || config.eligible_groups.len() > 20
+            || !config.group_changes.valid()
             || !config
                 .eligible_channels
                 .iter()
@@ -145,13 +166,30 @@ impl Hosted {
         {
             return Err(ApiError::new(ErrorCode::InvalidRequest));
         }
+        let eligible_groups = config
+            .eligible_groups
+            .iter()
+            .map(|group| group.parse::<GroupRef>())
+            .collect::<Result<HashSet<_>, _>>()
+            .map_err(|()| ApiError::new(ErrorCode::InvalidRequest))?;
         let store = Arc::new(AccountStore::open(&config.data_root).await?);
+        let journal = if !eligible_groups.is_empty() {
+            Some(GroupJournal::open(store.root(), config.group_changes.retention()).await?)
+        } else if GroupJournal::exists(store.root()) {
+            GroupJournal::open(store.root(), config.group_changes.retention())
+                .await
+                .ok()
+        } else {
+            None
+        };
+        let groups = GroupMonitoring::new(journal, eligible_groups);
         store
             .replace_eligible_channels(&config.eligible_channels)
             .await?;
         let uploads = super::uploads::Uploads::open(store.root(), config.sending_enabled).await?;
         let hosted = Arc::new(Self {
             store,
+            groups,
             uploads,
             media: super::media::MediaStore::default(),
             registry: AccountRegistry::new(
@@ -180,6 +218,9 @@ impl Hosted {
             maintenance: tokio::sync::Notify::new(),
         });
         tokio::spawn(maintain(Arc::downgrade(&hosted)));
+        if supervise_capture && !hosted.config.eligible_groups.is_empty() {
+            tokio::spawn(supervise_groups(Arc::downgrade(&hosted)));
+        }
         Ok(hosted)
     }
 
@@ -189,20 +230,25 @@ impl Hosted {
         generation: &super::AccountGeneration,
         context: &OperationContext,
     ) -> Result<AccountLease<ActiveAccount>, ApiError> {
+        let principal = identity.principal();
+        self.open_account(principal.issuer(), principal.subject(), generation, context)
+            .await
+    }
+
+    async fn open_account(
+        &self,
+        issuer: &str,
+        subject: &str,
+        generation: &super::AccountGeneration,
+        context: &OperationContext,
+    ) -> Result<AccountLease<ActiveAccount>, ApiError> {
         let transition = tokio::select! {
             biased;
             _ = context.cancellation().cancelled() => return Err(ApiError::new(ErrorCode::UnavailableResource)),
             _ = tokio::time::sleep_until(context.deadline()) => return Err(ApiError::new(ErrorCode::Timeout)),
             guard = self.transition.lock() => guard,
         };
-        let principal = identity.principal();
-        if self
-            .store
-            .active(principal.issuer(), principal.subject())
-            .await?
-            .as_ref()
-            != Some(generation)
-        {
+        if self.store.active(issuer, subject).await?.as_ref() != Some(generation) {
             return Err(ApiError::new(ErrorCode::UnavailableResource));
         }
         let reservation = self.registry.reserve(generation.clone(), context)?;
@@ -217,12 +263,37 @@ impl Hosted {
                         .await
                         .map_err(|_| super::storage::StorageError::Unavailable)?,
                 );
-                let streams = telegram_core::streams::AccountStreams::new(
-                    Arc::clone(&client),
-                    limiter.clone(),
-                    stream_limits,
-                    global_queue,
-                )
+                let capture = if self.groups.configured.is_empty() {
+                    None
+                } else {
+                    let joined = self
+                        .groups
+                        .memberships(&client, Duration::from_secs(2))
+                        .await;
+                    Some(Arc::new(Capture::new(
+                        Arc::clone(self.groups.journal()?),
+                        generation.id().to_owned(),
+                        self.groups.configured.clone(),
+                        joined,
+                        Arc::clone(&self.groups.changed),
+                        self.groups.pending_gap(generation.id())?,
+                    )))
+                };
+                let streams = match &capture {
+                    Some(observer) => telegram_core::streams::AccountStreams::with_observer(
+                        Arc::clone(&client),
+                        limiter.clone(),
+                        stream_limits,
+                        global_queue,
+                        observer.clone(),
+                    ),
+                    None => telegram_core::streams::AccountStreams::new(
+                        Arc::clone(&client),
+                        limiter.clone(),
+                        stream_limits,
+                        global_queue,
+                    ),
+                }
                 .map_err(|_| super::storage::StorageError::Unavailable)?;
                 let operations = AccountOperations::new(
                     Arc::clone(&client),
@@ -236,6 +307,7 @@ impl Hosted {
                     client,
                     operations,
                     streams,
+                    capture,
                 })
             })
             .await
@@ -279,6 +351,7 @@ impl Hosted {
 
 async fn maintain(hosted: Weak<Hosted>) {
     let mut reported = (0, telegram_core::streams::StreamDiagnostics::default());
+    let mut journal_purge_after = String::new();
     loop {
         let Some(service) = hosted.upgrade() else {
             break;
@@ -293,6 +366,7 @@ async fn maintain(hosted: Weak<Hosted>) {
                 uploads.reap();
             }
             service.media.purge_expired();
+            prune_group_journal(&service, &mut journal_purge_after).await;
             let _ = service.linking.reap(&service.store).await;
             cleanup_retired(&service).await;
         };
@@ -344,15 +418,106 @@ fn maintenance_interval() -> Duration {
     Duration::from_millis(4_000 + u64::from(jitter))
 }
 
+async fn supervise_groups(hosted: Weak<Hosted>) {
+    use futures::StreamExt as _;
+    let mut after = String::new();
+    while let Some(service) = hosted.upgrade() {
+        let step = async {
+            if let Ok(accounts) = service.store.active_batch(&after).await {
+                after = accounts
+                    .last()
+                    .map_or_else(String::new, |(generation, _, _)| generation.id().to_owned());
+                futures::stream::iter(accounts)
+                    .for_each_concurrent(4, |(generation, issuer, subject)| {
+                        let service = &service;
+                        async move {
+                            let context = OperationContext::new(
+                                tokio::time::Instant::now() + Duration::from_secs(60),
+                                service.cancellation.child_token(),
+                            );
+                            let Ok(mut lease) = service
+                                .open_account(&issuer, &subject, &generation, &context)
+                                .await
+                            else {
+                                return;
+                            };
+                            lease.background();
+                            let account = lease.client();
+                            if let Some(capture) = &account.capture {
+                                tokio::select! {
+                                    biased;
+                                    _ = lease.cancellation().cancelled() => (),
+                                    _ = service.cancellation.cancelled() => (),
+                                    _ = tokio::time::sleep_until(context.deadline()) => (),
+                                    _ = capture.refresh_memberships(
+                                        service.groups.memberships(
+                                            &account.client, Duration::from_secs(18)
+                                        )
+                                    ) => (),
+                                }
+                            }
+                        }
+                    })
+                    .await;
+            } else {
+                after.clear();
+            }
+        };
+        tokio::select! {
+            biased;
+            _ = service.cancellation.cancelled() => break,
+            () = step => (),
+        }
+        let stop = service.cancellation.clone();
+        drop(service);
+        if after.is_empty() {
+            tokio::select! {
+                _ = stop.cancelled() => break,
+                _ = tokio::time::sleep(maintenance_interval()) => (),
+            }
+        } else {
+            tokio::task::yield_now().await;
+        }
+    }
+}
+
 async fn close_idle(service: &Hosted) {
     let _ = service
         .registry
         .invalidate_failed(|account| account.streams.is_closed());
-    if let Ok(clients) = service.registry.evict() {
+    if let Ok(clients) = service.registry.evict_with(|account| {
+        account
+            .capture
+            .as_ref()
+            .is_some_and(|capture| capture.is_monitoring())
+    }) {
         for (key, account) in clients {
             account.close().await;
             drop(account);
             let _ = service.registry.finish_close(&key);
+        }
+    }
+}
+
+async fn prune_group_journal(service: &Hosted, after: &mut String) {
+    let Ok(journal) = service.groups.journal() else {
+        return;
+    };
+    let _ = journal.reap().await;
+    if let Ok(ids) = journal.generations_after(after).await {
+        *after = ids.last().cloned().unwrap_or_default();
+        for id in ids {
+            // A cancelled reader may still be finishing an already submitted
+            // write. Retry the purge after the registry has closed that account.
+            if let Ok(generation) = service.store.generation(id)
+                && !service.registry.busy(&generation)
+                && matches!(
+                    service.store.is_active_generation(&generation).await,
+                    Ok(false)
+                )
+            {
+                let _ = service.groups.retire(generation.id()).await;
+            }
         }
     }
 }
@@ -586,6 +751,7 @@ pub(super) async fn unlink(
             uploads.invalidate(&generation, None);
         }
         hosted.media.invalidate(&generation, None);
+        hosted.groups.forget_gap(generation.id());
         hosted.maintenance.notify_one();
     }
     let status = hosted
@@ -612,6 +778,7 @@ pub(super) struct GrantUpdateRequest {
     expected_revision: u64,
     read: ReadGrant,
     send_enabled: bool,
+    group_refs: Option<Vec<String>>,
 }
 
 pub(super) async fn grant(
@@ -646,7 +813,7 @@ pub(super) async fn update_grant(
     }
     let snapshot = hosted
         .store
-        .update_grant(
+        .update_grant_with_groups(
             &generation,
             &client,
             GrantUpdate {
@@ -654,6 +821,7 @@ pub(super) async fn update_grant(
                 read: body.read,
                 send_enabled: body.send_enabled,
             },
+            body.group_refs,
         )
         .await?;
     if let Some(uploads) = &hosted.uploads {

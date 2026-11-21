@@ -44,6 +44,7 @@ pub(super) struct Reservation<C> {
 pub(super) struct AccountLease<C> {
     entry: Arc<Entry<C>>,
     _permit: OwnedSemaphorePermit,
+    refresh_idle: bool,
 }
 
 impl<C> AccountLease<C> {
@@ -54,9 +55,12 @@ impl<C> AccountLease<C> {
             .expect("a lease requires initialized client")
     }
 
-    #[cfg(any(test, feature = "test-support"))]
     pub(super) fn limiter(&self) -> &Arc<RateLimiter> {
         &self.entry.limiter
+    }
+
+    pub(super) fn background(&mut self) {
+        self.refresh_idle = false;
     }
 
     pub(super) fn cancellation(&self) -> &CancellationToken {
@@ -70,7 +74,9 @@ impl<C> AccountLease<C> {
 
 impl<C> Drop for AccountLease<C> {
     fn drop(&mut self) {
-        if let Ok(mut last_used) = self.entry.last_used.lock() {
+        if self.refresh_idle
+            && let Ok(mut last_used) = self.entry.last_used.lock()
+        {
             *last_used = Instant::now();
         }
     }
@@ -216,6 +222,7 @@ impl<C> AccountRegistry<C> {
         Ok(AccountLease {
             entry,
             _permit: permit,
+            refresh_idle: true,
         })
     }
 
@@ -314,7 +321,15 @@ impl<C> AccountRegistry<C> {
         }
     }
 
+    #[cfg(any(test, feature = "test-support"))]
     pub(super) fn evict(&self) -> Result<Vec<(AccountGeneration, C)>, StorageError> {
+        self.evict_with(|_| false)
+    }
+
+    pub(super) fn evict_with(
+        &self,
+        keep_alive: impl Fn(&C) -> bool,
+    ) -> Result<Vec<(AccountGeneration, C)>, StorageError> {
         let mut state = self.state.lock().map_err(|_| StorageError::Unavailable)?;
         let now = Instant::now();
         let mut clients = Vec::new();
@@ -325,9 +340,10 @@ impl<C> AccountRegistry<C> {
                 Arc::strong_count(entry) == 1
                     && (entry.client.get().is_none()
                         || entry.cancellation.is_cancelled()
-                        || entry.last_used.lock().is_ok_and(|last| {
-                            now.saturating_duration_since(*last) >= self.idle_timeout
-                        }))
+                        || (!entry.client.get().is_some_and(&keep_alive)
+                            && entry.last_used.lock().is_ok_and(|last| {
+                                now.saturating_duration_since(*last) >= self.idle_timeout
+                            })))
             })
             .map(|(key, _)| key.clone())
             .collect();
@@ -410,6 +426,56 @@ mod tests {
             .await
             .expect("reopen");
         assert!(Arc::ptr_eq(&limiter, reopened.limiter()));
+    }
+
+    #[tokio::test]
+    async fn background_leases_preserve_idle_eviction_except_for_monitored_accounts() {
+        let root = tempfile::tempdir().expect("root");
+        let store = AccountStore::open(root.path()).await.expect("store");
+        let idle = store.start("issuer", "idle").await.expect("idle account");
+        let monitored = store
+            .start("issuer", "monitored")
+            .await
+            .expect("monitored account");
+        tokio::time::pause();
+        let registry = AccountRegistry::new(2, Duration::from_secs(3), RateLimitConfig::default());
+        let context = OperationContext::new(
+            Instant::now() + Duration::from_secs(10),
+            CancellationToken::new(),
+        );
+        drop(
+            registry
+                .lease(idle.clone(), &context, async |_| Ok(false))
+                .await
+                .expect("idle client"),
+        );
+        drop(
+            registry
+                .lease(monitored.clone(), &context, async |_| Ok(true))
+                .await
+                .expect("monitored client"),
+        );
+        tokio::time::advance(Duration::from_secs(4)).await;
+
+        let mut probe = registry
+            .lease(idle.clone(), &context, async |_| Ok(false))
+            .await
+            .expect("background membership probe");
+        probe.background();
+        drop(probe);
+        let evicted = registry
+            .evict_with(|monitoring| *monitoring)
+            .expect("idle eviction");
+        assert_eq!(evicted.len(), 1);
+        assert!(evicted[0].0 == idle);
+        registry
+            .invalidate(&monitored)
+            .expect("retire monitored account");
+        let evicted = registry
+            .evict_with(|monitoring| *monitoring)
+            .expect("cancelled capture eviction");
+        assert_eq!(evicted.len(), 1);
+        assert!(evicted[0].0 == monitored);
     }
 
     #[tokio::test]

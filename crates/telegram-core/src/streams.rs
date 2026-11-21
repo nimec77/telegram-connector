@@ -11,6 +11,7 @@ mod queue;
 mod reader;
 mod subscription;
 
+pub use grammers_session::updates::State as UpdatePosition;
 pub use queue::{QueuedEvent, StreamBudget, StreamDiagnostics};
 pub use subscription::{AccountStreams, ChannelSubscription};
 
@@ -159,6 +160,60 @@ pub trait ChannelHeadLookup: Send + Sync {
     /// Returns channel-unavailable when the account lacks joined broadcast access,
     /// or an operation error when the lookup cannot establish the channel's state.
     async fn channel_heads(&self, channels: &[ChannelId]) -> Result<Vec<ChannelHead>, Error>;
+}
+
+/// A durable consumer of ordered batches from the same reader as channel SSE.
+#[async_trait::async_trait]
+pub trait UpdateObserver: Send + Sync {
+    /// Configured supergroup IDs whose Telegram checkpoints should survive restarts.
+    fn channels(&self) -> &[i64] {
+        &[]
+    }
+
+    /// Begin one reader lifetime before receiving updates.
+    ///
+    /// # Errors
+    /// Fails if the consumer cannot establish a durable starting boundary.
+    async fn started(&self) -> Result<(), Error>;
+
+    /// Commit one batch before the reader saves its Telegram checkpoint. Repeated
+    /// delivery is possible after recovery. `recovering` denotes startup catch-up.
+    ///
+    /// # Errors
+    /// Fails if any selected update could not be durably recorded.
+    async fn observe(
+        &self,
+        updates: &[(tl::enums::Update, UpdatePosition)],
+        users: &[tl::enums::User],
+        chats: &[tl::enums::Chat],
+        recovering: bool,
+    ) -> Result<(), Error>;
+
+    /// Mark uncertainty for the affected channel or for the entire account.
+    ///
+    /// # Errors
+    /// Fails if the consumer cannot persist the coverage marker.
+    async fn disconnected(
+        &self,
+        channel_id: Option<i64>,
+        journal_failure: bool,
+    ) -> Result<(), Error>;
+
+    /// Suspend a supergroup after an authoritative Telegram rejection.
+    ///
+    /// # Errors
+    /// Fails if the consumer cannot persist the coverage marker.
+    async fn membership_lost(&self, channel_id: i64) -> Result<(), Error> {
+        self.disconnected(Some(channel_id), false).await
+    }
+
+    /// Inspect evidence of lost group access before ordering a socket envelope.
+    ///
+    /// # Errors
+    /// Fails if the consumer cannot apply the membership change.
+    async fn observe_socket_membership(&self, _chats: &[tl::enums::Chat]) -> Result<(), Error> {
+        Ok(())
+    }
 }
 
 fn serialize_channel_id<S: Serializer>(id: &ChannelId, serializer: S) -> Result<S::Ok, S::Error> {

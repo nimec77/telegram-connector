@@ -24,6 +24,7 @@ mod channels;
 mod cursor;
 mod guard;
 mod lifecycle;
+mod ops_groups;
 mod ops_history;
 mod ops_history_range;
 mod ops_media;

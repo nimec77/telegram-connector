@@ -1,5 +1,6 @@
 //! Durable account generations and per-client grants under one private root.
 
+use crate::contracts::groups::GroupRef;
 use crate::contracts::{GrantSnapshot, GrantUpdate, ReadGrant};
 use libsql::{Builder, Connection, params};
 use serde::Serialize;
@@ -168,7 +169,7 @@ impl AccountStore {
             .get::<i64>(0)
             .map_err(db_failure)?;
         drop(rows);
-        if version > 1 {
+        if version > 2 {
             return Err(StorageError::Unavailable);
         }
         db.execute_batch("PRAGMA foreign_keys = ON; PRAGMA synchronous = FULL;")
@@ -176,6 +177,16 @@ impl AccountStore {
             .map_err(db_failure)?;
         if version == 0 {
             db.execute_batch(SCHEMA).await.map_err(db_failure)?;
+        }
+        if version < 2 {
+            db.execute_batch(
+                "BEGIN IMMEDIATE;
+                 ALTER TABLE grants ADD COLUMN group_refs TEXT NOT NULL DEFAULT '[]';
+                 PRAGMA user_version = 2;
+                 COMMIT;",
+            )
+            .await
+            .map_err(db_failure)?;
         }
         let store = Self {
             db: Mutex::new(db),
@@ -266,6 +277,45 @@ impl AccountStore {
             .map_err(db_failure)?
             .map(|row| self.generation(row.get::<String>(0).map_err(db_failure)?))
             .transpose()
+    }
+
+    pub(super) async fn active_batch(
+        &self,
+        after: &str,
+    ) -> Result<Vec<(AccountGeneration, String, String)>, StorageError> {
+        let db = self.db.lock().await;
+        let mut rows = db
+            .query(
+                "SELECT id, issuer, subject FROM generations
+                 WHERE state = 'active' AND id > ?1 ORDER BY id LIMIT 16",
+                [after],
+            )
+            .await
+            .map_err(db_failure)?;
+        let mut accounts = Vec::new();
+        while let Some(row) = rows.next().await.map_err(db_failure)? {
+            accounts.push((
+                self.generation(row.get::<String>(0).map_err(db_failure)?)?,
+                row.get::<String>(1).map_err(db_failure)?,
+                row.get::<String>(2).map_err(db_failure)?,
+            ));
+        }
+        Ok(accounts)
+    }
+
+    pub(super) async fn is_active_generation(
+        &self,
+        generation: &AccountGeneration,
+    ) -> Result<bool, StorageError> {
+        let db = self.db.lock().await;
+        let mut rows = db
+            .query(
+                "SELECT 1 FROM generations WHERE id = ?1 AND state = 'active'",
+                [generation.id()],
+            )
+            .await
+            .map_err(db_failure)?;
+        Ok(rows.next().await.map_err(db_failure)?.is_some())
     }
 
     /// Durably disable the active generation before its session is touched.
@@ -419,7 +469,7 @@ impl AccountStore {
     ) -> Result<GrantSnapshot, StorageError> {
         let db = self.db.lock().await;
         let mut rows = db.query(
-            "SELECT grants.revision, grants.read_scope, grants.send_enabled
+            "SELECT grants.revision, grants.read_scope, grants.send_enabled, grants.group_refs
              FROM generations LEFT JOIN grants ON grants.generation = generations.id AND grants.client = ?2
              WHERE generations.id = ?1 AND generations.state = 'active'",
             params![generation.id.as_str(), client],
@@ -434,7 +484,10 @@ impl AccountStore {
         };
         let read = serde_json::from_str(&row.get::<String>(1).map_err(db_failure)?)
             .map_err(|_| StorageError::Unavailable)?;
+        let group_refs = serde_json::from_str(&row.get::<String>(3).map_err(db_failure)?)
+            .map_err(|_| StorageError::Unavailable)?;
         Ok(GrantSnapshot {
+            group_refs,
             revision,
             read,
             send_enabled: row.get::<i64>(2).map_err(db_failure)? != 0,
@@ -451,24 +504,51 @@ impl AccountStore {
         client: &str,
         update: GrantUpdate,
     ) -> Result<GrantSnapshot, StorageError> {
+        self.update_grant_with_groups(generation, client, update, None)
+            .await
+    }
+
+    pub(super) async fn update_grant_with_groups(
+        &self,
+        generation: &AccountGeneration,
+        client: &str,
+        update: GrantUpdate,
+        group_refs: Option<Vec<String>>,
+    ) -> Result<GrantSnapshot, StorageError> {
         let read = normalize_grant(update.read)?;
+        let group_refs = group_refs.map(normalize_group_grant).transpose()?;
+        let groups = group_refs
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|_| StorageError::InvalidGrant)?;
         let revision = update
             .expected_revision
             .checked_add(1)
             .ok_or(StorageError::InvalidGrant)?;
         let encoded = serde_json::to_string(&read).map_err(|_| StorageError::InvalidGrant)?;
         let db = self.db.lock().await;
-        let updated = db.execute(
-            "INSERT INTO grants(generation, client, revision, read_scope, send_enabled)
-             SELECT ?1, ?2, ?3, ?4, ?5 WHERE EXISTS
+        let mut rows = db.query(
+            "INSERT INTO grants(generation, client, revision, read_scope, send_enabled, group_refs)
+             SELECT ?1, ?2, ?3, ?4, ?5, coalesce(?7, '[]') WHERE EXISTS
                  (SELECT 1 FROM generations WHERE id = ?1 AND state = 'active')
                  AND coalesce((SELECT revision FROM grants WHERE generation = ?1 AND client = ?2), 0) = ?6
              ON CONFLICT(generation, client) DO UPDATE SET
-                 revision = excluded.revision, read_scope = excluded.read_scope, send_enabled = excluded.send_enabled",
-            params![generation.id.as_str(), client, integer(revision)?, encoded, i64::from(update.send_enabled), integer(update.expected_revision)?],
+                 revision = excluded.revision, read_scope = excluded.read_scope,
+                 send_enabled = excluded.send_enabled, group_refs = coalesce(?7, grants.group_refs)
+             RETURNING group_refs",
+            params![generation.id.as_str(), client, integer(revision)?, encoded, i64::from(update.send_enabled), integer(update.expected_revision)?, groups],
         ).await.map_err(db_failure)?;
-        changed(updated)?;
+        let row = rows
+            .next()
+            .await
+            .map_err(db_failure)?
+            .ok_or(StorageError::Conflict)?;
+        let group_refs = serde_json::from_str(&row.get::<String>(0).map_err(db_failure)?)
+            .map_err(|_| StorageError::Unavailable)?;
+        while rows.next().await.map_err(db_failure)?.is_some() {}
         Ok(GrantSnapshot {
+            group_refs,
             revision,
             read,
             send_enabled: update.send_enabled,
@@ -590,7 +670,7 @@ impl AccountStore {
         Ok(())
     }
 
-    fn generation(&self, id: String) -> Result<AccountGeneration, StorageError> {
+    pub(super) fn generation(&self, id: String) -> Result<AccountGeneration, StorageError> {
         if id.len() != 32
             || !id
                 .bytes()
@@ -621,6 +701,19 @@ fn normalize_grant(read: ReadGrant) -> Result<ReadGrant, StorageError> {
     channels.sort_unstable();
     channels.dedup();
     Ok(ReadGrant::Channels(channels))
+}
+
+fn normalize_group_grant(mut groups: Vec<String>) -> Result<Vec<String>, StorageError> {
+    if groups.len() > 1_000
+        || groups
+            .iter()
+            .any(|group| group.parse::<GroupRef>().is_err())
+    {
+        return Err(StorageError::InvalidGrant);
+    }
+    groups.sort_unstable();
+    groups.dedup();
+    Ok(groups)
 }
 
 fn private_dir(path: &Path) -> std::io::Result<()> {
@@ -700,6 +793,84 @@ mod tests {
                 .expect("mapping")
                 .as_ref()
                 == Some(&new)
+        );
+    }
+}
+
+#[cfg(test)]
+mod group_grant_tests {
+    use super::{AccountStore, GrantUpdate, ReadGrant};
+
+    #[tokio::test]
+    async fn explicit_group_grant_is_revisioned_and_preserved_by_legacy_updates() {
+        let root = tempfile::tempdir().expect("private root");
+        let store = AccountStore::open(root.path())
+            .await
+            .expect("account store");
+        let account = store
+            .start("issuer", "owner")
+            .await
+            .expect("reserve account");
+        store
+            .begin_verification(&account, 0)
+            .await
+            .expect("begin verification");
+        store
+            .activate(&account, 777)
+            .await
+            .expect("activate account");
+        let update = |expected_revision| GrantUpdate {
+            expected_revision,
+            read: ReadGrant::Channels(vec!["42".into()]),
+            send_enabled: false,
+        };
+        let first = store
+            .update_grant_with_groups(
+                &account,
+                "client",
+                update(0),
+                Some(vec![
+                    "supergroup:42".into(),
+                    "chat:42".into(),
+                    "chat:42".into(),
+                ]),
+            )
+            .await
+            .expect("group grant");
+        assert_eq!(first.group_refs, ["chat:42", "supergroup:42"]);
+        assert!(
+            store
+                .update_grant_with_groups(&account, "client", update(0), Some(vec![]))
+                .await
+                .is_err()
+        );
+        assert!(
+            store
+                .update_grant_with_groups(
+                    &account,
+                    "client",
+                    update(1),
+                    Some(vec!["chat:042".into()])
+                )
+                .await
+                .is_err()
+        );
+        let second = store
+            .update_grant(&account, "client", update(1))
+            .await
+            .expect("legacy update");
+        assert_eq!(second.group_refs, first.group_refs);
+        let revoked = store
+            .update_grant_with_groups(&account, "client", update(2), Some(vec![]))
+            .await
+            .expect("revoke groups");
+        assert!(revoked.group_refs.is_empty());
+        assert_eq!(
+            store
+                .grant(&account, "client")
+                .await
+                .expect("current grant"),
+            revoked
         );
     }
 }

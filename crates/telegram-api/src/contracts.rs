@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod groups;
+
 /// Stable service error category.
 #[cfg_attr(feature = "schemas", derive(schemars::JsonSchema), schemars(inline))]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -55,7 +57,7 @@ pub struct ErrorBody {
 /// OAuth scopes granted by this service's issuer.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum Scope {
-    /// Read granted channels.
+    /// Read granted channels and groups.
     #[serde(rename = "telegram.read")]
     Read,
     /// Send under an enabled account grant.
@@ -111,6 +113,9 @@ pub enum ReadGrant {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct GrantSnapshot {
+    /// Explicit group permissions, independent of the channel read grant.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub group_refs: Vec<String>,
     /// Revision used for compare-and-swap updates.
     pub revision: u64,
     /// Read authorization.
@@ -122,6 +127,7 @@ pub struct GrantSnapshot {
 impl Default for GrantSnapshot {
     fn default() -> Self {
         Self {
+            group_refs: Vec::new(),
             revision: 0,
             read: ReadGrant::None,
             send_enabled: false,

@@ -3,7 +3,7 @@
 use super::queue::{EncodedEvent, QueuedEvent, StreamBudget, Usage};
 use super::{
     ChannelEvent, ChannelHead, ChannelHeadLookup, ChannelPost, InterruptionReason, StreamLimits,
-    SubscribeError, reader,
+    SubscribeError, UpdateObserver, reader,
 };
 use crate::TelegramClient;
 use crate::error::Error;
@@ -45,6 +45,31 @@ impl AccountStreams {
         limits: StreamLimits,
         budget: Arc<StreamBudget>,
     ) -> Result<Self, SubscribeError> {
+        Self::start(client, limiter, limits, budget, None)
+    }
+
+    /// Start the native reader with a durable observer and resumable Telegram checkpoints.
+    ///
+    /// # Errors
+    /// Returns the same initialization errors as [`Self::new`]. Observer failures
+    /// terminate the reader without advancing past the failed batch.
+    pub fn with_observer(
+        client: Arc<TelegramClient>,
+        limiter: Arc<dyn RateLimiterTrait>,
+        limits: StreamLimits,
+        budget: Arc<StreamBudget>,
+        observer: Arc<dyn UpdateObserver>,
+    ) -> Result<Self, SubscribeError> {
+        Self::start(client, limiter, limits, budget, Some(observer))
+    }
+
+    fn start(
+        client: Arc<TelegramClient>,
+        limiter: Arc<dyn RateLimiterTrait>,
+        limits: StreamLimits,
+        budget: Arc<StreamBudget>,
+        observer: Option<Arc<dyn UpdateObserver>>,
+    ) -> Result<Self, SubscribeError> {
         if limits.max_channels == 0
             || limits.max_subscriptions == 0
             || limits.max_queue_items == 0
@@ -64,7 +89,14 @@ impl AccountStreams {
         let lifetime = ReaderLifetime(Arc::clone(&shared));
         let task = runtime.spawn(async move {
             let _lifetime = lifetime;
-            reader::run(reader_client, updates, shared, maintenance_timeout).await;
+            reader::run(
+                reader_client,
+                updates,
+                shared,
+                maintenance_timeout,
+                observer,
+            )
+            .await;
         });
         streams.reader = Some(ReaderTask {
             abort: task.abort_handle(),

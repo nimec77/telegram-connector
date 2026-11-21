@@ -631,6 +631,78 @@ paths:
           "$ref": "#/components/responses/Throttled"
         default:
           "$ref": "#/components/responses/Error"
+  "/v1/groups/{group_ref}/changes":
+    get:
+      operationId: groupChanges
+      summary: Read committed changes to a basic group or supergroup
+      security:
+      - AccessToken: []
+      description: >-
+        Requires an API bearer with telegram.read, an active account link, current group membership,
+        deployment eligibility and an explicit group grant. Supply exactly one of start and after.
+        Entries are consecutive after the returned boundary. A wait ends early for available entries.
+        Cursor and message identifiers are scoped to this stream and group respectively.
+      parameters:
+      - name: group_ref
+        in: path
+        required: true
+        schema:
+          "$ref": "#/components/schemas/GroupRef"
+      - name: start
+        in: query
+        description: Begin immediately before the oldest retained entry.
+        schema:
+          type: string
+          const: earliest
+      - name: after
+        in: query
+        description: Resume strictly after a cursor returned for the same group.
+        schema:
+          "$ref": "#/components/schemas/GroupCursor"
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 100
+      - name: wait_ms
+        in: query
+        description: Maximum time to wait for an entry after the initial read.
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 15000
+          default: 0
+      responses:
+        '200':
+          description: At most 100 whole entries and 256 KiB of JSON. An empty poll returns the same boundary.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/GroupChangePage"
+        '400':
+          "$ref": "#/components/responses/Error"
+        '401':
+          "$ref": "#/components/responses/Unauthenticated"
+        '403':
+          "$ref": "#/components/responses/Error"
+        '404':
+          description: The group is unknown or unavailable to the caller.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        '410':
+          description: A once-valid cursor is outside retention or belongs to an earlier stream.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/GroupCursorExpired"
+        '429':
+          "$ref": "#/components/responses/Throttled"
+        default:
+          "$ref": "#/components/responses/Error"
   "/v1/events":
     get:
       operationId: channelPostEvents
@@ -1459,6 +1531,136 @@ components:
             retry_after_seconds:
               type: integer
               minimum: 0
+    GroupRef:
+      type: string
+      pattern: '^(chat|supergroup):[1-9][0-9]*$'
+      examples: ['chat:42', 'supergroup:42']
+    GroupCursor:
+      type: string
+      description: Opaque cursor returned by a group change response.
+      minLength: 1
+      maxLength: 100
+    GroupSequence:
+      type: string
+      pattern: '^(0|[1-9][0-9]*)$'
+    GroupTelegramId:
+      type: string
+      pattern: '^[1-9][0-9]{0,18}$'
+      description: Positive decimal Telegram message or user ID.
+    GroupAuthor:
+      type: object
+      required: [kind, user_id, display_name, username]
+      properties:
+        kind:
+          enum: [user, bot, chat, unknown]
+        user_id:
+          anyOf:
+          - "$ref": "#/components/schemas/GroupTelegramId"
+          - type: 'null'
+        display_name:
+          type: [string, 'null']
+        username:
+          type: [string, 'null']
+      if:
+        properties:
+          kind: {const: user}
+      then:
+        properties:
+          user_id:
+            "$ref": "#/components/schemas/GroupTelegramId"
+          display_name: {type: string}
+    GroupChange:
+      oneOf:
+      - type: object
+        required: [type, message_id, posted_at, author, text, reply_kind, reply_to_message_id]
+        properties:
+          type: {const: added}
+          message_id:
+            "$ref": "#/components/schemas/GroupTelegramId"
+          posted_at: {type: string, format: date-time}
+          author:
+            "$ref": "#/components/schemas/GroupAuthor"
+          text: {type: string}
+          reply_kind:
+            enum: [local, none, unavailable]
+          reply_to_message_id:
+            anyOf:
+            - "$ref": "#/components/schemas/GroupTelegramId"
+            - type: 'null'
+        if:
+          properties:
+            reply_kind: {const: local}
+        then:
+          properties:
+            reply_to_message_id:
+              "$ref": "#/components/schemas/GroupTelegramId"
+        else:
+          properties:
+            reply_to_message_id: {type: 'null'}
+      - type: object
+        required: [type, message_id, edited_at, text]
+        properties:
+          type: {const: edited}
+          message_id:
+            "$ref": "#/components/schemas/GroupTelegramId"
+          edited_at: {type: string, format: date-time}
+          text: {type: string}
+      - type: object
+        required: [type, message_id, deleted_at]
+        properties:
+          type: {const: deleted}
+          message_id:
+            "$ref": "#/components/schemas/GroupTelegramId"
+          deleted_at: {type: string, format: date-time}
+      - type: object
+        required: [type, reason]
+        properties:
+          type: {const: gap}
+          reason:
+            enum: [upstream_disconnect, ambiguous_update, journal_failure]
+    GroupChangeEntry:
+      type: object
+      required: [cursor, seq, observed_at, change]
+      properties:
+        cursor:
+          "$ref": "#/components/schemas/GroupCursor"
+        seq:
+          "$ref": "#/components/schemas/GroupSequence"
+        observed_at: {type: string, format: date-time}
+        change:
+          "$ref": "#/components/schemas/GroupChange"
+    GroupBoundary:
+      type: object
+      required: [stream_id, base_cursor, base_seq]
+      properties:
+        stream_id: {type: string, format: uuid}
+        base_cursor:
+          "$ref": "#/components/schemas/GroupCursor"
+        base_seq:
+          "$ref": "#/components/schemas/GroupSequence"
+    GroupChangePage:
+      allOf:
+      - "$ref": "#/components/schemas/GroupBoundary"
+      - type: object
+        required: [entries, has_more]
+        properties:
+          entries:
+            type: array
+            maxItems: 100
+            items:
+              "$ref": "#/components/schemas/GroupChangeEntry"
+          has_more: {type: boolean}
+    GroupCursorExpired:
+      allOf:
+      - "$ref": "#/components/schemas/GroupBoundary"
+      - type: object
+        required: [error]
+        properties:
+          error:
+            type: object
+            required: [code]
+            properties:
+              code: {const: cursor_expired}
     ReadChannelId:
       type: string
       pattern: "^[1-9][0-9]{0,18}$"
@@ -1701,6 +1903,11 @@ components:
           "$ref": "#/components/schemas/ReadGrant"
         send_enabled:
           type: boolean
+        group_refs:
+          type: array
+          maxItems: 1000
+          items:
+            "$ref": "#/components/schemas/GroupRef"
     GrantUpdate:
       type: object
       additionalProperties: false
@@ -1720,6 +1927,12 @@ components:
           "$ref": "#/components/schemas/ReadGrant"
         send_enabled:
           type: boolean
+        group_refs:
+          type: array
+          maxItems: 1000
+          items:
+            "$ref": "#/components/schemas/GroupRef"
+          description: When omitted, preserve existing group permissions. An empty list revokes them.
     Channel:
       type: object
       required:

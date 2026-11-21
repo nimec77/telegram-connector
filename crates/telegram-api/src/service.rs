@@ -6,6 +6,9 @@ mod browser_auth;
 mod channels;
 mod event_writer;
 mod events;
+mod group_capture;
+mod group_changes;
+mod group_journal;
 mod http_error;
 mod linking;
 mod media;
@@ -21,6 +24,7 @@ mod uploads;
 
 pub use accounts::HostedConfig;
 pub use events::EventConfig;
+pub use group_changes::GroupChangesConfig;
 pub use storage::{
     AccountGeneration, AccountStore, LinkState, RetiredGeneration, RetirementOutcome,
 };
@@ -179,6 +183,7 @@ fn build_router(
             .route("/v1/account/channels", get(accounts::joined_channels))
             .route("/v1/capabilities", get(authorization::capabilities))
             .route("/v1/events", get(events::subscribe))
+            .route("/v1/groups/{group_ref}/changes", get(group_changes::read))
             .route("/v1/messages/search", post(reads::search))
             .route("/v1/channels/{id}/messages", get(reads::history))
             .route("/v1/messages/batch", post(reads::batch))

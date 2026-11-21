@@ -137,6 +137,7 @@ async fn hosted_metadata_http_filters_pages_resolves_links_samples_and_charges_t
                 client: Arc::clone(&client),
                 operations,
                 streams,
+                capture: None,
             }
         })
         .await

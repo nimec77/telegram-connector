@@ -48,12 +48,13 @@ test('out-of-order permission loads retain the selected client snapshot', async 
   element('client').oninput();
   const second = element('load').onclick();
 
-  requests[1].resolve(grant('42', false));
+  requests[1].resolve({ ...grant('42', false), group_refs: ['chat:42'] });
   await second;
   requests[0].resolve(grant('99', true));
   await first;
 
   assert.equal(element('channels').value, '42');
+  assert.equal(element('groups').value, 'chat:42');
   assert.equal(element('send').checked, false);
   assert.equal(element('save').disabled, false);
   const saving = element('grant').onsubmit({ preventDefault() {} });
@@ -63,6 +64,7 @@ test('out-of-order permission loads retain the selected client snapshot', async 
     expected_revision: 1,
     read: { kind: 'channels', channel_ids: ['42'] },
     send_enabled: false,
+    group_refs: ['chat:42'],
   });
   requests[2].resolve({ ...grant('42', false), revision: 2 });
   await saving;
