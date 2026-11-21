@@ -5,7 +5,7 @@ opt-in text and media sending over MTProto. Run `telegram-mcp` locally over
 stdio, or deploy the hosted HTTPS API and HTTP MCP gateway. The hosted API
 also streams live channel posts over SSE.
 
-Current package version: [0.27.1](CHANGELOG.md#0271---2026-11-20).
+Current package version: [0.28.0](CHANGELOG.md#0280---2026-11-21).
 
 The stdio connector supports MCP **2026-07-28** and **2025-11-25**. The HTTP
 gateway supports MCP **2026-07-28**. Stdio tools default to versioned JSON
@@ -58,7 +58,7 @@ workspace root. The stdio crate is the default Cargo member.
 Build the local stdio connector.
 
 ```bash
-git clone --branch v0.27.1 --single-branch https://github.com/nimec77/telegram-connector.git
+git clone --branch v0.28.0 --single-branch https://github.com/nimec77/telegram-connector.git
 cd telegram-connector
 cargo build --locked --release -p telegram-connector  # target/release/telegram-mcp
 ```

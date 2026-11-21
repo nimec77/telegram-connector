@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-11-21
+
 ### Added
 
 - Authorized HTTP replay of observed text additions, edits, deletions and coverage gaps

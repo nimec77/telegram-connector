@@ -1,6 +1,6 @@
 [package]
 name = "telegram-connector"
-version = "0.27.1"
+version = "0.28.0"
 edition = "2024"
 readme = "../../README.md"
 
@@ -18,7 +18,7 @@ path = "examples/safe_send/main.rs"
 test = true
 
 [dependencies]
-telegram-core = { path = "../telegram-core", version = "0.27.1", features = ["image-preview"] }
+telegram-core = { path = "../telegram-core", version = "0.28.0", features = ["image-preview"] }
 # MCP
 rmcp = { workspace = true, features = ["base64", "macros", "server"] }
 
@@ -88,7 +88,7 @@ grammers-client.workspace = true
 grammers-session.workspace = true
 grammers-mtsender.workspace = true
 
-telegram-core = { path = "../telegram-core", version = "0.27.1", features = ["test-support"] }
+telegram-core = { path = "../telegram-core", version = "0.28.0", features = ["test-support"] }
 # Exercise the modern binding over loopback without enabling HTTP for production stdio.
 axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio"] }
 rmcp = { workspace = true, features = ["transport-streamable-http-server"] }
