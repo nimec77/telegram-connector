@@ -6,12 +6,18 @@ true. (The full historical journal lives in git history, pre-2026-08-15.)
 
 ## Current state
 
-- **Current workspace release is 0.27.1.** Hosted services arrived in 0.27.0. The workspace
+- **Current workspace release is 0.28.0.** Hosted services arrived in 0.27.0. The workspace
   places all four packages under `crates/`. The stdio connector is the default
   member at `crates/telegram-connector`; install from that path. The core, stateful
   API and independent HTTP MCP gateway share the root lockfile. The completed plan and design are archived in
   Git at merge revision `4618221`. [Workspace specification](workspace-specification.md) ·
   [Operator guide](hosted-services.md) · [Acceptance evidence](validation/2026-11-20-workspace-services.md)
+
+- **Replayable group changes arrived in 0.28.0.** The hosted API uses a private
+  per-group journal and persists Telegram checkpoints after journal writes. Enable capture
+  through deployment eligibility and grant each client explicit group access. The
+  [operator guide](hosted-services.md#read-and-replay-group-changes) covers cursor recovery
+  and retention. The completed design and plan are archived in Git at `89e8575`.
 
 - **2026-11-15 review remediation is integrated into `master` as 0.26.1.**
   All 15 implementation slices have independent scoped review. Fresh whole-branch
